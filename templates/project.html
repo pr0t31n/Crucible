@@ -554,7 +554,7 @@ socket.on('err_entry', data => {
 });
 
 // ── Phase status ──────────────────────────────────────────
-socket.on('vantage_status', d => {
+socket.on('crucible_status', d => {
   const tool = d.tool;
   const store = tool === 'fr' ? frPhases : siPhases;
   if (d.phase) store[d.phase] = d;
@@ -562,7 +562,7 @@ socket.on('vantage_status', d => {
 });
 
 // ── Prompt ────────────────────────────────────────────────
-socket.on('vantage_prompt', data => {
+socket.on('crucible_prompt', data => {
   const tool    = data.tool;
   const payload = data.payload;
   _promptTool           = tool;
@@ -966,7 +966,7 @@ function showPromptModal(payload, tool) {
 function submitPrompt(tool) {
   const input = document.getElementById('modalTextInput');
   const answer = input.value;
-  socket.emit('vantage_answer', {project_id: PROJECT_ID, tool: tool, answer: answer});
+  socket.emit('crucible_answer', {project_id: PROJECT_ID, tool: tool, answer: answer});
   closePromptModal();
 }
 

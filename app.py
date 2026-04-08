@@ -2,11 +2,11 @@
 """
 Crucible — Web & API Assessment Platform
 Flask/SocketIO orchestration wrapper for Fracture (web app pentest)
-and Siphon (API pentest), modelled after the Vantage/Gauntlet architecture.
+and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 import json
 import os
@@ -44,12 +44,12 @@ SIPHON_SCRIPT   = Path("/Users/pr0t31n/Siphon/siphon.py")
 PROJECTS_DIR.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Protocol tokens emitted by tools when running under Vantage/Crucible
+# Protocol tokens emitted by Fracture/Siphon when running under Crucible
 # ---------------------------------------------------------------------------
-_VP_LOG    = "__VANTAGE_LOG__:"
-_VP_ERR    = "__VANTAGE_ERR__:"
-_VP_PROMPT = "__VANTAGE_PROMPT__:"
-_VP_STATUS = "__VANTAGE_STATUS__:"
+_CP_LOG    = "__CRUCIBLE_LOG__:"
+_CP_ERR    = "__CRUCIBLE_ERR__:"
+_CP_PROMPT = "__CRUCIBLE_PROMPT__:"
+_CP_STATUS = "__CRUCIBLE_STATUS__:"
 
 # Sudo password prompt patterns
 _SUDO_PROMPT_RE = re.compile(
@@ -191,7 +191,7 @@ def _emit_line(project_id: str, tool: str, text: str, stream: str = "stdout") ->
     proj = _get_project(project_id)
     if proj:
         _append_jsonl(
-            Path(proj["project_dir"]) / f"vantage_console_{tool}.jsonl", entry
+            Path(proj["project_dir"]) / f"crucible_console_{tool}.jsonl", entry
         )
     socketio.emit(f"{tool}_output", entry, room=_room(project_id))
 
@@ -232,7 +232,7 @@ def _buf_append_log(project_id: str, entry: dict, proj: dict | None = None) -> N
     if len(lst) > _MAX_LOG:
         del lst[0]
     if proj:
-        _append_jsonl(Path(proj["project_dir"]) / "vantage_logs.jsonl", entry)
+        _append_jsonl(Path(proj["project_dir"]) / "crucible_logs.jsonl", entry)
     socketio.emit("log_entry", {"tool": entry.get("tool", ""), "entry": entry},
                   room=_room(project_id))
 
@@ -242,7 +242,7 @@ def _buf_append_err(project_id: str, entry: dict, proj: dict | None = None) -> N
     if len(lst) > _MAX_ERR:
         del lst[0]
     if proj:
-        _append_jsonl(Path(proj["project_dir"]) / "vantage_errors.jsonl", entry)
+        _append_jsonl(Path(proj["project_dir"]) / "crucible_errors.jsonl", entry)
     socketio.emit("err_entry", {"tool": entry.get("tool", ""), "entry": entry},
                   room=_room(project_id))
 
@@ -729,7 +729,7 @@ def api_logs(project_id: str):
     if in_mem:
         return jsonify(in_mem)
     if proj:
-        entries = _read_jsonl(Path(proj["project_dir"]) / "vantage_logs.jsonl")
+        entries = _read_jsonl(Path(proj["project_dir"]) / "crucible_logs.jsonl")
         if entries:
             _log_buffers[project_id] = entries
         return jsonify(entries)
@@ -743,7 +743,7 @@ def api_errors(project_id: str):
     if in_mem:
         return jsonify(in_mem)
     if proj:
-        entries = _read_jsonl(Path(proj["project_dir"]) / "vantage_errors.jsonl",
+        entries = _read_jsonl(Path(proj["project_dir"]) / "crucible_errors.jsonl",
                               limit=_MAX_ERR)
         if entries:
             _err_buffers[project_id] = entries
@@ -848,7 +848,7 @@ def on_join_project(data):
     for tool in ("fr", "si"):
         lines = _buffers.get(project_id, {}).get(tool, [])
         if not lines:
-            lines = _read_jsonl(proj_dir / f"vantage_console_{tool}.jsonl",
+            lines = _read_jsonl(proj_dir / f"crucible_console_{tool}.jsonl",
                                 limit=_MAX_CONSOLE)
             if lines:
                 _buffers.setdefault(project_id, {"fr": [], "si": []})[tool] = lines
@@ -863,12 +863,12 @@ def on_join_project(data):
     sc = _status_cache.get(project_id, {})
     for tool, phases in sc.items():
         for phase_key, phase_data in phases.items():
-            emit("vantage_status", {"tool": tool, **phase_data})
+            emit("crucible_status", {"tool": tool, **phase_data})
 
     # Structured log entries (with disk fallback)
     log_entries = _log_buffers.get(project_id, [])
     if not log_entries:
-        log_entries = _read_jsonl(proj_dir / "vantage_logs.jsonl", limit=_MAX_LOG)
+        log_entries = _read_jsonl(proj_dir / "crucible_logs.jsonl", limit=_MAX_LOG)
         if log_entries:
             _log_buffers[project_id] = log_entries
     for entry in log_entries:
@@ -877,7 +877,7 @@ def on_join_project(data):
     # Structured error entries (with disk fallback)
     err_entries = _err_buffers.get(project_id, [])
     if not err_entries:
-        err_entries = _read_jsonl(proj_dir / "vantage_errors.jsonl", limit=_MAX_ERR)
+        err_entries = _read_jsonl(proj_dir / "crucible_errors.jsonl", limit=_MAX_ERR)
         if err_entries:
             _err_buffers[project_id] = err_entries
     for entry in err_entries:
@@ -888,7 +888,7 @@ def on_join_project(data):
         pkey    = _pkey(project_id, tool)
         pending = _pending_prompts.get(pkey)
         if pending:
-            emit("vantage_prompt", {"tool": tool, "payload": pending})
+            emit("crucible_prompt", {"tool": tool, "payload": pending})
 
 
 @socketio.on("leave_project")
@@ -901,8 +901,8 @@ def on_leave_project(data):
 # ---------------------------------------------------------------------------
 # SocketIO — prompt answer
 # ---------------------------------------------------------------------------
-@socketio.on("vantage_answer")
-def on_vantage_answer(data):
+@socketio.on("crucible_answer")
+def on_crucible_answer(data):
     project_id = data.get("project_id", "")
     tool       = data.get("tool", "")
     answer     = data.get("answer", "")
@@ -949,7 +949,7 @@ def on_fr_start(data):
     Path(cwd).mkdir(parents=True, exist_ok=True)
 
     env = dict(os.environ)
-    env["VANTAGE_MANAGED"]  = "1"
+    env["CRUCIBLE_MANAGED"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
 
     try:
@@ -993,7 +993,7 @@ def on_fr_kill(data):
 
 @socketio.on("fr_input")
 def on_fr_input(data):
-    on_vantage_answer({**data, "tool": "fr"})
+    on_crucible_answer({**data, "tool": "fr"})
 
 
 # ---------------------------------------------------------------------------
@@ -1023,7 +1023,7 @@ def on_si_start(data):
     Path(cwd).mkdir(parents=True, exist_ok=True)
 
     env = dict(os.environ)
-    env["VANTAGE_MANAGED"]  = "1"
+    env["CRUCIBLE_MANAGED"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
 
     try:
@@ -1067,7 +1067,7 @@ def on_si_kill(data):
 
 @socketio.on("si_input")
 def on_si_input(data):
-    on_vantage_answer({**data, "tool": "si"})
+    on_crucible_answer({**data, "tool": "si"})
 
 
 # ---------------------------------------------------------------------------
@@ -1092,10 +1092,10 @@ def _reader(project_id: str, tool: str, stream,
             is detected and forwarded to the browser modal immediately.
 
     Handles protocol tokens:
-      __VANTAGE_LOG__:    -> structured log entry
-      __VANTAGE_ERR__:    -> structured error entry
-      __VANTAGE_PROMPT__: -> interactive prompt (show modal, block on stdin)
-      __VANTAGE_STATUS__: -> phase/step status update
+      __CRUCIBLE_LOG__:    -> structured log entry
+      __CRUCIBLE_ERR__:    -> structured error entry
+      __CRUCIBLE_PROMPT__: -> interactive prompt (show modal, block on stdin)
+      __CRUCIBLE_STATUS__: -> phase/step status update
     """
     proj = _get_project(project_id)
     pkey = _pkey(project_id, tool)
@@ -1105,33 +1105,50 @@ def _reader(project_id: str, tool: str, stream,
             return
 
         # Structured log
-        if line.startswith(_VP_LOG):
+        if line.startswith(_CP_LOG):
             try:
-                entry = json.loads(line[len(_VP_LOG):])
+                entry = json.loads(line[len(_CP_LOG):])
                 entry["tool"] = tool
                 _buf_append_log(project_id, entry, proj)
+                # Mirror to console so progress is visible
+                lvl = entry.get("level", "INFO")
+                _emit_line(project_id, tool,
+                           f"[{lvl}] {entry.get('message', '')}", stream_name)
+                # Also route WARNING/ERROR level entries to the Errors tab
+                if lvl in ("WARNING", "ERROR"):
+                    _buf_append_err(project_id, {
+                        "ts":       entry.get("ts", datetime.now(timezone.utc).isoformat()),
+                        "source":   tool,
+                        "tool":     tool,
+                        "message":  entry.get("message", ""),
+                        "detail":   "",
+                        "category": _categorise_error(entry.get("message", "")),
+                    }, proj)
             except Exception:
                 _emit_line(project_id, tool, line, stream_name)
             return
 
         # Structured error
-        if line.startswith(_VP_ERR):
+        if line.startswith(_CP_ERR):
             try:
-                entry = json.loads(line[len(_VP_ERR):])
+                entry = json.loads(line[len(_CP_ERR):])
                 entry["tool"] = tool
                 if "category" not in entry:
                     entry["category"] = _categorise_error(entry.get("message", ""))
                 _buf_append_err(project_id, entry, proj)
+                # Mirror to console
+                _emit_line(project_id, tool,
+                           f"[ERR] {entry.get('message', '')}", "stderr")
             except Exception:
                 _emit_line(project_id, tool, line, "stderr")
             return
 
         # Interactive prompt
-        if line.startswith(_VP_PROMPT):
+        if line.startswith(_CP_PROMPT):
             try:
-                payload = json.loads(line[len(_VP_PROMPT):])
+                payload = json.loads(line[len(_CP_PROMPT):])
                 _pending_prompts[pkey] = payload
-                socketio.emit("vantage_prompt",
+                socketio.emit("crucible_prompt",
                     {"tool": tool, "payload": payload},
                     room=_room(project_id))
                 q = _answer_queues.get(pkey)
@@ -1147,13 +1164,19 @@ def _reader(project_id: str, tool: str, stream,
             return
 
         # Phase status
-        if line.startswith(_VP_STATUS):
+        if line.startswith(_CP_STATUS):
             try:
-                sdata = json.loads(line[len(_VP_STATUS):])
+                sdata = json.loads(line[len(_CP_STATUS):])
                 sdata["tool"] = tool
                 sc = _status_cache.setdefault(project_id, {"fr": {}, "si": {}})
                 sc.setdefault(tool, {})[sdata.get("phase", "?")] = sdata
-                socketio.emit("vantage_status", sdata, room=_room(project_id))
+                socketio.emit("crucible_status", sdata, room=_room(project_id))
+                # Mirror phase transitions to console
+                step = sdata.get("step", "")
+                if step:
+                    _emit_line(project_id, tool,
+                               f"[{sdata.get('label', sdata.get('phase', '?'))}] {step}",
+                               stream_name)
             except Exception:
                 _emit_line(project_id, tool, line, stream_name)
             return
@@ -1168,7 +1191,7 @@ def _reader(project_id: str, tool: str, stream,
                 "skippable": False,
             }
             _pending_prompts[pkey] = payload
-            socketio.emit("vantage_prompt",
+            socketio.emit("crucible_prompt",
                 {"tool": tool, "payload": payload},
                 room=_room(project_id))
             q = _answer_queues.get(pkey)

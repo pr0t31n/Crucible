@@ -1747,7 +1747,7 @@ body {
   border-radius: 3px; font-size: .68rem; font-weight: 600;
   background: rgba(112,112,112,.15); color: var(--text-secondary);
 }
-.col-ts      { width: 80px; font-family: var(--font-mono); font-size: .7rem; white-space: nowrap; }
+.col-ts      { width: 170px; font-family: var(--font-mono); font-size: .7rem; white-space: nowrap; }
 .col-level   { width: 70px; }
 .col-tool-sm { width: 50px; }
 .col-category{ width: 80px; }

@@ -1,7 +1,7 @@
 /**
  * Crucible — main.js
  * Theme system: palette + mode (dark/light), stored in localStorage.
- * Custom swatch picker with category flyout. Mirrors Vantage's JS.
+ * Custom swatch picker with category flyout.
  */
 
 (function () {

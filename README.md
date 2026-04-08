@@ -20,14 +20,14 @@ Browser  ←── HTTPS/WebSocket ──→  Crucible (Flask/SocketIO :5500)
                            findings.json    findings.json
 ```
 
-Crucible is modelled after Vantage, using the same protocol token architecture:
+Crucible uses a protocol token architecture for subprocess communication:
 
 | Token | Description |
 |-------|-------------|
-| `__VANTAGE_LOG__:` | Structured log entry (JSON) |
-| `__VANTAGE_ERR__:` | Structured error entry (JSON) |
-| `__VANTAGE_PROMPT__:` | Interactive prompt (modal dialog) |
-| `__VANTAGE_STATUS__:` | Phase/step status update |
+| `__CRUCIBLE_LOG__:` | Structured log entry (JSON) |
+| `__CRUCIBLE_ERR__:` | Structured error entry (JSON) |
+| `__CRUCIBLE_PROMPT__:` | Interactive prompt (modal dialog) |
+| `__CRUCIBLE_STATUS__:` | Phase/step status update |
 
 ---
 
@@ -37,7 +37,7 @@ Crucible is modelled after Vantage, using the same protocol token architecture:
 - **Real-time findings** — findings.json polled every 5 s during scans, pushed via SocketIO
 - **Interactive prompt handling** — password fields masked in browser, never logged in plaintext
 - **Sudo credential handling** — browser modal for sudo prompts with auto-masking
-- **Phase status tracking** — live phase progress from VP_STATUS tokens
+- **Phase status tracking** — live phase progress from CRUCIBLE_STATUS tokens
 - **Findings table** — filterable by risk, tool; sortable; CSV export
 - **Structured logs & errors** — categorised, filterable, paginated
 - **Settings editor** — in-browser JSON editor for fr_settings.json and si_settings.json
@@ -123,10 +123,10 @@ Password policy: blocked common passwords, username cannot match password, minim
 │   ├── findings.json
 │   ├── summary.json
 │   └── checkpoint.json
-├── vantage_console_fr.jsonl # Fracture console history
-├── vantage_console_si.jsonl # Siphon console history
-├── vantage_logs.jsonl       # Structured logs
-└── vantage_errors.jsonl     # Structured errors
+├── crucible_console_fr.jsonl # Fracture console history
+├── crucible_console_si.jsonl # Siphon console history
+├── crucible_logs.jsonl       # Structured logs
+└── crucible_errors.jsonl     # Structured errors
 ```
 
 ---
@@ -184,7 +184,7 @@ GET /api/nexus-status
 | `si_start` | Launch Siphon subprocess |
 | `si_kill` | Kill Siphon |
 | `si_input` | Send answer to Siphon prompt |
-| `vantage_answer` | Generic prompt answer |
+| `crucible_answer` | Generic prompt answer |
 
 ### Server → Client
 | Event | Description |
@@ -201,8 +201,8 @@ GET /api/nexus-status
 | `finding` | New/updated finding |
 | `log_entry` | Structured log entry |
 | `err_entry` | Structured error entry |
-| `vantage_status` | Phase status update |
-| `vantage_prompt` | Interactive prompt request |
+| `crucible_status` | Phase status update |
+| `crucible_prompt` | Interactive prompt request |
 | `prompt_resolved` | Prompt answered |
 
 ---
