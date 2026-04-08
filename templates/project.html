@@ -637,6 +637,7 @@ function switchTab(name, btn) {
   const panel = document.getElementById(`tab-${name}`);
   if (panel) panel.classList.add('active');
   if (btn) btn.classList.add('active');
+  if (name === 'findings') renderFindings();
   if (name === 'settings') { loadSettings('fr'); loadSettings('si'); }
   if (name === 'checkpoint') { loadCheckpoint('fr'); loadCheckpoint('si'); }
 }
@@ -722,7 +723,8 @@ function renderFindings() {
   tbody.innerHTML = slice.map(f => {
     const host = f.hostname || f.url || f.ip || '';
     const cves = (f.cves || '').split(',').filter(Boolean).map(c => `<span class="cve-tag">${c.trim()}</span>`).join(' ');
-    return `<tr class="finding-row" onclick="showFindingDetails(${JSON.stringify(JSON.stringify(f))})">
+    const fJson = escHtml(JSON.stringify(JSON.stringify(f)));
+    return `<tr class="finding-row" onclick="showFindingDetails(${fJson})">
       <td>${_riskBadge(f.risk)}</td>
       <td>${_toolBadge(f._tool)}</td>
       <td class="col-title-cell">${escHtml(f.title || f.detail || '')}</td>
@@ -731,7 +733,7 @@ function renderFindings() {
       <td>${cves}</td>
       <td class="mono-sm">${escHtml(f.sources || '')}</td>
       <td><span class="scope-tag">${f._scope || ''}</span></td>
-      <td><button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();showFindingDetails(${JSON.stringify(JSON.stringify(f))})">Details</button></td>
+      <td><button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();showFindingDetails(${fJson})">Details</button></td>
     </tr>`;
   }).join('');
 }
