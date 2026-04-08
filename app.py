@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 import json
 import os
@@ -294,14 +294,20 @@ def _init_project_state(project_id: str) -> None:
 # Project directory helpers
 # ---------------------------------------------------------------------------
 def _clients_base() -> Path:
-    """Return the OS-appropriate clients root directory."""
+    """Return the OS-appropriate clients root directory, creating it if absent."""
     system = platform.system()
     if system == "Darwin":
-        return Path.home() / "clients"
+        base = Path("/Users/Shared/clients")
     elif system == "Windows":
-        return Path("C:\\clients")
+        base = Path("C:/clients")
     else:
-        return Path("/clients")
+        base = Path("/clients")
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        base = Path.home() / "clients"
+        base.mkdir(parents=True, exist_ok=True)
+    return base
 
 def _extract_year(date_str: str) -> str:
     """Parse YYYY-MM-DD or MM/DD/YYYY and return the 4-digit year."""
@@ -314,6 +320,48 @@ def _extract_year(date_str: str) -> str:
     if m:
         return m.group(1)
     return datetime.now(timezone.utc).strftime("%Y")
+
+def _build_project_dir(client_short: str, year: str, tool_name: str) -> Path:
+    """
+    Return structured project directory (created if absent):
+      <clients_base>/<client_short>/<year>/<tool_name>/<client_short>_<datetime>/
+    """
+    slug = re.sub(r'[^\w-]', '_', (client_short or 'client').strip().lower()).strip('_') or 'client'
+    dt_str = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    path = _clients_base() / slug / year / tool_name / f"{slug}_{dt_str}"
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        path = CRUCIBLE_DIR / "output" / tool_name / f"{slug}_{dt_str}"
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+def _discover_client_projects(tools: list) -> list:
+    """
+    Walk <clients_base>/<client>/<year>/<tool>/<run>/project_meta.json
+    and return records for matching tools that are not already registered.
+    """
+    base = _clients_base()
+    registered = set(_load_projects()["projects"].keys())
+    found = []
+    if not base.exists():
+        return found
+    for meta_file in base.glob("*/*/*/*/project_meta.json"):
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if meta.get("tool") not in tools:
+                continue
+            proj_path = str(meta_file.parent)
+            # Skip if already registered by path
+            if any(p.get("project_dir") == proj_path or
+                   p.get("fracture_output_dir", "").startswith(proj_path) or
+                   p.get("siphon_output_dir", "").startswith(proj_path)
+                   for p in _load_projects()["projects"].values()):
+                continue
+            found.append({"path": proj_path, "meta": meta})
+        except Exception:
+            pass
+    return found
 
 # ---------------------------------------------------------------------------
 # Auth bootstrap
@@ -430,6 +478,38 @@ def nexus_status():
 @app.route("/")
 def index():
     data = _load_projects()
+    # Auto-import projects discovered in the clients directory
+    discovered = _discover_client_projects(["fracture", "siphon"])
+    if discovered:
+        changed = False
+        for item in discovered:
+            pid = str(uuid.uuid4())
+            meta = item["meta"]
+            tool = meta.get("tool", "fracture")
+            proj_path = Path(item["path"])
+            # Locate settings file written alongside the run
+            fr_path = proj_path / "fr_settings.json"
+            si_path = proj_path / "si_settings.json"
+            data["projects"][pid] = {
+                "name":              f"{meta.get('client_short','?')} — discovered ({tool})",
+                "client_name":       meta.get("client_short", ""),
+                "client_short":      meta.get("client_short", ""),
+                "scope":             tool,
+                "created":           meta.get("created_at", "")[:10],
+                "project_dir":       str(proj_path),
+                "fr_settings_file":  str(fr_path) if fr_path.exists() else "",
+                "si_settings_file":  str(si_path) if si_path.exists() else "",
+                "fracture_output_dir": str(proj_path) if tool == "fracture" else "",
+                "siphon_output_dir":   str(proj_path) if tool == "siphon"   else "",
+                "tools":             [tool[:2]],
+                "fr_status":         "complete" if tool == "fracture" else "idle",
+                "si_status":         "complete" if tool == "siphon"   else "idle",
+                "fr_last_run":       None,
+                "si_last_run":       None,
+            }
+            changed = True
+        if changed:
+            _save_projects(data)
     projects = sorted(
         data["projects"].items(),
         key=lambda kv: kv[1].get("created", ""),
@@ -485,7 +565,8 @@ def api_create_project():
     cfg_dir    = PROJECTS_DIR / project_id
     cfg_dir.mkdir(parents=True, exist_ok=True)
 
-    # Derive client-scoped project directory
+    # Derive client-scoped project directory using structured layout:
+    # <clients_base>/<client_short>/<year>/<tool>/<client_short>_<datetime>/
     client_short = (body.get("client_short") or "client").strip().lower()
     client_short = re.sub(r'[^\w-]', '_', client_short)
 
@@ -498,39 +579,33 @@ def api_create_project():
         "webapi":   "both",
     }
     scope_str = scope_map.get(scope_raw, "webapp")
-
     year = _extract_year(body.get("start_date", ""))
 
-    clients_base = _clients_base()
-    client_dir   = clients_base / client_short
-    project_dir  = client_dir / f"{client_short}_{scope_str}_{year}"
+    # Per-tool output directories under the structured client path
+    fr_output_dir = _build_project_dir(client_short, year, "fracture")
+    si_output_dir = _build_project_dir(client_short, year, "siphon")
+    # Config/settings files live alongside the Fracture output directory
+    project_dir   = fr_output_dir
 
-    try:
-        client_dir.mkdir(parents=True, exist_ok=True)
-        project_dir.mkdir(parents=True, exist_ok=True)
-    except PermissionError:
-        project_dir = CRUCIBLE_DIR / "output" / project_id
-        project_dir.mkdir(parents=True, exist_ok=True)
-
-    # Build Fracture settings
+    # Build Fracture settings — output goes to its own structured directory
     fr = _deepcopy_template(FR_DEFAULTS)
     for k in fr["engagement"]:
         fr["engagement"][k] = body.get(k, "")
-    fr["scan"]["project"] = body.get("fr_project_name", "fracture_output")
-    fr["scan"]["target_url"] = body.get("fr_target_url", "")
+    fr["scan"]["project"]     = str(fr_output_dir)
+    fr["scan"]["target_url"]  = body.get("fr_target_url", "")
     raw_urls = body.get("fr_target_urls", "")
     fr["scan"]["target_urls"] = [u.strip() for u in raw_urls.splitlines() if u.strip()]
 
-    # Build Siphon settings
+    # Build Siphon settings — output goes to its own structured directory
     si = _deepcopy_template(SI_DEFAULTS)
     for k in si["engagement"]:
         si["engagement"][k] = body.get(k, "")
-    si["scan"]["project"] = body.get("si_project_name", "siphon_output")
+    si["scan"]["project"]    = str(si_output_dir)
     si["scan"]["target_url"] = body.get("si_target_url", "")
     si["scan"]["api_spec_url"] = body.get("si_api_spec_url", "")
 
-    fr_path = project_dir / "fr_settings.json"
-    si_path = project_dir / "si_settings.json"
+    fr_path = fr_output_dir / "fr_settings.json"
+    si_path = si_output_dir / "si_settings.json"
     fr_path.write_text(json.dumps(fr, indent=2))
     si_path.write_text(json.dumps(si, indent=2))
 
@@ -553,8 +628,8 @@ def api_create_project():
         "project_dir":       str(project_dir),
         "fr_settings_file":  str(fr_path),
         "si_settings_file":  str(si_path),
-        "fracture_output_dir": str(project_dir / "fracture_output"),
-        "siphon_output_dir":   str(project_dir / "siphon_output"),
+        "fracture_output_dir": str(fr_output_dir),
+        "siphon_output_dir":   str(si_output_dir),
         "tools":             tools,
         "fr_status":         "idle",
         "si_status":         "idle",
