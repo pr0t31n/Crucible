@@ -252,6 +252,11 @@
         </div>
         <button class="btn btn-sm btn-ghost" onclick="clearErrors()">Clear</button>
       </div>
+      <div class="log-pager">
+        <button class="btn btn-sm btn-ghost" id="errsBtnPrev" onclick="errsPage(-1)" disabled>&#x2039; Prev</button>
+        <span id="errsPageLabel">&#8212;</span>
+        <button class="btn btn-sm btn-ghost" id="errsBtnNext" onclick="errsPage(1)" disabled>Next &#x203A;</button>
+      </div>
       <div class="log-table-wrap">
         <table class="log-table">
           <thead>
@@ -459,12 +464,14 @@ const _findingIdx = new Map();
 let allLogs    = [];
 const _logSeen = new Set();
 let logPage    = 0;
-const LOG_PER_PAGE = 50;
+const LOG_PER_PAGE = 20;
 let logFilter  = { tool: '', level: '' };
 
 // Error state
 let allErrors  = [];
 const _errSeen = new Set();
+let errPage    = 0;
+const ERR_PER_PAGE = 20;
 let errFilter  = { tool: '', category: '' };
 
 // Findings pagination
@@ -823,13 +830,25 @@ function renderLogs() {
 // ── Errors ────────────────────────────────────────────────
 function setErrFilter(btn, key, val) {
   errFilter[key] = val;
+  errPage = 0;
   const group = btn.closest('.log-filter-group');
   if (group) group.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderErrors();
 }
 
-function clearErrors() { allErrors = []; _errSeen.clear(); renderErrors(); document.getElementById('errorsBadge').textContent = '0'; }
+function clearErrors() { allErrors = []; _errSeen.clear(); errPage = 0; renderErrors(); document.getElementById('errorsBadge').textContent = '0'; }
+
+function errsPage(dir) {
+  const filtered = allErrors.filter(e => {
+    if (errFilter.tool && e.tool !== errFilter.tool) return false;
+    if (errFilter.category && (e.category||'') !== errFilter.category) return false;
+    return true;
+  });
+  const pages = Math.max(1, Math.ceil(filtered.length / ERR_PER_PAGE));
+  errPage = Math.max(0, Math.min(errPage + dir, pages - 1));
+  renderErrors();
+}
 
 function renderErrors() {
   const filtered = allErrors.filter(e => {
@@ -837,12 +856,18 @@ function renderErrors() {
     if (errFilter.category && (e.category||'') !== errFilter.category) return false;
     return true;
   });
+  const pages = Math.max(1, Math.ceil(filtered.length / ERR_PER_PAGE));
+  errPage = Math.min(errPage, pages - 1);
+  const slice = filtered.slice(errPage * ERR_PER_PAGE, (errPage + 1) * ERR_PER_PAGE);
+  document.getElementById('errsPageLabel').textContent = `Page ${errPage+1} / ${pages}`;
+  document.getElementById('errsBtnPrev').disabled = errPage === 0;
+  document.getElementById('errsBtnNext').disabled = errPage >= pages - 1;
   const tbody = document.getElementById('errorsTbody');
-  if (!filtered.length) {
+  if (!slice.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No errors.</td></tr>';
     return;
   }
-  tbody.innerHTML = filtered.map(e => {
+  tbody.innerHTML = slice.map(e => {
     const toolBadge = e.tool === 'fr' ? '<span class="tool-badge tool-fr">FR</span>' :
                       e.tool === 'si' ? '<span class="tool-badge tool-si">SI</span>' : '';
     return `<tr><td class="mono-sm">${e.ts||''}</td>
