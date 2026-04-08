@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 
 import json
 import os
@@ -849,6 +849,35 @@ def api_checkpoint(project_id: str, tool: str):
         except Exception:
             pass
     return jsonify({})
+
+
+@app.route("/api/file_content/<project_id>")
+def api_file_content(project_id: str):
+    """Return the text content of a finding output file.
+
+    The path query parameter must resolve to a file inside the project's
+    project_dir (enforced server-side to prevent directory traversal).
+    """
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "project not found"}), 404
+
+    raw_path = request.args.get("path", "").strip()
+    if not raw_path:
+        return jsonify({"error": "path required"}), 400
+
+    try:
+        target = Path(raw_path).resolve()
+        project_dir = Path(proj["project_dir"]).resolve()
+        if not str(target).startswith(str(project_dir)):
+            return jsonify({"error": "access denied"}), 403
+        if not target.exists() or not target.is_file():
+            return jsonify({"error": "file not found"}), 404
+        # Cap at 512 KB to avoid sending huge outputs to the browser
+        content = target.read_text(encoding="utf-8", errors="replace")[:524288]
+        return jsonify({"path": str(target), "content": content})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/api/summary/<project_id>")

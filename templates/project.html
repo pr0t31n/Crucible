@@ -131,12 +131,12 @@
             <th class="col-port">Port</th>
             <th class="col-cves">CVEs</th>
             <th class="col-sources">Sources</th>
-            <th class="col-scope">Scope</th>
+            <th class="col-evidence">Evidence</th>
             <th class="col-actions"></th>
           </tr>
         </thead>
         <tbody id="findingsTbody">
-          <tr class="empty-row"><td colspan="9">No findings yet &#8212; start a tool to begin.</td></tr>
+          <tr class="empty-row"><td colspan="9">No findings yet — start a tool to begin.</td></tr>
         </tbody>
       </table>
     </div>
@@ -444,6 +444,21 @@
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="evidenceModal" role="dialog" aria-modal="true">
+  <div class="modal-box evidence-modal-box">
+    <div class="modal-title" id="evidenceModalTitle">Evidence</div>
+    <div class="modal-body">
+      <div class="evidence-file-tabs" id="evidenceFileTabs"></div>
+      <div class="evidence-content">
+        <pre class="evidence-pre" id="evidencePre"></pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEvidenceModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Error toast -->
 <div class="toast" id="errorToast"></div>
 
@@ -702,6 +717,13 @@ function _toolBadge(t) {
   return `<span class="tool-badge">${t||''}</span>`;
 }
 
+function _srcPills(sources) {
+  if (!sources) return '';
+  const srcs = sources.split(',').map(s => s.trim()).filter(Boolean);
+  if (!srcs.length) return '';
+  return `<div class="src-pills">${srcs.map(s => `<span class="src-pill">${escHtml(s)}</span>`).join('')}</div>`;
+}
+
 function renderFindings() {
   const filtered = _getFilteredFindings();
   filtered.sort((a,b) => RISK_ORDER.indexOf((a.risk||'INFO').toUpperCase()) - RISK_ORDER.indexOf((b.risk||'INFO').toUpperCase()));
@@ -724,6 +746,10 @@ function renderFindings() {
     const host = f.hostname || f.url || f.ip || '';
     const cves = (f.cves || '').split(',').filter(Boolean).map(c => `<span class="cve-tag">${c.trim()}</span>`).join(' ');
     const fJson = escHtml(JSON.stringify(JSON.stringify(f)));
+    const evidenceFiles = (f.output_file || '').split(',').map(s => s.trim()).filter(Boolean);
+    const evidenceBtn = evidenceFiles.length
+      ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(evidenceFiles))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View</button>`
+      : '';
     return `<tr class="finding-row" onclick="showFindingDetails(${fJson})">
       <td>${_riskBadge(f.risk)}</td>
       <td>${_toolBadge(f._tool)}</td>
@@ -731,8 +757,8 @@ function renderFindings() {
       <td class="mono-sm">${escHtml(host)}</td>
       <td>${f.port || ''}</td>
       <td>${cves}</td>
-      <td class="mono-sm">${escHtml(f.sources || '')}</td>
-      <td><span class="scope-tag">${f._scope || ''}</span></td>
+      <td>${_srcPills(f.sources)}</td>
+      <td>${evidenceBtn}</td>
       <td><button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();showFindingDetails(${fJson})">Details</button></td>
     </tr>`;
   }).join('');
@@ -740,16 +766,20 @@ function renderFindings() {
 
 function showFindingDetails(jsonStr) {
   const f = JSON.parse(jsonStr);
+  const evidenceFiles = (f.output_file || '').split(',').map(s => s.trim()).filter(Boolean);
+  const evidenceHtml = evidenceFiles.length
+    ? `<div class="det-row"><span class="det-label">Evidence</span><button class="btn btn-xs btn-ghost" onclick="viewEvidence(${escHtml(JSON.stringify(evidenceFiles))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View Evidence (${evidenceFiles.length} file${evidenceFiles.length!==1?'s':''})</button></div>`
+    : '';
   document.getElementById('detailsModalTitle').textContent = f.title || f.detail || 'Finding';
   document.getElementById('detailsModalBody').innerHTML = `
     <div class="det-row"><span class="det-label">Risk</span>${_riskBadge(f.risk)}</div>
     <div class="det-row"><span class="det-label">Tool</span>${_toolBadge(f._tool)}</div>
-    <div class="det-row"><span class="det-label">Scope</span><span class="scope-tag">${f._scope||''}</span></div>
     ${f.hostname||f.url ? `<div class="det-row"><span class="det-label">Host/URL</span><span class="mono-sm">${escHtml(f.hostname||f.url)}</span></div>` : ''}
     ${f.ip ? `<div class="det-row"><span class="det-label">IP</span><span class="mono-sm">${escHtml(f.ip)}</span></div>` : ''}
     ${f.port ? `<div class="det-row"><span class="det-label">Port</span>${f.port}</div>` : ''}
     ${f.cves ? `<div class="det-row"><span class="det-label">CVEs</span><span class="mono-sm">${escHtml(f.cves)}</span></div>` : ''}
-    ${f.sources ? `<div class="det-row"><span class="det-label">Sources</span><span class="mono-sm">${escHtml(f.sources)}</span></div>` : ''}
+    ${f.sources ? `<div class="det-row"><span class="det-label">Sources</span>${_srcPills(f.sources)}</div>` : ''}
+    ${evidenceHtml}
     ${f.description || f.detail ? `<div class="det-section"><div class="det-section-title">Description</div><pre class="det-pre">${escHtml(f.description||f.detail)}</pre></div>` : ''}
     ${f.remediation ? `<div class="det-section"><div class="det-section-title">Remediation</div><pre class="det-pre">${escHtml(f.remediation)}</pre></div>` : ''}
     ${f.output ? `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${escHtml(f.output)}</pre></div>` : ''}
@@ -762,12 +792,39 @@ function closeDetailsModal() {
   document.getElementById('detailsModal').classList.add('hidden');
 }
 
+function closeEvidenceModal() {
+  document.getElementById('evidenceModal').classList.add('hidden');
+}
+
+let _evidenceFiles = [];
+function viewEvidence(files, title) {
+  _evidenceFiles = typeof files === 'string' ? JSON.parse(files) : files;
+  document.getElementById('evidenceModalTitle').textContent = `Evidence — ${title || 'Finding'}`;
+  const tabs = document.getElementById('evidenceFileTabs');
+  tabs.innerHTML = _evidenceFiles.map((f, i) =>
+    `<button class="evidence-file-tab${i===0?' active':''}" onclick="loadEvidenceFile(${i},this)">${escHtml(f.split('/').pop())}</button>`
+  ).join('');
+  if (_evidenceFiles.length) loadEvidenceFile(0, tabs.firstChild);
+  document.getElementById('evidenceModal').classList.remove('hidden');
+}
+
+function loadEvidenceFile(idx, btn) {
+  document.querySelectorAll('.evidence-file-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const pre = document.getElementById('evidencePre');
+  pre.textContent = 'Loading…';
+  fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(_evidenceFiles[idx])}`)
+    .then(r => r.json())
+    .then(d => { pre.textContent = d.content || d.error || '(empty)'; })
+    .catch(() => { pre.textContent = '(failed to load)'; });
+}
+
 function exportFindingsCSV() {
   const filtered = _getFilteredFindings();
-  const rows = [['Risk','Tool','Finding','Host','Port','CVEs','Sources','Scope']];
+  const rows = [['Risk','Tool','Finding','Host','Port','CVEs','Sources','Evidence Files']];
   filtered.forEach(f => {
     rows.push([f.risk||'INFO', f._tool||'', f.title||f.detail||'',
-               f.hostname||f.url||f.ip||'', f.port||'', f.cves||'', f.sources||'', f._scope||'']);
+               f.hostname||f.url||f.ip||'', f.port||'', f.cves||'', f.sources||'', f.output_file||'']);
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');

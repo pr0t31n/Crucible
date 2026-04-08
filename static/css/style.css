@@ -1656,6 +1656,35 @@ body {
   background: rgba(112,112,112,.2); color: var(--text-muted);
 }
 
+/* Source pills in findings table */
+.src-pills { display: flex; flex-wrap: wrap; gap: .2rem; }
+.src-pill {
+  display: inline-block;
+  padding: .05rem .3rem;
+  border-radius: 3px;
+  font-size: .66rem; font-weight: 600; letter-spacing: .03em;
+  background: rgba(112,112,112,.18); color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Evidence viewer modal */
+.evidence-modal-box { width: min(860px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+.evidence-modal-box .modal-body { flex: 1; overflow-y: auto; padding: 0; }
+.evidence-file-tabs { display: flex; flex-wrap: wrap; gap: .25rem; padding: .5rem .75rem; border-bottom: 1px solid var(--border-mid); background: var(--bg-surface); flex-shrink: 0; }
+.evidence-file-tab {
+  padding: .25rem .6rem; border-radius: 3px; font-size: .72rem;
+  cursor: pointer; background: var(--bg-hover); color: var(--text-secondary);
+  border: 1px solid var(--border-mid);
+}
+.evidence-file-tab.active { background: rgba(240,165,0,.15); color: var(--accent-primary); border-color: var(--accent-primary); }
+.evidence-content { flex: 1; overflow-y: auto; }
+.evidence-pre {
+  margin: 0; padding: .75rem; font-size: .73rem;
+  font-family: var(--font-mono); white-space: pre-wrap; word-break: break-all;
+  color: var(--text-primary); background: var(--bg-base); min-height: 200px;
+}
+.evidence-loading { padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: .82rem; }
+
 /* ── Status tab ───────────────────────────────────────────── */
 .st-panel { display: flex; flex-direction: column; gap: .5rem; padding: .25rem 0; }
 .st-section {
