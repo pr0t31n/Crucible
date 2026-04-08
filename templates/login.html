@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en" data-palette="tuxedo" data-mode="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login &#8212; Crucible</title>
+  <script>
+    (function(){
+      var PALETTES=['forge','frigid','futuristic','tuxedo','bloom','retro','prism','jarvis',
+                   'jarhead','speakeasy','hogwarts','rivendell','coruscant','meridian',
+                   'alabaster','noir','oldglory','alchemist','doom','lcars'];
+      try {
+        var p=localStorage.getItem('crucible-palette');
+        var m=localStorage.getItem('crucible-mode');
+        var h=document.documentElement;
+        if(p&&PALETTES.indexOf(p)!==-1)h.setAttribute('data-palette',p);
+        if(m==='light'||m==='dark')h.setAttribute('data-mode',m);
+      }catch(e){}
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    .auth-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-primary, #0d0d0d);
+      padding: 1.5rem;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--bg-surface, #1a1a1a);
+      border: 1px solid var(--border-mid, #333);
+      border-radius: 8px;
+      padding: 2.5rem 2rem 2rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,.45);
+    }
+    .auth-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: 2rem;
+    }
+    .auth-logo img { width: 56px; height: 56px; }
+    .auth-logo-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: .18em;
+      color: var(--text-primary, #e8e8e8);
+    }
+    .auth-logo-sub {
+      font-size: .72rem;
+      color: var(--text-muted, #888);
+      letter-spacing: .1em;
+    }
+    .auth-alert {
+      background: rgba(200,30,30,.15);
+      border: 1px solid rgba(200,30,30,.4);
+      border-radius: 4px;
+      color: #ff7070;
+      font-size: .85rem;
+      padding: .6rem .9rem;
+      margin-bottom: 1.25rem;
+    }
+    .auth-field { margin-bottom: 1.1rem; }
+    .auth-field label {
+      display: block;
+      font-size: .78rem;
+      letter-spacing: .06em;
+      color: var(--text-muted, #888);
+      margin-bottom: .35rem;
+    }
+    .auth-field input {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--bg-primary, #0d0d0d);
+      border: 1px solid var(--border-mid, #333);
+      border-radius: 4px;
+      color: var(--text-primary, #e8e8e8);
+      font-size: .95rem;
+      padding: .55rem .75rem;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .auth-field input:focus { border-color: #f0a500; }
+    .auth-submit {
+      width: 100%;
+      margin-top: .5rem;
+      padding: .65rem;
+      background: #f0a500;
+      border: none;
+      border-radius: 4px;
+      color: #0d0d0d;
+      font-size: .9rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .auth-submit:hover { opacity: .85; }
+  </style>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Crucible">
+      <span class="auth-logo-title">CRUCIBLE</span>
+      <span class="auth-logo-sub">WEB &amp; API ASSESSMENT PLATFORM</span>
+    </div>
+
+    {% if error %}
+    <div class="auth-alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="auth-field">
+        <label for="username">USERNAME</label>
+        <input type="text" id="username" name="username" autocomplete="username"
+               value="{{ username or '' }}" required autofocus>
+      </div>
+      <div class="auth-field">
+        <label for="password">PASSWORD</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="auth-submit">AUTHENTICATE</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>

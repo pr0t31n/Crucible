@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" data-palette="tuxedo" data-mode="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Crucible — Web & API Assessment Platform{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>
+    /* Restore theme before CSS paints — prevents FOUC */
+    (function(){
+      var PALETTES = ['forge','frigid','futuristic','tuxedo','bloom','retro','prism','jarvis','jarhead',
+                      'speakeasy','hogwarts','rivendell','coruscant','meridian','alabaster','noir',
+                      'oldglory','alchemist','doom','lcars'];
+      try {
+        var p = localStorage.getItem('crucible-palette');
+        var m = localStorage.getItem('crucible-mode');
+        var html = document.documentElement;
+        if (p && PALETTES.indexOf(p) !== -1) html.setAttribute('data-palette', p);
+        else html.setAttribute('data-palette', 'tuxedo');
+        if (m === 'light' || m === 'dark') html.setAttribute('data-mode', m);
+        else html.setAttribute('data-mode', 'light');
+      } catch(e) {}
+    })();
+  </script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="nav-bar">
+    <a href="/" class="nav-brand">
+      <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" class="nav-logo">
+      <span class="nav-title">CRUCIBLE</span>
+    </a>
+
+    <div class="nav-center">{% block nav_center %}{% endblock %}</div>
+
+    <div class="nav-right">
+      {% block nav_right %}{% endblock %}
+
+      <!-- Theme toggle -->
+      <label class="theme-switch desktop-only" title="Toggle light/dark">
+        <input type="checkbox" id="themeToggle">
+        <span class="theme-switch-track"><span class="theme-switch-thumb"></span></span>
+      </label>
+      <button class="icon-btn mobile-only" id="themeToggleMobile" title="Toggle light/dark">
+        <span id="modeLabel">Light</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Page content -->
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+  (function(){
+    var STORE_KEY_PALETTE = 'crucible-palette';
+    var STORE_KEY_MODE    = 'crucible-mode';
+
+    var themeToggle = document.getElementById('themeToggle');
+    var themeToggleMobile = document.getElementById('themeToggleMobile');
+    var modeLabel = document.getElementById('modeLabel');
+
+    function getMode() { return document.documentElement.getAttribute('data-mode') || 'light'; }
+    function setMode(m) {
+      document.documentElement.setAttribute('data-mode', m);
+      try { localStorage.setItem(STORE_KEY_MODE, m); } catch(e){}
+      if (themeToggle) themeToggle.checked = (m === 'dark');
+      if (modeLabel) modeLabel.textContent = m === 'dark' ? 'Dark' : 'Light';
+    }
+
+    // Init toggle state
+    var curMode = getMode();
+    if (themeToggle) themeToggle.checked = (curMode === 'dark');
+    if (modeLabel) modeLabel.textContent = curMode === 'dark' ? 'Dark' : 'Light';
+
+    if (themeToggle) themeToggle.addEventListener('change', function() {
+      setMode(this.checked ? 'dark' : 'light');
+    });
+    if (themeToggleMobile) themeToggleMobile.addEventListener('click', function() {
+      setMode(getMode() === 'dark' ? 'light' : 'dark');
+    });
+  })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

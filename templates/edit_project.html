@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}Edit Engagement — Crucible{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <div class="form-header">
+    <a href="/" class="back-link">&#8592; Engagements</a>
+    <h2 class="form-title">Edit Engagement</h2>
+  </div>
+
+  <form id="editEngagementForm" class="engagement-form" onsubmit="submitForm(event)">
+
+    <!-- Engagement Details -->
+    <div class="form-section">
+      <div class="form-section-title">Engagement</div>
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label class="form-label">Engagement Name <span class="req">*</span></label>
+          <input type="text" name="engagement_name" class="form-control"
+                 placeholder="e.g. Acme Corporation — 2025 Web App Pentest"
+                 value="{{ project.name }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Name <span class="req">*</span></label>
+          <input type="text" name="client_name" class="form-control"
+                 placeholder="Acme Corporation"
+                 value="{{ project.client_name or '' }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Short</label>
+          <input type="text" name="client_short" class="form-control"
+                 placeholder="acme"
+                 value="{{ project.client_short or '' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assessment Scope</label>
+          <select name="scope" class="form-control">
+            <option value="both"   {% if project.scope == 'both'   %}selected{% endif %}>Web App + API (Both)</option>
+            <option value="webapp" {% if project.scope == 'webapp' %}selected{% endif %}>Web App Only (Fracture)</option>
+            <option value="api"    {% if project.scope == 'api'    %}selected{% endif %}>API Only (Siphon)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="text" name="start_date" class="form-control date-input"
+                 placeholder="MM/DD/YYYY" maxlength="10"
+                 value="{{ fr.engagement.start_date if fr and fr.engagement else '' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input type="text" name="end_date" class="form-control date-input"
+                 placeholder="MM/DD/YYYY" maxlength="10"
+                 value="{{ fr.engagement.end_date if fr and fr.engagement else '' }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- Consultant -->
+    <div class="form-section">
+      <div class="form-section-title">Consultant</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" name="consultant" class="form-control" placeholder="Jane Smith"
+                 value="{{ fr.engagement.consultant if fr and fr.engagement else '' }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" name="consultant_email" class="form-control"
+                 placeholder="jsmith@firm.com"
+                 value="{{ fr.engagement.consultant_email if fr and fr.engagement else '' }}">
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool Selection -->
+    <div class="form-section">
+      <div class="form-section-title">Tools</div>
+      <div class="tool-select-grid">
+        <label class="tool-select-card">
+          <input type="checkbox" name="include_fr" value="1" id="chkFR"
+                 {% if 'fr' in project.tools %}checked{% endif %}>
+          <div>
+            <div class="tool-select-label"><span class="tool-badge tool-fr">FR</span> &nbsp;Fracture</div>
+            <div class="tool-select-desc">Web app pentest — TLS, headers, injection, auth bypass, SSRF, crawling</div>
+          </div>
+        </label>
+        <label class="tool-select-card">
+          <input type="checkbox" name="include_si" value="1" id="chkSI"
+                 {% if 'si' in project.tools %}checked{% endif %}>
+          <div>
+            <div class="tool-select-label"><span class="tool-badge tool-si">SI</span> &nbsp;Siphon</div>
+            <div class="tool-select-desc">API security testing — OWASP API Top 10, BOLA/BFLA, JWT, GraphQL</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Fracture Settings Tabs -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="tool-badge tool-fr">FR</span> Fracture Settings
+      </div>
+      <!-- Tab buttons -->
+      <div class="settings-tabs">
+        <button type="button" class="settings-tab active" onclick="switchSettingsTab('fr-general', this)">General</button>
+        <button type="button" class="settings-tab" onclick="switchSettingsTab('fr-phases', this)">Phases</button>
+        <button type="button" class="settings-tab" onclick="switchSettingsTab('fr-auth', this)">Auth</button>
+      </div>
+
+      <div class="settings-tab-panel active" id="fr-general">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Project Name</label>
+            <input type="text" name="fr_project_name" class="form-control"
+                   placeholder="fracture_output"
+                   value="{{ fr.scan.project if fr and fr.scan else 'fracture_output' }}">
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">Target URL</label>
+            <input type="url" name="fr_target_url" class="form-control"
+                   placeholder="https://app.example.com"
+                   value="{{ fr.scan.target_url if fr and fr.scan else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Threads</label>
+            <input type="number" name="fr_threads" class="form-control"
+                   value="{{ fr.scan.threads if fr and fr.scan else 30 }}" min="1" max="100">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Timeout (s)</label>
+            <input type="number" name="fr_timeout" class="form-control"
+                   value="{{ fr.scan.timeout if fr and fr.scan else 10 }}" min="1" max="120">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Crawl Depth</label>
+            <input type="number" name="fr_crawl_depth" class="form-control"
+                   value="{{ fr.scan.crawl_depth if fr and fr.scan else 3 }}" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Max Crawl Pages</label>
+            <input type="number" name="fr_crawl_max_pages" class="form-control"
+                   value="{{ fr.scan.crawl_max_pages if fr and fr.scan else 150 }}" min="10" max="5000">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy</label>
+            <input type="text" name="fr_proxy" class="form-control"
+                   placeholder="http://127.0.0.1:8080"
+                   value="{{ fr.scan.proxy if fr and fr.scan else '' }}">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" id="fr-phases">
+        <div class="phases-grid">
+          {% set phases = ['recon','tls','headers','crawl','injection','traversal','ssrf','auth_bypass','files','vulnscan','graphql','auth_recon','authorization','session','csrf','cross_user'] %}
+          {% for phase in phases %}
+          <label class="phase-check-label">
+            <input type="checkbox" name="fr_phase_{{ phase }}" value="1"
+                   {% if fr and fr.scan and fr.scan.phases and fr.scan.phases.get(phase, False) %}checked{% endif %}>
+            <span>{{ phase.replace('_', ' ').title() }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" id="fr-auth">
+        <div class="form-grid">
+          <div class="form-group span2">
+            <label class="form-label">Primary Auth — Enabled</label>
+            <select name="fr_auth_enabled" class="form-control">
+              <option value="0" {% if not (fr and fr.scan and fr.scan.auth and fr.scan.auth.enabled) %}selected{% endif %}>No</option>
+              <option value="1" {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.enabled %}selected{% endif %}>Yes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Auth Type</label>
+            <select name="fr_auth_type" class="form-control">
+              <option value="form"  {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'form'  %}selected{% endif %}>Form-based</option>
+              <option value="basic" {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'basic' %}selected{% endif %}>HTTP Basic</option>
+              <option value="token" {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'token' %}selected{% endif %}>Token/Bearer</option>
+              <option value="cookie"{% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'cookie'%}selected{% endif %}>Session Cookie</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
+                   value="{{ fr.scan.auth.username if fr and fr.scan and fr.scan.auth else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">Login URL</label>
+            <input type="url" name="fr_auth_login_url" class="form-control"
+                   placeholder="https://app.example.com/login"
+                   value="{{ fr.scan.auth.login_url if fr and fr.scan and fr.scan.auth else '' }}">
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">Auth Token / Cookie</label>
+            <input type="password" name="fr_auth_token" class="form-control" autocomplete="new-password">
+            <span class="form-hint">Bearer token, API key, or session cookie value</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Siphon Settings Tabs -->
+    <div class="form-section">
+      <div class="form-section-title">
+        <span class="tool-badge tool-si">SI</span> Siphon Settings
+      </div>
+      <div class="settings-tabs">
+        <button type="button" class="settings-tab active" onclick="switchSettingsTab('si-general', this)">General</button>
+        <button type="button" class="settings-tab" onclick="switchSettingsTab('si-phases', this)">Phases</button>
+        <button type="button" class="settings-tab" onclick="switchSettingsTab('si-auth', this)">Auth</button>
+      </div>
+
+      <div class="settings-tab-panel active" id="si-general">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Project Name</label>
+            <input type="text" name="si_project_name" class="form-control"
+                   placeholder="siphon_output"
+                   value="{{ si.scan.project if si and si.scan else 'siphon_output' }}">
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">API Base URL</label>
+            <input type="url" name="si_target_url" class="form-control"
+                   placeholder="https://api.example.com/v1"
+                   value="{{ si.scan.target_url if si and si.scan else '' }}">
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">API Spec URL</label>
+            <input type="url" name="si_api_spec_url" class="form-control"
+                   placeholder="https://api.example.com/openapi.json"
+                   value="{{ si.scan.api_spec_url if si and si.scan else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Threads</label>
+            <input type="number" name="si_threads" class="form-control"
+                   value="{{ si.scan.threads if si and si.scan else 20 }}" min="1" max="100">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Timeout (s)</label>
+            <input type="number" name="si_timeout" class="form-control"
+                   value="{{ si.scan.timeout if si and si.scan else 10 }}" min="1" max="120">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Rate Limit Threshold</label>
+            <input type="number" name="si_rate_limit_threshold" class="form-control"
+                   value="{{ si.scan.rate_limit_threshold if si and si.scan else 100 }}" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">BOLA ID Range</label>
+            <input type="number" name="si_bola_id_range" class="form-control"
+                   value="{{ si.scan.bola_id_range if si and si.scan else 20 }}" min="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" id="si-phases">
+        <div class="phases-grid">
+          {% set si_phases = ['discovery','recon','fuzzing','injection','auth_bypass','rate_limiting','mass_assignment','ssrf','data_exposure','graphql','bola','bfla','cross_user','session','jwt'] %}
+          {% for phase in si_phases %}
+          <label class="phase-check-label">
+            <input type="checkbox" name="si_phase_{{ phase }}" value="1"
+                   {% if si and si.scan and si.scan.phases and si.scan.phases.get(phase, False) %}checked{% endif %}>
+            <span>{{ phase.replace('_', ' ').title() }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="settings-tab-panel" id="si-auth">
+        <div class="form-grid">
+          <div class="form-group span2">
+            <label class="form-label">Primary Auth — Enabled</label>
+            <select name="si_auth_enabled" class="form-control">
+              <option value="0" {% if not (si and si.scan and si.scan.auth and si.scan.auth.enabled) %}selected{% endif %}>No</option>
+              <option value="1" {% if si and si.scan and si.scan.auth and si.scan.auth.enabled %}selected{% endif %}>Yes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Auth Type</label>
+            <select name="si_auth_type" class="form-control">
+              <option value="bearer" {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'bearer' %}selected{% endif %}>Bearer Token</option>
+              <option value="basic"  {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'basic'  %}selected{% endif %}>HTTP Basic</option>
+              <option value="apikey" {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'apikey' %}selected{% endif %}>API Key</option>
+              <option value="oauth"  {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'oauth'  %}selected{% endif %}>OAuth2</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token / API Key</label>
+            <input type="password" name="si_auth_token" class="form-control" autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="si_auth_username" class="form-control" autocomplete="off"
+                   value="{{ si.scan.auth.username if si and si.scan and si.scan.auth else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label">API Key Header</label>
+            <input type="text" name="si_auth_api_key_header" class="form-control"
+                   placeholder="X-API-Key"
+                   value="{{ si.scan.auth.api_key_header if si and si.scan and si.scan.auth else 'X-API-Key' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="form-actions">
+      <a href="/" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+        Apply Changes
+      </button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+function submitForm(e) {
+  e.preventDefault();
+  const btn  = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving\u2026';
+
+  const fd   = new FormData(e.target);
+  const body = {};
+  fd.forEach((v, k) => body[k] = v);
+  body.include_fr = document.getElementById('chkFR').checked;
+  body.include_si = document.getElementById('chkSI').checked;
+
+  fetch('/api/update_project/{{ project_id }}', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify(body),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) window.location = `/project/${d.project_id}`;
+    else { alert(d.error || 'Error'); btn.disabled = false; btn.textContent = 'Apply Changes'; }
+  })
+  .catch(() => { btn.disabled = false; btn.textContent = 'Apply Changes'; });
+}
+
+function switchSettingsTab(panelId, btn) {
+  // Find all tab panels and buttons in the same section
+  const section = btn.closest('.form-section');
+  section.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.remove('active'));
+  section.querySelectorAll('.settings-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+  btn.classList.add('active');
+}
+
+// Date masking MM/DD/YYYY
+document.querySelectorAll('.date-input').forEach(el => {
+  el.addEventListener('input', function() {
+    let v = this.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length > 4) v = v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4);
+    else if (v.length > 2) v = v.slice(0,2)+'/'+v.slice(2);
+    this.value = v;
+  });
+});
+</script>
+{% endblock %}

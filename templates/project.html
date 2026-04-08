@@ -1,0 +1,1019 @@
+{% extends "base.html" %}
+{% block title %}Crucible - {{ project.client_short | upper }} - {{ project.created[:4] }}{% endblock %}
+
+{% block nav_center %}
+  <span class="nav-proj-name">{{ project.name }}</span>
+{% endblock %}
+
+{% block nav_right %}
+  <a href="/" class="btn-back-desktop" title="Back to engagements">&#8592; Engagement Selection</a>
+  <a href="/" class="btn-back-mobile icon-btn" title="Back to engagements">&#8592;</a>
+{% endblock %}
+
+{% block content %}
+<div class="project-layout">
+
+  <!-- Tab bar -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="console"  onclick="switchTab('console',this)">Console</button>
+    <button class="tab-btn"        data-tab="findings" onclick="switchTab('findings',this)">
+      Findings <span class="tab-badge" id="findingsBadge">0</span>
+    </button>
+    <button class="tab-btn"        data-tab="status"   onclick="switchTab('status',this)">Status</button>
+    <button class="tab-btn"        data-tab="log"      onclick="switchTab('log',this)">
+      Log <span class="tab-badge tab-badge-muted" id="logBadge">0</span>
+    </button>
+    <button class="tab-btn"        data-tab="errors"   onclick="switchTab('errors',this)">
+      Errors <span class="tab-badge tab-badge-err" id="errorsBadge">0</span>
+    </button>
+    <button class="tab-btn"        data-tab="summary"  onclick="switchTab('summary',this)">Summary</button>
+    <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
+    <button class="tab-btn"        data-tab="checkpoint" onclick="switchTab('checkpoint',this)">Checkpoint</button>
+  </nav>
+
+  <!-- ════════════════ TAB: CONSOLE ════════════════ -->
+  <div class="tab-panel active" id="tab-console">
+    <div class="dual-console">
+
+      {% if 'fr' in project.get('tools', ['fr','si']) %}
+      <div class="console-pane" id="fr-pane">
+        <div class="console-header">
+          <div class="console-header-left">
+            <span class="tool-badge tool-fr">FR</span>
+            <span class="console-tool-name">Fracture</span>
+            <span class="status-pill" id="fr-status-pill">idle</span>
+          </div>
+          <div class="console-header-right">
+            <button class="btn btn-sm btn-primary"  id="fr-start-btn" onclick="startTool('fr')">&#9654; Start</button>
+            <button class="btn btn-sm btn-danger"   id="fr-kill-btn"  onclick="killTool('fr')" disabled>&#9632; Kill</button>
+            <button class="btn btn-sm btn-ghost"    onclick="clearConsole('fr')" title="Clear">&#x2715;</button>
+            <button class="btn btn-sm btn-ghost"    id="fr-scroll-btn" onclick="toggleScroll('fr')" title="Auto-scroll">&#x2193;</button>
+          </div>
+        </div>
+        <div class="console-body" id="fr-console"></div>
+        <div class="console-footer" id="fr-footer">
+          <span class="footer-last-line" id="fr-footer-text"></span>
+          <button class="btn btn-sm btn-prompt hidden" id="fr-reopen-btn" onclick="reopenPrompt('fr')">&#x2691; Answer Pending</button>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if 'si' in project.get('tools', ['fr','si']) %}
+      <div class="console-pane" id="si-pane">
+        <div class="console-header">
+          <div class="console-header-left">
+            <span class="tool-badge tool-si">SI</span>
+            <span class="console-tool-name">Siphon</span>
+            <span class="status-pill" id="si-status-pill">idle</span>
+          </div>
+          <div class="console-header-right">
+            <button class="btn btn-sm btn-primary"  id="si-start-btn" onclick="startTool('si')">&#9654; Start</button>
+            <button class="btn btn-sm btn-danger"   id="si-kill-btn"  onclick="killTool('si')" disabled>&#9632; Kill</button>
+            <button class="btn btn-sm btn-ghost"    onclick="clearConsole('si')" title="Clear">&#x2715;</button>
+            <button class="btn btn-sm btn-ghost"    id="si-scroll-btn" onclick="toggleScroll('si')" title="Auto-scroll">&#x2193;</button>
+          </div>
+        </div>
+        <div class="console-body" id="si-console"></div>
+        <div class="console-footer" id="si-footer">
+          <span class="footer-last-line" id="si-footer-text"></span>
+          <button class="btn btn-sm btn-prompt hidden" id="si-reopen-btn" onclick="reopenPrompt('si')">&#x2691; Answer Pending</button>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div><!-- /tab-console -->
+
+
+  <!-- ════════════════ TAB: FINDINGS ════════════════ -->
+  <div class="tab-panel" id="tab-findings">
+    <div class="findings-toolbar">
+      <div class="search-wrap">
+        <input type="text" id="findingsSearch" class="form-control search-input"
+               placeholder="Filter findings&#8230;" autocomplete="off"
+               oninput="filterFindings()">
+      </div>
+      <select class="form-control select-sm" id="filterRisk" onchange="filterFindings()">
+        <option value="">All risks</option>
+        <option value="CRITICAL">Critical</option>
+        <option value="HIGH">High</option>
+        <option value="MEDIUM">Medium</option>
+        <option value="LOW">Low</option>
+        <option value="INFO">Info</option>
+      </select>
+      {% set _has_fr = 'fr' in project.get('tools', ['fr','si']) %}
+      {% set _has_si = 'si' in project.get('tools', ['fr','si']) %}
+      {% if _has_fr and _has_si %}
+      <select class="form-control select-sm" id="filterTool" onchange="filterFindings()">
+        <option value="">Both tools</option>
+        <option value="fracture">Fracture</option>
+        <option value="siphon">Siphon</option>
+      </select>
+      {% else %}
+      <select id="filterTool" style="display:none" aria-hidden="true"><option value=""></option></select>
+      {% endif %}
+      <span class="findings-count" id="findingsCount">0 findings</span>
+      <button class="btn btn-sm btn-ghost" onclick="exportFindingsCSV()" title="Export findings as CSV">&#x2193; CSV</button>
+    </div>
+    <div class="findings-pager">
+      <button class="btn btn-sm btn-ghost" id="findBtnPrev" onclick="findingsPage(-1)" disabled>&#x2039; Prev</button>
+      <span id="findPageLabel"></span>
+      <button class="btn btn-sm btn-ghost" id="findBtnNext" onclick="findingsPage(1)" disabled>Next &#x203A;</button>
+    </div>
+    <div class="findings-table-wrap">
+      <table class="findings-table" id="findingsTable">
+        <thead>
+          <tr>
+            <th class="col-risk">Risk</th>
+            <th class="col-tool">Tool</th>
+            <th class="col-title">Finding</th>
+            <th class="col-host">Host / URL</th>
+            <th class="col-port">Port</th>
+            <th class="col-cves">CVEs</th>
+            <th class="col-sources">Sources</th>
+            <th class="col-scope">Scope</th>
+            <th class="col-actions"></th>
+          </tr>
+        </thead>
+        <tbody id="findingsTbody">
+          <tr class="empty-row"><td colspan="9">No findings yet &#8212; start a tool to begin.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div><!-- /tab-findings -->
+
+
+  <!-- ════════════════ TAB: STATUS ════════════════ -->
+  <div class="tab-panel" id="tab-status">
+    <div class="st-panel">
+
+      {% if 'fr' in project.get('tools', ['fr','si']) %}
+      <div class="st-section">
+        <button class="st-sect-btn" aria-expanded="true" onclick="toggleSect(this)">
+          <span class="st-chevron"></span>
+          <span class="tool-badge tool-fr">FR</span>
+          <span class="st-sect-name">Fracture</span>
+          <span class="status-pill" id="fr-status-pill-2">idle</span>
+          <span class="st-spacer"></span>
+          <span class="st-comp-tag" id="fr-comp-tag">not started</span>
+        </button>
+        <div class="st-sect-body" id="st-body-fr">
+          <div id="st-rows-fr"></div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if 'si' in project.get('tools', ['fr','si']) %}
+      <div class="st-section">
+        <button class="st-sect-btn" aria-expanded="true" onclick="toggleSect(this)">
+          <span class="st-chevron"></span>
+          <span class="tool-badge tool-si">SI</span>
+          <span class="st-sect-name">Siphon</span>
+          <span class="status-pill" id="si-status-pill-2">idle</span>
+          <span class="st-spacer"></span>
+          <span class="st-comp-tag" id="si-comp-tag">not started</span>
+        </button>
+        <div class="st-sect-body" id="st-body-si">
+          <div id="st-rows-si"></div>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div><!-- /tab-status -->
+
+
+  <!-- ════════════════ TAB: LOG ════════════════ -->
+  <div class="tab-panel" id="tab-log">
+    <div class="panel">
+      <div class="log-toolbar">
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-filter-key="tool" data-filter-val="" onclick="setLogFilter(this,'tool','')">All</button>
+          <button class="log-filter-btn" data-filter-key="tool" data-filter-val="fr" onclick="setLogFilter(this,'tool','fr')">
+            <span class="tool-badge tool-fr">FR</span>
+          </button>
+          <button class="log-filter-btn" data-filter-key="tool" data-filter-val="si" onclick="setLogFilter(this,'tool','si')">
+            <span class="tool-badge tool-si">SI</span>
+          </button>
+        </div>
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-filter-key="level" data-filter-val="" onclick="setLogFilter(this,'level','')">All levels</button>
+          <button class="log-filter-btn" data-filter-key="level" data-filter-val="DEBUG"   onclick="setLogFilter(this,'level','DEBUG')">Debug</button>
+          <button class="log-filter-btn" data-filter-key="level" data-filter-val="INFO"    onclick="setLogFilter(this,'level','INFO')">Info</button>
+          <button class="log-filter-btn" data-filter-key="level" data-filter-val="WARNING" onclick="setLogFilter(this,'level','WARNING')">Warn</button>
+          <button class="log-filter-btn" data-filter-key="level" data-filter-val="ERROR"   onclick="setLogFilter(this,'level','ERROR')">Error</button>
+        </div>
+        <input type="text" id="logSearch" class="form-control search-input"
+               placeholder="Search logs&#8230;" oninput="renderLogs()">
+        <button class="btn btn-sm btn-ghost" onclick="clearLogs()">Clear</button>
+      </div>
+      <div class="log-pager">
+        <button class="btn btn-sm btn-ghost" id="logsBtnPrev" onclick="logsPage(-1)" disabled>&#x2039; Prev</button>
+        <span id="logsPageLabel">&#8212;</span>
+        <button class="btn btn-sm btn-ghost" id="logsBtnNext" onclick="logsPage(1)" disabled>Next &#x203A;</button>
+      </div>
+      <div class="log-table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th class="col-ts">Time</th>
+              <th class="col-level">Level</th>
+              <th class="col-tool-sm">Tool</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="logsTbody">
+            <tr class="empty-row"><td colspan="4">No log entries yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-log -->
+
+
+  <!-- ════════════════ TAB: ERRORS ════════════════ -->
+  <div class="tab-panel" id="tab-errors">
+    <div class="panel">
+      <div class="log-toolbar">
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-filter-key="etool" data-filter-val="" onclick="setErrFilter(this,'tool','')">All</button>
+          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="fr" onclick="setErrFilter(this,'tool','fr')">
+            <span class="tool-badge tool-fr">FR</span>
+          </button>
+          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="si" onclick="setErrFilter(this,'tool','si')">
+            <span class="tool-badge tool-si">SI</span>
+          </button>
+        </div>
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-filter-key="ecat" data-filter-val="" onclick="setErrFilter(this,'category','')">All categories</button>
+          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Network" onclick="setErrFilter(this,'category','Network')">Network</button>
+          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Tool"    onclick="setErrFilter(this,'category','Tool')">Tool</button>
+          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Scan"    onclick="setErrFilter(this,'category','Scan')">Scan</button>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="clearErrors()">Clear</button>
+      </div>
+      <div class="log-table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th class="col-ts">Time</th>
+              <th class="col-tool-sm">Tool</th>
+              <th class="col-category">Category</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="errorsTbody">
+            <tr class="empty-row"><td colspan="4">No errors.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-errors -->
+
+
+  <!-- ════════════════ TAB: SUMMARY ════════════════ -->
+  <div class="tab-panel" id="tab-summary">
+    <div class="summary-layout">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">ENGAGEMENT</span></div>
+        <div class="panel-body">
+          <div class="summary-kv">
+            <div class="kv-row"><span class="kv-label">Name</span><span class="kv-value">{{ project.name }}</span></div>
+            <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '&#8212;' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '&#8212;' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Created</span><span class="kv-value">{{ project.created }}</span></div>
+            <div class="kv-row"><span class="kv-label">Output dir</span><span class="kv-value mono">{{ project.project_dir }}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary-tools">
+        {% if 'fr' in project.get('tools', ['fr','si']) %}
+        <div class="panel tool-summary-card">
+          <div class="panel-header">
+            <span class="tool-badge tool-fr">FR</span>
+            <span class="panel-title">Fracture</span>
+            <span class="status-pill" id="fr-summary-status">{{ project.fr_status or 'idle' }}</span>
+          </div>
+          <div class="panel-body">
+            <div class="summary-kv">
+              <div class="kv-row"><span class="kv-label">Last run</span>
+                <span class="kv-value" id="fr-last-run">{{ project.fr_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Findings</span>
+                <span class="kv-value" id="fr-finding-count">0</span></div>
+            </div>
+            <div id="fr-summary-detail" class="summary-detail"></div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if 'si' in project.get('tools', ['fr','si']) %}
+        <div class="panel tool-summary-card">
+          <div class="panel-header">
+            <span class="tool-badge tool-si">SI</span>
+            <span class="panel-title">Siphon</span>
+            <span class="status-pill" id="si-summary-status">{{ project.si_status or 'idle' }}</span>
+          </div>
+          <div class="panel-body">
+            <div class="summary-kv">
+              <div class="kv-row"><span class="kv-label">Last run</span>
+                <span class="kv-value" id="si-last-run">{{ project.si_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Findings</span>
+                <span class="kv-value" id="si-finding-count">0</span></div>
+            </div>
+            <div id="si-summary-detail" class="summary-detail"></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div><!-- /tab-summary -->
+
+
+  <!-- ════════════════ TAB: SETTINGS ════════════════ -->
+  <div class="tab-panel" id="tab-settings">
+    <div class="settings-layout">
+      <div class="settings-tool-tabs">
+        {% if 'fr' in project.get('tools', ['fr','si']) %}
+        <button class="settings-tool-tab active" onclick="switchSettingsTool('fr', this)">
+          <span class="tool-badge tool-fr">FR</span> Fracture
+        </button>
+        {% endif %}
+        {% if 'si' in project.get('tools', ['fr','si']) %}
+        <button class="settings-tool-tab" onclick="switchSettingsTool('si', this)">
+          <span class="tool-badge tool-si">SI</span> Siphon
+        </button>
+        {% endif %}
+      </div>
+      {% if 'fr' in project.get('tools', ['fr','si']) %}
+      <div class="settings-editor-panel active" id="settings-fr">
+        <div class="settings-toolbar">
+          <span class="settings-label">fr_settings.json</span>
+          <button class="btn btn-sm btn-primary" onclick="saveSettings('fr')">Save</button>
+          <button class="btn btn-sm btn-ghost"   onclick="loadSettings('fr')">&#x21BB; Reload</button>
+          <span class="settings-save-msg" id="fr-save-msg"></span>
+        </div>
+        <textarea class="settings-editor" id="fr-settings-editor" spellcheck="false"></textarea>
+      </div>
+      {% endif %}
+      {% if 'si' in project.get('tools', ['fr','si']) %}
+      <div class="settings-editor-panel" id="settings-si">
+        <div class="settings-toolbar">
+          <span class="settings-label">si_settings.json</span>
+          <button class="btn btn-sm btn-primary" onclick="saveSettings('si')">Save</button>
+          <button class="btn btn-sm btn-ghost"   onclick="loadSettings('si')">&#x21BB; Reload</button>
+          <span class="settings-save-msg" id="si-save-msg"></span>
+        </div>
+        <textarea class="settings-editor" id="si-settings-editor" spellcheck="false"></textarea>
+      </div>
+      {% endif %}
+    </div>
+  </div><!-- /tab-settings -->
+
+
+  <!-- ════════════════ TAB: CHECKPOINT ════════════════ -->
+  <div class="tab-panel" id="tab-checkpoint">
+    <div class="checkpoint-layout">
+      <div class="checkpoint-tool-tabs">
+        {% if 'fr' in project.get('tools', ['fr','si']) %}
+        <button class="settings-tool-tab active" onclick="switchCheckpointTool('fr', this)">
+          <span class="tool-badge tool-fr">FR</span> Fracture
+        </button>
+        {% endif %}
+        {% if 'si' in project.get('tools', ['fr','si']) %}
+        <button class="settings-tool-tab" onclick="switchCheckpointTool('si', this)">
+          <span class="tool-badge tool-si">SI</span> Siphon
+        </button>
+        {% endif %}
+      </div>
+      {% if 'fr' in project.get('tools', ['fr','si']) %}
+      <div class="checkpoint-panel active" id="checkpoint-fr">
+        <div class="settings-toolbar">
+          <span class="settings-label">Fracture checkpoint.json</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadCheckpoint('fr')">&#x21BB; Refresh</button>
+        </div>
+        <pre class="checkpoint-view" id="fr-checkpoint-view">Loading&#8230;</pre>
+      </div>
+      {% endif %}
+      {% if 'si' in project.get('tools', ['fr','si']) %}
+      <div class="checkpoint-panel" id="checkpoint-si">
+        <div class="settings-toolbar">
+          <span class="settings-label">Siphon checkpoint.json</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadCheckpoint('si')">&#x21BB; Refresh</button>
+        </div>
+        <pre class="checkpoint-view" id="si-checkpoint-view">Loading&#8230;</pre>
+      </div>
+      {% endif %}
+    </div>
+  </div><!-- /tab-checkpoint -->
+
+</div><!-- /project-layout -->
+
+
+<!-- Prompt modal -->
+<div class="modal-overlay hidden" id="promptModal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-title" id="modalTitle">&#x2699; Input Required</div>
+    <div class="modal-body">
+      <div class="modal-prompt-text" id="modalPromptText"></div>
+      <div class="modal-option-grid" id="modalOptionBtns"></div>
+      <div class="modal-input-row">
+        <input type="text" id="modalTextInput" placeholder="Type answer here&#8230;" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modalCancelBtn">&#x2715; Cancel</button>
+      <button class="btn btn-primary"   id="modalSubmitBtn">&#x2713; Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Finding details modal -->
+<div class="modal-overlay hidden" id="detailsModal" role="dialog" aria-modal="true">
+  <div class="modal-box det-modal-box">
+    <div class="modal-title" id="detailsModalTitle">Finding Details</div>
+    <div class="det-modal-body modal-body" id="detailsModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Error toast -->
+<div class="toast" id="errorToast"></div>
+
+
+<script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+<script>
+'use strict';
+const PROJECT_ID = "{{ project_id }}";
+const socket     = io();
+
+// State
+let frAutoScroll = true;
+let siAutoScroll = true;
+let allFindings  = [];
+const _findingIdx = new Map();
+
+// Log state
+let allLogs    = [];
+const _logSeen = new Set();
+let logPage    = 0;
+const LOG_PER_PAGE = 50;
+let logFilter  = { tool: '', level: '' };
+
+// Error state
+let allErrors  = [];
+const _errSeen = new Set();
+let errFilter  = { tool: '', category: '' };
+
+// Findings pagination
+let _findPage = 0;
+const FIND_PER_PAGE = 25;
+
+// Status / phase state
+const frPhases = {};
+const siPhases = {};
+
+// Prompt state
+let _promptTool           = '';
+let _promptId             = '';
+let _currentPromptPayload = null;
+
+// ── Socket lifecycle ──────────────────────────────────────
+socket.on('connect', () => {
+  socket.emit('join_project', {project_id: PROJECT_ID});
+});
+
+// ── Tool status ───────────────────────────────────────────
+socket.on('tool_status', status => {
+  setStatus('fr', status.fr || 'idle');
+  setStatus('si', status.si || 'idle');
+});
+
+function setStatus(tool, status) {
+  const pills = [
+    document.getElementById(`${tool}-status-pill`),
+    document.getElementById(`${tool}-status-pill-2`),
+    document.getElementById(`${tool}-summary-status`),
+  ];
+  pills.forEach(el => {
+    if (!el) return;
+    el.textContent = status;
+    el.className   = `status-pill status-${status}`;
+  });
+  const start = document.getElementById(`${tool}-start-btn`);
+  const kill  = document.getElementById(`${tool}-kill-btn`);
+  if (start) start.disabled = (status === 'running');
+  if (kill)  kill.disabled  = (status !== 'running');
+  const compTag = document.getElementById(`${tool}-comp-tag`);
+  if (compTag) {
+    if (status === 'running') compTag.textContent = 'running';
+    else if (status === 'done') compTag.textContent = 'complete';
+    else if (status === 'idle') compTag.textContent = 'not started';
+  }
+}
+
+// ── Console output ────────────────────────────────────────
+socket.on('fr_output', entry => appendLine('fr', entry));
+socket.on('si_output', entry => appendLine('si', entry));
+
+socket.on('fr_started', d => { setStatus('fr','running'); showToast(`Fracture started (PID ${d.pid})`, 'ok'); });
+socket.on('fr_done',    d => { setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); });
+socket.on('fr_stopped', () => setStatus('fr','idle'));
+socket.on('fr_error',   d => showToast(`FR: ${d.error}`, 'err'));
+
+socket.on('si_started', d => { setStatus('si','running'); showToast(`Siphon started (PID ${d.pid})`, 'ok'); });
+socket.on('si_done',    d => { setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); });
+socket.on('si_stopped', () => setStatus('si','idle'));
+socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
+
+// ── Findings ──────────────────────────────────────────────
+socket.on('finding', data => addFinding(data.finding));
+
+// ── Log entries ───────────────────────────────────────────
+socket.on('log_entry', data => {
+  const e = data.entry || data;
+  const key = `${e.ts}|${e.tool}|${e.message}`;
+  if (_logSeen.has(key)) return;
+  _logSeen.add(key);
+  allLogs.push(e);
+  document.getElementById('logBadge').textContent = allLogs.length;
+  renderLogs();
+});
+
+// ── Error entries ─────────────────────────────────────────
+socket.on('err_entry', data => {
+  const e = data.entry || data;
+  const key = `${e.ts}|${e.tool}|${e.message}`;
+  if (_errSeen.has(key)) return;
+  _errSeen.add(key);
+  allErrors.push(e);
+  document.getElementById('errorsBadge').textContent = allErrors.length;
+  renderErrors();
+});
+
+// ── Phase status ──────────────────────────────────────────
+socket.on('vantage_status', d => {
+  const tool = d.tool;
+  const store = tool === 'fr' ? frPhases : siPhases;
+  if (d.phase) store[d.phase] = d;
+  renderPhases(tool);
+});
+
+// ── Prompt ────────────────────────────────────────────────
+socket.on('vantage_prompt', data => {
+  const tool    = data.tool;
+  const payload = data.payload;
+  _promptTool           = tool;
+  _promptId             = payload.id || '';
+  _currentPromptPayload = payload;
+  showPromptModal(payload, tool);
+  const reopenBtn = document.getElementById(`${tool}-reopen-btn`);
+  if (reopenBtn) reopenBtn.classList.remove('hidden');
+});
+
+socket.on('prompt_resolved', data => {
+  const tool = data.tool;
+  const reopenBtn = document.getElementById(`${tool}-reopen-btn`);
+  if (reopenBtn) reopenBtn.classList.add('hidden');
+  if (_promptTool === tool) closePromptModal();
+});
+
+// ── Console functions ─────────────────────────────────────
+function appendLine(tool, entry) {
+  const body = document.getElementById(`${tool}-console`);
+  if (!body) return;
+  const div = document.createElement('div');
+  div.className = `console-line stream-${entry.stream || 'stdout'}`;
+  div.textContent = `[${entry.ts || ''}] ${entry.text || ''}`;
+  body.appendChild(div);
+
+  const footer = document.getElementById(`${tool}-footer-text`);
+  if (footer) footer.textContent = entry.text || '';
+
+  const autoScroll = tool === 'fr' ? frAutoScroll : siAutoScroll;
+  if (autoScroll) body.scrollTop = body.scrollHeight;
+}
+
+function clearConsole(tool) {
+  const body = document.getElementById(`${tool}-console`);
+  if (body) body.innerHTML = '';
+}
+
+function toggleScroll(tool) {
+  if (tool === 'fr') {
+    frAutoScroll = !frAutoScroll;
+    const btn = document.getElementById('fr-scroll-btn');
+    if (btn) btn.classList.toggle('active', frAutoScroll);
+  } else {
+    siAutoScroll = !siAutoScroll;
+    const btn = document.getElementById('si-scroll-btn');
+    if (btn) btn.classList.toggle('active', siAutoScroll);
+  }
+}
+
+// ── Tool control ──────────────────────────────────────────
+function startTool(tool) {
+  socket.emit(`${tool}_start`, {project_id: PROJECT_ID});
+}
+
+function killTool(tool) {
+  if (!confirm(`Kill ${tool === 'fr' ? 'Fracture' : 'Siphon'}?`)) return;
+  socket.emit(`${tool}_kill`, {project_id: PROJECT_ID});
+}
+
+// ── Tab switching ─────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById(`tab-${name}`);
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name === 'settings') { loadSettings('fr'); loadSettings('si'); }
+  if (name === 'checkpoint') { loadCheckpoint('fr'); loadCheckpoint('si'); }
+}
+
+// ── Findings ──────────────────────────────────────────────
+function _fkeyF(f) {
+  return `${(f.title||'').trim().toLowerCase()}|${(f.ip||'').trim()}|${String(f.port||'')}|${(f._scope||'').toLowerCase()}|${(f.hostname||f.url||'').trim().toLowerCase()}`;
+}
+
+function addFinding(f) {
+  const k = _fkeyF(f);
+  if (_findingIdx.has(k)) {
+    allFindings[_findingIdx.get(k)] = f;
+  } else {
+    _findingIdx.set(k, allFindings.length);
+    allFindings.push(f);
+  }
+  document.getElementById('findingsBadge').textContent = allFindings.length;
+
+  const frCount = allFindings.filter(x => x._tool === 'fracture').length;
+  const siCount = allFindings.filter(x => x._tool === 'siphon').length;
+  const frCnt = document.getElementById('fr-finding-count');
+  const siCnt = document.getElementById('si-finding-count');
+  if (frCnt) frCnt.textContent = frCount;
+  if (siCnt) siCnt.textContent = siCount;
+
+  renderFindings();
+}
+
+function filterFindings() { _findPage = 0; renderFindings(); }
+
+function findingsPage(dir) {
+  const filtered = _getFilteredFindings();
+  const pages = Math.max(1, Math.ceil(filtered.length / FIND_PER_PAGE));
+  _findPage = Math.max(0, Math.min(_findPage + dir, pages - 1));
+  renderFindings();
+}
+
+function _getFilteredFindings() {
+  const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
+  const risk = document.getElementById('filterRisk').value;
+  const tool = document.getElementById('filterTool').value;
+  return allFindings.filter(f => {
+    if (risk && (f.risk || 'INFO').toUpperCase() !== risk) return false;
+    if (tool && (f._tool || '') !== tool) return false;
+    if (q) {
+      const hay = JSON.stringify(f).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+const RISK_ORDER = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+function _riskBadge(r) {
+  const cls = `risk-badge risk-${(r||'INFO').toLowerCase()}`;
+  return `<span class="${cls}">${r||'INFO'}</span>`;
+}
+function _toolBadge(t) {
+  if (t === 'fracture') return `<span class="tool-badge tool-fr">FR</span>`;
+  if (t === 'siphon')   return `<span class="tool-badge tool-si">SI</span>`;
+  return `<span class="tool-badge">${t||''}</span>`;
+}
+
+function renderFindings() {
+  const filtered = _getFilteredFindings();
+  filtered.sort((a,b) => RISK_ORDER.indexOf((a.risk||'INFO').toUpperCase()) - RISK_ORDER.indexOf((b.risk||'INFO').toUpperCase()));
+  const pages = Math.max(1, Math.ceil(filtered.length / FIND_PER_PAGE));
+  _findPage = Math.min(_findPage, pages - 1);
+  const slice = filtered.slice(_findPage * FIND_PER_PAGE, (_findPage + 1) * FIND_PER_PAGE);
+
+  const tbody = document.getElementById('findingsTbody');
+  document.getElementById('findingsCount').textContent = `${filtered.length} finding${filtered.length!==1?'s':''}`;
+  document.getElementById('findPageLabel').textContent = `Page ${_findPage+1} / ${pages}`;
+  document.getElementById('findBtnPrev').disabled = _findPage === 0;
+  document.getElementById('findBtnNext').disabled = _findPage >= pages - 1;
+
+  if (!slice.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="9">${allFindings.length ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = slice.map(f => {
+    const host = f.hostname || f.url || f.ip || '';
+    const cves = (f.cves || '').split(',').filter(Boolean).map(c => `<span class="cve-tag">${c.trim()}</span>`).join(' ');
+    return `<tr class="finding-row" onclick="showFindingDetails(${JSON.stringify(JSON.stringify(f))})">
+      <td>${_riskBadge(f.risk)}</td>
+      <td>${_toolBadge(f._tool)}</td>
+      <td class="col-title-cell">${escHtml(f.title || f.detail || '')}</td>
+      <td class="mono-sm">${escHtml(host)}</td>
+      <td>${f.port || ''}</td>
+      <td>${cves}</td>
+      <td class="mono-sm">${escHtml(f.sources || '')}</td>
+      <td><span class="scope-tag">${f._scope || ''}</span></td>
+      <td><button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();showFindingDetails(${JSON.stringify(JSON.stringify(f))})">Details</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function showFindingDetails(jsonStr) {
+  const f = JSON.parse(jsonStr);
+  document.getElementById('detailsModalTitle').textContent = f.title || f.detail || 'Finding';
+  document.getElementById('detailsModalBody').innerHTML = `
+    <div class="det-row"><span class="det-label">Risk</span>${_riskBadge(f.risk)}</div>
+    <div class="det-row"><span class="det-label">Tool</span>${_toolBadge(f._tool)}</div>
+    <div class="det-row"><span class="det-label">Scope</span><span class="scope-tag">${f._scope||''}</span></div>
+    ${f.hostname||f.url ? `<div class="det-row"><span class="det-label">Host/URL</span><span class="mono-sm">${escHtml(f.hostname||f.url)}</span></div>` : ''}
+    ${f.ip ? `<div class="det-row"><span class="det-label">IP</span><span class="mono-sm">${escHtml(f.ip)}</span></div>` : ''}
+    ${f.port ? `<div class="det-row"><span class="det-label">Port</span>${f.port}</div>` : ''}
+    ${f.cves ? `<div class="det-row"><span class="det-label">CVEs</span><span class="mono-sm">${escHtml(f.cves)}</span></div>` : ''}
+    ${f.sources ? `<div class="det-row"><span class="det-label">Sources</span><span class="mono-sm">${escHtml(f.sources)}</span></div>` : ''}
+    ${f.description || f.detail ? `<div class="det-section"><div class="det-section-title">Description</div><pre class="det-pre">${escHtml(f.description||f.detail)}</pre></div>` : ''}
+    ${f.remediation ? `<div class="det-section"><div class="det-section-title">Remediation</div><pre class="det-pre">${escHtml(f.remediation)}</pre></div>` : ''}
+    ${f.output ? `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${escHtml(f.output)}</pre></div>` : ''}
+    ${f.affected ? `<div class="det-section"><div class="det-section-title">Affected</div><pre class="det-pre">${escHtml(f.affected)}</pre></div>` : ''}
+  `;
+  document.getElementById('detailsModal').classList.remove('hidden');
+}
+
+function closeDetailsModal() {
+  document.getElementById('detailsModal').classList.add('hidden');
+}
+
+function exportFindingsCSV() {
+  const filtered = _getFilteredFindings();
+  const rows = [['Risk','Tool','Finding','Host','Port','CVEs','Sources','Scope']];
+  filtered.forEach(f => {
+    rows.push([f.risk||'INFO', f._tool||'', f.title||f.detail||'',
+               f.hostname||f.url||f.ip||'', f.port||'', f.cves||'', f.sources||'', f._scope||'']);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `crucible_findings_${PROJECT_ID.slice(0,8)}.csv`;
+  a.click();
+}
+
+// ── Logs ──────────────────────────────────────────────────
+function setLogFilter(btn, key, val) {
+  logFilter[key] = val;
+  const group = btn.closest('.log-filter-group');
+  if (group) group.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  logPage = 0;
+  renderLogs();
+}
+
+function clearLogs() { allLogs = []; _logSeen.clear(); renderLogs(); document.getElementById('logBadge').textContent = '0'; }
+
+function logsPage(dir) {
+  const filtered = _getFilteredLogs();
+  const pages = Math.max(1, Math.ceil(filtered.length / LOG_PER_PAGE));
+  logPage = Math.max(0, Math.min(logPage + dir, pages - 1));
+  renderLogs();
+}
+
+function _getFilteredLogs() {
+  const q = (document.getElementById('logSearch')?.value || '').toLowerCase();
+  return allLogs.filter(e => {
+    if (logFilter.tool && e.tool !== logFilter.tool) return false;
+    if (logFilter.level && (e.level||'') !== logFilter.level) return false;
+    if (q && !JSON.stringify(e).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function renderLogs() {
+  const filtered = _getFilteredLogs();
+  const pages = Math.max(1, Math.ceil(filtered.length / LOG_PER_PAGE));
+  logPage = Math.min(logPage, pages - 1);
+  const slice = filtered.slice(logPage * LOG_PER_PAGE, (logPage + 1) * LOG_PER_PAGE);
+  document.getElementById('logsPageLabel').textContent = `Page ${logPage+1} / ${pages}`;
+  document.getElementById('logsBtnPrev').disabled = logPage === 0;
+  document.getElementById('logsBtnNext').disabled = logPage >= pages - 1;
+  const tbody = document.getElementById('logsTbody');
+  if (!slice.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No log entries yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = slice.map(e => {
+    const lvl = (e.level||'INFO').toUpperCase();
+    const toolBadge = e.tool === 'fr' ? '<span class="tool-badge tool-fr">FR</span>' :
+                      e.tool === 'si' ? '<span class="tool-badge tool-si">SI</span>' : '';
+    return `<tr><td class="mono-sm">${e.ts||''}</td>
+      <td><span class="log-level log-${lvl.toLowerCase()}">${lvl}</span></td>
+      <td>${toolBadge}</td>
+      <td>${escHtml(e.message||'')}</td></tr>`;
+  }).join('');
+}
+
+// ── Errors ────────────────────────────────────────────────
+function setErrFilter(btn, key, val) {
+  errFilter[key] = val;
+  const group = btn.closest('.log-filter-group');
+  if (group) group.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderErrors();
+}
+
+function clearErrors() { allErrors = []; _errSeen.clear(); renderErrors(); document.getElementById('errorsBadge').textContent = '0'; }
+
+function renderErrors() {
+  const filtered = allErrors.filter(e => {
+    if (errFilter.tool && e.tool !== errFilter.tool) return false;
+    if (errFilter.category && (e.category||'') !== errFilter.category) return false;
+    return true;
+  });
+  const tbody = document.getElementById('errorsTbody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No errors.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(e => {
+    const toolBadge = e.tool === 'fr' ? '<span class="tool-badge tool-fr">FR</span>' :
+                      e.tool === 'si' ? '<span class="tool-badge tool-si">SI</span>' : '';
+    return `<tr><td class="mono-sm">${e.ts||''}</td>
+      <td>${toolBadge}</td>
+      <td><span class="err-cat">${escHtml(e.category||'')}</span></td>
+      <td>${escHtml(e.message||'')}</td></tr>`;
+  }).join('');
+}
+
+// ── Phase status ──────────────────────────────────────────
+function toggleSect(btn) {
+  const expanded = btn.getAttribute('aria-expanded') !== 'false';
+  btn.setAttribute('aria-expanded', !expanded);
+  const bodyId = btn.getAttribute('aria-controls') || btn.nextElementSibling?.id;
+  const body = bodyId ? document.getElementById(bodyId) : btn.nextElementSibling;
+  if (body) body.style.display = expanded ? 'none' : 'block';
+}
+
+function renderPhases(tool) {
+  const store = tool === 'fr' ? frPhases : siPhases;
+  const container = document.getElementById(`st-rows-${tool}`);
+  if (!container) return;
+  container.innerHTML = Object.entries(store).map(([phase, d]) => {
+    const st = d.status || 'pending';
+    return `<div class="st-row">
+      <span class="st-phase-name">${escHtml(d.label || phase)}</span>
+      <span class="st-phase-status st-${st}">${st}</span>
+      ${d.detail ? `<span class="st-phase-detail">${escHtml(d.detail)}</span>` : ''}
+    </div>`;
+  }).join('') || '<div style="color:var(--text-muted);padding:.5rem .75rem;font-size:.8rem">No phase data yet.</div>';
+}
+
+// ── Settings ──────────────────────────────────────────────
+function switchSettingsTool(tool, btn) {
+  document.querySelectorAll('.settings-editor-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.settings-tool-tab').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById(`settings-${tool}`);
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function loadSettings(tool) {
+  fetch(`/api/settings/${PROJECT_ID}/${tool}`)
+    .then(r => r.json())
+    .then(d => {
+      const el = document.getElementById(`${tool}-settings-editor`);
+      if (el) el.value = JSON.stringify(d, null, 2);
+    })
+    .catch(() => {});
+}
+
+function saveSettings(tool) {
+  const el = document.getElementById(`${tool}-settings-editor`);
+  if (!el) return;
+  let parsed;
+  try { parsed = JSON.parse(el.value); }
+  catch(e) { alert('Invalid JSON: ' + e.message); return; }
+  const msg = document.getElementById(`${tool}-save-msg`);
+  fetch(`/api/settings/${PROJECT_ID}/${tool}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(parsed),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (msg) { msg.textContent = d.success ? 'Saved.' : 'Error saving.'; setTimeout(() => msg.textContent = '', 3000); }
+  })
+  .catch(() => { if (msg) { msg.textContent = 'Network error.'; setTimeout(() => msg.textContent = '', 3000); } });
+}
+
+// ── Checkpoint ────────────────────────────────────────────
+function switchCheckpointTool(tool, btn) {
+  document.querySelectorAll('.checkpoint-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.checkpoint-tool-tabs .settings-tool-tab').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById(`checkpoint-${tool}`);
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function loadCheckpoint(tool) {
+  const el = document.getElementById(`${tool}-checkpoint-view`);
+  if (!el) return;
+  fetch(`/api/checkpoint/${PROJECT_ID}/${tool}`)
+    .then(r => r.json())
+    .then(d => { el.textContent = JSON.stringify(d, null, 2); })
+    .catch(() => { el.textContent = 'Failed to load checkpoint.'; });
+}
+
+// ── Prompt modal ──────────────────────────────────────────
+function showPromptModal(payload, tool) {
+  const isPassword = payload.type === 'password' ||
+    /password|passphrase|secret|sudo/i.test(payload.question || '');
+
+  document.getElementById('modalTitle').textContent = '&#x2699; Input Required';
+  document.getElementById('modalPromptText').textContent = payload.question || '';
+
+  const input = document.getElementById('modalTextInput');
+  input.type = isPassword ? 'password' : 'text';
+  input.value = '';
+
+  const optGrid = document.getElementById('modalOptionBtns');
+  optGrid.innerHTML = '';
+  if (payload.options && payload.options.length) {
+    payload.options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm btn-secondary option-btn';
+      btn.textContent = opt;
+      btn.onclick = () => { input.value = opt; };
+      optGrid.appendChild(btn);
+    });
+  }
+
+  document.getElementById('modalSubmitBtn').onclick = () => submitPrompt(tool);
+  document.getElementById('modalCancelBtn').onclick = closePromptModal;
+  input.onkeydown = e => { if (e.key === 'Enter') submitPrompt(tool); };
+
+  document.getElementById('promptModal').classList.remove('hidden');
+  setTimeout(() => input.focus(), 100);
+}
+
+function submitPrompt(tool) {
+  const input = document.getElementById('modalTextInput');
+  const answer = input.value;
+  socket.emit('vantage_answer', {project_id: PROJECT_ID, tool: tool, answer: answer});
+  closePromptModal();
+}
+
+function closePromptModal() {
+  document.getElementById('promptModal').classList.add('hidden');
+}
+
+function reopenPrompt(tool) {
+  if (_currentPromptPayload && _promptTool === tool) {
+    showPromptModal(_currentPromptPayload, tool);
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(msg, type) {
+  const t = document.getElementById('errorToast');
+  if (!t) return;
+  t.textContent = msg;
+  t.className = `toast toast-${type} show`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ── Utility ───────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────
+// Load historical findings and logs
+fetch(`/api/findings/${PROJECT_ID}`).then(r => r.json()).then(arr => { arr.forEach(addFinding); });
+fetch(`/api/logs/${PROJECT_ID}`).then(r => r.json()).then(arr => {
+  arr.forEach(e => {
+    const key = `${e.ts}|${e.tool}|${e.message}`;
+    if (!_logSeen.has(key)) { _logSeen.add(key); allLogs.push(e); }
+  });
+  document.getElementById('logBadge').textContent = allLogs.length;
+  renderLogs();
+});
+fetch(`/api/errors/${PROJECT_ID}`).then(r => r.json()).then(arr => {
+  arr.forEach(e => {
+    const key = `${e.ts}|${e.tool}|${e.message}`;
+    if (!_errSeen.has(key)) { _errSeen.add(key); allErrors.push(e); }
+  });
+  document.getElementById('errorsBadge').textContent = allErrors.length;
+  renderErrors();
+});
+</script>
+{% endblock %}

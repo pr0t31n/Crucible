@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#1a1a1a"/>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="#f0a500" stroke-width="0.5" opacity="0.3"/>
+
+  <!-- Crucible vessel body: wide at top, narrows to flat bottom -->
+  <!-- Outer shell -->
+  <path d="M14 18 L18 50 Q32 56 46 50 L50 18 Z"
+        fill="rgba(240,165,0,0.08)"
+        stroke="#f0a500"
+        stroke-width="2"
+        stroke-linejoin="round"/>
+
+  <!-- Inner vessel wall shading -->
+  <path d="M17 20 L20.5 48 Q32 53 43.5 48 L47 20 Z"
+        fill="rgba(240,165,0,0.05)"
+        stroke="none"/>
+
+  <!-- Molten material inside (glowing pool) -->
+  <ellipse cx="32" cy="47" rx="11" ry="4"
+           fill="rgba(255,107,53,0.35)"
+           stroke="#ff6b35"
+           stroke-width="0.8"
+           opacity="0.9"/>
+
+  <!-- Molten pour spout — right side -->
+  <path d="M46 30 Q54 27 56 34 Q54 41 48 39"
+        fill="none"
+        stroke="#ff6b35"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <!-- Pour drip -->
+  <path d="M52 31 Q54 33 52 36"
+        fill="none"
+        stroke="#ff6b35"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        opacity="0.8"/>
+
+  <!-- Heat waves / flames above rim -->
+  <path d="M22 17 Q23 11 25 15 Q26 9 28 13"
+        fill="none"
+        stroke="#f0a500"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        opacity="0.7"/>
+  <path d="M30 15 Q31 8 33 12 Q34 6 36 10"
+        fill="none"
+        stroke="#ff6b35"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        opacity="0.85"/>
+  <path d="M38 17 Q39 12 41 15 Q42 10 44 14"
+        fill="none"
+        stroke="#f0a500"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        opacity="0.6"/>
+
+  <!-- Ambient glow at bottom of vessel -->
+  <ellipse cx="32" cy="50" rx="14" ry="3"
+           fill="rgba(255,107,53,0.15)"/>
+</svg>

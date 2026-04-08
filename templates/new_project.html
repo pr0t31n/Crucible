@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}New Engagement — Crucible{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <div class="form-header">
+    <a href="/" class="back-link">&#8592; Engagements</a>
+    <h2 class="form-title">New Engagement</h2>
+  </div>
+
+  <form id="newEngagementForm" class="engagement-form" onsubmit="submitForm(event)">
+
+    <!-- Engagement Details -->
+    <div class="form-section">
+      <div class="form-section-title">Engagement</div>
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label class="form-label">Engagement Name <span class="req">*</span></label>
+          <input type="text" name="engagement_name" class="form-control"
+                 placeholder="e.g. Acme Corporation — 2025 Web App Pentest" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Name <span class="req">*</span></label>
+          <input type="text" name="client_name" class="form-control"
+                 placeholder="Acme Corporation" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Short</label>
+          <input type="text" name="client_short" class="form-control"
+                 placeholder="acme">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assessment Scope</label>
+          <select name="scope" class="form-control" id="scopeSelect">
+            <option value="both">Web App + API (Both)</option>
+            <option value="webapp">Web App Only (Fracture)</option>
+            <option value="api">API Only (Siphon)</option>
+          </select>
+          <span class="form-hint">Determines which tools are pre-selected</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="text" name="start_date" class="form-control date-input"
+                 placeholder="MM/DD/YYYY" maxlength="10">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input type="text" name="end_date" class="form-control date-input"
+                 placeholder="MM/DD/YYYY" maxlength="10">
+        </div>
+      </div>
+    </div>
+
+    <!-- Consultant -->
+    <div class="form-section">
+      <div class="form-section-title">Consultant</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" name="consultant" class="form-control" placeholder="Jane Smith">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" name="consultant_email" class="form-control"
+                 placeholder="jsmith@firm.com">
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool Selection -->
+    <div class="form-section">
+      <div class="form-section-title">Tools</div>
+      <div class="tool-select-grid">
+        <label class="tool-select-card">
+          <input type="checkbox" name="include_fr" value="1" id="chkFR" checked>
+          <div>
+            <div class="tool-select-label"><span class="tool-badge tool-fr">FR</span> &nbsp;Fracture</div>
+            <div class="tool-select-desc">Web app pentest — TLS, headers, injection, auth bypass, SSRF, crawling, vulnerability scanning</div>
+          </div>
+        </label>
+        <label class="tool-select-card">
+          <input type="checkbox" name="include_si" value="1" id="chkSI" checked>
+          <div>
+            <div class="tool-select-label"><span class="tool-badge tool-si">SI</span> &nbsp;Siphon</div>
+            <div class="tool-select-desc">API security testing — OWASP API Top 10, BOLA/BFLA, JWT, GraphQL, rate limiting</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Fracture Settings -->
+    <div class="form-section" id="sectionFR">
+      <div class="form-section-title">
+        <span class="tool-badge tool-fr">FR</span> Fracture — Web Application Testing
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Project Name</label>
+          <input type="text" name="fr_project_name" class="form-control"
+                 placeholder="fracture_output">
+          <span class="form-hint">Output folder name</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">Target URL <span class="req">*</span></label>
+          <input type="url" name="fr_target_url" class="form-control"
+                 placeholder="https://app.example.com">
+          <span class="form-hint">Primary web application target URL</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Authenticated Testing</label>
+          <select name="fr_auth_enabled" class="form-control" id="frAuthEnabled">
+            <option value="0">No — unauthenticated</option>
+            <option value="1">Yes — provide credentials</option>
+          </select>
+        </div>
+      </div>
+      <!-- Auth credentials (shown when authenticated testing enabled) -->
+      <div id="frAuthFields" style="display:none">
+        <div class="form-grid" style="margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Auth Type</label>
+            <select name="fr_auth_type" class="form-control">
+              <option value="form">Form-based</option>
+              <option value="basic">HTTP Basic</option>
+              <option value="token">Token/Bearer</option>
+              <option value="cookie">Session Cookie</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Login URL</label>
+            <input type="url" name="fr_auth_login_url" class="form-control"
+                   placeholder="https://app.example.com/login">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Siphon Settings -->
+    <div class="form-section" id="sectionSI">
+      <div class="form-section-title">
+        <span class="tool-badge tool-si">SI</span> Siphon — API Security Testing
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Project Name</label>
+          <input type="text" name="si_project_name" class="form-control"
+                 placeholder="siphon_output">
+          <span class="form-hint">Output folder name</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">API Base URL <span class="req">*</span></label>
+          <input type="url" name="si_target_url" class="form-control"
+                 placeholder="https://api.example.com/v1">
+          <span class="form-hint">API base URL to test</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">API Spec URL (optional)</label>
+          <input type="url" name="si_api_spec_url" class="form-control"
+                 placeholder="https://api.example.com/openapi.json">
+          <span class="form-hint">OpenAPI/Swagger spec URL — enables structured endpoint discovery</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Authenticated Testing</label>
+          <select name="si_auth_enabled" class="form-control" id="siAuthEnabled">
+            <option value="0">No — unauthenticated</option>
+            <option value="1">Yes — provide credentials</option>
+          </select>
+        </div>
+      </div>
+      <!-- Auth credentials -->
+      <div id="siAuthFields" style="display:none">
+        <div class="form-grid" style="margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Auth Type</label>
+            <select name="si_auth_type" class="form-control">
+              <option value="bearer">Bearer Token</option>
+              <option value="basic">HTTP Basic</option>
+              <option value="apikey">API Key</option>
+              <option value="oauth">OAuth2</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token / API Key</label>
+            <input type="password" name="si_auth_token" class="form-control" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="si_auth_username" class="form-control" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="form-actions">
+      <a href="/" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+        Create Engagement
+      </button>
+    </div>
+
+  </form>
+</div>
+
+<script>
+function submitForm(e) {
+  e.preventDefault();
+  const btn  = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating\u2026';
+
+  const fd   = new FormData(e.target);
+  const body = {};
+  fd.forEach((v, k) => body[k] = v);
+  body.include_fr = document.getElementById('chkFR').checked;
+  body.include_si = document.getElementById('chkSI').checked;
+
+  fetch('/api/create_project', {
+    method:  'POST',
+    headers: {'Content-Type': 'application/json'},
+    body:    JSON.stringify(body),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) window.location = `/project/${d.project_id}`;
+    else { alert(d.error || 'Error'); btn.disabled = false; btn.textContent = 'Create Engagement'; }
+  })
+  .catch(() => { btn.disabled = false; btn.textContent = 'Create Engagement'; });
+}
+
+// Scope -> tool checkbox hints
+document.getElementById('scopeSelect').addEventListener('change', function() {
+  const v = this.value;
+  if (v === 'webapp') {
+    document.getElementById('chkFR').checked = true;
+    document.getElementById('chkSI').checked = false;
+  } else if (v === 'api') {
+    document.getElementById('chkFR').checked = false;
+    document.getElementById('chkSI').checked = true;
+  } else {
+    document.getElementById('chkFR').checked = true;
+    document.getElementById('chkSI').checked = true;
+  }
+});
+
+// Auth field toggles
+document.getElementById('frAuthEnabled').addEventListener('change', function() {
+  document.getElementById('frAuthFields').style.display = this.value === '1' ? 'block' : 'none';
+});
+document.getElementById('siAuthEnabled').addEventListener('change', function() {
+  document.getElementById('siAuthFields').style.display = this.value === '1' ? 'block' : 'none';
+});
+
+// Date masking MM/DD/YYYY
+document.querySelectorAll('.date-input').forEach(el => {
+  el.addEventListener('input', function() {
+    let v = this.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length > 4) v = v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4);
+    else if (v.length > 2) v = v.slice(0,2)+'/'+v.slice(2);
+    this.value = v;
+  });
+});
+</script>
+{% endblock %}

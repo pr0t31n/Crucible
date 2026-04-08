@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Home — Crucible{% endblock %}
+
+{% block content %}
+<div class="home-layout">
+
+  <!-- Sidebar — project list -->
+  <aside class="home-sidebar">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">ENGAGEMENTS</span>
+        <a href="/new_project" class="btn btn-primary btn-sm">+ New</a>
+      </div>
+      <div class="panel-body p0">
+        {% if projects %}
+          <div class="proj-list">
+            {% for pid, proj in projects %}
+            <div class="proj-card-row">
+              <a href="/project/{{ pid }}" class="proj-card">
+                <div class="proj-card-name">{{ proj.name }}</div>
+                <div class="proj-card-meta">
+                  <span class="proj-client">{{ proj.client_name or '—' }}</span>
+                  <span class="proj-date">{{ proj.created }}</span>
+                </div>
+                <div class="proj-card-badges">
+                  {% if 'fr' in proj.get('tools', ['fr','si']) %}
+                  <span class="status-badge status-{{ proj.fr_status or 'idle' }}" title="Fracture">FR</span>
+                  {% endif %}
+                  {% if 'si' in proj.get('tools', ['fr','si']) %}
+                  <span class="status-badge status-{{ proj.si_status or 'idle' }}" title="Siphon">SI</span>
+                  {% endif %}
+                </div>
+              </a>
+              <a href="/edit_project/{{ pid }}" class="proj-card-edit-btn" title="Edit engagement">&#x270E;</a>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <div class="empty-icon">&#9674;</div>
+            <div class="empty-text">No engagements yet</div>
+            <a href="/new_project" class="btn btn-primary mt-12">Create first engagement</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main — welcome / overview -->
+  <section class="home-main">
+    <div class="home-hero">
+      <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="Crucible" class="hero-logo">
+      <h1 class="hero-title">CRUCIBLE</h1>
+      <p class="hero-sub">Web &amp; API Assessment Platform</p>
+      <p class="hero-desc">
+        Orchestrate web application penetration testing with <strong>Fracture</strong> and
+        API security testing with <strong>Siphon</strong> — side by side, in real time.
+      </p>
+      <div class="hero-actions">
+        <a href="/new_project" class="btn btn-primary btn-lg">New Engagement</a>
+      </div>
+    </div>
+
+    <!-- Tool cards -->
+    <div class="tool-cards">
+      <div class="tool-card">
+        <div class="tool-card-icon tool-fr-icon">&#9650;</div>
+        <div class="tool-card-name">Fracture</div>
+        <div class="tool-card-desc">
+          Web application penetration testing — TLS analysis, header checks, directory
+          brute-force, injection testing, authentication bypass, SSRF, CSRF,
+          session analysis, and vulnerability scanning.
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-card-icon tool-si-icon">&#9670;</div>
+        <div class="tool-card-name">Siphon</div>
+        <div class="tool-card-desc">
+          API security testing — endpoint discovery, OWASP API Top 10,
+          BOLA/BFLA, mass assignment, rate limiting, JWT analysis, OAuth testing,
+          and GraphQL security checks.
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
