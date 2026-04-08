@@ -357,6 +357,8 @@ def main():
     parser = argparse.ArgumentParser(description="Crucible installer")
     parser.add_argument("--skip-apt",     "--skip-system", dest="skip_system", action="store_true")
     parser.add_argument("--skip-pip",     action="store_true")
+    parser.add_argument("--skip-go",      action="store_true", help="No-op (reserved for Arsenal compatibility)")
+    parser.add_argument("--skip-git",     action="store_true", help="No-op (reserved for Arsenal compatibility)")
     parser.add_argument("--skip-service", action="store_true")
     parser.add_argument("--check",        action="store_true", help="Verify installation only")
     args = parser.parse_args()
