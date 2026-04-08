@@ -6,7 +6,7 @@ and Siphon (API pentest), modelled after the Vantage/Gauntlet architecture.
 """
 from __future__ import annotations
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 import json
 import os
