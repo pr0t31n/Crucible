@@ -240,7 +240,15 @@ function submitForm(e) {
   .catch(() => { btn.disabled = false; btn.textContent = 'Create Engagement'; });
 }
 
-// Scope -> tool checkbox hints
+function updateToolSections() {
+  document.getElementById('sectionFR').style.display = document.getElementById('chkFR').checked ? '' : 'none';
+  document.getElementById('sectionSI').style.display = document.getElementById('chkSI').checked ? '' : 'none';
+}
+document.getElementById('chkFR').addEventListener('change', updateToolSections);
+document.getElementById('chkSI').addEventListener('change', updateToolSections);
+updateToolSections();
+
+// Scope -> tool checkboxes + section visibility
 document.getElementById('scopeSelect').addEventListener('change', function() {
   const v = this.value;
   if (v === 'webapp') {
@@ -253,6 +261,7 @@ document.getElementById('scopeSelect').addEventListener('change', function() {
     document.getElementById('chkFR').checked = true;
     document.getElementById('chkSI').checked = true;
   }
+  updateToolSections();
 });
 
 // Auth field toggles

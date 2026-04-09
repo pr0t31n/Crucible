@@ -97,7 +97,7 @@
     </div>
 
     <!-- Fracture Settings Tabs -->
-    <div class="form-section">
+    <div class="form-section" id="sectionFR">
       <div class="form-section-title">
         <span class="tool-badge tool-fr">FR</span> Fracture Settings
       </div>
@@ -208,7 +208,7 @@
     </div>
 
     <!-- Siphon Settings Tabs -->
-    <div class="form-section">
+    <div class="form-section" id="sectionSI">
       <div class="form-section-title">
         <span class="tool-badge tool-si">SI</span> Siphon Settings
       </div>
@@ -352,6 +352,30 @@ function submitForm(e) {
   })
   .catch(() => { btn.disabled = false; btn.textContent = 'Apply Changes'; });
 }
+
+function updateToolSections() {
+  document.getElementById('sectionFR').style.display = document.getElementById('chkFR').checked ? '' : 'none';
+  document.getElementById('sectionSI').style.display = document.getElementById('chkSI').checked ? '' : 'none';
+}
+document.getElementById('chkFR').addEventListener('change', updateToolSections);
+document.getElementById('chkSI').addEventListener('change', updateToolSections);
+updateToolSections();
+
+// Scope -> tool checkboxes + section visibility
+document.querySelector('select[name="scope"]').addEventListener('change', function() {
+  const v = this.value;
+  if (v === 'webapp') {
+    document.getElementById('chkFR').checked = true;
+    document.getElementById('chkSI').checked = false;
+  } else if (v === 'api') {
+    document.getElementById('chkFR').checked = false;
+    document.getElementById('chkSI').checked = true;
+  } else {
+    document.getElementById('chkFR').checked = true;
+    document.getElementById('chkSI').checked = true;
+  }
+  updateToolSections();
+});
 
 function switchSettingsTab(panelId, btn) {
   // Find all tab panels and buttons in the same section

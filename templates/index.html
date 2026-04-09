@@ -22,6 +22,9 @@
                   <span class="proj-client">{{ proj.client_name or '—' }}</span>
                   <span class="proj-date">{{ proj.created }}</span>
                 </div>
+                {% if proj.fr_settings_file or proj.si_settings_file %}
+                <div class="proj-card-path" title="{{ proj.fr_settings_file or proj.si_settings_file }}">{{ proj.fr_settings_file or proj.si_settings_file }}</div>
+                {% endif %}
                 <div class="proj-card-badges">
                   {% if 'fr' in proj.get('tools', ['fr','si']) %}
                   <span class="status-badge status-{{ proj.fr_status or 'idle' }}" title="Fracture">FR</span>

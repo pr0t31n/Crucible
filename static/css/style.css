@@ -1332,6 +1332,11 @@ body {
 .proj-card-meta { display: flex; gap: .5rem; margin-top: .2rem; }
 .proj-client { font-size: .72rem; color: var(--text-secondary); }
 .proj-date   { font-size: .7rem;  color: var(--text-muted); }
+.proj-card-path {
+  font-size: .65rem; color: var(--text-muted); margin-top: .2rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%; font-family: var(--font-mono, monospace);
+}
 .proj-card-badges { display: flex; gap: .3rem; margin-top: .3rem; }
 .proj-card-edit-btn {
   display: flex; align-items: center;

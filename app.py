@@ -923,34 +923,47 @@ def api_delete_project(project_id: str):
 
 @app.route("/api/clear_project/<project_id>", methods=["POST"])
 def api_clear_project(project_id: str):
-    """Clear all scan data for an engagement, preserving fr_settings.json / si_settings.json."""
+    """Clear all scan data for an engagement, preserving config files only."""
     proj = _get_project(project_id)
     if not proj:
         return jsonify({"error": "not found"}), 404
 
     fr_settings = Path(proj.get("fr_settings_file", ""))
     si_settings = Path(proj.get("si_settings_file", ""))
-    fr_out_dir  = Path(proj.get("fracture_output_dir", ""))
+    proj_dir    = Path(proj.get("project_dir", ""))
     si_out_dir  = Path(proj.get("siphon_output_dir", ""))
 
-    def _clear_dir(directory: Path, keep_file: Path) -> None:
-        if not directory.is_dir():
-            return
-        keep = keep_file.resolve() if keep_file.exists() else None
-        for item in list(directory.iterdir()):
-            if keep and item.resolve() == keep:
-                continue
-            if item.is_dir():
-                shutil.rmtree(item, ignore_errors=True)
-            else:
-                try:
-                    item.unlink()
-                except Exception:
-                    pass
+    # Build set of absolute paths to preserve
+    keep: set[Path] = set()
+    for p in [fr_settings, si_settings, proj_dir / "project_meta.json"]:
+        try:
+            if p and str(p) not in ("", ".") and p.exists():
+                keep.add(p.resolve())
+        except Exception:
+            pass
 
-    _clear_dir(fr_out_dir, fr_settings)
-    if si_out_dir.resolve() != fr_out_dir.resolve():
-        _clear_dir(si_out_dir, si_settings)
+    def _wipe_dir(directory: Path) -> None:
+        """Delete all contents of directory except paths in keep."""
+        if not directory.is_dir() or str(directory) in ("", "."):
+            return
+        for item in list(directory.iterdir()):
+            try:
+                if item.resolve() in keep:
+                    continue
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                else:
+                    item.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    # Clear project_dir — removes tool output subdirs + all Crucible JSONL runtime files
+    _wipe_dir(proj_dir)
+
+    # For newer project layouts where siphon lives in a separate top-level directory
+    if (si_out_dir.is_dir() and str(si_out_dir) not in ("", ".") and
+            si_out_dir.resolve() != proj_dir.resolve()):
+        _wipe_dir(si_out_dir)
 
     data = _load_projects()
     p = data["projects"].get(project_id)
