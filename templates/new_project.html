@@ -610,8 +610,17 @@ function submitForm(e) {
   // Include successfully staged spec file IDs
   body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
 
-  // Siphon auth method fields (collected via named form inputs — all present in fd already)
+  // Siphon auth method — set explicitly, then override si_auth_* fields from
+  // the active (visible) group only.  Multiple groups share the same name
+  // attributes (si_auth_username, si_auth_login_url, etc.) and fd.forEach
+  // last-value-wins picks up hidden groups' empty values over the filled ones.
   body.si_auth_method = document.getElementById('siAuthMethod').value;
+  const _activeAuthGrp = document.getElementById('siAuth-' + body.si_auth_method);
+  if (_activeAuthGrp) {
+    _activeAuthGrp.querySelectorAll('input[name^="si_auth"], textarea[name^="si_auth"], select[name^="si_auth"]').forEach(el => {
+      body[el.name] = el.value;
+    });
+  }
 
   fetch('/api/create_project', {
     method:  'POST',
@@ -680,7 +689,10 @@ function _updateSiTestBtn() {
   const urlRaw = (document.getElementById('siTargetUrls')?.value || '').trim();
   let ready = method !== 'none' && urlRaw.length > 0;
   if (ready) {
-    const q = s => (document.querySelector('[name="' + s + '"]')?.value || '').trim();
+    // Scope to the active group so duplicate-named inputs in hidden groups
+    // don't shadow the visible ones.
+    const activeGrp = document.getElementById('siAuth-' + method);
+    const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
     if      (method === 'bearer')              ready = !!q('si_auth_token');
     else if (method === 'basic'  || method === 'digest' || method === 'ntlm') ready = !!q('si_auth_username');
     else if (method === 'apikey')              ready = !!q('si_auth_api_key');
@@ -696,7 +708,10 @@ async function testSiConnection() {
   const urlVal = (document.getElementById('siTargetUrls')?.value || '').trim().split(/[\n,]+/)[0].trim();
   if (!urlVal) { document.getElementById('siAuthTestResult').innerHTML = '<span style="color:#f85149">Enter an API URL first</span>'; return; }
 
-  const q = s => (document.querySelector('[name="' + s + '"]')?.value || '').trim();
+  // Scope to active group — duplicate-named inputs in hidden groups must not
+  // shadow the values the user actually filled in.
+  const activeGrp = document.getElementById('siAuth-' + method);
+  const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
   let ch = {};
   try { ch = JSON.parse(q('si_auth_custom_headers') || '{}'); } catch {}
   const auth = {
