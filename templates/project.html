@@ -868,6 +868,75 @@ function _isImageFile(path) {
   return _IMAGE_EXTS.has(ext);
 }
 
+// ── Evidence beautification ──────────────────────────────────────────────────
+
+function _prettyJson(text) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch(e) { return null; }
+}
+
+function _serializeXmlNode(node, depth) {
+  const pad = '  '.repeat(depth);
+  if (node.nodeType === 3) {          // text node
+    const t = node.textContent.trim();
+    return t ? pad + t + '\n' : '';
+  }
+  if (node.nodeType === 8) {          // comment
+    return pad + '<!-- ' + node.textContent.trim() + ' -->\n';
+  }
+  if (node.nodeType !== 1) return '';  // element only beyond here
+  const tag   = node.tagName;
+  const attrs = Array.from(node.attributes)
+                     .map(a => ` ${a.name}="${a.value}"`)
+                     .join('');
+  const kids  = Array.from(node.childNodes)
+                     .map(c => _serializeXmlNode(c, depth + 1))
+                     .join('');
+  if (!kids.trim()) return `${pad}<${tag}${attrs}/>\n`;
+  return `${pad}<${tag}${attrs}>\n${kids}${pad}</${tag}>\n`;
+}
+
+function _prettyXml(text) {
+  try {
+    const trimmed = text.trim();
+    const doc = new DOMParser().parseFromString(trimmed, 'application/xml');
+    if (doc.querySelector('parsererror')) return null;
+    const decl = trimmed.startsWith('<?xml') ? trimmed.slice(0, trimmed.indexOf('?>') + 2) + '\n' : '';
+    return decl + _serializeXmlNode(doc.documentElement, 0);
+  } catch(e) { return null; }
+}
+
+// Detect the most human-readable format for raw text content.
+// Returns { format: 'json'|'xml'|'text', display: string }
+function _beautifyContent(raw, filePath) {
+  const t = raw.trimStart();
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+
+  // JSON — try content first, then extension
+  if (t.startsWith('{') || t.startsWith('[') || ext === '.json') {
+    const pretty = _prettyJson(raw);
+    if (pretty) return { format: 'json', display: pretty };
+  }
+
+  // XML / HTML — angle-bracket content or known extension
+  if (t.startsWith('<?xml') || ext === '.xml') {
+    const pretty = _prettyXml(raw);
+    if (pretty) return { format: 'xml', display: pretty };
+  }
+
+  // Bare-angle-bracket content that isn't clearly HTML (e.g. API XML responses)
+  if (t.startsWith('<') && !t.toLowerCase().startsWith('<!doctype') && ext !== '.html') {
+    const pretty = _prettyXml(raw);
+    if (pretty) return { format: 'xml', display: pretty };
+  }
+
+  // Fallback: plain text
+  return { format: 'text', display: raw };
+}
+
+// ── Evidence loader ──────────────────────────────────────────────────────────
+
 function loadEvidenceFile(idx, btn) {
   document.querySelectorAll('.evidence-file-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -892,7 +961,12 @@ function loadEvidenceFile(idx, btn) {
     pre.textContent = 'Loading…';
     fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`)
       .then(r => r.json())
-      .then(d => { pre.textContent = d.content || d.error || '(empty)'; })
+      .then(d => {
+        const raw = d.content || d.error || '(empty)';
+        const { format, display } = _beautifyContent(raw, filePath);
+        pre.textContent = display;
+        pre.dataset.format = format;
+      })
       .catch(() => { pre.textContent = '(failed to load)'; });
   }
 }
