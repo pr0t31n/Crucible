@@ -907,8 +907,74 @@ function _prettyXml(text) {
   } catch(e) { return null; }
 }
 
+// HTML-specific void elements (cannot be self-closed in HTML5)
+const _HTML_VOID = new Set(['area','base','br','col','embed','hr','img','input',
+                             'link','meta','param','source','track','wbr']);
+
+function _serializeHtmlNode(node, depth) {
+  const pad = '  '.repeat(depth);
+  if (node.nodeType === 3) {          // text node
+    const t = node.textContent.trim();
+    return t ? pad + t + '\n' : '';
+  }
+  if (node.nodeType === 8) {          // comment
+    return pad + '<!-- ' + node.textContent.trim() + ' -->\n';
+  }
+  if (node.nodeType !== 1) return '';
+  const tag   = node.tagName.toLowerCase();
+  const attrs = Array.from(node.attributes)
+                     .map(a => ` ${a.name}="${a.value}"`)
+                     .join('');
+  if (_HTML_VOID.has(tag)) return `${pad}<${tag}${attrs}>\n`;
+  const kids = Array.from(node.childNodes)
+                    .map(c => _serializeHtmlNode(c, depth + 1))
+                    .join('');
+  if (!kids.trim()) return `${pad}<${tag}${attrs}></${tag}>\n`;
+  return `${pad}<${tag}${attrs}>\n${kids}${pad}</${tag}>\n`;
+}
+
+function _prettyHtml(text) {
+  try {
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    const head = _serializeHtmlNode(doc.head, 1);
+    const body = _serializeHtmlNode(doc.body, 1);
+    return `<!DOCTYPE html>\n<html>\n${head}${body}</html>`.trim() || null;
+  } catch(e) { return null; }
+}
+
+function _prettyCss(text) {
+  try {
+    const out = text
+      .replace(/\s+/g, ' ')                    // collapse whitespace
+      .replace(/\s*\{\s*/g, ' {\n  ')          // open brace + indent
+      .replace(/;\s*(?=[^\}])/g, ';\n  ')      // newline after ; inside rule
+      .replace(/\s*\}\s*/g, '\n}\n')           // close brace on own line
+      .replace(/ +\n/g, '\n')                  // trim trailing spaces
+      .replace(/\n{3,}/g, '\n\n')              // collapse multiple blank lines
+      .trim();
+    return out || null;
+  } catch(e) { return null; }
+}
+
+function _prettyJs(text) {
+  try {
+    // If already reasonably formatted (avg line length < 100), return as-is
+    const lines = text.split('\n');
+    const avgLen = text.length / Math.max(lines.length, 1);
+    if (avgLen < 100 && lines.length > 3) return text;
+    // Basic un-minification: insert newlines at statement/block boundaries
+    const out = text
+      .replace(/([;,])\s*(?=[^\s\n'"`])/g, '$1\n')  // after ; or ,
+      .replace(/\{\s*(?=[^\s\n'"`])/g,  '{\n  ')     // after {
+      .replace(/\s*\}\s*/g,             '\n}\n')      // before }
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return out || null;
+  } catch(e) { return null; }
+}
+
 // Detect the most human-readable format for raw text content.
-// Returns { format: 'json'|'xml'|'text', display: string }
+// Returns { format: 'json'|'xml'|'html'|'css'|'js'|'text', display: string }
 function _beautifyContent(raw, filePath) {
   const t = raw.trimStart();
   const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
@@ -919,14 +985,32 @@ function _beautifyContent(raw, filePath) {
     if (pretty) return { format: 'json', display: pretty };
   }
 
-  // XML / HTML — angle-bracket content or known extension
+  // CSS — extension-only (content detection unreliable)
+  if (ext === '.css') {
+    const pretty = _prettyCss(raw);
+    if (pretty) return { format: 'css', display: pretty };
+  }
+
+  // JavaScript — extension-only
+  if (ext === '.js' || ext === '.mjs') {
+    const pretty = _prettyJs(raw);
+    if (pretty) return { format: 'js', display: pretty };
+  }
+
+  // HTML — doctype/extension
+  if (t.toLowerCase().startsWith('<!doctype') || ext === '.html' || ext === '.htm') {
+    const pretty = _prettyHtml(raw);
+    if (pretty) return { format: 'html', display: pretty };
+  }
+
+  // XML — xml declaration or extension
   if (t.startsWith('<?xml') || ext === '.xml') {
     const pretty = _prettyXml(raw);
     if (pretty) return { format: 'xml', display: pretty };
   }
 
-  // Bare-angle-bracket content that isn't clearly HTML (e.g. API XML responses)
-  if (t.startsWith('<') && !t.toLowerCase().startsWith('<!doctype') && ext !== '.html') {
+  // Bare-angle-bracket content that isn't HTML (e.g. API XML responses)
+  if (t.startsWith('<') && ext !== '.html' && ext !== '.htm') {
     const pretty = _prettyXml(raw);
     if (pretty) return { format: 'xml', display: pretty };
   }
