@@ -22,9 +22,6 @@
                   <span class="proj-client">{{ proj.client_name or '—' }}</span>
                   <span class="proj-date">{{ proj.created }}</span>
                 </div>
-                {% if proj.fr_settings_file or proj.si_settings_file %}
-                <div class="proj-card-path" title="{{ proj.fr_settings_file or proj.si_settings_file }}">{{ proj.fr_settings_file or proj.si_settings_file }}</div>
-                {% endif %}
                 <div class="proj-card-badges">
                   {% if 'fr' in proj.get('tools', ['fr','si']) %}
                   <span class="status-badge status-{{ proj.fr_status or 'idle' }}" title="Fracture">FR</span>
@@ -34,6 +31,12 @@
                   {% endif %}
                 </div>
               </a>
+              {% set cfg_path = proj.fr_settings_file or proj.si_settings_file %}
+              {% if cfg_path %}
+              <button class="proj-card-cfg-btn" title="Project info"
+                data-proj='{{ {"name": proj.name, "client_name": proj.client_name or "", "client_short": proj.client_short or "", "scope": proj.scope or "", "created": proj.created or "", "tools": proj.get("tools", []), "fr_status": proj.fr_status or "idle", "si_status": proj.si_status or "idle", "fr_last_run": proj.fr_last_run or "", "si_last_run": proj.si_last_run or "", "project_dir": proj.project_dir or "", "fr_settings_file": proj.fr_settings_file or "", "si_settings_file": proj.si_settings_file or "", "fracture_output_dir": proj.fracture_output_dir or "", "siphon_output_dir": proj.siphon_output_dir or ""} | tojson }}'
+                onclick="showProjInfo(event, this)" aria-label="Project info">&#x2699;</button>
+              {% endif %}
               <a href="/edit_project/{{ pid }}" class="proj-card-edit-btn" title="Edit engagement">&#x270E;</a>
               <button class="proj-card-clear-btn" title="Clear scan data" onclick="clearProject(event,'{{ pid }}','{{ proj.name|replace("'","\\'") }}')">&#x21BA;</button>
             </div>
@@ -89,6 +92,31 @@
   </section>
 
 </div>
+
+<!-- Project info modal -->
+<div class="modal-overlay hidden" id="projInfoModal" role="dialog" aria-modal="true"
+     onclick="if(event.target===this) closeProjInfoModal()">
+  <div class="modal-box proj-info-modal-box">
+    <div class="modal-title" id="projInfoModalTitle">Project Info</div>
+    <div class="modal-body">
+      <div class="proj-info-path-block">
+        <div class="proj-info-path-row">
+          <span class="proj-info-path-label">Config file</span>
+          <code class="proj-info-path-value" id="projInfoCfgPath"></code>
+        </div>
+        <div class="proj-info-path-row">
+          <span class="proj-info-path-label">Project dir</span>
+          <code class="proj-info-path-value" id="projInfoProjDir"></code>
+        </div>
+      </div>
+      <textarea class="proj-info-detail" id="projInfoDetail" readonly spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="closeProjInfoModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -114,5 +142,56 @@ function clearProject(evt, pid, name) {
       evt.target.title = 'Cleared';
     });
 }
+
+const _SCOPE_LABELS = {
+  webapp: 'Web App Only (Fracture)',
+  api:    'API Only (Siphon)',
+  both:   'Web App + API (Both)',
+};
+
+function showProjInfo(evt, btn) {
+  evt.preventDefault();
+  evt.stopPropagation();
+  const p = JSON.parse(btn.dataset.proj);
+
+  document.getElementById('projInfoModalTitle').textContent = p.name || 'Project Info';
+  document.getElementById('projInfoCfgPath').textContent    = p.fr_settings_file || p.si_settings_file || '—';
+  document.getElementById('projInfoProjDir').textContent    = p.project_dir || '—';
+
+  const tools = (p.tools || []).map(t => t.toUpperCase()).join(', ') || '—';
+  const scope  = _SCOPE_LABELS[p.scope] || p.scope || '—';
+
+  const pad = (label, value) => label.padEnd(20) + (value || '—');
+
+  const lines = [
+    pad('Engagement:',    p.name),
+    pad('Client:',        p.client_name + (p.client_short ? ' (' + p.client_short + ')' : '')),
+    pad('Scope:',         scope),
+    pad('Tools:',         tools),
+    pad('Created:',       p.created),
+    '',
+    pad('FR Status:',     p.fr_status),
+    pad('FR Last Run:',   p.fr_last_run || 'never'),
+    pad('SI Status:',     p.si_status),
+    pad('SI Last Run:',   p.si_last_run || 'never'),
+    '',
+    pad('Project Dir:',   p.project_dir),
+    pad('FR Config:',     p.fr_settings_file || '—'),
+    pad('SI Config:',     p.si_settings_file || '—'),
+    pad('FR Output:',     p.fracture_output_dir || '—'),
+    pad('SI Output:',     p.siphon_output_dir   || '—'),
+  ];
+
+  document.getElementById('projInfoDetail').value = lines.join('\n');
+  document.getElementById('projInfoModal').classList.remove('hidden');
+}
+
+function closeProjInfoModal() {
+  document.getElementById('projInfoModal').classList.add('hidden');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeProjInfoModal();
+});
 </script>
 {% endblock %}
