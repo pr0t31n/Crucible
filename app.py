@@ -1107,8 +1107,7 @@ def on_fr_start(data):
         return emit("fr_error", {"error": "Fracture already running"})
 
     fr_settings_path = proj["fr_settings_file"]
-    cmd = ["sudo", "-S", "-E",
-           "python3", str(FRACTURE_SCRIPT),
+    cmd = [sys.executable, str(FRACTURE_SCRIPT),
            "--settings", fr_settings_path]
 
     try:
@@ -1123,6 +1122,13 @@ def on_fr_start(data):
     env = dict(os.environ)
     env["CRUCIBLE_MANAGED"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
+    # Ensure standard tool directories are in PATH so shutil.which() works in
+    # subprocesses even when launched from a LaunchDaemon with a minimal PATH.
+    _tool_path_dirs = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+    _cur_path = env.get("PATH", "")
+    _extra = ":".join(d for d in _tool_path_dirs if d not in _cur_path.split(":"))
+    if _extra:
+        env["PATH"] = _extra + (":" + _cur_path if _cur_path else "")
 
     try:
         proc = subprocess.Popen(
@@ -1181,8 +1187,7 @@ def on_si_start(data):
         return emit("si_error", {"error": "Siphon already running"})
 
     si_settings_path = proj["si_settings_file"]
-    cmd = ["sudo", "-S", "-E",
-           "python3", str(SIPHON_SCRIPT),
+    cmd = [sys.executable, str(SIPHON_SCRIPT),
            "--settings", si_settings_path]
 
     try:
@@ -1197,6 +1202,13 @@ def on_si_start(data):
     env = dict(os.environ)
     env["CRUCIBLE_MANAGED"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
+    # Ensure standard tool directories are in PATH so shutil.which() works in
+    # subprocesses even when launched from a LaunchDaemon with a minimal PATH.
+    _tool_path_dirs = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+    _cur_path = env.get("PATH", "")
+    _extra = ":".join(d for d in _tool_path_dirs if d not in _cur_path.split(":"))
+    if _extra:
+        env["PATH"] = _extra + (":" + _cur_path if _cur_path else "")
 
     try:
         proc = subprocess.Popen(
