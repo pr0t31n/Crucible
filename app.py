@@ -961,6 +961,17 @@ def api_clear_project(project_id: str):
         p["si_last_run"] = None
         _save_projects(data)
 
+    # Clear all in-memory caches so stale data doesn't persist for the session
+    _all_findings.pop(project_id, None)
+    _buffers.pop(project_id, None)
+    _log_buffers.pop(project_id, None)
+    _err_buffers.pop(project_id, None)
+    _status_cache.pop(project_id, None)
+    ts = _tool_status.get(project_id)
+    if ts:
+        ts["fr"] = "idle"
+        ts["si"] = "idle"
+
     return jsonify({"success": True})
 
 
