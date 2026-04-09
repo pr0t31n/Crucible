@@ -973,8 +973,28 @@ function _prettyJs(text) {
   } catch(e) { return null; }
 }
 
+function _prettyPhp(text) {
+  try {
+    // If already reasonably formatted, return as-is
+    const lines = text.split('\n');
+    const avgLen = text.length / Math.max(lines.length, 1);
+    if (avgLen < 100 && lines.length > 3) return text;
+    // Basic PHP un-minification: newlines at statement/block boundaries
+    // and around PHP open/close tags
+    const out = text
+      .replace(/(<\?php)\s+/gi,          '$1\n')     // newline after <?php
+      .replace(/\?>/g,                   '\n?>\n')    // newlines around ?>
+      .replace(/;\s*(?=[^\s\n'"`\}])/g,  ';\n')      // after ;
+      .replace(/\{\s*(?=[^\s\n])/g,      '{\n  ')    // after {
+      .replace(/\s*\}\s*/g,              '\n}\n')     // before }
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return out || null;
+  } catch(e) { return null; }
+}
+
 // Detect the most human-readable format for raw text content.
-// Returns { format: 'json'|'xml'|'html'|'css'|'js'|'text', display: string }
+// Returns { format: 'json'|'xml'|'html'|'css'|'js'|'php'|'text', display: string }
 function _beautifyContent(raw, filePath) {
   const t = raw.trimStart();
   const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
@@ -995,6 +1015,13 @@ function _beautifyContent(raw, filePath) {
   if (ext === '.js' || ext === '.mjs') {
     const pretty = _prettyJs(raw);
     if (pretty) return { format: 'js', display: pretty };
+  }
+
+  // PHP — extension or <?php opening tag (check before HTML; PHP often embeds HTML)
+  if (ext === '.php' || ext === '.php5' || ext === '.phtml'
+      || t.toLowerCase().startsWith('<?php')) {
+    const pretty = _prettyPhp(raw);
+    if (pretty) return { format: 'php', display: pretty };
   }
 
   // HTML — doctype/extension
