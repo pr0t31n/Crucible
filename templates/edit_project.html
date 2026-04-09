@@ -117,10 +117,11 @@
                    value="{{ fr.scan.project if fr and fr.scan else 'fracture_output' }}">
           </div>
           <div class="form-group span2">
-            <label class="form-label">Target URL</label>
-            <input type="url" name="fr_target_url" class="form-control"
-                   placeholder="https://app.example.com"
-                   value="{{ fr.scan.target_url if fr and fr.scan else '' }}">
+            <label class="form-label">Target URL(s)</label>
+            <textarea name="fr_target_urls" id="frTargetUrls" class="form-control"
+                      rows="3"
+                      placeholder="https://app.example.com&#10;https://app2.example.com&#10;or comma-separated">{% if fr and fr.scan %}{% set _urls = fr.scan.target_urls if fr.scan.target_urls else ([fr.scan.target_url] if fr.scan.target_url else []) %}{{ _urls | join('\n') }}{% endif %}</textarea>
+            <span class="form-hint">One URL per line or comma-separated. Each URL is scanned independently.</span>
           </div>
           <div class="form-group">
             <label class="form-label">Threads</label>
@@ -227,16 +228,46 @@
                    value="{{ si.scan.project if si and si.scan else 'siphon_output' }}">
           </div>
           <div class="form-group span2">
-            <label class="form-label">API Base URL</label>
-            <input type="url" name="si_target_url" class="form-control"
-                   placeholder="https://api.example.com/v1"
-                   value="{{ si.scan.target_url if si and si.scan else '' }}">
+            <label class="form-label">API Base URL(s)</label>
+            <textarea name="si_target_urls" id="siTargetUrls" class="form-control"
+                      rows="3"
+                      placeholder="https://api.example.com/v1&#10;https://api2.example.com/v1&#10;or comma-separated">{% if si and si.scan %}{% set _si_urls = ([si.scan.api_base_url] if si.scan.api_base_url else []) + (si.scan.api_base_urls if si.scan.api_base_urls else []) %}{{ _si_urls | join('\n') }}{% endif %}</textarea>
+            <span class="form-hint">One URL per line or comma-separated. Each URL is scanned independently.</span>
           </div>
           <div class="form-group span2">
-            <label class="form-label">API Spec URL</label>
+            <label class="form-label">Remote API Spec URL</label>
             <input type="url" name="si_api_spec_url" class="form-control"
                    placeholder="https://api.example.com/openapi.json"
                    value="{{ si.scan.api_spec_url if si and si.scan else '' }}">
+            <span class="form-hint">Fetched at scan time</span>
+          </div>
+
+          <!-- Existing spec files -->
+          {% if si and si.scan and si.scan.api_spec_files %}
+          <div class="form-group span2">
+            <label class="form-label">Current Spec Files</label>
+            <div class="spec-file-list">
+              {% for sf in si.scan.api_spec_files %}
+              <div class="spec-file-item ok">
+                <span class="spec-file-status">✓</span>
+                <span class="spec-file-name">{{ sf.split('/')[-1] if sf else '' }}</span>
+                <span class="spec-file-format">saved</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Upload new spec files -->
+          <div class="form-group span2" id="siSpecUploadArea">
+            <label class="form-label">Add Spec File(s)</label>
+            <div class="spec-upload-zone" id="siSpecDropZone">
+              <div class="spec-upload-icon">&#128196;</div>
+              <div class="spec-upload-text">Drop spec files here or <label class="spec-upload-link" for="siSpecFileInput">browse</label></div>
+              <div class="spec-upload-hint">OpenAPI JSON/YAML &bull; Swagger &bull; GraphQL SDL &bull; Postman Collection &bull; Insomnia Export &bull; HAR &mdash; max 5 MB each</div>
+              <input type="file" id="siSpecFileInput" accept=".json,.yaml,.yml,.graphql,.gql" multiple style="display:none">
+            </div>
+            <div id="siSpecFileList" class="spec-file-list"></div>
           </div>
           <div class="form-group">
             <label class="form-label">Threads</label>
@@ -327,18 +358,157 @@
   </form>
 </div>
 
+<style>
+.spec-upload-zone {
+  border: 2px dashed var(--border-color, #444);
+  border-radius: 6px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  background: var(--bg-secondary, #1a1a2e);
+}
+.spec-upload-zone.drag-over { border-color: #4a9eff; background: rgba(74,158,255,.06); }
+.spec-upload-icon { font-size: 2rem; margin-bottom: .4rem; }
+.spec-upload-text { font-size: .9rem; color: var(--text-primary, #e0e0e0); }
+.spec-upload-link { color: #4a9eff; cursor: pointer; text-decoration: underline; }
+.spec-upload-hint { font-size: .75rem; color: var(--text-muted, #888); margin-top: .35rem; }
+.spec-file-list { margin-top: .6rem; display: flex; flex-direction: column; gap: .4rem; }
+.spec-file-item {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .45rem .7rem; border-radius: 5px;
+  font-size: .82rem;
+  border: 1px solid var(--border-color, #333);
+}
+.spec-file-item.uploading { opacity: .65; }
+.spec-file-item.ok  { border-color: #2ea04426; background: #2ea04410; }
+.spec-file-item.err { border-color: #f8514926; background: #f8514910; }
+.spec-file-status { font-size: 1rem; flex-shrink: 0; }
+.spec-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spec-file-format { font-size: .73rem; color: var(--text-muted, #888); flex-shrink: 0; }
+.spec-file-remove { cursor: pointer; color: var(--text-muted, #888); font-size: 1rem; flex-shrink: 0; line-height: 1; }
+.spec-file-remove:hover { color: #f85149; }
+</style>
+
 <script>
+// ─── Spec file upload state ───────────────────────────────────────────────────
+const _specFiles = [];
+const ALLOWED_EXTS = new Set(['.json', '.yaml', '.yml', '.graphql', '.gql']);
+const MAX_BYTES = 5 * 1024 * 1024;
+
+function _ext(name) { const i = name.lastIndexOf('.'); return i >= 0 ? name.slice(i).toLowerCase() : ''; }
+function _fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/(1024*1024)).toFixed(1) + ' MB';
+}
+function _esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function _clientValidate(file) {
+  const ext = _ext(file.name);
+  if (!ALLOWED_EXTS.has(ext)) return `File type "${ext}" not allowed`;
+  if (file.size > MAX_BYTES) return `File too large (${_fmtSize(file.size)} > 5 MB)`;
+  return null;
+}
+
+async function _uploadSpec(file) {
+  const clientErr = _clientValidate(file);
+  const el = document.createElement('div');
+  el.className = 'spec-file-item uploading';
+  el.innerHTML = `<span class="spec-file-status">⏳</span>
+    <span class="spec-file-name">${_esc(file.name)}</span>
+    <span class="spec-file-format">${_fmtSize(file.size)}</span>
+    <span class="spec-file-remove" title="Remove">✕</span>`;
+  document.getElementById('siSpecFileList').appendChild(el);
+  const entry = { fileId: null, filename: file.name, format: '', status: 'uploading', element: el };
+  _specFiles.push(entry);
+  el.querySelector('.spec-file-remove').onclick = () => _removeSpec(entry);
+
+  if (clientErr) {
+    entry.status = 'error';
+    el.className = 'spec-file-item err';
+    el.querySelector('.spec-file-status').textContent = '✕';
+    el.querySelector('.spec-file-format').textContent = clientErr;
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/upload_spec_temp', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok || d.error) {
+      entry.status = 'error';
+      el.className = 'spec-file-item err';
+      el.querySelector('.spec-file-status').textContent = '✕';
+      el.querySelector('.spec-file-format').textContent = d.error || 'Upload failed';
+    } else {
+      entry.fileId = d.file_id;
+      entry.format = d.format;
+      entry.status = 'ok';
+      el.className = 'spec-file-item ok';
+      el.querySelector('.spec-file-status').textContent = '✓';
+      el.querySelector('.spec-file-format').textContent = d.format;
+    }
+  } catch(e) {
+    entry.status = 'error';
+    el.className = 'spec-file-item err';
+    el.querySelector('.spec-file-status').textContent = '✕';
+    el.querySelector('.spec-file-format').textContent = 'Network error';
+  }
+  _updateSubmitBtn();
+}
+
+function _removeSpec(entry) {
+  const idx = _specFiles.indexOf(entry);
+  if (idx >= 0) _specFiles.splice(idx, 1);
+  entry.element.remove();
+  _updateSubmitBtn();
+}
+
+function _updateSubmitBtn() {
+  const uploading = _specFiles.some(f => f.status === 'uploading');
+  const btn = document.getElementById('submitBtn');
+  if (!btn._originalDisabled) {
+    btn.disabled = uploading;
+    btn.textContent = uploading ? 'Uploading spec\u2026' : 'Apply Changes';
+  }
+}
+
+(function() {
+  const zone = document.getElementById('siSpecDropZone');
+  const inp  = document.getElementById('siSpecFileInput');
+  if (!zone || !inp) return;
+  zone.addEventListener('click', () => inp.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    [...(e.dataTransfer.files||[])].forEach(_uploadSpec);
+  });
+  inp.addEventListener('change', () => { [...(inp.files||[])].forEach(_uploadSpec); inp.value=''; });
+})();
+
+// ─── Form submission ──────────────────────────────────────────────────────────
 function submitForm(e) {
   e.preventDefault();
-  const btn  = document.getElementById('submitBtn');
+  const pending = _specFiles.filter(f => f.status === 'uploading');
+  if (pending.length) { alert('Please wait for spec uploads to complete.'); return; }
+  const failed = _specFiles.filter(f => f.status === 'error');
+  if (failed.length && !confirm(`${failed.length} spec file(s) failed. Continue without them?`)) return;
+
+  const btn = document.getElementById('submitBtn');
+  btn._originalDisabled = true;
   btn.disabled = true;
   btn.textContent = 'Saving\u2026';
 
-  const fd   = new FormData(e.target);
+  const fd = new FormData(e.target);
   const body = {};
   fd.forEach((v, k) => body[k] = v);
   body.include_fr = document.getElementById('chkFR').checked;
   body.include_si = document.getElementById('chkSI').checked;
+  body.fr_target_urls = document.getElementById('frTargetUrls').value;
+  body.si_target_urls = document.getElementById('siTargetUrls').value;
+  body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
 
   fetch('/api/update_project/{{ project_id }}', {
     method:  'POST',
@@ -348,9 +518,18 @@ function submitForm(e) {
   .then(r => r.json())
   .then(d => {
     if (d.success) window.location = `/project/${d.project_id}`;
-    else { alert(d.error || 'Error'); btn.disabled = false; btn.textContent = 'Apply Changes'; }
+    else {
+      alert(d.error || 'Error');
+      btn.disabled = false;
+      btn._originalDisabled = false;
+      btn.textContent = 'Apply Changes';
+    }
   })
-  .catch(() => { btn.disabled = false; btn.textContent = 'Apply Changes'; });
+  .catch(() => {
+    btn.disabled = false;
+    btn._originalDisabled = false;
+    btn.textContent = 'Apply Changes';
+  });
 }
 
 function updateToolSections() {
@@ -361,7 +540,6 @@ document.getElementById('chkFR').addEventListener('change', updateToolSections);
 document.getElementById('chkSI').addEventListener('change', updateToolSections);
 updateToolSections();
 
-// Scope -> tool checkboxes + section visibility
 document.querySelector('select[name="scope"]').addEventListener('change', function() {
   const v = this.value;
   if (v === 'webapp') {
@@ -378,7 +556,6 @@ document.querySelector('select[name="scope"]').addEventListener('change', functi
 });
 
 function switchSettingsTab(panelId, btn) {
-  // Find all tab panels and buttons in the same section
   const section = btn.closest('.form-section');
   section.querySelectorAll('.settings-tab-panel').forEach(p => p.classList.remove('active'));
   section.querySelectorAll('.settings-tab').forEach(b => b.classList.remove('active'));
@@ -386,7 +563,6 @@ function switchSettingsTab(panelId, btn) {
   btn.classList.add('active');
 }
 
-// Date masking MM/DD/YYYY
 document.querySelectorAll('.date-input').forEach(el => {
   el.addEventListener('input', function() {
     let v = this.value.replace(/\D/g, '').slice(0, 8);

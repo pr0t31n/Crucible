@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.2.7"
+VERSION = "1.3.0"
 
 import json
 import os
@@ -44,6 +44,73 @@ FRACTURE_SCRIPT = Path("/Users/pr0t31n/Fracture/fracture.py")
 SIPHON_SCRIPT   = Path("/Users/pr0t31n/Siphon/siphon.py")
 
 PROJECTS_DIR.mkdir(exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Spec-file upload staging
+# ---------------------------------------------------------------------------
+SPEC_STAGING_DIR = CRUCIBLE_DIR / "spec_staging"
+SPEC_STAGING_DIR.mkdir(exist_ok=True)
+
+_ALLOWED_SPEC_EXTS: frozenset = frozenset({".json", ".yaml", ".yml", ".graphql", ".gql"})
+_MAX_SPEC_BYTES: int = 5 * 1024 * 1024  # 5 MB
+
+
+def _validate_spec_content(content: bytes, ext: str) -> tuple:
+    """Validate API spec content.  Returns (format_name, error_string_or_None)."""
+    try:
+        text = content.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return ("unknown", "File must be UTF-8 encoded text")
+
+    if ext == ".json":
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            return ("unknown", f"Invalid JSON: {exc}")
+        if not isinstance(data, dict):
+            return ("unknown", "JSON root must be an object")
+        if str(data.get("openapi", "")).startswith("3"):
+            return ("openapi3", None)
+        if data.get("swagger") == "2.0":
+            return ("swagger2", None)
+        info = data.get("info", {})
+        if isinstance(info, dict) and (
+            "_postman_id" in info or "postman" in info.get("schema", "").lower()
+        ):
+            return ("postman", None)
+        if "__schema" in data or (
+            isinstance(data.get("data"), dict) and "__schema" in data["data"]
+        ):
+            return ("graphql_introspection", None)
+        if data.get("_type") == "export" and "resources" in data:
+            return ("insomnia", None)
+        if isinstance(data.get("log"), dict) and "entries" in data["log"]:
+            return ("har", None)
+        if "paths" in data:
+            return ("openapi_json", None)
+        return ("json", None)
+
+    if ext in (".yaml", ".yml"):
+        try:
+            import yaml as _yaml
+            data = _yaml.safe_load(text)
+            if not isinstance(data, dict):
+                return ("unknown", "YAML root must be a mapping")
+        except Exception as exc:
+            return ("unknown", f"Invalid YAML: {exc}")
+        if str(data.get("openapi", "")).startswith("3"):
+            return ("openapi3_yaml", None)
+        if data.get("swagger") == "2.0":
+            return ("swagger2_yaml", None)
+        return ("yaml", None)
+
+    if ext in (".graphql", ".gql"):
+        import re as _re
+        if not _re.search(r'\btype\s+\w+', text):
+            return ("unknown", "Does not appear to be a valid GraphQL schema")
+        return ("graphql_sdl", None)
+
+    return ("unknown", None)
 
 # ---------------------------------------------------------------------------
 # Protocol tokens emitted by Fracture/Siphon when running under Crucible
@@ -144,7 +211,7 @@ SI_DEFAULTS: dict = {
         "project": "siphon_output",
         "target_url": "",
         "target_urls": [],
-        "api_spec_url": "", "api_spec_file": "",
+        "api_spec_url": "", "api_spec_file": "", "api_spec_files": [],
         "threads": 20, "timeout": 10,
         "user_agent": "Mozilla/5.0 (compatible; Siphon/1.0; Security Assessment)",
         "extra_headers": {}, "proxy": "", "verify_ssl": False,
@@ -199,6 +266,49 @@ def _emit_line(project_id: str, tool: str, text: str, stream: str = "stdout") ->
 
 def _deepcopy_template(t: dict) -> dict:
     return json.loads(json.dumps(t))
+
+
+def _parse_url_list(raw: str) -> list:
+    """Parse a comma or newline-delimited string of URLs into a deduplicated list."""
+    urls = []
+    seen: set = set()
+    for part in re.split(r'[,\n]+', raw or ""):
+        u = part.strip().rstrip("/")
+        if u and u not in seen:
+            seen.add(u)
+            urls.append(u)
+    return urls
+
+
+def _commit_staged_spec_files(file_ids: list, dest_dir: Path) -> list:
+    """Move staged spec files to dest_dir and return their absolute paths.
+
+    file_ids is a list of UUIDs returned by /api/upload_spec_temp.
+    Files not found in staging are silently skipped.
+    """
+    paths: list = []
+    if not file_ids:
+        return paths
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return paths
+    for fid in file_ids:
+        fid = str(fid).strip()
+        if not fid:
+            continue
+        # Find the staged file (any allowed extension)
+        for ext in _ALLOWED_SPEC_EXTS:
+            staged = SPEC_STAGING_DIR / f"{fid}{ext}"
+            if staged.exists():
+                dest = dest_dir / staged.name
+                try:
+                    shutil.move(str(staged), str(dest))
+                    paths.append(str(dest))
+                except Exception:
+                    pass
+                break
+    return paths
 
 # ---------------------------------------------------------------------------
 # JSONL persistence helpers
@@ -462,6 +572,59 @@ def change_password():
                            csrf_token=_auth.generate_csrf())
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Spec file upload — staging area (used before project creation/update)
+# ---------------------------------------------------------------------------
+@app.route("/api/upload_spec_temp", methods=["POST"])
+def api_upload_spec_temp():
+    """Stage an API spec file upload with real-time format validation.
+
+    Security controls:
+    - Extension allowlist (.json, .yaml, .yml, .graphql, .gql)
+    - Hard 5 MB size cap (read-limited before save)
+    - UTF-8 content enforcement
+    - secure_filename() prevents path traversal
+    - UUID-prefixed filenames prevent collision/guessing
+    - Content validated (JSON parsed, YAML parsed, GraphQL pattern checked)
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    f = request.files["file"]
+    original_name = (f.filename or "").strip()
+    if not original_name:
+        return jsonify({"error": "Empty filename"}), 400
+
+    safe_name = secure_filename(original_name)
+    ext = Path(safe_name).suffix.lower()
+    if ext not in _ALLOWED_SPEC_EXTS:
+        return jsonify({
+            "error": f"File type '{ext}' not allowed. "
+                     f"Allowed: {', '.join(sorted(_ALLOWED_SPEC_EXTS))}"
+        }), 400
+
+    # Read content with hard cap (read one byte over limit to detect oversize)
+    content = f.read(_MAX_SPEC_BYTES + 1)
+    if len(content) > _MAX_SPEC_BYTES:
+        return jsonify({"error": f"File exceeds maximum size of {_MAX_SPEC_BYTES // 1024 // 1024} MB"}), 400
+
+    fmt, err = _validate_spec_content(content, ext)
+    if err:
+        return jsonify({"error": f"Invalid spec file: {err}"}), 400
+
+    file_id = str(uuid.uuid4())
+    staged_path = SPEC_STAGING_DIR / f"{file_id}{ext}"
+    staged_path.write_bytes(content)
+
+    return jsonify({
+        "file_id":  file_id,
+        "filename": safe_name,
+        "format":   fmt,
+        "size":     len(content),
+        "ext":      ext,
+    })
+
+
 # Nexus status — unauthenticated
 # ---------------------------------------------------------------------------
 @app.route("/api/nexus-status")
@@ -593,18 +756,31 @@ def api_create_project():
     fr = _deepcopy_template(FR_DEFAULTS)
     for k in fr["engagement"]:
         fr["engagement"][k] = body.get(k, "")
-    fr["scan"]["project"]     = str(fr_output_dir)
-    fr["scan"]["target_url"]  = body.get("fr_target_url", "")
-    raw_urls = body.get("fr_target_urls", "")
-    fr["scan"]["target_urls"] = [u.strip() for u in raw_urls.splitlines() if u.strip()]
+    fr["scan"]["project"] = str(fr_output_dir)
+    # Multi-URL: textarea sends comma/newline delimited URLs
+    fr_urls_raw = body.get("fr_target_urls", "") or body.get("fr_target_url", "")
+    fr_url_list = _parse_url_list(fr_urls_raw)
+    fr["scan"]["target_url"]  = fr_url_list[0] if fr_url_list else ""
+    fr["scan"]["target_urls"] = fr_url_list
 
     # Build Siphon settings — output goes to its own structured directory
     si = _deepcopy_template(SI_DEFAULTS)
     for k in si["engagement"]:
         si["engagement"][k] = body.get(k, "")
-    si["scan"]["project"]    = str(si_output_dir)
-    si["scan"]["target_url"] = body.get("si_target_url", "")
-    si["scan"]["api_spec_url"] = body.get("si_api_spec_url", "")
+    si["scan"]["project"] = str(si_output_dir)
+    # Multi-URL: textarea sends comma/newline delimited URLs
+    si_urls_raw = body.get("si_target_urls", "") or body.get("si_target_url", "")
+    si_url_list = _parse_url_list(si_urls_raw)
+    si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
+    si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
+    si["scan"]["api_spec_url"]  = body.get("si_api_spec_url", "")
+
+    # Move staged spec files into the siphon output directory
+    spec_dir = si_output_dir / "spec_files"
+    spec_file_paths = _commit_staged_spec_files(
+        body.get("si_api_spec_file_ids", []), spec_dir
+    )
+    si["scan"]["api_spec_files"] = spec_file_paths
 
     fr_path = fr_output_dir / "fr_settings.json"
     si_path = si_output_dir / "si_settings.json"
@@ -669,8 +845,12 @@ def api_update_project(project_id: str):
                 fr["engagement"][k] = body[k]
         if body.get("fr_project_name"):
             fr["scan"]["project"] = body["fr_project_name"]
-        if body.get("fr_target_url") is not None:
-            fr["scan"]["target_url"] = body["fr_target_url"]
+        # Multi-URL textarea
+        if body.get("fr_target_urls") is not None or body.get("fr_target_url") is not None:
+            fr_urls_raw = body.get("fr_target_urls", "") or body.get("fr_target_url", "")
+            fr_url_list = _parse_url_list(fr_urls_raw)
+            fr["scan"]["target_url"]  = fr_url_list[0] if fr_url_list else ""
+            fr["scan"]["target_urls"] = fr_url_list
         fr_path.write_text(json.dumps(fr, indent=2))
     except Exception:
         pass
@@ -685,10 +865,22 @@ def api_update_project(project_id: str):
                 si["engagement"][k] = body[k]
         if body.get("si_project_name"):
             si["scan"]["project"] = body["si_project_name"]
-        if body.get("si_target_url") is not None:
-            si["scan"]["target_url"] = body["si_target_url"]
+        # Multi-URL textarea
+        if body.get("si_target_urls") is not None or body.get("si_target_url") is not None:
+            si_urls_raw = body.get("si_target_urls", "") or body.get("si_target_url", "")
+            si_url_list = _parse_url_list(si_urls_raw)
+            si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
+            si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
         if body.get("si_api_spec_url") is not None:
             si["scan"]["api_spec_url"] = body["si_api_spec_url"]
+        # Commit any newly staged spec files
+        spec_file_ids = body.get("si_api_spec_file_ids", [])
+        if spec_file_ids:
+            si_out_dir = Path(proj.get("siphon_output_dir", si["scan"].get("project", "")))
+            spec_dir = si_out_dir / "spec_files"
+            new_paths = _commit_staged_spec_files(spec_file_ids, spec_dir)
+            existing = si["scan"].get("api_spec_files", [])
+            si["scan"]["api_spec_files"] = existing + [p for p in new_paths if p not in existing]
         si_path.write_text(json.dumps(si, indent=2))
     except Exception:
         pass
