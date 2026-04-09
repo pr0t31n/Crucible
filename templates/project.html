@@ -746,10 +746,21 @@ function _srcPills(sources) {
 function _owaspPill(f) {
   const owasp = (f.owasp || '').trim();
   if (!owasp) return '';
+  const url = f.owasp_url || '';
+
+  // OWASP API Security Top 10 (Siphon): API1:2023, API2:2023, …
+  const mApi = owasp.match(/\bAPI(\d+)/i);
+  if (mApi) {
+    const num  = parseInt(mApi[1], 10);
+    const code = `API${num}`;
+    const payload = escHtml(JSON.stringify({code, name: owasp, url}));
+    return `<button class="owasp-pill owasp-api${num}" onclick="event.stopPropagation();showOwaspModal(${payload})" title="${escHtml(owasp)}">${code}</button>`;
+  }
+
+  // OWASP Web Top 10 (Fracture): A01:2025, A02:2025, …
   const m = owasp.match(/A(\d+)/i);
-  if (!m) return `<span class="owasp-pill owasp-unknown" title="${escHtml(owasp)}">${escHtml(owasp.slice(0,3))}</span>`;
+  if (!m) return `<span class="owasp-pill owasp-unknown" title="${escHtml(owasp)}">${escHtml(owasp.slice(0,4))}</span>`;
   const code = `A${m[1].padStart(2,'0')}`;
-  const url  = f.owasp_url || '';
   const payload = escHtml(JSON.stringify({code, name: owasp, url}));
   return `<button class="owasp-pill owasp-${code.toLowerCase()}" onclick="event.stopPropagation();showOwaspModal(${payload})" title="${escHtml(owasp)}">${code}</button>`;
 }
