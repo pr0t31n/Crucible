@@ -129,6 +129,7 @@
             <th class="col-title">Finding</th>
             <th class="col-host">Host / URL</th>
             <th class="col-port">Port</th>
+            <th class="col-owasp">OWASP</th>
             <th class="col-cves">CVEs</th>
             <th class="col-sources">Sources</th>
             <th class="col-evidence">Evidence</th>
@@ -136,7 +137,7 @@
           </tr>
         </thead>
         <tbody id="findingsTbody">
-          <tr class="empty-row"><td colspan="9">No findings yet — start a tool to begin.</td></tr>
+          <tr class="empty-row"><td colspan="10">No findings yet — start a tool to begin.</td></tr>
         </tbody>
       </table>
     </div>
@@ -451,10 +452,28 @@
       <div class="evidence-file-tabs" id="evidenceFileTabs"></div>
       <div class="evidence-content">
         <pre class="evidence-pre" id="evidencePre"></pre>
+        <div class="evidence-img-wrap hidden" id="evidenceImgWrap">
+          <img class="evidence-img" id="evidenceImg" alt="Evidence screenshot" />
+        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeEvidenceModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- OWASP detail modal -->
+<div class="modal-overlay hidden" id="owaspModal" role="dialog" aria-modal="true"
+     onclick="if(event.target===this) closeOwaspModal()">
+  <div class="modal-box owasp-modal-box">
+    <div class="modal-title" id="owaspModalCode">OWASP</div>
+    <div class="modal-body owasp-modal-body">
+      <div class="owasp-category-name" id="owaspModalName"></div>
+      <a class="owasp-modal-link" id="owaspModalLink" target="_blank" rel="noopener noreferrer">View on OWASP.org &#8599;</a>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="closeOwaspModal()">Close</button>
     </div>
   </div>
 </div>
@@ -724,6 +743,39 @@ function _srcPills(sources) {
   return `<div class="src-pills">${srcs.map(s => `<span class="src-pill">${escHtml(s)}</span>`).join('')}</div>`;
 }
 
+function _owaspPill(f) {
+  const owasp = (f.owasp || '').trim();
+  if (!owasp) return '';
+  const m = owasp.match(/A(\d+)/i);
+  if (!m) return `<span class="owasp-pill owasp-unknown" title="${escHtml(owasp)}">${escHtml(owasp.slice(0,3))}</span>`;
+  const code = `A${m[1].padStart(2,'0')}`;
+  const url  = f.owasp_url || '';
+  const payload = escHtml(JSON.stringify({code, name: owasp, url}));
+  return `<button class="owasp-pill owasp-${code.toLowerCase()}" onclick="event.stopPropagation();showOwaspModal(${payload})" title="${escHtml(owasp)}">${code}</button>`;
+}
+
+function showOwaspModal(dataOrStr) {
+  const d = typeof dataOrStr === 'string' ? JSON.parse(dataOrStr) : dataOrStr;
+  document.getElementById('owaspModalCode').textContent = d.code || 'OWASP';
+  document.getElementById('owaspModalName').textContent = d.name || '';
+  const link = document.getElementById('owaspModalLink');
+  if (d.url) {
+    link.href = d.url;
+    link.style.display = '';
+  } else {
+    link.style.display = 'none';
+  }
+  document.getElementById('owaspModal').classList.remove('hidden');
+}
+
+function closeOwaspModal() {
+  document.getElementById('owaspModal').classList.add('hidden');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeOwaspModal(); closeDetailsModal(); closeEvidenceModal(); }
+});
+
 function renderFindings() {
   const filtered = _getFilteredFindings();
   filtered.sort((a,b) => RISK_ORDER.indexOf((a.risk||'INFO').toUpperCase()) - RISK_ORDER.indexOf((b.risk||'INFO').toUpperCase()));
@@ -738,7 +790,7 @@ function renderFindings() {
   document.getElementById('findBtnNext').disabled = _findPage >= pages - 1;
 
   if (!slice.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="9">${allFindings.length ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.'}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="10">${allFindings.length ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.'}</td></tr>`;
     return;
   }
 
@@ -756,6 +808,7 @@ function renderFindings() {
       <td class="col-title-cell">${escHtml(f.title || f.detail || '')}</td>
       <td class="mono-sm">${escHtml(host)}</td>
       <td>${f.port || ''}</td>
+      <td>${_owaspPill(f)}</td>
       <td>${cves}</td>
       <td>${_srcPills(f.sources)}</td>
       <td>${evidenceBtn}</td>
@@ -808,15 +861,40 @@ function viewEvidence(files, title) {
   document.getElementById('evidenceModal').classList.remove('hidden');
 }
 
+const _IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+
+function _isImageFile(path) {
+  const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+  return _IMAGE_EXTS.has(ext);
+}
+
 function loadEvidenceFile(idx, btn) {
   document.querySelectorAll('.evidence-file-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  const pre = document.getElementById('evidencePre');
-  pre.textContent = 'Loading…';
-  fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(_evidenceFiles[idx])}`)
-    .then(r => r.json())
-    .then(d => { pre.textContent = d.content || d.error || '(empty)'; })
-    .catch(() => { pre.textContent = '(failed to load)'; });
+
+  const pre     = document.getElementById('evidencePre');
+  const imgWrap = document.getElementById('evidenceImgWrap');
+  const img     = document.getElementById('evidenceImg');
+  const filePath = _evidenceFiles[idx];
+
+  if (_isImageFile(filePath)) {
+    // Render as image via the binary serve endpoint
+    pre.classList.add('hidden');
+    imgWrap.classList.remove('hidden');
+    img.src = '';
+    img.alt = 'Loading…';
+    img.src = `/api/file_serve/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`;
+    img.onerror = () => { img.alt = '(failed to load image)'; };
+    img.onload  = () => { img.alt = filePath.split('/').pop(); };
+  } else {
+    imgWrap.classList.add('hidden');
+    pre.classList.remove('hidden');
+    pre.textContent = 'Loading…';
+    fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`)
+      .then(r => r.json())
+      .then(d => { pre.textContent = d.content || d.error || '(empty)'; })
+      .catch(() => { pre.textContent = '(failed to load)'; });
+  }
 }
 
 function exportFindingsCSV() {

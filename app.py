@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.2.2"
+VERSION = "1.2.4"
 
 import json
 import os
@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # Flask — https://github.com/pallets/flask
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session, url_for
 # Flask-SocketIO — https://github.com/miguelgrinberg/Flask-SocketIO
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.utils import secure_filename
@@ -878,6 +878,35 @@ def api_file_content(project_id: str):
         # Cap at 512 KB to avoid sending huge outputs to the browser
         content = target.read_text(encoding="utf-8", errors="replace")[:524288]
         return jsonify({"path": str(target), "content": content})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/file_serve/<project_id>")
+def api_file_serve(project_id: str):
+    """Serve a binary evidence file (e.g. screenshot PNG) directly.
+
+    Validates that the requested path is within the project directory to
+    prevent directory-traversal attacks.
+    """
+    import mimetypes
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "project not found"}), 404
+
+    raw_path = request.args.get("path", "").strip()
+    if not raw_path:
+        return jsonify({"error": "path required"}), 400
+
+    try:
+        target_path  = Path(raw_path).resolve()
+        project_dir  = Path(proj["project_dir"]).resolve()
+        if not str(target_path).startswith(str(project_dir)):
+            return jsonify({"error": "access denied"}), 403
+        if not target_path.exists() or not target_path.is_file():
+            return jsonify({"error": "file not found"}), 404
+        mime_type, _ = mimetypes.guess_type(str(target_path))
+        return send_file(str(target_path), mimetype=mime_type or "application/octet-stream")
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
