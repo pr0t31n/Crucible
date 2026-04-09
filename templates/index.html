@@ -32,6 +32,7 @@
                 </div>
               </a>
               <a href="/edit_project/{{ pid }}" class="proj-card-edit-btn" title="Edit engagement">&#x270E;</a>
+              <button class="proj-card-clear-btn" title="Clear scan data" onclick="clearProject(event,'{{ pid }}','{{ proj.name|replace("'","\\'") }}')">&#x21BA;</button>
             </div>
             {% endfor %}
           </div>
@@ -85,4 +86,30 @@
   </section>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function clearProject(evt, pid, name) {
+  evt.preventDefault();
+  evt.stopPropagation();
+  if (!confirm(
+    'Clear all scan data for "' + name + '"?\n\n' +
+    'This will permanently delete all findings, logs, and output files.\n' +
+    'The engagement config (targets, credentials, phase settings) will be preserved.\n\n' +
+    'This cannot be undone.'
+  )) return;
+
+  fetch('/api/clear_project/' + pid, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) return;
+      const row = evt.target.closest('.proj-card-row');
+      row.querySelectorAll('.status-badge').forEach(b => {
+        b.className = b.className.replace(/\bstatus-\S+/, 'status-idle');
+      });
+      evt.target.title = 'Cleared';
+    });
+}
+</script>
 {% endblock %}
