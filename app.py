@@ -6,13 +6,14 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 
 import json
 import os
 import platform
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -917,6 +918,49 @@ def api_delete_project(project_id: str):
     data = _load_projects()
     data["projects"].pop(project_id, None)
     _save_projects(data)
+    return jsonify({"success": True})
+
+
+@app.route("/api/clear_project/<project_id>", methods=["POST"])
+def api_clear_project(project_id: str):
+    """Clear all scan data for an engagement, preserving fr_settings.json / si_settings.json."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    fr_settings = Path(proj.get("fr_settings_file", ""))
+    si_settings = Path(proj.get("si_settings_file", ""))
+    fr_out_dir  = Path(proj.get("fracture_output_dir", ""))
+    si_out_dir  = Path(proj.get("siphon_output_dir", ""))
+
+    def _clear_dir(directory: Path, keep_file: Path) -> None:
+        if not directory.is_dir():
+            return
+        keep = keep_file.resolve() if keep_file.exists() else None
+        for item in list(directory.iterdir()):
+            if keep and item.resolve() == keep:
+                continue
+            if item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+            else:
+                try:
+                    item.unlink()
+                except Exception:
+                    pass
+
+    _clear_dir(fr_out_dir, fr_settings)
+    if si_out_dir.resolve() != fr_out_dir.resolve():
+        _clear_dir(si_out_dir, si_settings)
+
+    data = _load_projects()
+    p = data["projects"].get(project_id)
+    if p:
+        p["fr_status"]   = "idle"
+        p["si_status"]   = "idle"
+        p["fr_last_run"] = None
+        p["si_last_run"] = None
+        _save_projects(data)
+
     return jsonify({"success": True})
 
 
