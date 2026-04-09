@@ -182,40 +182,234 @@
           <div id="siSpecFileList" class="spec-file-list"></div>
         </div>
 
+        <!-- Auth method selector + test button -->
+        <div class="form-group span2">
+          <label class="form-label">API Authentication Method</label>
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <select name="si_auth_method" class="form-control" id="siAuthMethod"
+                    onchange="siAuthMethodChanged()" style="flex:1;min-width:260px">
+              <option value="none">No Authentication</option>
+              <option value="bearer">Bearer Token  (Authorization: Bearer …)</option>
+              <option value="basic">HTTP Basic Auth  (username / password)</option>
+              <option value="digest">HTTP Digest Auth  (username / password)</option>
+              <option value="apikey">API Key  (custom header or query param)</option>
+              <option value="cookie_login">Cookie Login  — POST credentials → session cookies</option>
+              <option value="token_login">Token Login  — POST credentials → JSON token response</option>
+              <option value="oauth2_client_creds">OAuth2 Client Credentials  (machine-to-machine)</option>
+              <option value="header_creds">Custom Credential Headers  (static key-value pairs)</option>
+              <option value="ntlm">NTLM / Windows Auth  (Active Directory)</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-ghost" id="siAuthTestBtn"
+                    onclick="testSiConnection()" disabled
+                    title="Fill in auth fields and API URL, then click to test">Test Connection</button>
+            <span id="siAuthTestResult" style="font-size:.82rem"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Bearer ──────────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-bearer" style="display:none;margin-top:.5rem">
         <div class="form-group">
-          <label class="form-label">Authenticated Testing</label>
-          <select name="si_auth_enabled" class="form-control" id="siAuthEnabled">
-            <option value="0">No — unauthenticated</option>
-            <option value="1">Yes — provide credentials</option>
+          <label class="form-label">Token</label>
+          <input type="password" name="si_auth_token" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()"
+                 placeholder="eyJhbGciOiJ…">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Type</label>
+          <input type="text" name="si_auth_token_type" class="form-control"
+                 value="Bearer" placeholder="Bearer">
+          <span class="form-hint">Prefix used in Authorization header</span>
+        </div>
+      </div>
+
+      <!-- ── Basic / Digest / NTLM ───────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-basic" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control"
+                 autocomplete="new-password">
+        </div>
+      </div>
+      <div class="si-auth-group form-grid" id="siAuth-digest" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control"
+                 autocomplete="new-password">
+        </div>
+      </div>
+
+      <!-- ── API Key ─────────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-apikey" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input type="password" name="si_auth_api_key" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Header Name</label>
+          <input type="text" name="si_auth_api_key_header" class="form-control"
+                 value="X-API-Key" placeholder="X-API-Key">
+          <span class="form-hint">Leave blank to use query param instead</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Query Param Name <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_api_key_query" class="form-control"
+                 placeholder="api_key">
+        </div>
+      </div>
+
+      <!-- ── Cookie Login ────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-cookie_login" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Login URL <span class="req">*</span></label>
+          <input type="url" name="si_auth_login_url" class="form-control"
+                 oninput="_updateSiTestBtn()"
+                 placeholder="https://api.example.com/api/auth/login">
+          <span class="form-hint">Endpoint to POST credentials to. Cookies from the response are used for all subsequent requests.</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">Login Request Body (JSON)</label>
+          <textarea name="si_auth_login_data" class="form-control" rows="3"
+                    placeholder='{"username": "usr", "password": "pw"}'></textarea>
+          <span class="form-hint">Use the Username and Password fields below as a shortcut — they are injected automatically if the keys are absent from the body above.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content-Type</label>
+          <select name="si_auth_login_ct" class="form-control">
+            <option value="application/json">application/json</option>
+            <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
           </select>
         </div>
-      </div>
-      <!-- Auth credentials -->
-      <div id="siAuthFields" style="display:none">
-        <div class="form-grid" style="margin-top:.5rem">
-          <div class="form-group">
-            <label class="form-label">Auth Type</label>
-            <select name="si_auth_type" class="form-control">
-              <option value="bearer">Bearer Token</option>
-              <option value="basic">HTTP Basic</option>
-              <option value="apikey">API Key</option>
-              <option value="oauth">OAuth2</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Token / API Key</label>
-            <input type="password" name="si_auth_token" class="form-control" autocomplete="new-password">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" name="si_auth_username" class="form-control" autocomplete="off">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
-          </div>
+        <div class="form-group">
+          <label class="form-label">Username Field Name</label>
+          <input type="text" name="si_auth_login_ufield" class="form-control"
+                 value="username" placeholder="username">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="si_auth_username" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password Field Name</label>
+          <input type="text" name="si_auth_login_pfield" class="form-control"
+                 value="password" placeholder="password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control"
+                 autocomplete="new-password">
         </div>
       </div>
+
+      <!-- ── Token Login ─────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-token_login" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Login URL <span class="req">*</span></label>
+          <input type="url" name="si_auth_login_url" class="form-control"
+                 oninput="_updateSiTestBtn()"
+                 placeholder="https://api.example.com/auth/token">
+          <span class="form-hint">Endpoint to POST credentials to. The JSON response must contain a token.</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">Login Request Body (JSON)</label>
+          <textarea name="si_auth_login_data" class="form-control" rows="3"
+                    placeholder='{"username": "usr", "password": "pw"}'></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content-Type</label>
+          <select name="si_auth_login_ct" class="form-control">
+            <option value="application/json">application/json</option>
+            <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Path in Response</label>
+          <input type="text" name="si_auth_token_path" class="form-control"
+                 value="token" placeholder="token">
+          <span class="form-hint">Dot-path into JSON response, e.g. <code>data.access_token</code></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Type Prefix</label>
+          <input type="text" name="si_auth_token_type" class="form-control"
+                 value="Bearer" placeholder="Bearer">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="si_auth_username" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control"
+                 autocomplete="new-password">
+        </div>
+      </div>
+
+      <!-- ── OAuth2 Client Credentials ──────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-oauth2_client_creds" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Token URL <span class="req">*</span></label>
+          <input type="url" name="si_auth_oauth_token_url" class="form-control"
+                 oninput="_updateSiTestBtn()"
+                 placeholder="https://auth.example.com/oauth/token">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client ID <span class="req">*</span></label>
+          <input type="text" name="si_auth_oauth_client_id" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Secret</label>
+          <input type="password" name="si_auth_oauth_client_secret" class="form-control"
+                 autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scope <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_oauth_scope" class="form-control"
+                 placeholder="read write">
+        </div>
+      </div>
+
+      <!-- ── Custom Headers ─────────────────────────────────────────────── -->
+      <div class="si-auth-group" id="siAuth-header_creds" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Credential Headers (JSON object)</label>
+          <textarea name="si_auth_custom_headers" class="form-control" rows="4"
+                    placeholder='{"X-Auth-Token": "abc123", "X-User-ID": "42"}'></textarea>
+          <span class="form-hint">Each key-value pair is sent as a request header on every API call.</span>
+        </div>
+      </div>
+
+      <!-- ── NTLM ───────────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-ntlm" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username <span class="req">*</span></label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control"
+                 autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Domain <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_domain" class="form-control"
+                 placeholder="CORP">
+          <span class="form-hint">Requires: pip install requests-ntlm</span>
+        </div>
+      </div>
+
     </div>
 
     <!-- Actions -->
@@ -416,6 +610,9 @@ function submitForm(e) {
   // Include successfully staged spec file IDs
   body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
 
+  // Siphon auth method fields (collected via named form inputs — all present in fd already)
+  body.si_auth_method = document.getElementById('siAuthMethod').value;
+
   fetch('/api/create_project', {
     method:  'POST',
     headers: {'Content-Type': 'application/json'},
@@ -462,13 +659,84 @@ document.getElementById('scopeSelect').addEventListener('change', function() {
   updateToolSections();
 });
 
-// Auth field toggles
+// Fracture auth toggle
 document.getElementById('frAuthEnabled').addEventListener('change', function() {
   document.getElementById('frAuthFields').style.display = this.value === '1' ? 'block' : 'none';
 });
-document.getElementById('siAuthEnabled').addEventListener('change', function() {
-  document.getElementById('siAuthFields').style.display = this.value === '1' ? 'block' : 'none';
-});
+
+// ── Siphon auth method ──────────────────────────────────────────────────────
+function siAuthMethodChanged() {
+  const method = document.getElementById('siAuthMethod').value;
+  document.querySelectorAll('.si-auth-group').forEach(el => el.style.display = 'none');
+  if (method !== 'none') {
+    const g = document.getElementById('siAuth-' + method);
+    if (g) g.style.display = '';
+  }
+  _updateSiTestBtn();
+}
+
+function _updateSiTestBtn() {
+  const method = document.getElementById('siAuthMethod').value;
+  const urlRaw = (document.getElementById('siTargetUrls')?.value || '').trim();
+  let ready = method !== 'none' && urlRaw.length > 0;
+  if (ready) {
+    const q = s => (document.querySelector('[name="' + s + '"]')?.value || '').trim();
+    if      (method === 'bearer')              ready = !!q('si_auth_token');
+    else if (method === 'basic'  || method === 'digest' || method === 'ntlm') ready = !!q('si_auth_username');
+    else if (method === 'apikey')              ready = !!q('si_auth_api_key');
+    else if (method === 'cookie_login' || method === 'token_login') ready = !!q('si_auth_login_url');
+    else if (method === 'oauth2_client_creds') ready = !!(q('si_auth_oauth_token_url') && q('si_auth_oauth_client_id'));
+  }
+  document.getElementById('siAuthTestBtn').disabled = !ready;
+}
+
+async function testSiConnection() {
+  const method = document.getElementById('siAuthMethod').value;
+  if (method === 'none') return;
+  const urlVal = (document.getElementById('siTargetUrls')?.value || '').trim().split(/[\n,]+/)[0].trim();
+  if (!urlVal) { document.getElementById('siAuthTestResult').innerHTML = '<span style="color:#f85149">Enter an API URL first</span>'; return; }
+
+  const q = s => (document.querySelector('[name="' + s + '"]')?.value || '').trim();
+  let ch = {};
+  try { ch = JSON.parse(q('si_auth_custom_headers') || '{}'); } catch {}
+  const auth = {
+    method,
+    auth_token: q('si_auth_token'), token_type: q('si_auth_token_type') || 'Bearer',
+    username: q('si_auth_username'), password: q('si_auth_password'), domain: q('si_auth_domain'),
+    api_key: q('si_auth_api_key'), api_key_header: q('si_auth_api_key_header') || 'X-API-Key',
+    api_key_query: q('si_auth_api_key_query'),
+    login_url: q('si_auth_login_url'), login_data: q('si_auth_login_data') || '{}',
+    login_content_type: q('si_auth_login_ct') || 'application/json',
+    login_username_field: q('si_auth_login_ufield') || 'username',
+    login_password_field: q('si_auth_login_pfield') || 'password',
+    login_token_path: q('si_auth_token_path') || 'token',
+    oauth_token_url: q('si_auth_oauth_token_url'), oauth_client_id: q('si_auth_oauth_client_id'),
+    oauth_client_secret: q('si_auth_oauth_client_secret'), oauth_scope: q('si_auth_oauth_scope'),
+    custom_headers: ch,
+  };
+
+  const btn = document.getElementById('siAuthTestBtn');
+  const res = document.getElementById('siAuthTestResult');
+  btn.disabled = true; btn.textContent = 'Testing…'; res.textContent = '';
+  try {
+    const r = await fetch('/api/test_siphon_auth', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url: urlVal, auth }),
+    });
+    const d = await r.json();
+    res.innerHTML = d.success
+      ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
+      : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
+  } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
+  finally { btn.disabled = false; btn.textContent = 'Test Connection'; _updateSiTestBtn(); }
+}
+
+document.getElementById('siTargetUrls').addEventListener('input', _updateSiTestBtn);
+
+function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Init auth groups on page load
+siAuthMethodChanged();
 
 // Date masking MM/DD/YYYY
 document.querySelectorAll('.date-input').forEach(el => {

@@ -306,44 +306,252 @@
       </div>
 
       <div class="settings-tab-panel" id="si-auth">
+        {% set _sa = si.scan.auth if si and si.scan and si.scan.auth else {} %}
+        {% set _sm = _sa.get('method', _sa.get('auth_type', 'none')) if _sa else 'none' %}
+        {% set _sm = 'none' if not _sa.get('enabled', False) else _sm %}
+
+        <!-- Method selector + test button -->
         <div class="form-grid">
           <div class="form-group span2">
-            <label class="form-label">Primary Auth — Enabled</label>
-            <select name="si_auth_enabled" class="form-control">
-              <option value="0" {% if not (si and si.scan and si.scan.auth and si.scan.auth.enabled) %}selected{% endif %}>No</option>
-              <option value="1" {% if si and si.scan and si.scan.auth and si.scan.auth.enabled %}selected{% endif %}>Yes</option>
-            </select>
+            <label class="form-label">Authentication Method</label>
+            <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+              <select name="si_auth_method" class="form-control" id="siAuthMethod"
+                      onchange="siAuthMethodChanged()" style="flex:1;min-width:260px">
+                <option value="none"               {% if _sm == 'none'               %}selected{% endif %}>No Authentication</option>
+                <option value="bearer"             {% if _sm == 'bearer'             %}selected{% endif %}>Bearer Token  (Authorization: Bearer …)</option>
+                <option value="basic"              {% if _sm == 'basic'              %}selected{% endif %}>HTTP Basic Auth  (username / password)</option>
+                <option value="digest"             {% if _sm == 'digest'             %}selected{% endif %}>HTTP Digest Auth  (username / password)</option>
+                <option value="apikey"             {% if _sm == 'apikey'             %}selected{% endif %}>API Key  (custom header or query param)</option>
+                <option value="cookie_login"       {% if _sm == 'cookie_login'       %}selected{% endif %}>Cookie Login  — POST credentials → session cookies</option>
+                <option value="token_login"        {% if _sm in ('token_login','form') %}selected{% endif %}>Token Login  — POST credentials → JSON token response</option>
+                <option value="oauth2_client_creds"{% if _sm == 'oauth2_client_creds'%}selected{% endif %}>OAuth2 Client Credentials  (machine-to-machine)</option>
+                <option value="header_creds"       {% if _sm == 'header_creds'       %}selected{% endif %}>Custom Credential Headers  (static key-value pairs)</option>
+                <option value="ntlm"               {% if _sm == 'ntlm'               %}selected{% endif %}>NTLM / Windows Auth  (Active Directory)</option>
+              </select>
+              <button type="button" class="btn btn-sm btn-ghost" id="siAuthTestBtn"
+                      onclick="testSiConnection()" disabled
+                      title="Fill in auth fields and API URL, then click to test">Test Connection</button>
+              <span id="siAuthTestResult" style="font-size:.82rem"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Bearer ───────────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-bearer" style="display:none;margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Token</label>
+            <input type="password" name="si_auth_token" class="form-control"
+                   autocomplete="new-password" oninput="_updateSiTestBtn()"
+                   placeholder="eyJhbGciOiJ…">
+            <span class="form-hint">Leave blank to keep existing value</span>
           </div>
           <div class="form-group">
-            <label class="form-label">Auth Type</label>
-            <select name="si_auth_type" class="form-control">
-              <option value="bearer" {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'bearer' %}selected{% endif %}>Bearer Token</option>
-              <option value="basic"  {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'basic'  %}selected{% endif %}>HTTP Basic</option>
-              <option value="apikey" {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'apikey' %}selected{% endif %}>API Key</option>
-              <option value="oauth"  {% if si and si.scan and si.scan.auth and si.scan.auth.type == 'oauth'  %}selected{% endif %}>OAuth2</option>
-            </select>
+            <label class="form-label">Token Type</label>
+            <input type="text" name="si_auth_token_type" class="form-control"
+                   value="{{ _sa.get('token_type','Bearer') }}" placeholder="Bearer">
           </div>
-          <div class="form-group">
-            <label class="form-label">Token / API Key</label>
-            <input type="password" name="si_auth_token" class="form-control" autocomplete="new-password">
-            <span class="form-hint">Leave blank to keep existing</span>
-          </div>
+        </div>
+
+        <!-- ── Basic ────────────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-basic" style="display:none;margin-top:.5rem">
           <div class="form-group">
             <label class="form-label">Username</label>
-            <input type="text" name="si_auth_username" class="form-control" autocomplete="off"
-                   value="{{ si.scan.auth.username if si and si.scan and si.scan.auth else '' }}">
+            <input type="text" name="si_auth_username" class="form-control"
+                   autocomplete="off" oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('username','') }}">
           </div>
           <div class="form-group">
             <label class="form-label">Password</label>
-            <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
-          </div>
-          <div class="form-group">
-            <label class="form-label">API Key Header</label>
-            <input type="text" name="si_auth_api_key_header" class="form-control"
-                   placeholder="X-API-Key"
-                   value="{{ si.scan.auth.api_key_header if si and si.scan and si.scan.auth else 'X-API-Key' }}">
+            <input type="password" name="si_auth_password" class="form-control"
+                   autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
           </div>
         </div>
+
+        <!-- ── Digest ───────────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-digest" style="display:none;margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="si_auth_username" class="form-control"
+                   autocomplete="off" oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control"
+                   autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+        </div>
+
+        <!-- ── API Key ──────────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-apikey" style="display:none;margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">API Key</label>
+            <input type="password" name="si_auth_api_key" class="form-control"
+                   autocomplete="new-password" oninput="_updateSiTestBtn()">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Header Name</label>
+            <input type="text" name="si_auth_api_key_header" class="form-control"
+                   value="{{ _sa.get('api_key_header','X-API-Key') }}" placeholder="X-API-Key">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Query Param Name <span class="form-hint">(optional)</span></label>
+            <input type="text" name="si_auth_api_key_query" class="form-control"
+                   value="{{ _sa.get('api_key_query','') }}" placeholder="api_key">
+          </div>
+        </div>
+
+        <!-- ── Cookie Login ─────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-cookie_login" style="display:none;margin-top:.5rem">
+          <div class="form-group span2">
+            <label class="form-label">Login URL <span class="req">*</span></label>
+            <input type="url" name="si_auth_login_url" class="form-control"
+                   oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('login_url','') }}"
+                   placeholder="https://api.example.com/api/auth/login">
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">Login Request Body (JSON)</label>
+            <textarea name="si_auth_login_data" class="form-control" rows="3"
+                      placeholder='{"username": "usr", "password": "pw"}'>{{ _sa.get('login_data','') }}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Content-Type</label>
+            <select name="si_auth_login_ct" class="form-control">
+              <option value="application/json" {% if _sa.get('login_content_type','application/json') == 'application/json' %}selected{% endif %}>application/json</option>
+              <option value="application/x-www-form-urlencoded" {% if _sa.get('login_content_type') == 'application/x-www-form-urlencoded' %}selected{% endif %}>application/x-www-form-urlencoded</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username Field Name</label>
+            <input type="text" name="si_auth_login_ufield" class="form-control"
+                   value="{{ _sa.get('login_username_field','username') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="si_auth_username" class="form-control"
+                   autocomplete="off" value="{{ _sa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password Field Name</label>
+            <input type="text" name="si_auth_login_pfield" class="form-control"
+                   value="{{ _sa.get('login_password_field','password') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control"
+                   autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+        </div>
+
+        <!-- ── Token Login ──────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-token_login" style="display:none;margin-top:.5rem">
+          <div class="form-group span2">
+            <label class="form-label">Login URL <span class="req">*</span></label>
+            <input type="url" name="si_auth_login_url" class="form-control"
+                   oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('login_url','') }}"
+                   placeholder="https://api.example.com/auth/token">
+          </div>
+          <div class="form-group span2">
+            <label class="form-label">Login Request Body (JSON)</label>
+            <textarea name="si_auth_login_data" class="form-control" rows="3"
+                      placeholder='{"username": "usr", "password": "pw"}'>{{ _sa.get('login_data','') }}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Content-Type</label>
+            <select name="si_auth_login_ct" class="form-control">
+              <option value="application/json" {% if _sa.get('login_content_type','application/json') == 'application/json' %}selected{% endif %}>application/json</option>
+              <option value="application/x-www-form-urlencoded" {% if _sa.get('login_content_type') == 'application/x-www-form-urlencoded' %}selected{% endif %}>application/x-www-form-urlencoded</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token Path in Response</label>
+            <input type="text" name="si_auth_token_path" class="form-control"
+                   value="{{ _sa.get('login_token_path','token') }}" placeholder="token">
+            <span class="form-hint">Dot-path into JSON response, e.g. <code>data.access_token</code></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token Type Prefix</label>
+            <input type="text" name="si_auth_token_type" class="form-control"
+                   value="{{ _sa.get('token_type','Bearer') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="si_auth_username" class="form-control"
+                   autocomplete="off" value="{{ _sa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control"
+                   autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+        </div>
+
+        <!-- ── OAuth2 Client Credentials ──────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-oauth2_client_creds" style="display:none;margin-top:.5rem">
+          <div class="form-group span2">
+            <label class="form-label">Token URL <span class="req">*</span></label>
+            <input type="url" name="si_auth_oauth_token_url" class="form-control"
+                   oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('oauth_token_url','') }}"
+                   placeholder="https://auth.example.com/oauth/token">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client ID <span class="req">*</span></label>
+            <input type="text" name="si_auth_oauth_client_id" class="form-control"
+                   autocomplete="off" oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('oauth_client_id','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client Secret</label>
+            <input type="password" name="si_auth_oauth_client_secret" class="form-control"
+                   autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Scope <span class="form-hint">(optional)</span></label>
+            <input type="text" name="si_auth_oauth_scope" class="form-control"
+                   value="{{ _sa.get('oauth_scope','') }}" placeholder="read write">
+          </div>
+        </div>
+
+        <!-- ── Custom Headers ──────────────────────────────────────────── -->
+        <div class="si-auth-group" id="siAuth-header_creds" style="display:none;margin-top:.5rem">
+          <div class="form-group span2">
+            <label class="form-label">Credential Headers (JSON object)</label>
+            <textarea name="si_auth_custom_headers" class="form-control" rows="4"
+                      placeholder='{"X-Auth-Token": "abc123", "X-User-ID": "42"}'>{% if _sa.get('custom_headers') %}{{ _sa.get('custom_headers') | tojson }}{% endif %}</textarea>
+          </div>
+        </div>
+
+        <!-- ── NTLM ────────────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-ntlm" style="display:none;margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Username <span class="req">*</span></label>
+            <input type="text" name="si_auth_username" class="form-control"
+                   autocomplete="off" oninput="_updateSiTestBtn()"
+                   value="{{ _sa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control"
+                   autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Domain <span class="form-hint">(optional)</span></label>
+            <input type="text" name="si_auth_domain" class="form-control"
+                   value="{{ _sa.get('domain','') }}" placeholder="CORP">
+            <span class="form-hint">Requires: pip install requests-ntlm</span>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -509,6 +717,7 @@ function submitForm(e) {
   body.fr_target_urls = document.getElementById('frTargetUrls').value;
   body.si_target_urls = document.getElementById('siTargetUrls').value;
   body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
+  body.si_auth_method = document.getElementById('siAuthMethod').value;
 
   fetch('/api/update_project/{{ project_id }}', {
     method:  'POST',
@@ -562,6 +771,84 @@ function switchSettingsTab(panelId, btn) {
   document.getElementById(panelId).classList.add('active');
   btn.classList.add('active');
 }
+
+// ── Siphon auth method ────────────────────────────────────────────────────
+function siAuthMethodChanged() {
+  const method = document.getElementById('siAuthMethod').value;
+  document.querySelectorAll('.si-auth-group').forEach(el => el.style.display = 'none');
+  if (method !== 'none') {
+    const g = document.getElementById('siAuth-' + method);
+    if (g) g.style.display = '';
+  }
+  _updateSiTestBtn();
+}
+
+function _updateSiTestBtn() {
+  const method = document.getElementById('siAuthMethod').value;
+  const urlRaw = (document.getElementById('siTargetUrls')?.value || '').trim();
+  let ready = method !== 'none' && urlRaw.length > 0;
+  if (ready) {
+    const q = s => (document.querySelector('[name="' + s + '"]')?.value || '').trim();
+    if      (method === 'bearer')              ready = !!q('si_auth_token');
+    else if (method === 'basic' || method === 'digest' || method === 'ntlm') ready = !!q('si_auth_username');
+    else if (method === 'apikey')              ready = !!q('si_auth_api_key');
+    else if (method === 'cookie_login' || method === 'token_login') ready = !!q('si_auth_login_url');
+    else if (method === 'oauth2_client_creds') ready = !!(q('si_auth_oauth_token_url') && q('si_auth_oauth_client_id'));
+  }
+  const btn = document.getElementById('siAuthTestBtn');
+  if (btn) btn.disabled = !ready;
+}
+
+async function testSiConnection() {
+  const method = document.getElementById('siAuthMethod').value;
+  if (method === 'none') return;
+  const siUrls = document.getElementById('siTargetUrls');
+  const urlVal = (siUrls?.value || '').trim().split(/[\n,]+/)[0].trim();
+  if (!urlVal) { document.getElementById('siAuthTestResult').innerHTML = '<span style="color:#f85149">Enter an API URL first</span>'; return; }
+
+  const q = s => (document.querySelector('[name="' + s + '"]')?.value || '').trim();
+  let ch = {};
+  try { ch = JSON.parse(q('si_auth_custom_headers') || '{}'); } catch {}
+  const auth = {
+    method,
+    auth_token: q('si_auth_token'), token_type: q('si_auth_token_type') || 'Bearer',
+    username: q('si_auth_username'), password: q('si_auth_password'), domain: q('si_auth_domain'),
+    api_key: q('si_auth_api_key'), api_key_header: q('si_auth_api_key_header') || 'X-API-Key',
+    api_key_query: q('si_auth_api_key_query'),
+    login_url: q('si_auth_login_url'), login_data: q('si_auth_login_data') || '{}',
+    login_content_type: q('si_auth_login_ct') || 'application/json',
+    login_username_field: q('si_auth_login_ufield') || 'username',
+    login_password_field: q('si_auth_login_pfield') || 'password',
+    login_token_path: q('si_auth_token_path') || 'token',
+    oauth_token_url: q('si_auth_oauth_token_url'), oauth_client_id: q('si_auth_oauth_client_id'),
+    oauth_client_secret: q('si_auth_oauth_client_secret'), oauth_scope: q('si_auth_oauth_scope'),
+    custom_headers: ch,
+  };
+
+  const btn = document.getElementById('siAuthTestBtn');
+  const res = document.getElementById('siAuthTestResult');
+  btn.disabled = true; btn.textContent = 'Testing…'; res.textContent = '';
+  try {
+    const r = await fetch('/api/test_siphon_auth', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url: urlVal, auth }),
+    });
+    const d = await r.json();
+    res.innerHTML = d.success
+      ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
+      : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
+  } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
+  finally { btn.disabled = false; btn.textContent = 'Test Connection'; _updateSiTestBtn(); }
+}
+
+function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Initialise on load
+document.addEventListener('DOMContentLoaded', () => {
+  siAuthMethodChanged();
+  const siUrls = document.getElementById('siTargetUrls');
+  if (siUrls) siUrls.addEventListener('input', _updateSiTestBtn);
+});
 
 document.querySelectorAll('.date-input').forEach(el => {
   el.addEventListener('input', function() {

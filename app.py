@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 
 import json
 import os
@@ -448,6 +448,66 @@ def _build_project_dir(client_short: str, year: str, tool_name: str) -> Path:
         path.mkdir(parents=True, exist_ok=True)
     return path
 
+def _build_si_auth_from_body(body: dict, existing: "dict | None" = None) -> dict:
+    """
+    Build a Siphon scan.auth dict from the form body keys (si_auth_*).
+
+    In edit mode pass `existing` to preserve password/secret fields that were
+    intentionally left blank (the UI does not echo sensitive values back).
+    """
+    method = body.get("si_auth_method", "none")
+    if method == "none":
+        return {"enabled": False, "method": "bearer"}
+
+    ex = existing or {}
+
+    def _keep(field: str, form_key: str, default: str = "") -> str:
+        """Return form value; fall back to existing setting when blank."""
+        v = body.get(form_key, "").strip()
+        return v if v else ex.get(field, default)
+
+    def _json_field(form_key: str, existing_key: str, default: str = "{}") -> object:
+        raw = body.get(form_key, "").strip()
+        if raw:
+            try:
+                return json.loads(raw)
+            except Exception:
+                return raw
+        return ex.get(existing_key, default)
+
+    auth: dict = {
+        "enabled":               True,
+        "method":                method,
+        # Bearer
+        "auth_token":            _keep("auth_token",         "si_auth_token"),
+        "token_type":            _keep("token_type",         "si_auth_token_type",     "Bearer"),
+        # Basic / Digest / NTLM
+        "username":              _keep("username",           "si_auth_username"),
+        "password":              _keep("password",           "si_auth_password"),
+        "domain":                _keep("domain",             "si_auth_domain"),
+        # API Key
+        "api_key":               _keep("api_key",            "si_auth_api_key"),
+        "api_key_header":        _keep("api_key_header",     "si_auth_api_key_header", "X-API-Key"),
+        "api_key_query":         _keep("api_key_query",      "si_auth_api_key_query"),
+        # Login endpoint
+        "login_url":             _keep("login_url",          "si_auth_login_url"),
+        "login_method":          _keep("login_method",       "si_auth_login_method",   "POST"),
+        "login_data":            _keep("login_data",         "si_auth_login_data",     "{}"),
+        "login_content_type":    _keep("login_content_type", "si_auth_login_ct",       "application/json"),
+        "login_username_field":  _keep("login_username_field","si_auth_login_ufield",  "username"),
+        "login_password_field":  _keep("login_password_field","si_auth_login_pfield",  "password"),
+        "login_token_path":      _keep("login_token_path",   "si_auth_token_path",     "token"),
+        # OAuth2
+        "oauth_token_url":       _keep("oauth_token_url",    "si_auth_oauth_token_url"),
+        "oauth_client_id":       _keep("oauth_client_id",    "si_auth_oauth_client_id"),
+        "oauth_client_secret":   _keep("oauth_client_secret","si_auth_oauth_client_secret"),
+        "oauth_scope":           _keep("oauth_scope",        "si_auth_oauth_scope"),
+        # Custom headers
+        "custom_headers":        _json_field("si_auth_custom_headers", "custom_headers", "{}"),
+    }
+    return auth
+
+
 def _discover_client_projects(tools: list) -> list:
     """
     Walk <clients_base>/<client>/<year>/<tool>/<run>/project_meta.json
@@ -782,6 +842,9 @@ def api_create_project():
     )
     si["scan"]["api_spec_files"] = spec_file_paths
 
+    # Siphon auth
+    si["scan"]["auth"] = _build_si_auth_from_body(body)
+
     fr_path = fr_output_dir / "fr_settings.json"
     si_path = si_output_dir / "si_settings.json"
     fr_path.write_text(json.dumps(fr, indent=2))
@@ -881,6 +944,9 @@ def api_update_project(project_id: str):
             new_paths = _commit_staged_spec_files(spec_file_ids, spec_dir)
             existing = si["scan"].get("api_spec_files", [])
             si["scan"]["api_spec_files"] = existing + [p for p in new_paths if p not in existing]
+        # Siphon auth (only update when method key present in body)
+        if "si_auth_method" in body:
+            si["scan"]["auth"] = _build_si_auth_from_body(body, si["scan"].get("auth"))
         si_path.write_text(json.dumps(si, indent=2))
     except Exception:
         pass
@@ -913,6 +979,46 @@ def api_get_project(project_id: str):
     proj["fr_live_status"] = live.get("fr", "idle")
     proj["si_live_status"] = live.get("si", "idle")
     return jsonify(proj)
+
+
+@app.route("/api/test_siphon_auth", methods=["POST"])
+def api_test_siphon_auth():
+    """Run testConnection.py to verify Siphon auth config without starting a full scan."""
+    body = request.json or {}
+    test_url = (body.get("url") or "").strip()
+    if not test_url:
+        return jsonify({"success": False, "message": "No API URL provided"})
+
+    tc_script = Path(__file__).parent.parent / "Siphon" / "testConnection.py"
+    if not tc_script.exists():
+        return jsonify({"success": False, "message": "testConnection.py not found alongside Siphon"})
+
+    payload = {
+        "url":        test_url,
+        "auth":       body.get("auth", {}),
+        "timeout":    int(body.get("timeout", 10)),
+        "verify_ssl": bool(body.get("verify_ssl", False)),
+        "proxy":      body.get("proxy", ""),
+    }
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(tc_script), "--json", json.dumps(payload),
+             "--output-json", "--no-verify"],
+            capture_output=True, text=True, timeout=35,
+        )
+        try:
+            return jsonify(json.loads(proc.stdout.strip()))
+        except Exception:
+            return jsonify({
+                "success": proc.returncode == 0,
+                "message": (proc.stdout.strip() or proc.stderr.strip() or "No output"),
+                "auth_info": "",
+                "status_code": None,
+            })
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "message": "Test timed out (35 s)"})
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)})
 
 
 @app.route("/api/settings/<project_id>/<tool>", methods=["GET", "POST"])
