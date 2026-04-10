@@ -405,6 +405,7 @@
         </div>
 
         <!-- ── Cookie Login ─────────────────────────────────────────────── -->
+        {% set _lm = _sa.get('login_mode', 'fields') %}
         <div class="si-auth-group form-grid" id="siAuth-cookie_login" style="display:none;margin-top:.5rem">
           <div class="form-group span2">
             <label class="form-label">Login URL <span class="req">*</span></label>
@@ -412,11 +413,7 @@
                    oninput="_updateSiTestBtn()"
                    value="{{ _sa.get('login_url','') }}"
                    placeholder="https://api.example.com/api/auth/login">
-          </div>
-          <div class="form-group span2">
-            <label class="form-label">Login Request Body (JSON)</label>
-            <textarea name="si_auth_login_data" class="form-control" rows="3"
-                      placeholder='{"username": "usr", "password": "pw"}'>{{ _sa.get('login_data','') }}</textarea>
+            <span class="form-hint">Endpoint to POST credentials to. Cookies from the response are used for all subsequent requests.</span>
           </div>
           <div class="form-group">
             <label class="form-label">Content-Type</label>
@@ -426,25 +423,51 @@
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">Username Field Name</label>
-            <input type="text" name="si_auth_login_ufield" class="form-control"
-                   value="{{ _sa.get('login_username_field','username') }}">
+            <label class="form-label">Credentials Mode</label>
+            <select name="si_auth_login_mode" class="form-control"
+                    onchange="loginModeChanged('cookie_login')">
+              <option value="fields" {% if _lm != 'json' %}selected{% endif %}>Credential Fields — provide username and password separately</option>
+              <option value="json"   {% if _lm == 'json' %}selected{% endif %}>Custom JSON Body — write the complete POST body yourself</option>
+            </select>
+            <span class="form-hint">Use <em>Custom JSON Body</em> when the login endpoint needs extra fields (OTP, realm, client ID, etc.)</span>
           </div>
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" name="si_auth_username" class="form-control"
-                   autocomplete="off" value="{{ _sa.get('username','') }}">
+          <!-- fields mode: username/password injected automatically -->
+          <div class="form-group span2 si-login-fields" id="siLoginFields-cookie_login"
+               style="{{ 'display:none;' if _lm == 'json' else '' }}padding:0;margin:0">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+              <div class="form-group">
+                <label class="form-label">Username Field Name</label>
+                <input type="text" name="si_auth_login_ufield" class="form-control"
+                       value="{{ _sa.get('login_username_field','username') }}">
+                <span class="form-hint">Key used in the POST body, e.g. <code>user</code> or <code>email</code></span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Username <span class="req">*</span></label>
+                <input type="text" name="si_auth_username" class="form-control"
+                       autocomplete="off" oninput="_updateSiTestBtn()"
+                       value="{{ _sa.get('username','') }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password Field Name</label>
+                <input type="text" name="si_auth_login_pfield" class="form-control"
+                       value="{{ _sa.get('login_password_field','password') }}">
+                <span class="form-hint">Key used in the POST body, e.g. <code>pass</code> or <code>secret</code></span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="si_auth_password" class="form-control"
+                       autocomplete="new-password">
+                <span class="form-hint">Leave blank to keep existing</span>
+              </div>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Password Field Name</label>
-            <input type="text" name="si_auth_login_pfield" class="form-control"
-                   value="{{ _sa.get('login_password_field','password') }}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" name="si_auth_password" class="form-control"
-                   autocomplete="new-password">
-            <span class="form-hint">Leave blank to keep existing</span>
+          <!-- json mode: full POST body supplied by operator -->
+          <div class="form-group span2 si-login-json" id="siLoginJson-cookie_login"
+               style="{{ '' if _lm == 'json' else 'display:none;' }}padding:0;margin:0">
+            <label class="form-label">Login Request Body (JSON)</label>
+            <textarea name="si_auth_login_data" class="form-control" rows="4"
+                      placeholder='{"username": "usr", "password": "pw", "realm": "admin"}'>{{ _sa.get('login_data','') }}</textarea>
+            <span class="form-hint">Include every field the endpoint requires. Credentials must be embedded here — nothing is auto-injected in this mode.</span>
           </div>
         </div>
 
@@ -456,11 +479,7 @@
                    oninput="_updateSiTestBtn()"
                    value="{{ _sa.get('login_url','') }}"
                    placeholder="https://api.example.com/auth/token">
-          </div>
-          <div class="form-group span2">
-            <label class="form-label">Login Request Body (JSON)</label>
-            <textarea name="si_auth_login_data" class="form-control" rows="3"
-                      placeholder='{"username": "usr", "password": "pw"}'>{{ _sa.get('login_data','') }}</textarea>
+            <span class="form-hint">Endpoint to POST credentials to. The JSON response must contain a token.</span>
           </div>
           <div class="form-group">
             <label class="form-label">Content-Type</label>
@@ -469,6 +488,54 @@
               <option value="application/x-www-form-urlencoded" {% if _sa.get('login_content_type') == 'application/x-www-form-urlencoded' %}selected{% endif %}>application/x-www-form-urlencoded</option>
             </select>
           </div>
+          <div class="form-group">
+            <label class="form-label">Credentials Mode</label>
+            <select name="si_auth_login_mode" class="form-control"
+                    onchange="loginModeChanged('token_login')">
+              <option value="fields" {% if _lm != 'json' %}selected{% endif %}>Credential Fields — provide username and password separately</option>
+              <option value="json"   {% if _lm == 'json' %}selected{% endif %}>Custom JSON Body — write the complete POST body yourself</option>
+            </select>
+            <span class="form-hint">Use <em>Custom JSON Body</em> when the login endpoint needs extra fields (OTP, realm, client ID, etc.)</span>
+          </div>
+          <!-- fields mode: username/password injected automatically -->
+          <div class="form-group span2 si-login-fields" id="siLoginFields-token_login"
+               style="{{ 'display:none;' if _lm == 'json' else '' }}padding:0;margin:0">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+              <div class="form-group">
+                <label class="form-label">Username Field Name</label>
+                <input type="text" name="si_auth_login_ufield" class="form-control"
+                       value="{{ _sa.get('login_username_field','username') }}">
+                <span class="form-hint">Key used in the POST body, e.g. <code>user</code> or <code>email</code></span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Username <span class="req">*</span></label>
+                <input type="text" name="si_auth_username" class="form-control"
+                       autocomplete="off" oninput="_updateSiTestBtn()"
+                       value="{{ _sa.get('username','') }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password Field Name</label>
+                <input type="text" name="si_auth_login_pfield" class="form-control"
+                       value="{{ _sa.get('login_password_field','password') }}">
+                <span class="form-hint">Key used in the POST body, e.g. <code>pass</code> or <code>secret</code></span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="si_auth_password" class="form-control"
+                       autocomplete="new-password">
+                <span class="form-hint">Leave blank to keep existing</span>
+              </div>
+            </div>
+          </div>
+          <!-- json mode: full POST body supplied by operator -->
+          <div class="form-group span2 si-login-json" id="siLoginJson-token_login"
+               style="{{ '' if _lm == 'json' else 'display:none;' }}padding:0;margin:0">
+            <label class="form-label">Login Request Body (JSON)</label>
+            <textarea name="si_auth_login_data" class="form-control" rows="4"
+                      placeholder='{"username": "usr", "password": "pw"}'>{{ _sa.get('login_data','') }}</textarea>
+            <span class="form-hint">Include every field the endpoint requires. Credentials must be embedded here — nothing is auto-injected in this mode.</span>
+          </div>
+          <!-- token response settings — always shown -->
           <div class="form-group">
             <label class="form-label">Token Path in Response</label>
             <input type="text" name="si_auth_token_path" class="form-control"
@@ -479,17 +546,6 @@
             <label class="form-label">Token Type Prefix</label>
             <input type="text" name="si_auth_token_type" class="form-control"
                    value="{{ _sa.get('token_type','Bearer') }}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" name="si_auth_username" class="form-control"
-                   autocomplete="off" value="{{ _sa.get('username','') }}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" name="si_auth_password" class="form-control"
-                   autocomplete="new-password">
-            <span class="form-hint">Leave blank to keep existing</span>
           </div>
         </div>
 
@@ -789,7 +845,19 @@ function siAuthMethodChanged() {
   if (method !== 'none') {
     const g = document.getElementById('siAuth-' + method);
     if (g) g.style.display = '';
+    if (method === 'cookie_login' || method === 'token_login') loginModeChanged(method);
   }
+  _updateSiTestBtn();
+}
+
+function loginModeChanged(method) {
+  const grp = document.getElementById('siAuth-' + method);
+  if (!grp) return;
+  const mode = grp.querySelector('[name="si_auth_login_mode"]')?.value || 'fields';
+  const fieldsEl = document.getElementById('siLoginFields-' + method);
+  const jsonEl   = document.getElementById('siLoginJson-'   + method);
+  if (fieldsEl) fieldsEl.style.display = mode === 'json' ? 'none' : '';
+  if (jsonEl)   jsonEl.style.display   = mode === 'json' ? ''     : 'none';
   _updateSiTestBtn();
 }
 
@@ -831,6 +899,7 @@ async function testSiConnection() {
     username: q('si_auth_username'), password: q('si_auth_password'), domain: q('si_auth_domain'),
     api_key: q('si_auth_api_key'), api_key_header: q('si_auth_api_key_header') || 'X-API-Key',
     api_key_query: q('si_auth_api_key_query'),
+    login_mode: q('si_auth_login_mode') || 'fields',
     login_url: q('si_auth_login_url'), login_data: q('si_auth_login_data') || '{}',
     login_content_type: q('si_auth_login_ct') || 'application/json',
     login_username_field: q('si_auth_login_ufield') || 'username',
@@ -862,6 +931,8 @@ function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 // Initialise on load
 document.addEventListener('DOMContentLoaded', () => {
   siAuthMethodChanged();
+  loginModeChanged('cookie_login');
+  loginModeChanged('token_login');
   const siUrls = document.getElementById('siTargetUrls');
   if (siUrls) siUrls.addEventListener('input', _updateSiTestBtn);
 });

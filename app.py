@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 
 import json
 import os
@@ -492,6 +492,7 @@ def _build_si_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
         # Login endpoint
         "login_url":             _keep("login_url",          "si_auth_login_url"),
         "login_method":          _keep("login_method",       "si_auth_login_method",   "POST"),
+        "login_mode":            _keep("login_mode",         "si_auth_login_mode",     "fields"),
         "login_data":            _keep("login_data",         "si_auth_login_data",     "{}"),
         "login_content_type":    _keep("login_content_type", "si_auth_login_ct",       "application/json"),
         "login_username_field":  _keep("login_username_field","si_auth_login_ufield",  "username"),
