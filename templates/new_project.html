@@ -107,39 +107,251 @@
                     placeholder="https://app.example.com&#10;https://app2.example.com&#10;or comma-separated: https://a.com, https://b.com"></textarea>
           <span class="form-hint">One URL per line or comma-separated. Each URL is scanned independently.</span>
         </div>
-        <div class="form-group">
-          <label class="form-label">Authenticated Testing</label>
-          <select name="fr_auth_enabled" class="form-control" id="frAuthEnabled">
-            <option value="0">No — unauthenticated</option>
-            <option value="1">Yes — provide credentials</option>
-          </select>
+        <div class="form-group span2">
+          <label class="form-label">Authentication Method</label>
+          <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <select name="fr_auth_method" class="form-control" id="frAuthMethod"
+                    onchange="frAuthMethodChanged()" style="flex:1;min-width:260px">
+              <option value="none">None — unauthenticated</option>
+              <option value="form_login">Form Login  (POST credentials → session)</option>
+              <option value="basic">HTTP Basic Auth  (username:password)</option>
+              <option value="digest">HTTP Digest Auth</option>
+              <option value="ntlm">NTLM / Windows Auth  (Active Directory)</option>
+              <option value="bearer">Bearer Token  (Authorization header)</option>
+              <option value="session_cookie">Pre-Captured Session Cookie</option>
+              <option value="token_login">Token Login  (POST credentials → JSON token)</option>
+              <option value="oauth2_client_creds">OAuth2 Client Credentials  (machine-to-machine)</option>
+              <option value="apikey_header">API Key Header  (custom header)</option>
+              <option value="apikey_cookie">API Key Cookie</option>
+              <option value="header_creds">Custom Credential Headers  (static key-value pairs)</option>
+              <option value="kerberos">Kerberos / SPNEGO  (SSO)</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-ghost" id="frAuthTestBtn"
+                    onclick="testFrConnection()" disabled
+                    title="Fill in auth fields and target URL, then click to test">Test Connection</button>
+            <span id="frAuthTestResult" style="font-size:.82rem"></span>
+          </div>
         </div>
       </div>
-      <!-- Auth credentials (shown when authenticated testing enabled) -->
-      <div id="frAuthFields" style="display:none">
-        <div class="form-grid" style="margin-top:.5rem">
-          <div class="form-group">
-            <label class="form-label">Auth Type</label>
-            <select name="fr_auth_type" class="form-control">
-              <option value="form">Form-based</option>
-              <option value="basic">HTTP Basic</option>
-              <option value="token">Token/Bearer</option>
-              <option value="cookie">Session Cookie</option>
-            </select>
+
+      <!-- ── Fracture auth method groups ───────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-bearer" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Token / API Key</label>
+          <input type="password" name="fr_auth_token" class="form-control"
+                 placeholder="eyJhbGci…" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Type</label>
+          <input type="text" name="fr_auth_token_type" class="form-control"
+                 placeholder="Bearer" value="Bearer">
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-basic" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-digest" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-ntlm" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="fr_auth_username" class="form-control" placeholder="jsmith" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Domain</label>
+          <input type="text" name="fr_auth_domain" class="form-control" placeholder="CORP">
+        </div>
+        <div class="form-group">
+          <span class="form-hint">Requires: pip install requests-ntlm</span>
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-session_cookie" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Session Cookie String</label>
+          <input type="text" name="fr_auth_session_cookie" class="form-control"
+                 placeholder="session=abc123; csrf=xyz; auth_token=def456" autocomplete="off">
+          <span class="form-hint">Paste cookie header value — key=value pairs separated by semicolons</span>
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-form_login" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Login URL</label>
+          <input type="url" name="fr_auth_login_url" class="form-control"
+                 placeholder="https://app.example.com/login"
+                 oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Credentials Mode</label>
+          <select name="fr_auth_login_mode" class="form-control"
+                  onchange="frLoginModeChanged('form_login')">
+            <option value="fields">Credential Fields (username + password inputs)</option>
+            <option value="json">Custom JSON Body (raw JSON only)</option>
+          </select>
+        </div>
+        <div class="form-group span2 fr-login-fields" id="frLoginFields-form_login" style="padding:0;margin:0">
+          <div class="form-grid" style="margin:0">
+            <div class="form-group">
+              <label class="form-label">Username Field Name</label>
+              <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username" value="username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password Field Name</label>
+              <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password" value="password">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
+        </div>
+        <div class="form-group span2 fr-login-json" id="frLoginJson-form_login" style="display:none;padding:0;margin:0">
+          <textarea name="fr_auth_login_data" class="form-control" rows="4"
+                    placeholder='{"username":"admin","password":"secret","_token":"csrf123"}'></textarea>
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-token_login" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Login URL</label>
+          <input type="url" name="fr_auth_login_url" class="form-control"
+                 placeholder="https://app.example.com/api/auth/login"
+                 oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Credentials Mode</label>
+          <select name="fr_auth_login_mode" class="form-control"
+                  onchange="frLoginModeChanged('token_login')">
+            <option value="fields">Credential Fields (username + password inputs)</option>
+            <option value="json">Custom JSON Body (raw JSON only)</option>
+          </select>
+        </div>
+        <div class="form-group span2 fr-login-fields" id="frLoginFields-token_login" style="padding:0;margin:0">
+          <div class="form-grid" style="margin:0">
+            <div class="form-group">
+              <label class="form-label">Username Field Name</label>
+              <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username" value="username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password Field Name</label>
+              <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password" value="password">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Login URL</label>
-            <input type="url" name="fr_auth_login_url" class="form-control"
-                   placeholder="https://app.example.com/login">
-          </div>
+        </div>
+        <div class="form-group span2 fr-login-json" id="frLoginJson-token_login" style="display:none;padding:0;margin:0">
+          <textarea name="fr_auth_login_data" class="form-control" rows="4"
+                    placeholder='{"username":"admin","password":"secret"}'></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Response Field</label>
+          <input type="text" name="fr_auth_token_field" class="form-control"
+                 placeholder="token" value="token">
+          <span class="form-hint">JSON path to token (e.g. token, data.access_token)</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Type</label>
+          <input type="text" name="fr_auth_token_type" class="form-control" placeholder="Bearer" value="Bearer">
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-oauth2_client_creds" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Token URL</label>
+          <input type="url" name="fr_auth_oauth_token_url" class="form-control"
+                 placeholder="https://auth.example.com/oauth/token"
+                 oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client ID</label>
+          <input type="text" name="fr_auth_oauth_client_id" class="form-control"
+                 placeholder="my-client-id" oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Secret</label>
+          <input type="password" name="fr_auth_oauth_client_secret" class="form-control"
+                 autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scope (optional)</label>
+          <input type="text" name="fr_auth_oauth_scope" class="form-control" placeholder="read write">
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-apikey_header" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input type="password" name="fr_auth_api_key_value" class="form-control"
+                 placeholder="sk-…" autocomplete="new-password" oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Header Name</label>
+          <input type="text" name="fr_auth_api_key_header" class="form-control"
+                 placeholder="X-API-Key" value="X-API-Key">
+        </div>
+      </div>
+
+      <div class="fr-auth-group form-grid" id="frAuth-apikey_cookie" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input type="password" name="fr_auth_api_key_value" class="form-control"
+                 placeholder="sk-…" autocomplete="new-password" oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cookie Name</label>
+          <input type="text" name="fr_auth_api_key_cookie" class="form-control"
+                 placeholder="api_key" value="api_key">
+        </div>
+      </div>
+
+      <div class="fr-auth-group" id="frAuth-header_creds" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Custom Headers (JSON object)</label>
+          <textarea name="fr_auth_custom_headers" class="form-control" rows="4"
+                    placeholder='{"X-App-Token":"abc123","X-User-ID":"42"}'
+                    oninput="_updateFrTestBtn()"></textarea>
+          <span class="form-hint">One header per key-value pair</span>
+        </div>
+      </div>
+
+      <div class="fr-auth-group" id="frAuth-kerberos" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <span class="form-hint" style="color:#8b949e">Kerberos/SPNEGO uses the current system ticket cache (kinit). No credentials needed here.</span>
+          <span class="form-hint">Requires: pip install requests-kerberos</span>
         </div>
       </div>
     </div>
@@ -658,6 +870,15 @@ function submitForm(e) {
   // Include successfully staged spec file IDs
   body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
 
+  // Fracture auth — override fr_auth_* fields from active group only
+  body.fr_auth_method = document.getElementById('frAuthMethod').value;
+  const _activeFrAuthGrp = document.getElementById('frAuth-' + body.fr_auth_method);
+  if (_activeFrAuthGrp) {
+    _activeFrAuthGrp.querySelectorAll('input[name^="fr_auth"], textarea[name^="fr_auth"], select[name^="fr_auth"]').forEach(el => {
+      body[el.name] = el.value;
+    });
+  }
+
   // Siphon auth method — set explicitly, then override si_auth_* fields from
   // the active (visible) group only.  Multiple groups share the same name
   // attributes (si_auth_username, si_auth_login_url, etc.) and fd.forEach
@@ -716,10 +937,91 @@ document.getElementById('scopeSelect').addEventListener('change', function() {
   updateToolSections();
 });
 
-// Fracture auth toggle
-document.getElementById('frAuthEnabled').addEventListener('change', function() {
-  document.getElementById('frAuthFields').style.display = this.value === '1' ? 'block' : 'none';
-});
+// ── Fracture auth method ─────────────────────────────────────────────────────
+function frAuthMethodChanged() {
+  const method = document.getElementById('frAuthMethod').value;
+  document.querySelectorAll('.fr-auth-group').forEach(el => el.style.display = 'none');
+  if (method !== 'none') {
+    const g = document.getElementById('frAuth-' + method);
+    if (g) g.style.display = '';
+    if (method === 'form_login' || method === 'token_login') frLoginModeChanged(method);
+  }
+  _updateFrTestBtn();
+}
+
+function frLoginModeChanged(method) {
+  const grp = document.getElementById('frAuth-' + method);
+  if (!grp) return;
+  const mode = grp.querySelector('[name="fr_auth_login_mode"]')?.value || 'fields';
+  const fieldsEl = document.getElementById('frLoginFields-' + method);
+  const jsonEl   = document.getElementById('frLoginJson-'   + method);
+  if (fieldsEl) fieldsEl.style.display = mode === 'json' ? 'none' : '';
+  if (jsonEl)   jsonEl.style.display   = mode === 'json' ? ''     : 'none';
+  _updateFrTestBtn();
+}
+
+function _updateFrTestBtn() {
+  const method = document.getElementById('frAuthMethod').value;
+  const urlRaw = (document.getElementById('frTargetUrls')?.value || '').trim();
+  let ready = method !== 'none' && urlRaw.length > 0;
+  if (ready) {
+    const activeGrp = document.getElementById('frAuth-' + method);
+    const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
+    if      (method === 'bearer')                ready = !!q('fr_auth_token');
+    else if (['basic','digest','ntlm'].includes(method)) ready = !!q('fr_auth_username');
+    else if (method === 'form_login' || method === 'token_login') ready = !!q('fr_auth_login_url');
+    else if (method === 'oauth2_client_creds')   ready = !!(q('fr_auth_oauth_token_url') && q('fr_auth_oauth_client_id'));
+    else if (method === 'apikey_header' || method === 'apikey_cookie') ready = !!q('fr_auth_api_key_value');
+    else if (method === 'header_creds')          ready = !!q('fr_auth_custom_headers');
+  }
+  document.getElementById('frAuthTestBtn').disabled = !ready;
+}
+
+async function testFrConnection() {
+  const method = document.getElementById('frAuthMethod').value;
+  if (method === 'none') return;
+  const urlVal = (document.getElementById('frTargetUrls')?.value || '').trim().split(/[\n,]+/)[0].trim();
+  if (!urlVal) { document.getElementById('frAuthTestResult').innerHTML = '<span style="color:#f85149">Enter a target URL first</span>'; return; }
+
+  const activeGrp = document.getElementById('frAuth-' + method);
+  const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
+  let ch = {};
+  try { ch = JSON.parse(q('fr_auth_custom_headers') || '{}'); } catch {}
+  const auth = {
+    auth_method: method,
+    auth_token: q('fr_auth_token'), token_type: q('fr_auth_token_type') || 'Bearer',
+    username: q('fr_auth_username'), password: q('fr_auth_password'), domain: q('fr_auth_domain'),
+    api_key_value: q('fr_auth_api_key_value'),
+    api_key_header: q('fr_auth_api_key_header') || 'X-API-Key',
+    api_key_cookie_name: q('fr_auth_api_key_cookie') || 'api_key',
+    login_mode: q('fr_auth_login_mode') || 'fields',
+    login_url: q('fr_auth_login_url'), login_data: q('fr_auth_login_data') || '{}',
+    login_username_field: q('fr_auth_login_ufield') || 'username',
+    login_password_field: q('fr_auth_login_pfield') || 'password',
+    token_response_field: q('fr_auth_token_field') || 'token',
+    oauth_token_url: q('fr_auth_oauth_token_url'), oauth_client_id: q('fr_auth_oauth_client_id'),
+    oauth_client_secret: q('fr_auth_oauth_client_secret'), oauth_scope: q('fr_auth_oauth_scope'),
+    session_cookie: q('fr_auth_session_cookie'),
+    custom_headers: ch,
+  };
+
+  const btn = document.getElementById('frAuthTestBtn');
+  const res = document.getElementById('frAuthTestResult');
+  btn.disabled = true; btn.textContent = 'Testing…'; res.textContent = '';
+  try {
+    const r = await fetch('/api/test_fracture_auth', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url: urlVal, auth }),
+    });
+    const d = await r.json();
+    res.innerHTML = d.success
+      ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
+      : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
+  } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
+  finally { btn.disabled = false; btn.textContent = 'Test Connection'; _updateFrTestBtn(); }
+}
+
+document.getElementById('frTargetUrls').addEventListener('input', _updateFrTestBtn);
 
 // ── Siphon auth method ──────────────────────────────────────────────────────
 function siAuthMethodChanged() {
@@ -812,6 +1114,9 @@ document.getElementById('siTargetUrls').addEventListener('input', _updateSiTestB
 function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // Init auth groups and login-mode sub-sections on page load
+frAuthMethodChanged();
+frLoginModeChanged('form_login');
+frLoginModeChanged('token_login');
 siAuthMethodChanged();
 loginModeChanged('cookie_login');
 loginModeChanged('token_login');

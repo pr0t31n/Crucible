@@ -29,6 +29,7 @@
     <button class="tab-btn"        data-tab="summary"  onclick="switchTab('summary',this)">Summary</button>
     <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
     <button class="tab-btn"        data-tab="checkpoint" onclick="switchTab('checkpoint',this)">Checkpoint</button>
+    <button class="tab-btn"        data-tab="structure"  onclick="switchTab('structure',this);loadStructure()">Structure</button>
   </nav>
 
   <!-- ════════════════ TAB: CONSOLE ════════════════ -->
@@ -412,6 +413,40 @@
       {% endif %}
     </div>
   </div><!-- /tab-checkpoint -->
+
+  <!-- ════════════════ TAB: STRUCTURE ════════════════ -->
+  <div class="tab-panel" id="tab-structure">
+    <div style="padding:1rem 0">
+      <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+        <span style="font-size:.9rem;color:#8b949e">Visual map of discovered paths and endpoints generated during the scan.</span>
+        <button class="btn btn-sm btn-ghost" onclick="loadStructure(true)" title="Reload structure maps">&#x21bb; Refresh</button>
+      </div>
+
+      <!-- Fracture structure map -->
+      {% if 'fr' in project.get('tools', ['fr','si']) %}
+      <div class="form-section" style="margin-bottom:1.5rem">
+        <div class="form-section-title">
+          <span class="tool-badge tool-fr">FR</span> Fracture — Web Application Structure Map
+        </div>
+        <div id="frStructureContainer">
+          <span style="color:#8b949e;font-size:.85rem">Loading…</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Siphon API map -->
+      {% if 'si' in project.get('tools', ['fr','si']) %}
+      <div class="form-section">
+        <div class="form-section-title">
+          <span class="tool-badge tool-si">SI</span> Siphon — API Endpoint Map
+        </div>
+        <div id="siStructureContainer">
+          <span style="color:#8b949e;font-size:.85rem">Loading…</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div><!-- /tab-structure -->
 
 </div><!-- /project-layout -->
 
@@ -1373,5 +1408,132 @@ fetch(`/api/errors/${PROJECT_ID}`).then(r => r.json()).then(arr => {
   document.getElementById('errorsBadge').textContent = allErrors.length;
   renderErrors();
 });
+
+// ── Structure tab ──────────────────────────────────────────────────────────
+let _structureLoaded = false;
+
+async function loadStructure(force = false) {
+  if (_structureLoaded && !force) return;
+  _structureLoaded = true;
+  const frEl = document.getElementById('frStructureContainer');
+  const siEl = document.getElementById('siStructureContainer');
+  try {
+    const r = await fetch(`/api/structure/${PROJECT_ID}`);
+    const d = await r.json();
+    if (frEl) frEl.innerHTML = d.fr_map ? renderFrTree(d.fr_map) : '<span style="color:#8b949e;font-size:.85rem">No structure map yet — run Fracture to generate one.</span>';
+    if (siEl) siEl.innerHTML = d.si_map ? renderApiTree(d.si_map) : '<span style="color:#8b949e;font-size:.85rem">No API map yet — run Siphon to generate one.</span>';
+  } catch(e) {
+    if (frEl) frEl.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load structure data.</span>';
+    if (siEl) siEl.innerHTML = '';
+  }
+}
+
+// Render Fracture structure_map.json as a tree
+function renderFrTree(frMap) {
+  if (!frMap || !frMap.paths || Object.keys(frMap.paths).length === 0) {
+    return '<span style="color:#8b949e;font-size:.85rem">Empty structure map.</span>';
+  }
+  const paths = frMap.paths;
+  // Build tree hierarchy
+  const tree = {};
+  for (const [path, info] of Object.entries(paths)) {
+    const parts = path.replace(/^\//, '').split('/');
+    let node = tree;
+    for (const part of parts) {
+      node[part] = node[part] || { _info: null, _children: {} };
+      node = node[part]._children;
+    }
+    // Attach info to last segment
+    let n = tree;
+    for (let i = 0; i < parts.length - 1; i++) n = n[parts[i]]._children;
+    if (parts.length > 0) n[parts[parts.length - 1]]._info = info;
+  }
+  return `<div class="struct-tree">${_renderFrNode(tree, '/')}</div>`;
+}
+
+function _renderFrNode(node, prefix) {
+  let html = '';
+  for (const [name, data] of Object.entries(node)) {
+    const info = data._info || {};
+    const path = prefix === '/' ? '/' + name : prefix + '/' + name;
+    const status = info.max_status || '';
+    const authOnly = info.auth_only ? `<span class="struct-auth-tag" title="Only accessible when authenticated">🔒 ${(info.auth_users||[]).join(', ')}</span>` : '';
+    const statusCls = status < 300 ? 'struct-ok' : status < 400 ? 'struct-redir' : 'struct-err';
+    const isDir = Object.keys(data._children).length > 0;
+    const icon = isDir ? '📁' : '📄';
+    html += `<div class="struct-row">`;
+    html += `  <span class="struct-icon">${icon}</span>`;
+    html += `  <span class="struct-path">${_escHtml(name)}</span>`;
+    if (status) html += `  <span class="struct-status ${statusCls}">${status}</span>`;
+    html += authOnly;
+    html += `</div>`;
+    if (isDir) {
+      html += `<div class="struct-children">${_renderFrNode(data._children, path)}</div>`;
+    }
+  }
+  return html;
+}
+
+// Render Siphon api_map.json as a tree
+function renderApiTree(apiMap) {
+  if (!apiMap || Object.keys(apiMap).length === 0) {
+    return '<span style="color:#8b949e;font-size:.85rem">Empty API map.</span>';
+  }
+  let html = '<div class="struct-tree">';
+  for (const [path, info] of Object.entries(apiMap)) {
+    const isRogue = info.rogue;
+    const fromSpec = info.from_spec;
+    const methods = info.methods || {};
+    const rogueTag = isRogue ? '<span class="struct-rogue-tag" title="Not documented in provided API spec">⚠ rogue</span>' : '';
+    const specTag = fromSpec && !isRogue ? '<span class="struct-spec-tag" title="Documented in API spec">spec</span>' : '';
+    html += `<div class="struct-ep-row${isRogue ? ' struct-rogue' : ''}">`;
+    html += `  <span class="struct-path">${_escHtml(path)}</span>${rogueTag}${specTag}`;
+    html += `  <div class="struct-methods">`;
+    for (const [method, minfo] of Object.entries(methods)) {
+      const codes = (minfo.status_codes || []).join(', ');
+      const authUsers = (minfo.auth_users || []).join(', ');
+      const authTag = minfo.auth_required ? `<span class="struct-auth-tag" title="Auth required: ${authUsers}">🔒${authUsers ? ' ' + authUsers : ''}</span>` : '';
+      const mRogue = minfo.rogue ? '<span class="struct-rogue-tag">⚠</span>' : '';
+      const codeCls = minfo.max_status && minfo.max_status < 300 ? 'struct-ok' : minfo.max_status && minfo.max_status < 400 ? 'struct-redir' : minfo.max_status ? 'struct-err' : '';
+      html += `<span class="struct-method-pill ${method.toLowerCase()}">${method}</span>`;
+      if (codes) html += `<span class="struct-status ${codeCls}">${codes}</span>`;
+      html += authTag + mRogue + ' ';
+    }
+    html += `  </div>`;
+    html += `</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
+
+<style>
+.struct-tree { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size:.82rem; line-height:1.6; }
+.struct-row { display:flex; align-items:center; gap:.4rem; padding:.15rem .25rem; border-radius:4px; }
+.struct-row:hover { background: rgba(88,166,255,.07); }
+.struct-ep-row { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.3rem .5rem; border-bottom:1px solid #21262d; }
+.struct-ep-row:last-child { border-bottom:none; }
+.struct-ep-row.struct-rogue { background: rgba(248,81,73,.06); }
+.struct-children { padding-left:1.4rem; border-left:1px dashed #30363d; margin-left:.5rem; }
+.struct-icon { width:1.2rem; text-align:center; }
+.struct-path { color:#e6edf3; font-weight:500; }
+.struct-status { padding:.1rem .35rem; border-radius:3px; font-size:.78rem; font-weight:600; }
+.struct-ok    { background:#1b4332; color:#3fb950; }
+.struct-redir { background:#332e14; color:#d29922; }
+.struct-err   { background:#3d1a1a; color:#f85149; }
+.struct-auth-tag { background:#1c2a3e; color:#58a6ff; border-radius:3px; padding:.1rem .3rem; font-size:.75rem; }
+.struct-spec-tag { background:#1f2b1f; color:#3fb950; border-radius:3px; padding:.1rem .3rem; font-size:.75rem; }
+.struct-rogue-tag { background:#3d2a0a; color:#d29922; border-radius:3px; padding:.1rem .3rem; font-size:.75rem; }
+.struct-methods { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem; margin-top:.15rem; width:100%; }
+.struct-method-pill { border-radius:3px; padding:.1rem .4rem; font-size:.75rem; font-weight:700; text-transform:uppercase; }
+.struct-method-pill.get    { background:#1b3a2b; color:#3fb950; }
+.struct-method-pill.post   { background:#1e2d44; color:#58a6ff; }
+.struct-method-pill.put    { background:#2d2a10; color:#d29922; }
+.struct-method-pill.patch  { background:#2a1e30; color:#d2a8ff; }
+.struct-method-pill.delete { background:#3d1a1a; color:#f85149; }
+.struct-method-pill.head   { background:#1e1e1e; color:#8b949e; }
+.struct-method-pill.options{ background:#1e1e1e; color:#8b949e; }
+</style>
 {% endblock %}

@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.3.4"
+VERSION = "1.3.5"
 
 import json
 import os
@@ -40,7 +40,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 CRUCIBLE_DIR  = Path(__file__).parent.resolve()
 PROJECTS_FILE = CRUCIBLE_DIR / "projects.json"
 PROJECTS_DIR  = CRUCIBLE_DIR / "projects"
-FRACTURE_SCRIPT = Path("/Users/pr0t31n/Fracture/fracture.py")
+FRACTURE_SCRIPT = Path("/opt/pr0t31n/Fracture/fracture.py")
 SIPHON_SCRIPT   = Path("/Users/pr0t31n/Siphon/siphon.py")
 
 PROJECTS_DIR.mkdir(exist_ok=True)
@@ -187,13 +187,26 @@ FR_DEFAULTS: dict = {
             "session": False, "csrf": False, "cross_user": False
         },
         "auth": {
-            "enabled": False, "username": "", "password": "",
-            "auth_type": "form", "login_url": "", "login_data": "",
-            "auth_token": "", "token_type": "Bearer", "session_cookie": ""
+            "enabled": False, "auth_method": "form_login",
+            "username": "", "password": "",
+            "login_url": "", "login_mode": "fields",
+            "login_username_field": "username", "login_password_field": "password",
+            "login_data": "",
+            "auth_token": "", "token_type": "Bearer", "token_response_field": "token",
+            "oauth_token_url": "", "oauth_client_id": "", "oauth_client_secret": "",
+            "oauth_scope": "",
+            "api_key_header": "X-API-Key", "api_key_cookie_name": "api_key",
+            "api_key_value": "",
+            "session_cookie": "", "domain": "", "custom_headers": {},
         },
         "auth2": {
-            "enabled": False, "username": "", "password": "",
-            "auth_token": "", "session_cookie": ""
+            "enabled": False, "auth_method": "form_login",
+            "username": "", "password": "",
+            "login_url": "", "login_mode": "fields",
+            "login_username_field": "username", "login_password_field": "password",
+            "login_data": "",
+            "auth_token": "", "token_type": "Bearer",
+            "session_cookie": "", "domain": "", "custom_headers": {},
         },
         "sqlmap_timeout": 300, "nuclei_timeout": 600,
         "crawl_depth": 3, "crawl_max_pages": 150,
@@ -505,6 +518,64 @@ def _build_si_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
         "oauth_scope":           _keep("oauth_scope",        "si_auth_oauth_scope"),
         # Custom headers
         "custom_headers":        _json_field("si_auth_custom_headers", "custom_headers", "{}"),
+    }
+    return auth
+
+
+def _build_fr_auth_from_body(body: dict, existing: "dict | None" = None) -> dict:
+    """
+    Build a Fracture scan.auth dict from form body keys (fr_auth_*).
+    In edit mode pass `existing` to preserve password/secret fields left blank.
+    """
+    method = body.get("fr_auth_method", "none")
+    if method == "none":
+        return {"enabled": False, "auth_method": "form_login"}
+
+    ex = existing or {}
+
+    def _keep(field: str, form_key: str, default: str = "") -> str:
+        v = body.get(form_key, "").strip()
+        return v if v else ex.get(field, default)
+
+    def _json_field(form_key: str, existing_key: str, default: str = "{}") -> object:
+        raw = body.get(form_key, "").strip()
+        if raw:
+            try:
+                return json.loads(raw)
+            except Exception:
+                return raw
+        return ex.get(existing_key, default)
+
+    auth: dict = {
+        "enabled":               True,
+        "auth_method":           method,
+        # Universal credentials
+        "username":              _keep("username",              "fr_auth_username"),
+        "password":              _keep("password",              "fr_auth_password"),
+        "domain":                _keep("domain",                "fr_auth_domain"),
+        # Token / bearer
+        "auth_token":            _keep("auth_token",            "fr_auth_token"),
+        "token_type":            _keep("token_type",            "fr_auth_token_type",     "Bearer"),
+        "token_response_field":  _keep("token_response_field",  "fr_auth_token_field",    "token"),
+        # Form / token login endpoint
+        "login_url":             _keep("login_url",             "fr_auth_login_url"),
+        "login_mode":            _keep("login_mode",            "fr_auth_login_mode",     "fields"),
+        "login_data":            _keep("login_data",            "fr_auth_login_data",     "{}"),
+        "login_username_field":  _keep("login_username_field",  "fr_auth_login_ufield",   "username"),
+        "login_password_field":  _keep("login_password_field",  "fr_auth_login_pfield",   "password"),
+        # OAuth2
+        "oauth_token_url":       _keep("oauth_token_url",       "fr_auth_oauth_token_url"),
+        "oauth_client_id":       _keep("oauth_client_id",       "fr_auth_oauth_client_id"),
+        "oauth_client_secret":   _keep("oauth_client_secret",   "fr_auth_oauth_client_secret"),
+        "oauth_scope":           _keep("oauth_scope",           "fr_auth_oauth_scope"),
+        # API key
+        "api_key_header":        _keep("api_key_header",        "fr_auth_api_key_header", "X-API-Key"),
+        "api_key_cookie_name":   _keep("api_key_cookie_name",   "fr_auth_api_key_cookie", "api_key"),
+        "api_key_value":         _keep("api_key_value",         "fr_auth_api_key_value"),
+        # Pre-captured session
+        "session_cookie":        _keep("session_cookie",        "fr_auth_session_cookie"),
+        # Custom headers
+        "custom_headers":        _json_field("fr_auth_custom_headers", "custom_headers", "{}"),
     }
     return auth
 
@@ -843,6 +914,10 @@ def api_create_project():
     )
     si["scan"]["api_spec_files"] = spec_file_paths
 
+    # Fracture auth
+    if body.get("fr_auth_method") and body["fr_auth_method"] != "none":
+        fr["scan"]["auth"] = _build_fr_auth_from_body(body)
+
     # Siphon auth
     si["scan"]["auth"] = _build_si_auth_from_body(body)
 
@@ -915,6 +990,9 @@ def api_update_project(project_id: str):
             fr_url_list = _parse_url_list(fr_urls_raw)
             fr["scan"]["target_url"]  = fr_url_list[0] if fr_url_list else ""
             fr["scan"]["target_urls"] = fr_url_list
+        # Fracture auth (only update when method key present in body)
+        if "fr_auth_method" in body:
+            fr["scan"]["auth"] = _build_fr_auth_from_body(body, fr["scan"].get("auth"))
         fr_path.write_text(json.dumps(fr, indent=2))
     except Exception:
         pass
@@ -1022,6 +1100,46 @@ def api_test_siphon_auth():
         return jsonify({"success": False, "message": str(exc)})
 
 
+@app.route("/api/test_fracture_auth", methods=["POST"])
+def api_test_fracture_auth():
+    """Run Fracture's testConnection.py to verify web app auth config."""
+    body = request.json or {}
+    test_url = (body.get("url") or "").strip()
+    if not test_url:
+        return jsonify({"success": False, "message": "No target URL provided"})
+
+    tc_script = Path("/opt/pr0t31n/Fracture/testConnection.py")
+    if not tc_script.exists():
+        return jsonify({"success": False, "message": "Fracture testConnection.py not found"})
+
+    payload = {
+        "url":        test_url,
+        "auth":       body.get("auth", {}),
+        "timeout":    int(body.get("timeout", 10)),
+        "verify_ssl": bool(body.get("verify_ssl", False)),
+        "proxy":      body.get("proxy", ""),
+    }
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(tc_script), "--json", json.dumps(payload),
+             "--output-json", "--no-verify"],
+            capture_output=True, text=True, timeout=35,
+        )
+        try:
+            return jsonify(json.loads(proc.stdout.strip()))
+        except Exception:
+            return jsonify({
+                "success": proc.returncode == 0,
+                "message": (proc.stdout.strip() or proc.stderr.strip() or "No output"),
+                "auth_info": "",
+                "status_code": None,
+            })
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "message": "Test timed out (35 s)"})
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)})
+
+
 @app.route("/api/settings/<project_id>/<tool>", methods=["GET", "POST"])
 def api_settings(project_id: str, tool: str):
     proj = _get_project(project_id)
@@ -1096,6 +1214,44 @@ def api_findings(project_id: str):
     if fallback:
         _all_findings[project_id] = fallback
     return jsonify(fallback)
+
+
+@app.route("/api/structure/<project_id>")
+def api_structure(project_id: str):
+    """Return structure maps for Fracture (structure_map.json) and Siphon (api_map.json)."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    result: dict = {"fr_map": None, "si_map": None}
+
+    # Fracture structure map
+    try:
+        fr_path = Path(proj.get("fr_settings_file", ""))
+        if fr_path.exists():
+            fr_cfg  = json.loads(fr_path.read_text())
+            fr_proj = fr_cfg.get("scan", {}).get("project", "")
+            if fr_proj:
+                sm = Path(fr_proj) / "structure_map.json"
+                if sm.exists():
+                    result["fr_map"] = json.loads(sm.read_text())
+    except Exception:
+        pass
+
+    # Siphon API map
+    try:
+        si_path = Path(proj.get("si_settings_file", ""))
+        if si_path.exists():
+            si_cfg  = json.loads(si_path.read_text())
+            si_proj = si_cfg.get("scan", {}).get("project", "")
+            if si_proj:
+                am = Path(si_proj) / "api_map.json"
+                if am.exists():
+                    result["si_map"] = json.loads(am.read_text())
+    except Exception:
+        pass
+
+    return jsonify(result)
 
 
 @app.route("/api/logs/<project_id>")

@@ -166,44 +166,303 @@
       </div>
 
       <div class="settings-tab-panel" id="fr-auth">
+        {% set _fa = fr.scan.auth if fr and fr.scan and fr.scan.auth else {} %}
+        {% set _frm = _fa.get('auth_method', 'none' if not _fa.get('enabled') else 'form_login') %}
+        {% set _flm = _fa.get('login_mode', 'fields') %}
         <div class="form-grid">
           <div class="form-group span2">
-            <label class="form-label">Primary Auth — Enabled</label>
-            <select name="fr_auth_enabled" class="form-control">
-              <option value="0" {% if not (fr and fr.scan and fr.scan.auth and fr.scan.auth.enabled) %}selected{% endif %}>No</option>
-              <option value="1" {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.enabled %}selected{% endif %}>Yes</option>
-            </select>
+            <label class="form-label">Authentication Method</label>
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+              <select name="fr_auth_method" class="form-control" id="frAuthMethod"
+                      onchange="frAuthMethodChanged()" style="flex:1;min-width:260px">
+                <option value="none" {{ 'selected' if _frm == 'none' else '' }}>None — unauthenticated</option>
+                <option value="form_login" {{ 'selected' if _frm == 'form_login' else '' }}>Form Login  (POST credentials → session)</option>
+                <option value="basic" {{ 'selected' if _frm == 'basic' else '' }}>HTTP Basic Auth  (username:password)</option>
+                <option value="digest" {{ 'selected' if _frm == 'digest' else '' }}>HTTP Digest Auth</option>
+                <option value="ntlm" {{ 'selected' if _frm == 'ntlm' else '' }}>NTLM / Windows Auth  (Active Directory)</option>
+                <option value="bearer" {{ 'selected' if _frm == 'bearer' else '' }}>Bearer Token  (Authorization header)</option>
+                <option value="session_cookie" {{ 'selected' if _frm == 'session_cookie' else '' }}>Pre-Captured Session Cookie</option>
+                <option value="token_login" {{ 'selected' if _frm == 'token_login' else '' }}>Token Login  (POST credentials → JSON token)</option>
+                <option value="oauth2_client_creds" {{ 'selected' if _frm == 'oauth2_client_creds' else '' }}>OAuth2 Client Credentials  (machine-to-machine)</option>
+                <option value="apikey_header" {{ 'selected' if _frm == 'apikey_header' else '' }}>API Key Header  (custom header)</option>
+                <option value="apikey_cookie" {{ 'selected' if _frm == 'apikey_cookie' else '' }}>API Key Cookie</option>
+                <option value="header_creds" {{ 'selected' if _frm == 'header_creds' else '' }}>Custom Credential Headers  (static key-value pairs)</option>
+                <option value="kerberos" {{ 'selected' if _frm == 'kerberos' else '' }}>Kerberos / SPNEGO  (SSO)</option>
+              </select>
+              <button type="button" class="btn btn-sm btn-ghost" id="frAuthTestBtn"
+                      onclick="testFrConnection()" disabled
+                      title="Fill in auth fields and target URL, then click to test">Test Connection</button>
+              <span id="frAuthTestResult" style="font-size:.82rem"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- bearer -->
+        <div class="fr-auth-group form-grid" id="frAuth-bearer"
+             style="{{ '' if _frm == 'bearer' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Token / API Key</label>
+            <input type="password" name="fr_auth_token" class="form-control"
+                   placeholder="eyJhbGci… (leave blank to keep existing)" autocomplete="new-password">
           </div>
           <div class="form-group">
-            <label class="form-label">Auth Type</label>
-            <select name="fr_auth_type" class="form-control">
-              <option value="form"  {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'form'  %}selected{% endif %}>Form-based</option>
-              <option value="basic" {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'basic' %}selected{% endif %}>HTTP Basic</option>
-              <option value="token" {% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'token' %}selected{% endif %}>Token/Bearer</option>
-              <option value="cookie"{% if fr and fr.scan and fr.scan.auth and fr.scan.auth.auth_type == 'cookie'%}selected{% endif %}>Session Cookie</option>
-            </select>
+            <label class="form-label">Token Type</label>
+            <input type="text" name="fr_auth_token_type" class="form-control"
+                   placeholder="Bearer" value="{{ _fa.get('token_type','Bearer') }}">
           </div>
+        </div>
+
+        <!-- basic -->
+        <div class="fr-auth-group form-grid" id="frAuth-basic"
+             style="{{ '' if _frm == 'basic' else 'display:none;' }}margin-top:.5rem">
           <div class="form-group">
             <label class="form-label">Username</label>
             <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
-                   value="{{ fr.scan.auth.username if fr and fr.scan and fr.scan.auth else '' }}">
+                   value="{{ _fa.get('username','') }}">
           </div>
           <div class="form-group">
             <label class="form-label">Password</label>
             <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
             <span class="form-hint">Leave blank to keep existing</span>
           </div>
+        </div>
+
+        <!-- digest -->
+        <div class="fr-auth-group form-grid" id="frAuth-digest"
+             style="{{ '' if _frm == 'digest' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
+                   value="{{ _fa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+        </div>
+
+        <!-- ntlm -->
+        <div class="fr-auth-group form-grid" id="frAuth-ntlm"
+             style="{{ '' if _frm == 'ntlm' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
+                   value="{{ _fa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Domain</label>
+            <input type="text" name="fr_auth_domain" class="form-control" placeholder="CORP"
+                   value="{{ _fa.get('domain','') }}">
+          </div>
+          <div class="form-group">
+            <span class="form-hint">Requires: pip install requests-ntlm</span>
+          </div>
+        </div>
+
+        <!-- session_cookie -->
+        <div class="fr-auth-group form-grid" id="frAuth-session_cookie"
+             style="{{ '' if _frm == 'session_cookie' else 'display:none;' }}margin-top:.5rem">
           <div class="form-group span2">
+            <label class="form-label">Session Cookie String</label>
+            <input type="text" name="fr_auth_session_cookie" class="form-control"
+                   placeholder="session=abc123; csrf=xyz (leave blank to keep existing)"
+                   value="{{ _fa.get('session_cookie','') }}" autocomplete="off">
+          </div>
+        </div>
+
+        <!-- form_login -->
+        {% set _fl_lm = _fa.get('login_mode','fields') if _frm == 'form_login' else 'fields' %}
+        <div class="fr-auth-group form-grid" id="frAuth-form_login"
+             style="{{ '' if _frm == 'form_login' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
             <label class="form-label">Login URL</label>
             <input type="url" name="fr_auth_login_url" class="form-control"
                    placeholder="https://app.example.com/login"
-                   value="{{ fr.scan.auth.login_url if fr and fr.scan and fr.scan.auth else '' }}">
+                   value="{{ _fa.get('login_url','') if _frm == 'form_login' else '' }}"
+                   oninput="_updateFrTestBtn()">
           </div>
+          <div class="form-group">
+            <label class="form-label">Credentials Mode</label>
+            <select name="fr_auth_login_mode" class="form-control"
+                    onchange="frLoginModeChanged('form_login')">
+              <option value="fields" {{ 'selected' if _fl_lm != 'json' else '' }}>Credential Fields</option>
+              <option value="json"   {{ 'selected' if _fl_lm == 'json' else '' }}>Custom JSON Body</option>
+            </select>
+          </div>
+          <div class="form-group span2 fr-login-fields" id="frLoginFields-form_login"
+               style="{{ 'display:none;' if _fl_lm == 'json' else '' }}padding:0;margin:0">
+            <div class="form-grid" style="margin:0">
+              <div class="form-group">
+                <label class="form-label">Username Field Name</label>
+                <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username"
+                       value="{{ _fa.get('login_username_field','username') if _frm == 'form_login' else 'username' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
+                       value="{{ _fa.get('username','') if _frm == 'form_login' else '' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password Field Name</label>
+                <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password"
+                       value="{{ _fa.get('login_password_field','password') if _frm == 'form_login' else 'password' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+                <span class="form-hint">Leave blank to keep existing</span>
+              </div>
+            </div>
+          </div>
+          <div class="form-group span2 fr-login-json" id="frLoginJson-form_login"
+               style="{{ '' if _fl_lm == 'json' else 'display:none;' }}padding:0;margin:0">
+            <textarea name="fr_auth_login_data" class="form-control" rows="4"
+                      placeholder='{"username":"admin","password":"secret","_token":"csrf123"}'>{{ _fa.get('login_data','') if _frm == 'form_login' else '' }}</textarea>
+          </div>
+        </div>
+
+        <!-- token_login -->
+        {% set _tl_lm = _fa.get('login_mode','fields') if _frm == 'token_login' else 'fields' %}
+        <div class="fr-auth-group form-grid" id="frAuth-token_login"
+             style="{{ '' if _frm == 'token_login' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Login URL</label>
+            <input type="url" name="fr_auth_login_url" class="form-control"
+                   placeholder="https://app.example.com/api/auth/login"
+                   value="{{ _fa.get('login_url','') if _frm == 'token_login' else '' }}"
+                   oninput="_updateFrTestBtn()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Credentials Mode</label>
+            <select name="fr_auth_login_mode" class="form-control"
+                    onchange="frLoginModeChanged('token_login')">
+              <option value="fields" {{ 'selected' if _tl_lm != 'json' else '' }}>Credential Fields</option>
+              <option value="json"   {{ 'selected' if _tl_lm == 'json' else '' }}>Custom JSON Body</option>
+            </select>
+          </div>
+          <div class="form-group span2 fr-login-fields" id="frLoginFields-token_login"
+               style="{{ 'display:none;' if _tl_lm == 'json' else '' }}padding:0;margin:0">
+            <div class="form-grid" style="margin:0">
+              <div class="form-group">
+                <label class="form-label">Username Field Name</label>
+                <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username"
+                       value="{{ _fa.get('login_username_field','username') if _frm == 'token_login' else 'username' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
+                       value="{{ _fa.get('username','') if _frm == 'token_login' else '' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password Field Name</label>
+                <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password"
+                       value="{{ _fa.get('login_password_field','password') if _frm == 'token_login' else 'password' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+                <span class="form-hint">Leave blank to keep existing</span>
+              </div>
+            </div>
+          </div>
+          <div class="form-group span2 fr-login-json" id="frLoginJson-token_login"
+               style="{{ '' if _tl_lm == 'json' else 'display:none;' }}padding:0;margin:0">
+            <textarea name="fr_auth_login_data" class="form-control" rows="4"
+                      placeholder='{"username":"admin","password":"secret"}'>{{ _fa.get('login_data','') if _frm == 'token_login' else '' }}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token Response Field</label>
+            <input type="text" name="fr_auth_token_field" class="form-control" placeholder="token"
+                   value="{{ _fa.get('token_response_field','token') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token Type</label>
+            <input type="text" name="fr_auth_token_type" class="form-control" placeholder="Bearer"
+                   value="{{ _fa.get('token_type','Bearer') }}">
+          </div>
+        </div>
+
+        <!-- oauth2_client_creds -->
+        <div class="fr-auth-group form-grid" id="frAuth-oauth2_client_creds"
+             style="{{ '' if _frm == 'oauth2_client_creds' else 'display:none;' }}margin-top:.5rem">
           <div class="form-group span2">
-            <label class="form-label">Auth Token / Cookie</label>
-            <input type="password" name="fr_auth_token" class="form-control" autocomplete="new-password">
-            <span class="form-hint">Bearer token, API key, or session cookie value</span>
+            <label class="form-label">Token URL</label>
+            <input type="url" name="fr_auth_oauth_token_url" class="form-control"
+                   placeholder="https://auth.example.com/oauth/token"
+                   value="{{ _fa.get('oauth_token_url','') }}" oninput="_updateFrTestBtn()">
           </div>
+          <div class="form-group">
+            <label class="form-label">Client ID</label>
+            <input type="text" name="fr_auth_oauth_client_id" class="form-control"
+                   placeholder="my-client-id" value="{{ _fa.get('oauth_client_id','') }}"
+                   oninput="_updateFrTestBtn()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client Secret</label>
+            <input type="password" name="fr_auth_oauth_client_secret" class="form-control"
+                   placeholder="(leave blank to keep existing)" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Scope (optional)</label>
+            <input type="text" name="fr_auth_oauth_scope" class="form-control" placeholder="read write"
+                   value="{{ _fa.get('oauth_scope','') }}">
+          </div>
+        </div>
+
+        <!-- apikey_header -->
+        <div class="fr-auth-group form-grid" id="frAuth-apikey_header"
+             style="{{ '' if _frm == 'apikey_header' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">API Key</label>
+            <input type="password" name="fr_auth_api_key_value" class="form-control"
+                   placeholder="sk-… (leave blank to keep existing)" autocomplete="new-password"
+                   oninput="_updateFrTestBtn()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Header Name</label>
+            <input type="text" name="fr_auth_api_key_header" class="form-control"
+                   placeholder="X-API-Key" value="{{ _fa.get('api_key_header','X-API-Key') }}">
+          </div>
+        </div>
+
+        <!-- apikey_cookie -->
+        <div class="fr-auth-group form-grid" id="frAuth-apikey_cookie"
+             style="{{ '' if _frm == 'apikey_cookie' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">API Key</label>
+            <input type="password" name="fr_auth_api_key_value" class="form-control"
+                   placeholder="sk-… (leave blank to keep existing)" autocomplete="new-password"
+                   oninput="_updateFrTestBtn()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cookie Name</label>
+            <input type="text" name="fr_auth_api_key_cookie" class="form-control"
+                   placeholder="api_key" value="{{ _fa.get('api_key_cookie_name','api_key') }}">
+          </div>
+        </div>
+
+        <!-- header_creds -->
+        <div class="fr-auth-group" id="frAuth-header_creds"
+             style="{{ '' if _frm == 'header_creds' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Custom Headers (JSON object)</label>
+            <textarea name="fr_auth_custom_headers" class="form-control" rows="4"
+                      placeholder='{"X-App-Token":"abc123","X-User-ID":"42"}'
+                      oninput="_updateFrTestBtn()">{{ _fa.get('custom_headers', {}) | tojson if _frm == 'header_creds' else '' }}</textarea>
+          </div>
+        </div>
+
+        <!-- kerberos -->
+        <div class="fr-auth-group" id="frAuth-kerberos"
+             style="{{ '' if _frm == 'kerberos' else 'display:none;' }}margin-top:.5rem">
+          <span class="form-hint" style="color:#8b949e">Kerberos/SPNEGO uses the current system ticket cache (kinit). No credentials needed here.</span>
+          <span class="form-hint">Requires: pip install requests-kerberos</span>
         </div>
       </div>
     </div>
@@ -773,6 +1032,15 @@ function submitForm(e) {
   body.fr_target_urls = document.getElementById('frTargetUrls').value;
   body.si_target_urls = document.getElementById('siTargetUrls').value;
   body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
+  // Fracture auth — override fr_auth_* fields from active group only
+  body.fr_auth_method = document.getElementById('frAuthMethod').value;
+  const _activeFrAuthGrp = document.getElementById('frAuth-' + body.fr_auth_method);
+  if (_activeFrAuthGrp) {
+    _activeFrAuthGrp.querySelectorAll('input[name^="fr_auth"], textarea[name^="fr_auth"], select[name^="fr_auth"]').forEach(el => {
+      body[el.name] = el.value;
+    });
+  }
+
   // Siphon auth — set method explicitly, then override si_auth_* fields from
   // the active (visible) group only.  Multiple groups share the same name
   // attributes and fd.forEach last-value-wins picks up hidden groups' empty
@@ -836,6 +1104,92 @@ function switchSettingsTab(panelId, btn) {
   section.querySelectorAll('.settings-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(panelId).classList.add('active');
   btn.classList.add('active');
+}
+
+// ── Fracture auth method ─────────────────────────────────────────────────────
+function frAuthMethodChanged() {
+  const method = document.getElementById('frAuthMethod').value;
+  document.querySelectorAll('.fr-auth-group').forEach(el => el.style.display = 'none');
+  if (method !== 'none') {
+    const g = document.getElementById('frAuth-' + method);
+    if (g) g.style.display = '';
+    if (method === 'form_login' || method === 'token_login') frLoginModeChanged(method);
+  }
+  _updateFrTestBtn();
+}
+
+function frLoginModeChanged(method) {
+  const grp = document.getElementById('frAuth-' + method);
+  if (!grp) return;
+  const mode = grp.querySelector('[name="fr_auth_login_mode"]')?.value || 'fields';
+  const fieldsEl = document.getElementById('frLoginFields-' + method);
+  const jsonEl   = document.getElementById('frLoginJson-'   + method);
+  if (fieldsEl) fieldsEl.style.display = mode === 'json' ? 'none' : '';
+  if (jsonEl)   jsonEl.style.display   = mode === 'json' ? ''     : 'none';
+  _updateFrTestBtn();
+}
+
+function _updateFrTestBtn() {
+  const method = document.getElementById('frAuthMethod').value;
+  const urlRaw = (document.getElementById('frTargetUrls')?.value || '').trim();
+  let ready = method !== 'none' && urlRaw.length > 0;
+  if (ready) {
+    const activeGrp = document.getElementById('frAuth-' + method);
+    const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
+    if      (method === 'bearer')                ready = !!q('fr_auth_token');
+    else if (['basic','digest','ntlm'].includes(method)) ready = !!q('fr_auth_username');
+    else if (method === 'form_login' || method === 'token_login') ready = !!q('fr_auth_login_url');
+    else if (method === 'oauth2_client_creds')   ready = !!(q('fr_auth_oauth_token_url') && q('fr_auth_oauth_client_id'));
+    else if (method === 'apikey_header' || method === 'apikey_cookie') ready = !!q('fr_auth_api_key_value');
+    else if (method === 'header_creds')          ready = !!q('fr_auth_custom_headers');
+  }
+  const btn = document.getElementById('frAuthTestBtn');
+  if (btn) btn.disabled = !ready;
+}
+
+async function testFrConnection() {
+  const method = document.getElementById('frAuthMethod').value;
+  if (method === 'none') return;
+  const frUrls = document.getElementById('frTargetUrls');
+  const urlVal = (frUrls?.value || '').trim().split(/[\n,]+/)[0].trim();
+  if (!urlVal) { document.getElementById('frAuthTestResult').innerHTML = '<span style="color:#f85149">Enter a target URL first</span>'; return; }
+
+  const activeGrp = document.getElementById('frAuth-' + method);
+  const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
+  let ch = {};
+  try { ch = JSON.parse(q('fr_auth_custom_headers') || '{}'); } catch {}
+  const auth = {
+    auth_method: method,
+    auth_token: q('fr_auth_token'), token_type: q('fr_auth_token_type') || 'Bearer',
+    username: q('fr_auth_username'), password: q('fr_auth_password'), domain: q('fr_auth_domain'),
+    api_key_value: q('fr_auth_api_key_value'),
+    api_key_header: q('fr_auth_api_key_header') || 'X-API-Key',
+    api_key_cookie_name: q('fr_auth_api_key_cookie') || 'api_key',
+    login_mode: q('fr_auth_login_mode') || 'fields',
+    login_url: q('fr_auth_login_url'), login_data: q('fr_auth_login_data') || '{}',
+    login_username_field: q('fr_auth_login_ufield') || 'username',
+    login_password_field: q('fr_auth_login_pfield') || 'password',
+    token_response_field: q('fr_auth_token_field') || 'token',
+    oauth_token_url: q('fr_auth_oauth_token_url'), oauth_client_id: q('fr_auth_oauth_client_id'),
+    oauth_client_secret: q('fr_auth_oauth_client_secret'), oauth_scope: q('fr_auth_oauth_scope'),
+    session_cookie: q('fr_auth_session_cookie'),
+    custom_headers: ch,
+  };
+
+  const btn = document.getElementById('frAuthTestBtn');
+  const res = document.getElementById('frAuthTestResult');
+  btn.disabled = true; btn.textContent = 'Testing…'; res.textContent = '';
+  try {
+    const r = await fetch('/api/test_fracture_auth', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url: urlVal, auth }),
+    });
+    const d = await r.json();
+    res.innerHTML = d.success
+      ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
+      : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
+  } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
+  finally { btn.disabled = false; btn.textContent = 'Test Connection'; _updateFrTestBtn(); }
 }
 
 // ── Siphon auth method ────────────────────────────────────────────────────
@@ -930,6 +1284,11 @@ function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 
 // Initialise on load
 document.addEventListener('DOMContentLoaded', () => {
+  frAuthMethodChanged();
+  frLoginModeChanged('form_login');
+  frLoginModeChanged('token_login');
+  const frUrls = document.getElementById('frTargetUrls');
+  if (frUrls) frUrls.addEventListener('input', _updateFrTestBtn);
   siAuthMethodChanged();
   loginModeChanged('cookie_login');
   loginModeChanged('token_login');
