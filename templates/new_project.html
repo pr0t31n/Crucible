@@ -2,13 +2,43 @@
 {% block title %}New Engagement — Crucible{% endblock %}
 
 {% block content %}
-<div class="form-page">
+<div class="form-page-wide">
   <div class="form-header">
     <a href="/" class="back-link">&#8592; Engagements</a>
     <h2 class="form-title">New Engagement</h2>
   </div>
 
-  <form id="newEngagementForm" class="engagement-form" onsubmit="submitForm(event)">
+  <div class="form-layout">
+
+  <!-- ── AuthProbe Panel ──────────────────────────────────────── -->
+  <div class="authprobe-panel">
+    <div class="form-section-title">&#x1F50D; AuthProbe</div>
+    <div class="form-group" style="margin-top:.5rem">
+      <label class="form-label">Target URL <span class="req">*</span></label>
+      <input type="url" id="apUrl" class="form-control"
+             placeholder="https://target.example.com">
+    </div>
+    <div class="form-group" style="margin-top:.5rem">
+      <label class="form-label">Username</label>
+      <input type="text" id="apUsername" class="form-control" placeholder="optional">
+    </div>
+    <div class="form-group" style="margin-top:.5rem">
+      <label class="form-label">Password</label>
+      <input type="password" id="apPassword" class="form-control" placeholder="optional">
+    </div>
+    <div style="margin-top:.75rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+      <button type="button" class="btn btn-primary btn-sm" id="apIdentifyBtn"
+              onclick="runAuthProbe()">Identify</button>
+      <label class="form-label" style="margin:0;display:flex;gap:.3rem;align-items:center;cursor:pointer">
+        <input type="checkbox" id="apRendered"> Rendered
+      </label>
+    </div>
+    <div id="apStatus" style="margin-top:.4rem;font-size:.72rem;color:var(--text-muted)"></div>
+    <pre id="apConsole" class="authprobe-console" style="margin-top:.65rem;display:none"></pre>
+  </div>
+  <!-- ── End AuthProbe Panel ─────────────────────────────────── -->
+
+  <form id="newEngagementForm" class="engagement-form" style="flex:1;min-width:0" onsubmit="submitForm(event)">
 
     <!-- Engagement Details -->
     <div class="form-section">
@@ -117,18 +147,27 @@
               <option value="basic">HTTP Basic Auth  (username:password)</option>
               <option value="digest">HTTP Digest Auth</option>
               <option value="ntlm">NTLM / Windows Auth  (Active Directory)</option>
+              <option value="ntlm_v2">NTLMv2 + Channel Binding Token  (EPA)</option>
               <option value="bearer">Bearer Token  (Authorization header)</option>
               <option value="session_cookie">Pre-Captured Session Cookie</option>
               <option value="token_login">Token Login  (POST credentials → JSON token)</option>
               <option value="oauth2_client_creds">OAuth2 Client Credentials  (machine-to-machine)</option>
+              <option value="oauth1a">OAuth 1.0a  (HMAC-SHA1 signed requests)</option>
+              <option value="saml_assertion">SAML 2.0  (SAMLResponse POST to ACS)</option>
+              <option value="oidc_token">OIDC  (pre-obtained id_token as Bearer)</option>
+              <option value="mtls">Mutual TLS  (client certificate + private key)</option>
+              <option value="totp_mfa">TOTP/HOTP MFA  (form login + second factor)</option>
+              <option value="webauthn_probe">WebAuthn/FIDO2  (probe / detection only)</option>
               <option value="apikey_header">API Key Header  (custom header)</option>
               <option value="apikey_cookie">API Key Cookie</option>
               <option value="header_creds">Custom Credential Headers  (static key-value pairs)</option>
               <option value="kerberos">Kerberos / SPNEGO  (SSO)</option>
+              <option value="kerberos_delegation">Kerberos S4U2Proxy  (constrained delegation)</option>
+              <option value="proxy_header">Proxy / Gateway Auth Header  (upstream injected header)</option>
             </select>
-            <button type="button" class="btn btn-sm btn-ghost" id="frAuthTestBtn"
+            <button type="button" class="btn btn-sm btn-prompt" id="frAuthTestBtn"
                     onclick="testFrConnection()" disabled
-                    title="Fill in auth fields and target URL, then click to test">Test Connection</button>
+                    title="Fill in auth fields and target URL, then click to test">&#x26A1; Test Connection</button>
             <span id="frAuthTestResult" style="font-size:.82rem"></span>
           </div>
         </div>
@@ -354,6 +393,167 @@
           <span class="form-hint">Requires: pip install requests-kerberos</span>
         </div>
       </div>
+
+      <!-- ── NTLMv2 ────────────────────────────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-ntlm_v2" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="fr_auth_username" class="form-control" placeholder="jsmith" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Domain</label>
+          <input type="text" name="fr_auth_domain" class="form-control" placeholder="CORP">
+          <span class="form-hint">Requires: pip install requests-ntlm</span>
+        </div>
+      </div>
+
+      <!-- ── OAuth 1.0a ─────────────────────────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-oauth1a" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Consumer Key <span class="req">*</span></label>
+          <input type="text" name="fr_auth_oauth1_consumer_key" class="form-control" autocomplete="off" oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Consumer Secret</label>
+          <input type="password" name="fr_auth_oauth1_consumer_secret" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Token <span class="form-hint">(optional)</span></label>
+          <input type="text" name="fr_auth_oauth1_access_token" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Secret <span class="form-hint">(optional)</span></label>
+          <input type="password" name="fr_auth_oauth1_token_secret" class="form-control" autocomplete="new-password">
+          <span class="form-hint">Requires: pip install requests-oauthlib</span>
+        </div>
+      </div>
+
+      <!-- ── SAML 2.0 ───────────────────────────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-saml_assertion" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">ACS URL <span class="req">*</span></label>
+          <input type="url" name="fr_auth_saml_acs_url" class="form-control" oninput="_updateFrTestBtn()"
+                 placeholder="https://app.example.com/saml/acs">
+          <span class="form-hint">AssertionConsumerService URL — where the SAMLResponse is POSTed</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">SAMLResponse (Base64) <span class="req">*</span></label>
+          <textarea name="fr_auth_saml_assertion" class="form-control" rows="3"
+                    oninput="_updateFrTestBtn()"
+                    placeholder="Base64-encoded SAMLResponse assertion"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">RelayState <span class="form-hint">(optional)</span></label>
+          <input type="text" name="fr_auth_saml_relay_state" class="form-control">
+        </div>
+      </div>
+
+      <!-- ── OIDC ───────────────────────────────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-oidc_token" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">ID Token <span class="req">*</span></label>
+          <input type="password" name="fr_auth_oidc_id_token" class="form-control"
+                 autocomplete="new-password" oninput="_updateFrTestBtn()"
+                 placeholder="eyJhbGciOiJSUzI1NiJ9…">
+          <span class="form-hint">Pre-obtained OIDC id_token used as Bearer token</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">UserInfo URL <span class="form-hint">(optional)</span></label>
+          <input type="url" name="fr_auth_oidc_userinfo_url" class="form-control"
+                 placeholder="https://auth.example.com/userinfo">
+        </div>
+      </div>
+
+      <!-- ── mTLS ───────────────────────────────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-mtls" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Client Certificate (PEM path) <span class="req">*</span></label>
+          <input type="text" name="fr_auth_mtls_cert" class="form-control"
+                 oninput="_updateFrTestBtn()" placeholder="/etc/ssl/client.crt">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Private Key (PEM path) <span class="req">*</span></label>
+          <input type="text" name="fr_auth_mtls_key" class="form-control"
+                 placeholder="/etc/ssl/client.key">
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">CA Bundle (PEM path) <span class="form-hint">(optional)</span></label>
+          <input type="text" name="fr_auth_mtls_ca_bundle" class="form-control"
+                 placeholder="/etc/ssl/ca-bundle.crt">
+        </div>
+      </div>
+
+      <!-- ── TOTP MFA ───────────────────────────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-totp_mfa" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Login URL <span class="req">*</span></label>
+          <input type="url" name="fr_auth_login_url" class="form-control"
+                 oninput="_updateFrTestBtn()" placeholder="https://app.example.com/login">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="fr_auth_username" class="form-control" autocomplete="off" oninput="_updateFrTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">TOTP Secret (Base32) <span class="req">*</span></label>
+          <input type="password" name="fr_auth_totp_secret" class="form-control"
+                 autocomplete="new-password" oninput="_updateFrTestBtn()"
+                 placeholder="JBSWY3DPEHPK3PXP">
+        </div>
+        <div class="form-group">
+          <label class="form-label">MFA POST URL <span class="form-hint">(if separate step)</span></label>
+          <input type="url" name="fr_auth_totp_mfa_url" class="form-control"
+                 placeholder="https://app.example.com/mfa/verify">
+        </div>
+        <div class="form-group">
+          <label class="form-label">OTP Field Name</label>
+          <input type="text" name="fr_auth_totp_field" class="form-control" value="otp" placeholder="otp">
+          <span class="form-hint">Form field that receives the TOTP code</span>
+        </div>
+      </div>
+
+      <!-- ── WebAuthn Probe ─────────────────────────────────────────────────── -->
+      <div class="fr-auth-group" id="frAuth-webauthn_probe" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Probe URL <span class="form-hint">(optional)</span></label>
+          <input type="url" name="fr_auth_webauthn_probe_url" class="form-control"
+                 placeholder="https://app.example.com/webauthn/challenge">
+          <span class="form-hint">Detection only — probes for WebAuthn/FIDO2 indicators. Full WebAuthn flows require a browser + hardware authenticator.</span>
+        </div>
+      </div>
+
+      <!-- ── Kerberos Delegation ────────────────────────────────────────────── -->
+      <div class="fr-auth-group" id="frAuth-kerberos_delegation" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Service Principal to Impersonate <span class="form-hint">(optional)</span></label>
+          <input type="text" name="fr_auth_kerberos_impersonate" class="form-control"
+                 placeholder="HTTP/targetserver.corp.local">
+          <span class="form-hint">Kerberos S4U2Proxy — constrained delegation. Uses system ticket cache (kinit). Requires: pip install requests-kerberos</span>
+        </div>
+      </div>
+
+      <!-- ── Proxy / Gateway Auth Header ───────────────────────────────────── -->
+      <div class="fr-auth-group form-grid" id="frAuth-proxy_header" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Header Name</label>
+          <input type="text" name="fr_auth_proxy_header_name" class="form-control"
+                 value="X-Remote-User" placeholder="X-Remote-User">
+          <span class="form-hint">Header injected by an upstream auth proxy (e.g. X-Remote-User, X-Forwarded-User)</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Header Value <span class="req">*</span></label>
+          <input type="text" name="fr_auth_proxy_header_value" class="form-control"
+                 autocomplete="off" oninput="_updateFrTestBtn()" placeholder="admin">
+        </div>
+      </div>
     </div>
 
     <!-- Siphon Settings -->
@@ -404,18 +604,32 @@
                     onchange="siAuthMethodChanged()" style="flex:1;min-width:260px">
               <option value="none">No Authentication</option>
               <option value="bearer">Bearer Token  (Authorization: Bearer …)</option>
+              <option value="jwt_bearer">JWT Bearer  (decode + verify JWT, set as Bearer)</option>
               <option value="basic">HTTP Basic Auth  (username / password)</option>
               <option value="digest">HTTP Digest Auth  (username / password)</option>
-              <option value="apikey">API Key  (custom header or query param)</option>
-              <option value="cookie_login">Cookie Login  — POST credentials → session cookies</option>
-              <option value="token_login">Token Login  — POST credentials → JSON token response</option>
-              <option value="oauth2_client_creds">OAuth2 Client Credentials  (machine-to-machine)</option>
-              <option value="header_creds">Custom Credential Headers  (static key-value pairs)</option>
               <option value="ntlm">NTLM / Windows Auth  (Active Directory)</option>
+              <option value="ntlm_v2">NTLMv2 + Channel Binding Token  (EPA)</option>
+              <option value="kerberos">Kerberos / SPNEGO  (Negotiate)</option>
+              <option value="kerberos_delegation">Kerberos S4U2Proxy  (constrained delegation)</option>
+              <option value="oauth2_client_creds">OAuth2 Client Credentials  (machine-to-machine)</option>
+              <option value="oauth2_password">OAuth2 Password Flow  (ROPC)</option>
+              <option value="oauth1a">OAuth 1.0a  (HMAC-SHA1 signed requests)</option>
+              <option value="oidc_token">OIDC  (id_token as Bearer)</option>
+              <option value="saml_assertion">SAML Assertion  (assertion → Bearer exchange)</option>
+              <option value="mtls">Mutual TLS  (client certificate + private key)</option>
+              <option value="totp_mfa">TOTP MFA  (login + time-based OTP)</option>
+              <option value="apikey">API Key  (custom header or query param)</option>
+              <option value="apikey_cookie">API Key Cookie</option>
+              <option value="cookie_login">Cookie Login  — POST credentials → session cookies</option>
+              <option value="session_cookie">Session Cookie  — CSRF prefetch + form POST</option>
+              <option value="token_login">Token Login  — POST credentials → JSON token response</option>
+              <option value="hmac_signature">HMAC Signature  (sign requests with shared secret)</option>
+              <option value="aws_sigv4">AWS SigV4  (AWS Signature Version 4)</option>
+              <option value="header_creds">Custom Credential Headers  (static key-value pairs)</option>
             </select>
-            <button type="button" class="btn btn-sm btn-ghost" id="siAuthTestBtn"
+            <button type="button" class="btn btn-sm btn-prompt" id="siAuthTestBtn"
                     onclick="testSiConnection()" disabled
-                    title="Fill in auth fields and API URL, then click to test">Test Connection</button>
+                    title="Fill in auth fields and API URL, then click to test">&#x26A1; Test Connection</button>
             <span id="siAuthTestResult" style="font-size:.82rem"></span>
           </div>
         </div>
@@ -672,6 +886,318 @@
         </div>
       </div>
 
+      <!-- ── JWT Bearer ─────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-jwt_bearer" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">JWT Token <span class="req">*</span></label>
+          <input type="password" name="si_auth_token" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()"
+                 placeholder="eyJhbGciOiJSUzI1NiJ9…">
+          <span class="form-hint">Full JWT — header.payload.signature. Set as Authorization: Bearer.</span>
+        </div>
+      </div>
+
+      <!-- ── NTLMv2 ─────────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-ntlm_v2" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Username <span class="req">*</span></label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control"
+                 autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Domain <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_domain" class="form-control" placeholder="CORP">
+          <span class="form-hint">NTLMv2 with Channel Binding Token (CBT). Requires: pip install requests-ntlm</span>
+        </div>
+      </div>
+
+      <!-- ── Kerberos ───────────────────────────────────────────────────── -->
+      <div class="si-auth-group" id="siAuth-kerberos" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Principal <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_kerberos_principal" class="form-control"
+                 placeholder="user@REALM.EXAMPLE.COM">
+          <span class="form-hint">Uses system Kerberos ticket cache (kinit). Requires: pip install requests-kerberos</span>
+        </div>
+      </div>
+
+      <!-- ── Kerberos Delegation ────────────────────────────────────────── -->
+      <div class="si-auth-group" id="siAuth-kerberos_delegation" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Principal <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_kerberos_principal" class="form-control"
+                 placeholder="user@REALM.EXAMPLE.COM">
+          <span class="form-hint">S4U2Proxy constrained delegation. Requires: pip install requests-kerberos</span>
+        </div>
+      </div>
+
+      <!-- ── OAuth2 Password (ROPC) ─────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-oauth2_password" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Token URL <span class="req">*</span></label>
+          <input type="url" name="si_auth_oauth_token_url" class="form-control"
+                 oninput="_updateSiTestBtn()"
+                 placeholder="https://auth.example.com/oauth/token">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username <span class="req">*</span></label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client ID <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_oauth_client_id" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Secret <span class="form-hint">(optional)</span></label>
+          <input type="password" name="si_auth_oauth_client_secret" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scope <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_oauth_scope" class="form-control" placeholder="read write">
+        </div>
+      </div>
+
+      <!-- ── OAuth 1.0a ─────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-oauth1a" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Consumer Key <span class="req">*</span></label>
+          <input type="text" name="si_auth_oauth1_consumer_key" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Consumer Secret</label>
+          <input type="password" name="si_auth_oauth1_consumer_secret" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Token <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_oauth1_token" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Secret <span class="form-hint">(optional)</span></label>
+          <input type="password" name="si_auth_oauth1_token_secret" class="form-control" autocomplete="new-password">
+          <span class="form-hint">Requires: pip install requests-oauthlib</span>
+        </div>
+      </div>
+
+      <!-- ── OIDC Token ─────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-oidc_token" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">ID Token <span class="form-hint">(direct, optional)</span></label>
+          <input type="password" name="si_auth_oidc_id_token" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()"
+                 placeholder="eyJhbGciOiJSUzI1NiJ9…">
+          <span class="form-hint">If blank, will attempt to obtain via client_credentials grant</span>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">Token URL <span class="form-hint">(for grant flow)</span></label>
+          <input type="url" name="si_auth_oauth_token_url" class="form-control"
+                 placeholder="https://auth.example.com/oauth/token">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client ID</label>
+          <input type="text" name="si_auth_oauth_client_id" class="form-control" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Secret</label>
+          <input type="password" name="si_auth_oauth_client_secret" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scope</label>
+          <input type="text" name="si_auth_oauth_scope" class="form-control" value="openid" placeholder="openid">
+        </div>
+      </div>
+
+      <!-- ── SAML Assertion ─────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-saml_assertion" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">SAML Assertion (raw XML) <span class="req">*</span></label>
+          <textarea name="si_auth_saml_assertion" class="form-control" rows="3"
+                    oninput="_updateSiTestBtn()"
+                    placeholder="&lt;saml:Assertion …&gt;…&lt;/saml:Assertion&gt;"></textarea>
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">Token Exchange URL <span class="form-hint">(optional)</span></label>
+          <input type="url" name="si_auth_saml_token_url" class="form-control"
+                 placeholder="https://auth.example.com/oauth/token">
+          <span class="form-hint">If set, exchanges assertion for Bearer token via SAML2 bearer grant</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client ID <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_oauth_client_id" class="form-control" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- ── mTLS ───────────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-mtls" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Client Cert PEM Path <span class="req">*</span></label>
+          <input type="text" name="si_auth_mtls_cert" class="form-control"
+                 oninput="_updateSiTestBtn()" placeholder="/etc/ssl/client.crt">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Private Key PEM Path <span class="req">*</span></label>
+          <input type="text" name="si_auth_mtls_key" class="form-control"
+                 placeholder="/etc/ssl/client.key">
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">CA Bundle PEM Path <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_mtls_ca_bundle" class="form-control"
+                 placeholder="/etc/ssl/ca-bundle.crt">
+        </div>
+      </div>
+
+      <!-- ── TOTP MFA ───────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-totp_mfa" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Login URL <span class="req">*</span></label>
+          <input type="url" name="si_auth_login_url" class="form-control"
+                 oninput="_updateSiTestBtn()" placeholder="https://api.example.com/auth/login">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">TOTP Secret (Base32) <span class="req">*</span></label>
+          <input type="password" name="si_auth_totp_secret" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()"
+                 placeholder="JBSWY3DPEHPK3PXP">
+        </div>
+        <div class="form-group">
+          <label class="form-label">OTP Field Name</label>
+          <input type="text" name="si_auth_totp_field" class="form-control" value="otp" placeholder="otp">
+          <span class="form-hint">Form/JSON field that receives the generated OTP code</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Content-Type</label>
+          <select name="si_auth_login_ct" class="form-control">
+            <option value="application/json">application/json</option>
+            <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ── API Key Cookie ─────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-apikey_cookie" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">API Key <span class="req">*</span></label>
+          <input type="password" name="si_auth_api_key" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cookie Name</label>
+          <input type="text" name="si_auth_api_key_cookie_name" class="form-control"
+                 value="api_key" placeholder="api_key">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cookie Domain <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_api_key_cookie_domain" class="form-control"
+                 placeholder=".example.com">
+        </div>
+      </div>
+
+      <!-- ── Session Cookie (CSRF prefetch) ────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-session_cookie" style="display:none;margin-top:.5rem">
+        <div class="form-group span2">
+          <label class="form-label">Login URL <span class="req">*</span></label>
+          <input type="url" name="si_auth_login_url" class="form-control"
+                 oninput="_updateSiTestBtn()"
+                 placeholder="https://api.example.com/login">
+          <span class="form-hint">GETs the page first to extract CSRF token, then POSTs credentials</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="si_auth_username" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">CSRF Field Name <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_csrf_field" class="form-control"
+                 placeholder="_token">
+          <span class="form-hint">Hidden input field to extract CSRF token from login page</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CSRF Header Name <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_csrf_header" class="form-control"
+                 placeholder="X-CSRF-Token">
+        </div>
+      </div>
+
+      <!-- ── HMAC Signature ─────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-hmac_signature" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">HMAC Secret <span class="req">*</span></label>
+          <input type="password" name="si_auth_hmac_secret" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Key ID <span class="form-hint">(optional)</span></label>
+          <input type="text" name="si_auth_hmac_key_id" class="form-control"
+                 placeholder="my-key-id" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Algorithm</label>
+          <select name="si_auth_hmac_algorithm" class="form-control">
+            <option value="sha256">HMAC-SHA256</option>
+            <option value="sha512">HMAC-SHA512</option>
+            <option value="sha1">HMAC-SHA1</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Authorization Header Name</label>
+          <input type="text" name="si_auth_hmac_header" class="form-control"
+                 value="Authorization" placeholder="Authorization">
+        </div>
+      </div>
+
+      <!-- ── AWS SigV4 ──────────────────────────────────────────────────── -->
+      <div class="si-auth-group form-grid" id="siAuth-aws_sigv4" style="display:none;margin-top:.5rem">
+        <div class="form-group">
+          <label class="form-label">Access Key ID <span class="req">*</span></label>
+          <input type="text" name="si_auth_aws_access_key_id" class="form-control"
+                 autocomplete="off" oninput="_updateSiTestBtn()" placeholder="AKIAIOSFODNN7EXAMPLE">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Secret Access Key <span class="req">*</span></label>
+          <input type="password" name="si_auth_aws_secret_access_key" class="form-control"
+                 autocomplete="new-password" oninput="_updateSiTestBtn()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Region</label>
+          <input type="text" name="si_auth_aws_region" class="form-control"
+                 value="us-east-1" placeholder="us-east-1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Service</label>
+          <input type="text" name="si_auth_aws_service" class="form-control"
+                 value="execute-api" placeholder="execute-api">
+        </div>
+        <div class="form-group span2">
+          <label class="form-label">Session Token <span class="form-hint">(optional, STS)</span></label>
+          <input type="password" name="si_auth_aws_session_token" class="form-control"
+                 autocomplete="new-password">
+        </div>
+      </div>
+
     </div>
 
     <!-- Actions -->
@@ -683,7 +1209,9 @@
     </div>
 
   </form>
-</div>
+
+  </div><!-- /.form-layout -->
+</div><!-- /.form-page-wide -->
 
 <style>
 .spec-upload-zone {
@@ -1066,7 +1594,7 @@ async function testFrConnection() {
       ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
       : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
   } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
-  finally { btn.disabled = false; btn.textContent = 'Test Connection'; _updateFrTestBtn(); }
+  finally { btn.disabled = false; btn.textContent = '⚡ Test Connection'; _updateFrTestBtn(); }
 }
 
 document.getElementById('frTargetUrls').addEventListener('input', _updateFrTestBtn);
@@ -1154,10 +1682,43 @@ async function testSiConnection() {
       ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
       : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
   } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
-  finally { btn.disabled = false; btn.textContent = 'Test Connection'; _updateSiTestBtn(); }
+  finally { btn.disabled = false; btn.textContent = '⚡ Test Connection'; _updateSiTestBtn(); }
 }
 
 document.getElementById('siTargetUrls').addEventListener('input', _updateSiTestBtn);
+
+// ── AuthProbe ─────────────────────────────────────────────────────────────
+async function runAuthProbe() {
+  const url  = document.getElementById('apUrl').value.trim();
+  if (!url) { document.getElementById('apUrl').focus(); return; }
+  const btn    = document.getElementById('apIdentifyBtn');
+  const status = document.getElementById('apStatus');
+  const con    = document.getElementById('apConsole');
+  btn.disabled = true;
+  btn.textContent = 'Identifying…';
+  status.textContent = '';
+  con.style.display = 'block';
+  con.textContent = 'Running AuthProbe — this may take 10–30 s…\n';
+  try {
+    const resp = await fetch('/api/authprobe', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        url:      url,
+        username: document.getElementById('apUsername').value.trim(),
+        password: document.getElementById('apPassword').value.trim(),
+        rendered: document.getElementById('apRendered').checked,
+      })
+    });
+    const data = await resp.json();
+    con.textContent = data.output || data.error || 'No output returned.';
+  } catch(e) {
+    con.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Identify';
+  }
+}
 
 function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 

@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 import json
 import os
@@ -1273,6 +1273,46 @@ def api_test_connection():
         return jsonify({"success": False, "message": "Test timed out (35 s)"})
     except Exception as exc:
         return jsonify({"success": False, "message": str(exc)})
+
+
+@app.route("/api/authprobe", methods=["POST"])
+def api_authprobe():
+    """Run AuthProbe against a target URL and return plain-text output."""
+    body = request.json or {}
+    target_url = (body.get("url") or "").strip()
+    if not target_url:
+        return jsonify({"success": False, "error": "No URL provided"})
+
+    authprobe_script = Path("/opt/pr0t31n/AuthProbe/authprobe.py")
+    if not authprobe_script.exists():
+        return jsonify({"success": False,
+                        "error": "AuthProbe not found at /opt/pr0t31n/AuthProbe/authprobe.py"})
+
+    cmd = [sys.executable, str(authprobe_script), "--url", target_url]
+    username = (body.get("username") or "").strip()
+    password = (body.get("password") or "").strip()
+    if username:
+        cmd += ["--username", username]
+    if password:
+        cmd += ["--password", password]
+    if body.get("rendered"):
+        cmd.append("--rendered")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        raw = proc.stdout + (("\n" + proc.stderr) if proc.stderr.strip() else "")
+        # Strip ANSI escape codes (AuthProbe disables them for non-tty, but just in case)
+        output = re.sub(r'\x1b\[[0-9;]*m', '', raw).strip()
+        return jsonify({"success": True, "output": output})
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "error": "AuthProbe timed out (60 s)"})
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)})
 
 
 @app.route("/api/settings/<project_id>/<tool>", methods=["GET", "POST"])
