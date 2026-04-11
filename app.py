@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.3.8"
+VERSION = "1.4.0"
 
 import json
 import os
@@ -53,7 +53,7 @@ CRUCIBLE_DIR  = Path(__file__).parent.resolve()
 PROJECTS_FILE = CRUCIBLE_DIR / "projects.json"
 PROJECTS_DIR  = CRUCIBLE_DIR / "projects"
 FRACTURE_SCRIPT = Path("/opt/pr0t31n/Fracture/fracture.py")
-SIPHON_SCRIPT   = Path("/Users/pr0t31n/Siphon/siphon.py")
+SIPHON_SCRIPT   = Path("/opt/pr0t31n/Siphon/siphon.py")
 
 PROJECTS_DIR.mkdir(exist_ok=True)
 
@@ -503,17 +503,22 @@ def _build_si_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
     auth: dict = {
         "enabled":               True,
         "method":                method,
-        # Bearer
+        # Bearer / JWT
         "auth_token":            _keep("auth_token",         "si_auth_token"),
         "token_type":            _keep("token_type",         "si_auth_token_type",     "Bearer"),
-        # Basic / Digest / NTLM
+        # Basic / Digest / NTLM / NTLMv2
         "username":              _keep("username",           "si_auth_username"),
         "password":              _keep("password",           "si_auth_password"),
         "domain":                _keep("domain",             "si_auth_domain"),
-        # API Key
+        # Kerberos
+        "kerberos_principal":    _keep("kerberos_principal", "si_auth_kerberos_principal"),
+        # API Key (header / query)
         "api_key":               _keep("api_key",            "si_auth_api_key"),
         "api_key_header":        _keep("api_key_header",     "si_auth_api_key_header", "X-API-Key"),
         "api_key_query":         _keep("api_key_query",      "si_auth_api_key_query"),
+        # API Key Cookie
+        "api_key_cookie_name":   _keep("api_key_cookie_name","si_auth_api_key_cookie_name",   "api_key"),
+        "api_key_cookie_domain": _keep("api_key_cookie_domain","si_auth_api_key_cookie_domain"),
         # Login endpoint
         "login_url":             _keep("login_url",          "si_auth_login_url"),
         "login_method":          _keep("login_method",       "si_auth_login_method",   "POST"),
@@ -523,11 +528,42 @@ def _build_si_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
         "login_username_field":  _keep("login_username_field","si_auth_login_ufield",  "username"),
         "login_password_field":  _keep("login_password_field","si_auth_login_pfield",  "password"),
         "login_token_path":      _keep("login_token_path",   "si_auth_token_path",     "token"),
-        # OAuth2
+        # CSRF (session_cookie)
+        "csrf_field":            _keep("csrf_field",         "si_auth_csrf_field"),
+        "csrf_header":           _keep("csrf_header",        "si_auth_csrf_header"),
+        # OAuth2 (CC / Password / OIDC)
         "oauth_token_url":       _keep("oauth_token_url",    "si_auth_oauth_token_url"),
         "oauth_client_id":       _keep("oauth_client_id",    "si_auth_oauth_client_id"),
         "oauth_client_secret":   _keep("oauth_client_secret","si_auth_oauth_client_secret"),
         "oauth_scope":           _keep("oauth_scope",        "si_auth_oauth_scope"),
+        # OAuth 1.0a
+        "oauth1_consumer_key":   _keep("oauth1_consumer_key",  "si_auth_oauth1_consumer_key"),
+        "oauth1_consumer_secret":_keep("oauth1_consumer_secret","si_auth_oauth1_consumer_secret"),
+        "oauth1_token":          _keep("oauth1_token",         "si_auth_oauth1_token"),
+        "oauth1_token_secret":   _keep("oauth1_token_secret",  "si_auth_oauth1_token_secret"),
+        # OIDC
+        "oidc_id_token":         _keep("oidc_id_token",      "si_auth_oidc_id_token"),
+        # SAML
+        "saml_assertion":        _keep("saml_assertion",     "si_auth_saml_assertion"),
+        "saml_token_url":        _keep("saml_token_url",     "si_auth_saml_token_url"),
+        # mTLS
+        "mtls_cert":             _keep("mtls_cert",          "si_auth_mtls_cert"),
+        "mtls_key":              _keep("mtls_key",           "si_auth_mtls_key"),
+        "mtls_ca_bundle":        _keep("mtls_ca_bundle",     "si_auth_mtls_ca_bundle"),
+        # TOTP MFA
+        "totp_secret":           _keep("totp_secret",        "si_auth_totp_secret"),
+        "totp_field":            _keep("totp_field",         "si_auth_totp_field",     "otp"),
+        # HMAC Signature
+        "hmac_key_id":           _keep("hmac_key_id",        "si_auth_hmac_key_id"),
+        "hmac_secret":           _keep("hmac_secret",        "si_auth_hmac_secret"),
+        "hmac_algorithm":        _keep("hmac_algorithm",     "si_auth_hmac_algorithm", "sha256"),
+        "hmac_header":           _keep("hmac_header",        "si_auth_hmac_header",    "Authorization"),
+        # AWS SigV4
+        "aws_access_key_id":     _keep("aws_access_key_id",     "si_auth_aws_access_key_id"),
+        "aws_secret_access_key": _keep("aws_secret_access_key", "si_auth_aws_secret_access_key"),
+        "aws_region":            _keep("aws_region",            "si_auth_aws_region",  "us-east-1"),
+        "aws_service":           _keep("aws_service",           "si_auth_aws_service", "execute-api"),
+        "aws_session_token":     _keep("aws_session_token",     "si_auth_aws_session_token"),
         # Custom headers
         "custom_headers":        _json_field("si_auth_custom_headers", "custom_headers", "{}"),
     }
@@ -560,7 +596,8 @@ def _build_fr_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
 
     auth: dict = {
         "enabled":               True,
-        "auth_method":           method,
+        "method":                method,
+        "auth_method":           method,   # legacy alias kept for compat
         # Universal credentials
         "username":              _keep("username",              "fr_auth_username"),
         "password":              _keep("password",              "fr_auth_password"),
@@ -573,19 +610,49 @@ def _build_fr_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
         "login_url":             _keep("login_url",             "fr_auth_login_url"),
         "login_mode":            _keep("login_mode",            "fr_auth_login_mode",     "fields"),
         "login_data":            _keep("login_data",            "fr_auth_login_data",     "{}"),
+        "login_content_type":    _keep("login_content_type",    "fr_auth_login_ct",       "application/x-www-form-urlencoded"),
         "login_username_field":  _keep("login_username_field",  "fr_auth_login_ufield",   "username"),
         "login_password_field":  _keep("login_password_field",  "fr_auth_login_pfield",   "password"),
+        "login_token_path":      _keep("login_token_path",      "fr_auth_token_path",     "token"),
         # OAuth2
         "oauth_token_url":       _keep("oauth_token_url",       "fr_auth_oauth_token_url"),
         "oauth_client_id":       _keep("oauth_client_id",       "fr_auth_oauth_client_id"),
         "oauth_client_secret":   _keep("oauth_client_secret",   "fr_auth_oauth_client_secret"),
         "oauth_scope":           _keep("oauth_scope",           "fr_auth_oauth_scope"),
+        "client_auth_method":    _keep("client_auth_method",    "fr_auth_oauth_client_auth", "body"),
+        # OAuth 1.0a
+        "oauth1_consumer_key":   _keep("oauth1_consumer_key",   "fr_auth_oauth1_consumer_key"),
+        "oauth1_consumer_secret":_keep("oauth1_consumer_secret","fr_auth_oauth1_consumer_secret"),
+        "oauth1_access_token":   _keep("oauth1_access_token",   "fr_auth_oauth1_access_token"),
+        "oauth1_token_secret":   _keep("oauth1_token_secret",   "fr_auth_oauth1_token_secret"),
+        # SAML
+        "saml_acs_url":          _keep("saml_acs_url",          "fr_auth_saml_acs_url"),
+        "saml_assertion":        _keep("saml_assertion",        "fr_auth_saml_assertion"),
+        "saml_relay_state":      _keep("saml_relay_state",      "fr_auth_saml_relay_state"),
+        # OIDC
+        "oidc_id_token":         _keep("oidc_id_token",         "fr_auth_oidc_id_token"),
+        "oidc_userinfo_url":     _keep("oidc_userinfo_url",     "fr_auth_oidc_userinfo_url"),
+        # mTLS
+        "mtls_cert":             _keep("mtls_cert",             "fr_auth_mtls_cert"),
+        "mtls_key":              _keep("mtls_key",              "fr_auth_mtls_key"),
+        "mtls_ca_bundle":        _keep("mtls_ca_bundle",        "fr_auth_mtls_ca_bundle"),
+        # TOTP MFA
+        "totp_secret":           _keep("totp_secret",           "fr_auth_totp_secret"),
+        "totp_mfa_url":          _keep("totp_mfa_url",          "fr_auth_totp_mfa_url"),
+        "totp_field":            _keep("totp_field",            "fr_auth_totp_field",     "otp"),
+        # WebAuthn
+        "webauthn_probe_url":    _keep("webauthn_probe_url",    "fr_auth_webauthn_probe_url"),
         # API key
+        "api_key":               _keep("api_key",               "fr_auth_api_key_value"),
         "api_key_header":        _keep("api_key_header",        "fr_auth_api_key_header", "X-API-Key"),
-        "api_key_cookie_name":   _keep("api_key_cookie_name",   "fr_auth_api_key_cookie", "api_key"),
-        "api_key_value":         _keep("api_key_value",         "fr_auth_api_key_value"),
+        "api_key_cookie":        _keep("api_key_cookie",        "fr_auth_api_key_cookie", "api_key"),
         # Pre-captured session
         "session_cookie":        _keep("session_cookie",        "fr_auth_session_cookie"),
+        # Kerberos
+        "kerberos_impersonate":  _keep("kerberos_impersonate",  "fr_auth_kerberos_impersonate"),
+        # Proxy / gateway auth header
+        "proxy_header_name":     _keep("proxy_header_name",     "fr_auth_proxy_header_name",  "X-Remote-User"),
+        "proxy_header_value":    _keep("proxy_header_value",    "fr_auth_proxy_header_value"),
         # Custom headers
         "custom_headers":        _json_field("fr_auth_custom_headers", "custom_headers", "{}"),
     }
