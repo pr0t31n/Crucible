@@ -287,9 +287,22 @@
           <div class="summary-kv">
             <div class="kv-row"><span class="kv-label">Name</span><span class="kv-value">{{ project.name }}</span></div>
             <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '&#8212;' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Type</span><span class="kv-value">
+              {% set _t = project.get('tools', ['fr','si']) %}
+              {% if 'fr' in _t and 'si' in _t %}Web Application &amp; API
+              {% elif 'fr' in _t %}Web Application
+              {% elif 'si' in _t %}API
+              {% else %}&#8212;{% endif %}
+            </span></div>
             <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '&#8212;' }}</span></div>
             <div class="kv-row"><span class="kv-label">Created</span><span class="kv-value">{{ project.created }}</span></div>
-            <div class="kv-row"><span class="kv-label">Output dir</span><span class="kv-value mono">{{ project.project_dir }}</span></div>
+            <div class="kv-row"><span class="kv-label">Project dir</span><span class="kv-value mono">{{ project.project_dir }}</span></div>
+            {% if project.get('fracture_output_dir') and 'fr' in project.get('tools', ['fr','si']) %}
+            <div class="kv-row"><span class="kv-label">Fracture output</span><span class="kv-value mono">{{ project.fracture_output_dir }}</span></div>
+            {% endif %}
+            {% if project.get('siphon_output_dir') and 'si' in project.get('tools', ['fr','si']) %}
+            <div class="kv-row"><span class="kv-label">Siphon output</span><span class="kv-value mono">{{ project.siphon_output_dir }}</span></div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -305,7 +318,7 @@
           <div class="panel-body">
             <div class="summary-kv">
               <div class="kv-row"><span class="kv-label">Last run</span>
-                <span class="kv-value" id="fr-last-run">{{ project.fr_last_run or '&#8212;' }}</span></div>
+                <span class="kv-value" id="fr-last-run" data-iso="{{ project.fr_last_run or '' }}">{{ project.fr_last_run or '&#8212;' }}</span></div>
               <div class="kv-row"><span class="kv-label">Findings</span>
                 <span class="kv-value" id="fr-finding-count">0</span></div>
             </div>
@@ -324,7 +337,7 @@
           <div class="panel-body">
             <div class="summary-kv">
               <div class="kv-row"><span class="kv-label">Last run</span>
-                <span class="kv-value" id="si-last-run">{{ project.si_last_run or '&#8212;' }}</span></div>
+                <span class="kv-value" id="si-last-run" data-iso="{{ project.si_last_run or '' }}">{{ project.si_last_run or '&#8212;' }}</span></div>
               <div class="kv-row"><span class="kv-label">Findings</span>
                 <span class="kv-value" id="si-finding-count">0</span></div>
             </div>
@@ -590,17 +603,35 @@ function setStatus(tool, status) {
   }
 }
 
+function fmtLastRun(iso) {
+  if (!iso) return '&#8212;';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}) +
+           ' ' + d.toLocaleTimeString(undefined, {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch(e) { return iso; }
+}
+function setLastRun(tool, iso) {
+  const el = document.getElementById(`${tool}-last-run`);
+  if (el) { el.innerHTML = fmtLastRun(iso); el.dataset.iso = iso || ''; }
+}
+// Format any pre-loaded ISO timestamps on page load
+document.querySelectorAll('[data-iso]').forEach(el => {
+  const iso = el.dataset.iso;
+  if (iso) el.innerHTML = fmtLastRun(iso);
+});
+
 // ── Console output ────────────────────────────────────────
 socket.on('fr_output', entry => appendLine('fr', entry));
 socket.on('si_output', entry => appendLine('si', entry));
 
-socket.on('fr_started', d => { setStatus('fr','running'); showToast(`Fracture started (PID ${d.pid})`, 'ok'); });
-socket.on('fr_done',    d => { setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); });
+socket.on('fr_started', d => { setStatus('fr','running'); setLastRun('fr', d.started_at || new Date().toISOString()); showToast(`Fracture started (PID ${d.pid})`, 'ok'); });
+socket.on('fr_done',    d => { setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _structureLoaded = false; loadStructure(); });
 socket.on('fr_stopped', () => setStatus('fr','idle'));
 socket.on('fr_error',   d => showToast(`FR: ${d.error}`, 'err'));
 
-socket.on('si_started', d => { setStatus('si','running'); showToast(`Siphon started (PID ${d.pid})`, 'ok'); });
-socket.on('si_done',    d => { setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); });
+socket.on('si_started', d => { setStatus('si','running'); setLastRun('si', d.started_at || new Date().toISOString()); showToast(`Siphon started (PID ${d.pid})`, 'ok'); });
+socket.on('si_done',    d => { setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _structureLoaded = false; loadStructure(); });
 socket.on('si_stopped', () => setStatus('si','idle'));
 socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
 

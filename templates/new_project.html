@@ -385,13 +385,15 @@
         <!-- API Spec File Upload -->
         <div class="form-group span2" id="siSpecUploadArea">
           <label class="form-label">API Spec File(s) (optional)</label>
-          <div class="spec-upload-zone" id="siSpecDropZone">
-            <div class="spec-upload-icon">&#128196;</div>
-            <div class="spec-upload-text">Drop spec files here or <label class="spec-upload-link" for="siSpecFileInput">browse</label></div>
-            <div class="spec-upload-hint">OpenAPI JSON/YAML &bull; Swagger &bull; GraphQL SDL &bull; Postman Collection &bull; Insomnia Export &bull; HAR &mdash; max 5 MB each</div>
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('siSpecFileInput').click()">
+              &#128196; Load File(s)&hellip;
+            </button>
+            <span style="font-size:.78rem;color:var(--text-muted,#888)">OpenAPI JSON/YAML &bull; Swagger &bull; GraphQL SDL &bull; Postman &bull; Insomnia &bull; HAR &mdash; max 5 MB each</span>
             <input type="file" id="siSpecFileInput" accept=".json,.yaml,.yml,.graphql,.gql" multiple style="display:none">
           </div>
-          <div id="siSpecFileList" class="spec-file-list"></div>
+          <div id="siSpecUrlWarning" style="display:none;margin-top:.5rem;padding:.5rem .75rem;background:#5a3a0010;border:1px solid #d2973255;border-radius:4px;font-size:.82rem;color:#d29732"></div>
+          <div id="siSpecFileList" class="spec-file-list" style="margin-top:.5rem"></div>
         </div>
 
         <!-- Auth method selector + test button -->
@@ -818,22 +820,68 @@ function _updateSubmitBtn() {
   }
 }
 
-// Drop zone wiring
-(function() {
-  const zone = document.getElementById('siSpecDropZone');
-  const inp  = document.getElementById('siSpecFileInput');
+function _extractSpecUrl(text, ext) {
+  try {
+    if (ext === '.json') {
+      const d = JSON.parse(text);
+      if (d.servers && d.servers[0] && d.servers[0].url) return d.servers[0].url;
+      if (d.host) {
+        const scheme = (d.schemes && d.schemes[0]) || 'https';
+        return `${scheme}://${d.host}${d.basePath || '/'}`;
+      }
+    }
+    if (ext === '.yaml' || ext === '.yml') {
+      const m = text.match(/^servers:\s*\n\s*-\s*url:\s*(.+)/m);
+      if (m) return m[1].trim();
+      const h = text.match(/^host:\s*(.+)/m);
+      if (h) {
+        const s = (text.match(/^schemes:\s*\n\s*-\s*(\S+)/m) || [])[1] || 'https';
+        const b = (text.match(/^basePath:\s*(\S+)/m) || [])[1] || '/';
+        return `${s}://${h[1].trim()}${b}`;
+      }
+    }
+  } catch(e) {}
+  return null;
+}
 
-  zone.addEventListener('click', () => inp.click());
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    [...(e.dataTransfer.files || [])].forEach(_uploadSpec);
-  });
+function _checkSpecUrlMatch(specUrl) {
+  if (!specUrl) return;
+  const targetField = document.getElementById('siTargetUrls');
+  if (!targetField) return;
+  const targets = targetField.value.split(/[\n,]+/).map(u => u.trim()).filter(Boolean);
+  if (!targets.length) return;
+  const norm = u => u.replace(/\/$/, '').toLowerCase();
+  const specNorm = norm(specUrl);
+  const matched = targets.some(t => norm(t) === specNorm || specNorm.startsWith(norm(t)));
+  const warn = document.getElementById('siSpecUrlWarning');
+  if (!warn) return;
+  if (!matched) {
+    warn.style.display = 'block';
+    warn.innerHTML = `&#9888; Spec server URL <strong>${_esc(specUrl)}</strong> does not match the configured API Base URL. ` +
+                     `Verify the target URL is correct or update it to match the spec.`;
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
+// File input wiring
+(function() {
+  const inp = document.getElementById('siSpecFileInput');
+  if (!inp) return;
   inp.addEventListener('change', () => {
-    [...(inp.files || [])].forEach(_uploadSpec);
+    const files = [...(inp.files || [])];
     inp.value = '';
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const text = e.target.result || '';
+        const ext  = _ext(file.name);
+        const specUrl = _extractSpecUrl(text, ext);
+        if (specUrl) _checkSpecUrlMatch(specUrl);
+      };
+      reader.readAsText(file.slice(0, 65536));
+      _uploadSpec(file);
+    });
   });
 })();
 

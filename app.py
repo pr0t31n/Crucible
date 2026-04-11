@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.3.5"
+VERSION = "1.3.8"
 
 import json
 import os
@@ -35,7 +35,19 @@ import _auth
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = _auth.load_secret_key()
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB — prevents oversized request buffering
+
+# Restrict SocketIO CORS to localhost origins; override via env var if needed
+_raw_origins = os.environ.get("CRUCIBLE_ALLOWED_ORIGINS", "").strip()
+_cors_origins = (
+    [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    if _raw_origins
+    else [
+        "http://localhost:5500", "http://127.0.0.1:5500",
+        "http://localhost:5000", "http://127.0.0.1:5000",  # Nexus hub
+    ]
+)
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="threading")
 
 CRUCIBLE_DIR  = Path(__file__).parent.resolve()
 PROJECTS_FILE = CRUCIBLE_DIR / "projects.json"
@@ -1140,6 +1152,62 @@ def api_test_fracture_auth():
         return jsonify({"success": False, "message": str(exc)})
 
 
+@app.route("/api/test-connection", methods=["POST"])
+def api_test_connection():
+    """Unified connection test endpoint for both Fracture (fr) and Siphon (si).
+
+    Body: {"tool": "fr"|"si", "url": "...", "auth": {...}, "timeout": 10, ...}
+    Returns the same shape as the per-tool test endpoints.
+    """
+    body = request.json or {}
+    tool = (body.get("tool") or "fr").strip().lower()
+    test_url = (body.get("url") or "").strip()
+    if not test_url:
+        return jsonify({"success": False, "message": "No URL provided"}), 400
+    if tool not in ("fr", "si"):
+        return jsonify({"success": False, "message": f"Unknown tool '{tool}'. Use 'fr' or 'si'"}), 400
+
+    if tool == "fr":
+        tc_script = Path("/opt/pr0t31n/Fracture/testConnection.py")
+        if not tc_script.exists():
+            tc_script = CRUCIBLE_DIR.parent / "Fracture" / "testConnection.py"
+        if not tc_script.exists():
+            return jsonify({"success": False,
+                            "message": "Fracture testConnection.py not found"}), 500
+    else:
+        tc_script = CRUCIBLE_DIR.parent / "Siphon" / "testConnection.py"
+        if not tc_script.exists():
+            return jsonify({"success": False,
+                            "message": "Siphon testConnection.py not found"}), 500
+
+    payload = {
+        "url":        test_url,
+        "auth":       body.get("auth", {}),
+        "timeout":    int(body.get("timeout", 10)),
+        "verify_ssl": bool(body.get("verify_ssl", False)),
+        "proxy":      body.get("proxy", ""),
+    }
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(tc_script), "--json", json.dumps(payload),
+             "--output-json", "--no-verify"],
+            capture_output=True, text=True, timeout=35,
+        )
+        try:
+            return jsonify(json.loads(proc.stdout.strip()))
+        except Exception:
+            return jsonify({
+                "success":     proc.returncode == 0,
+                "message":     (proc.stdout.strip() or proc.stderr.strip() or "No output"),
+                "auth_info":   "",
+                "status_code": None,
+            })
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "message": "Test timed out (35 s)"})
+    except Exception as exc:
+        return jsonify({"success": False, "message": str(exc)})
+
+
 @app.route("/api/settings/<project_id>/<tool>", methods=["GET", "POST"])
 def api_settings(project_id: str, tool: str):
     proj = _get_project(project_id)
@@ -1214,6 +1282,150 @@ def api_findings(project_id: str):
     if fallback:
         _all_findings[project_id] = fallback
     return jsonify(fallback)
+
+
+def _suppressions_path(project_id: str) -> Path:
+    proj = _get_project(project_id)
+    if not proj:
+        return PROJECTS_DIR / project_id / "suppressions.json"
+    return Path(proj.get("project_dir", str(PROJECTS_DIR / project_id))) / "suppressions.json"
+
+
+def _load_suppressions(project_id: str) -> set:
+    """Load suppressed finding keys as a set of sha256 hex strings."""
+    sp = _suppressions_path(project_id)
+    if not sp.exists():
+        return set()
+    try:
+        return set(json.loads(sp.read_text()))
+    except Exception:
+        return set()
+
+
+def _fkey_hash(f: dict) -> str:
+    import hashlib
+    key = str(_fkey(f))
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+@app.route("/api/suppress-finding/<project_id>", methods=["POST"])
+def api_suppress_finding(project_id: str):
+    """Mark a finding as suppressed (false positive / accepted risk).
+
+    Body: {"key_hash": "<sha256>", "reason": "..."}
+    The key_hash is computed from _fkey_hash(finding) in the frontend.
+    """
+    if not _get_project(project_id):
+        return jsonify({"error": "not found"}), 404
+    body     = request.json or {}
+    key_hash = (body.get("key_hash") or "").strip()
+    if not key_hash or len(key_hash) != 64:
+        return jsonify({"error": "Invalid key_hash"}), 400
+    sp = _suppressions_path(project_id)
+    suppressions = _load_suppressions(project_id)
+    suppressions.add(key_hash)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps(sorted(suppressions), indent=2))
+    return jsonify({"success": True, "suppressed": key_hash})
+
+
+@app.route("/api/unsuppress-finding/<project_id>", methods=["POST"])
+def api_unsuppress_finding(project_id: str):
+    """Remove a finding from the suppressed set."""
+    if not _get_project(project_id):
+        return jsonify({"error": "not found"}), 404
+    body     = request.json or {}
+    key_hash = (body.get("key_hash") or "").strip()
+    if not key_hash:
+        return jsonify({"error": "Missing key_hash"}), 400
+    sp = _suppressions_path(project_id)
+    suppressions = _load_suppressions(project_id)
+    suppressions.discard(key_hash)
+    sp.write_text(json.dumps(sorted(suppressions), indent=2))
+    return jsonify({"success": True})
+
+
+@app.route("/api/suppressions/<project_id>")
+def api_suppressions(project_id: str):
+    """Return the set of suppressed finding key hashes for a project."""
+    return jsonify(sorted(_load_suppressions(project_id)))
+
+
+@app.route("/api/compare-scans", methods=["POST"])
+def api_compare_scans():
+    """Compare findings between two Crucible projects.
+
+    Body: {"project_a": "<id>", "project_b": "<id>"}
+    Returns: {
+      "new_in_b":      [...],   # findings in B not in A (newly introduced)
+      "resolved_in_b": [...],   # findings in A not in B (fixed/resolved)
+      "common":        [...],   # findings in both
+      "counts": {a, b, new, resolved, common}
+    }
+    """
+    body = request.json or {}
+    pid_a = body.get("project_a", "").strip()
+    pid_b = body.get("project_b", "").strip()
+    if not pid_a or not pid_b:
+        return jsonify({"error": "project_a and project_b are required"}), 400
+    if pid_a == pid_b:
+        return jsonify({"error": "project_a and project_b must be different"}), 400
+
+    def _load_findings(pid: str) -> list:
+        from flask import current_app as _app
+        cached = _all_findings.get(pid)
+        if cached:
+            return cached
+        proj = _get_project(pid)
+        if not proj:
+            return []
+        items: list = []
+        seen: set   = set()
+        for tool, cfg_key, scan_key, default_dir in [
+            ("fracture", "fr_settings_file", "project", "fracture_output"),
+            ("siphon",   "si_settings_file", "project", "siphon_output"),
+        ]:
+            cp = Path(proj.get(cfg_key, ""))
+            if not cp.exists():
+                continue
+            try:
+                cfg  = json.loads(cp.read_text())
+                pdir = cfg.get("scan", {}).get(scan_key, default_dir)
+                fp   = Path(proj["project_dir"]) / pdir / "findings.json"
+                if fp.exists():
+                    for raw in json.loads(fp.read_text()):
+                        f = dict(raw)
+                        f["_tool"] = tool
+                        k = _fkey(f)
+                        if k not in seen:
+                            seen.add(k)
+                            items.append(f)
+            except Exception:
+                pass
+        return items
+
+    fa = _load_findings(pid_a)
+    fb = _load_findings(pid_b)
+
+    keys_a = {_fkey_hash(f): f for f in fa}
+    keys_b = {_fkey_hash(f): f for f in fb}
+
+    new_in_b      = [fb_f for h, fb_f in keys_b.items() if h not in keys_a]
+    resolved_in_b = [fa_f for h, fa_f in keys_a.items() if h not in keys_b]
+    common        = [fb_f for h, fb_f in keys_b.items() if h in keys_a]
+
+    return jsonify({
+        "new_in_b":      new_in_b,
+        "resolved_in_b": resolved_in_b,
+        "common":        common,
+        "counts": {
+            "a":        len(fa),
+            "b":        len(fb),
+            "new":      len(new_in_b),
+            "resolved": len(resolved_in_b),
+            "common":   len(common),
+        },
+    })
 
 
 @app.route("/api/structure/<project_id>")
@@ -1629,13 +1841,14 @@ def on_fr_start(data):
     _procs[project_id]["fr"]       = proc
     _tool_status[project_id]["fr"] = "running"
     _answer_queues[_pkey(project_id, "fr")] = queue.Queue()
+    _fr_started_at = datetime.now(timezone.utc).isoformat()
     _update_project_field(project_id,
         fr_status="running",
-        fr_last_run=datetime.now(timezone.utc).isoformat(),
+        fr_last_run=_fr_started_at,
         fr_proj_name=fr_proj_name,
     )
 
-    socketio.emit("fr_started",   {"pid": proc.pid}, room=_room(project_id))
+    socketio.emit("fr_started",   {"pid": proc.pid, "started_at": _fr_started_at}, room=_room(project_id))
     socketio.emit("tool_status",  _tool_status[project_id], room=_room(project_id))
     _emit_line(project_id, "fr",
         f"[Crucible] Fracture started — PID {proc.pid}  cwd={cwd}", "system")
@@ -1709,13 +1922,14 @@ def on_si_start(data):
     _procs[project_id]["si"]       = proc
     _tool_status[project_id]["si"] = "running"
     _answer_queues[_pkey(project_id, "si")] = queue.Queue()
+    _si_started_at = datetime.now(timezone.utc).isoformat()
     _update_project_field(project_id,
         si_status="running",
-        si_last_run=datetime.now(timezone.utc).isoformat(),
+        si_last_run=_si_started_at,
         si_proj_name=si_proj_name,
     )
 
-    socketio.emit("si_started",   {"pid": proc.pid}, room=_room(project_id))
+    socketio.emit("si_started",   {"pid": proc.pid, "started_at": _si_started_at}, room=_room(project_id))
     socketio.emit("tool_status",  _tool_status[project_id], room=_room(project_id))
     _emit_line(project_id, "si",
         f"[Crucible] Siphon started — PID {proc.pid}  cwd={cwd}", "system")
