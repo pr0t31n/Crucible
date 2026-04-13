@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.4.1"
+VERSION = "1.5.1"
 
 import json
 import os
@@ -43,8 +43,10 @@ _cors_origins = (
     [o.strip() for o in _raw_origins.split(",") if o.strip()]
     if _raw_origins
     else [
-        "http://localhost:5500", "http://127.0.0.1:5500",
-        "http://localhost:5000", "http://127.0.0.1:5000",  # Nexus hub
+        "http://localhost:5500",  "http://127.0.0.1:5500",
+        "https://localhost:5500", "https://127.0.0.1:5500",
+        "http://localhost:5000",  "http://127.0.0.1:5000",  # Nexus hub
+        "https://localhost:5000", "https://127.0.0.1:5000",
     ]
 )
 socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="threading")
@@ -659,6 +661,29 @@ def _build_fr_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
     return auth
 
 
+def _parse_auth_matrix_from_body(body: dict) -> list:
+    """Parse the auth_matrix JSON string from the form body into a list of role dicts."""
+    raw = body.get("auth_matrix", "")
+    if not raw:
+        return []
+    try:
+        matrix = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(matrix, list):
+            return []
+        result = []
+        for entry in matrix:
+            if not isinstance(entry, dict):
+                continue
+            role     = (entry.get("role") or "").strip()
+            username = (entry.get("username") or "").strip()
+            password = entry.get("password") or ""
+            if role and username:
+                result.append({"role": role, "username": username, "password": password})
+        return result
+    except Exception:
+        return []
+
+
 def _discover_client_projects(tools: list) -> list:
     """
     Walk <clients_base>/<client>/<year>/<tool>/<run>/project_meta.json
@@ -1000,6 +1025,12 @@ def api_create_project():
     # Siphon auth
     si["scan"]["auth"] = _build_si_auth_from_body(body)
 
+    # Multi-credential access matrix
+    auth_matrix = _parse_auth_matrix_from_body(body)
+    if auth_matrix:
+        fr["scan"]["auth_matrix"] = auth_matrix
+        si["scan"]["auth_matrix"] = auth_matrix
+
     fr_path = fr_output_dir / "fr_settings.json"
     si_path = si_output_dir / "si_settings.json"
     fr_path.write_text(json.dumps(fr, indent=2))
@@ -1072,6 +1103,8 @@ def api_update_project(project_id: str):
         # Fracture auth (only update when method key present in body)
         if "fr_auth_method" in body:
             fr["scan"]["auth"] = _build_fr_auth_from_body(body, fr["scan"].get("auth"))
+        if "auth_matrix" in body:
+            fr["scan"]["auth_matrix"] = _parse_auth_matrix_from_body(body)
         fr_path.write_text(json.dumps(fr, indent=2))
     except Exception:
         pass
@@ -1105,6 +1138,8 @@ def api_update_project(project_id: str):
         # Siphon auth (only update when method key present in body)
         if "si_auth_method" in body:
             si["scan"]["auth"] = _build_si_auth_from_body(body, si["scan"].get("auth"))
+        if "auth_matrix" in body:
+            si["scan"]["auth_matrix"] = _parse_auth_matrix_from_body(body)
         si_path.write_text(json.dumps(si, indent=2))
     except Exception:
         pass
@@ -1573,6 +1608,42 @@ def api_structure(project_id: str):
     return jsonify(result)
 
 
+@app.route("/api/access-matrix/<project_id>")
+def api_access_matrix(project_id: str):
+    """Return access_matrix.json produced by Phase 20 from Fracture and/or Siphon."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    result: dict = {"fr_matrix": None, "si_matrix": None}
+
+    try:
+        fr_path = Path(proj.get("fr_settings_file", ""))
+        if fr_path.exists():
+            fr_cfg  = json.loads(fr_path.read_text())
+            fr_proj = fr_cfg.get("scan", {}).get("project", "")
+            if fr_proj:
+                am = Path(fr_proj) / "access_matrix.json"
+                if am.exists():
+                    result["fr_matrix"] = json.loads(am.read_text())
+    except Exception:
+        pass
+
+    try:
+        si_path = Path(proj.get("si_settings_file", ""))
+        if si_path.exists():
+            si_cfg  = json.loads(si_path.read_text())
+            si_proj = si_cfg.get("scan", {}).get("project", "")
+            if si_proj:
+                am = Path(si_proj) / "access_matrix.json"
+                if am.exists():
+                    result["si_matrix"] = json.loads(am.read_text())
+    except Exception:
+        pass
+
+    return jsonify(result)
+
+
 @app.route("/api/logs/<project_id>")
 def api_logs(project_id: str):
     proj = _get_project(project_id)
@@ -1910,7 +1981,11 @@ def on_fr_start(data):
     if _procs.get(project_id, {}).get("fr"):
         return emit("fr_error", {"error": "Fracture already running"})
 
-    fr_settings_path = proj["fr_settings_file"]
+    fr_settings_path = proj.get("fr_settings_file", "")
+    if not fr_settings_path:
+        return emit("fr_error", {"error": "Fracture settings file not configured for this project."})
+    if not Path(fr_settings_path).exists():
+        return emit("fr_error", {"error": f"Fracture settings file not found: {fr_settings_path}"})
     cmd = [sys.executable, str(FRACTURE_SCRIPT),
            "--settings", fr_settings_path]
 
@@ -1991,7 +2066,11 @@ def on_si_start(data):
     if _procs.get(project_id, {}).get("si"):
         return emit("si_error", {"error": "Siphon already running"})
 
-    si_settings_path = proj["si_settings_file"]
+    si_settings_path = proj.get("si_settings_file", "")
+    if not si_settings_path:
+        return emit("si_error", {"error": "Siphon settings file not configured for this project."})
+    if not Path(si_settings_path).exists():
+        return emit("si_error", {"error": f"Siphon settings file not found: {si_settings_path}"})
     cmd = [sys.executable, str(SIPHON_SCRIPT),
            "--settings", si_settings_path]
 

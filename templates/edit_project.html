@@ -1432,6 +1432,25 @@
       </div>
     </div>
 
+    <!-- Credential Matrix -->
+    <div class="form-section" id="credMatrixSection">
+      <div class="form-section-title">Credential Matrix <span class="form-hint" style="font-weight:normal;font-size:.85rem">(optional — define multiple roles for privilege comparison and BFLA testing)</span></div>
+      <div style="margin-bottom:.75rem;color:#8b949e;font-size:.85rem">Add one entry per role. Siphon and Fracture will test every identified endpoint with each set of credentials and unauthenticated, comparing access across roles.</div>
+      <div id="credMatrixRows" style="display:flex;flex-direction:column;gap:.5rem"></div>
+      <button type="button" class="btn btn-sm btn-ghost" style="margin-top:.75rem" onclick="addCredRow()">+ Add Role</button>
+      <input type="hidden" id="authMatrixHidden" name="auth_matrix" value="[]">
+      <script>
+      (function() {
+        const existing = {{ (si.get('scan', {}).get('auth_matrix') or fr.get('scan', {}).get('auth_matrix') or []) | tojson }};
+        if (existing && existing.length) {
+          document.addEventListener('DOMContentLoaded', function() {
+            existing.forEach(function(row) { addCredRow(row.role, row.username, row.password || ''); });
+          });
+        }
+      })();
+      </script>
+    </div>
+
     <!-- Actions -->
     <div class="form-actions">
       <a href="/" class="btn btn-secondary">Cancel</a>
@@ -1630,6 +1649,40 @@ function _checkSpecUrlMatch(specUrl) {
   });
 })();
 
+// ─── Credential Matrix ────────────────────────────────────────────────────────
+function addCredRow(role, username, password) {
+  const wrap = document.getElementById('credMatrixRows');
+  const row  = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:.5rem;align-items:center;flex-wrap:wrap';
+  row.innerHTML =
+    '<input type="text"     class="form-control cred-role"     placeholder="Role name (e.g. admin)"  value="' + _escAttr(role||'') + '"     style="flex:1;min-width:120px">' +
+    '<input type="text"     class="form-control cred-username" placeholder="Username"                 value="' + _escAttr(username||'') + '"  style="flex:1;min-width:140px">' +
+    '<input type="password" class="form-control cred-password" placeholder="Password"                 value="' + _escAttr(password||'') + '"  style="flex:1;min-width:140px" autocomplete="new-password">' +
+    '<button type="button" class="btn btn-sm btn-ghost" style="color:#f85149;flex-shrink:0" onclick="removeCredRow(this)" title="Remove row">&#x2715;</button>';
+  row.querySelectorAll('.cred-role,.cred-username,.cred-password').forEach(function(el) {
+    el.addEventListener('input', _syncCredMatrix);
+  });
+  wrap.appendChild(row);
+  _syncCredMatrix();
+}
+function removeCredRow(btn) {
+  btn.closest('div').remove();
+  _syncCredMatrix();
+}
+function _syncCredMatrix() {
+  const rows = [];
+  document.querySelectorAll('#credMatrixRows > div').forEach(function(row) {
+    const role     = (row.querySelector('.cred-role')?.value||'').trim();
+    const username = (row.querySelector('.cred-username')?.value||'').trim();
+    const password = row.querySelector('.cred-password')?.value || '';
+    if (role && username) rows.push({ role: role, username: username, password: password });
+  });
+  document.getElementById('authMatrixHidden').value = JSON.stringify(rows);
+}
+function _escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // ─── Form submission ──────────────────────────────────────────────────────────
 function submitForm(e) {
   e.preventDefault();
@@ -1651,6 +1704,11 @@ function submitForm(e) {
   body.fr_target_urls = document.getElementById('frTargetUrls').value;
   body.si_target_urls = document.getElementById('siTargetUrls').value;
   body.si_api_spec_file_ids = _specFiles.filter(f => f.status === 'ok').map(f => f.fileId);
+
+  // Credential matrix
+  _syncCredMatrix();
+  body.auth_matrix = document.getElementById('authMatrixHidden').value;
+
   // Fracture auth — override fr_auth_* fields from active group only
   body.fr_auth_method = document.getElementById('frAuthMethod').value;
   const _activeFrAuthGrp = document.getElementById('frAuth-' + body.fr_auth_method);

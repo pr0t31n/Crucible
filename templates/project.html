@@ -30,6 +30,7 @@
     <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
     <button class="tab-btn"        data-tab="checkpoint" onclick="switchTab('checkpoint',this)">Checkpoint</button>
     <button class="tab-btn"        data-tab="structure"  onclick="switchTab('structure',this);loadStructure()">Structure</button>
+    <button class="tab-btn"        data-tab="access-matrix" onclick="switchTab('access-matrix',this);loadAccessMatrix()">Access Matrix</button>
   </nav>
 
   <!-- ════════════════ TAB: CONSOLE ════════════════ -->
@@ -461,6 +462,19 @@
     </div>
   </div><!-- /tab-structure -->
 
+  <!-- ════════════════ TAB: ACCESS MATRIX ════════════════ -->
+  <div class="tab-panel" id="tab-access-matrix">
+    <div style="padding:1rem 0">
+      <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+        <span style="font-size:.9rem;color:#8b949e">Endpoint and file access results per credential role, generated during Phase 20.</span>
+        <button class="btn btn-sm btn-ghost" onclick="loadAccessMatrix(true)" title="Reload">&#x21bb; Refresh</button>
+      </div>
+      <div id="accessMatrixContent">
+        <span style="color:#8b949e;font-size:.85rem">Loading&#8230;</span>
+      </div>
+    </div>
+  </div><!-- /tab-access-matrix -->
+
 </div><!-- /project-layout -->
 
 
@@ -572,6 +586,16 @@ let _currentPromptPayload = null;
 // ── Socket lifecycle ──────────────────────────────────────
 socket.on('connect', () => {
   socket.emit('join_project', {project_id: PROJECT_ID});
+});
+
+socket.on('connect_error', err => {
+  showToast(`Connection error: ${err.message || err}`, 'err');
+});
+
+socket.on('disconnect', reason => {
+  if (reason !== 'io client disconnect') {
+    showToast(`Disconnected: ${reason}`, 'warn');
+  }
 });
 
 // ── Tool status ───────────────────────────────────────────
@@ -722,6 +746,10 @@ function toggleScroll(tool) {
 
 // ── Tool control ──────────────────────────────────────────
 function startTool(tool) {
+  if (!socket.connected) {
+    showToast('Not connected to server — try refreshing the page.', 'err');
+    return;
+  }
   socket.emit(`${tool}_start`, {project_id: PROJECT_ID});
 }
 
@@ -1457,6 +1485,90 @@ async function loadStructure(force = false) {
     if (frEl) frEl.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load structure data.</span>';
     if (siEl) siEl.innerHTML = '';
   }
+}
+
+let _accessMatrixLoaded = false;
+async function loadAccessMatrix(force = false) {
+  if (_accessMatrixLoaded && !force) return;
+  _accessMatrixLoaded = true;
+  const el = document.getElementById('accessMatrixContent');
+  if (!el) return;
+  try {
+    const r = await fetch(`/api/access-matrix/${PROJECT_ID}`);
+    const d = await r.json();
+    if (!d.fr_matrix && !d.si_matrix) {
+      el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">No access matrix yet — enable Phase 20 and add credential roles in the engagement settings, then run a scan.</span>';
+      return;
+    }
+    let html = '';
+    if (d.fr_matrix) html += _renderAccessMatrixSection('FR', 'Fracture — Web Application', d.fr_matrix);
+    if (d.si_matrix) html += _renderAccessMatrixSection('SI', 'Siphon — API', d.si_matrix);
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load access matrix.</span>';
+  }
+}
+
+function _renderAccessMatrixSection(badge, title, matrix) {
+  const roles = matrix.roles || [];
+  const mostPriv = matrix.most_privileged || '';
+  const counts = matrix.privilege_counts || {};
+  const items = matrix.endpoints || matrix.paths || [];
+
+  if (!roles.length && !items.length) return '';
+
+  let html = `<div class="form-section" style="margin-bottom:1.5rem">`;
+  html += `<div class="form-section-title"><span class="tool-badge tool-${badge.toLowerCase()}">${badge}</span> ${_escHtml(title)}</div>`;
+
+  // Summary row
+  if (mostPriv) {
+    html += `<div style="margin-bottom:.75rem;font-size:.85rem;color:#8b949e">`;
+    html += `Most privileged role: <strong style="color:#e6edf3">${_escHtml(mostPriv)}</strong>`;
+    if (Object.keys(counts).length) {
+      html += ' &nbsp;|&nbsp; Access counts: ';
+      html += Object.entries(counts).map(([r,c]) => `<span style="color:#e6edf3">${_escHtml(r)}</span>: ${c}`).join(', ');
+    }
+    html += `</div>`;
+  }
+
+  if (!items.length) {
+    html += '<span style="color:#8b949e;font-size:.85rem">No endpoint data.</span>';
+    html += '</div>'; return html;
+  }
+
+  // Table
+  const allRoles = ['unauthenticated', ...roles];
+  html += `<div style="overflow-x:auto"><table class="findings-table" style="min-width:600px">`;
+  html += `<thead><tr><th style="text-align:left;padding:.4rem .6rem">Path / Endpoint</th>`;
+  allRoles.forEach(role => {
+    const isPriv = role === mostPriv;
+    html += `<th style="text-align:center;padding:.4rem .6rem${isPriv?' color:#f0883e':''}">` +
+            `${_escHtml(role)}${isPriv ? ' &#x2605;' : ''}</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+
+  items.forEach(item => {
+    const path = item.path || item.endpoint || '';
+    html += `<tr><td style="font-family:monospace;font-size:.82rem;padding:.35rem .6rem">${_escHtml(path)}</td>`;
+    allRoles.forEach(role => {
+      const access = (item.access || {})[role];
+      let cell = '—', cls = 'color:#8b949e';
+      if (access !== undefined && access !== null) {
+        if (access === true || access === 'ok') { cell = '✓'; cls = 'color:#3fb950'; }
+        else if (access === false || access === 'denied') { cell = '✗'; cls = 'color:#f85149'; }
+        else if (typeof access === 'number') {
+          cell = String(access);
+          cls = access < 300 ? 'color:#3fb950' : access < 400 ? 'color:#d29922' : 'color:#f85149';
+        } else { cell = String(access); }
+      }
+      html += `<td style="text-align:center;padding:.35rem .6rem;${cls}">${cell}</td>`;
+    });
+    html += `</tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  html += `</div>`;
+  return html;
 }
 
 // Render Fracture structure_map.json as a tree
