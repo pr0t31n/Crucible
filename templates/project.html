@@ -132,6 +132,7 @@
             <th class="col-title">Finding</th>
             <th class="col-host">Host / URL</th>
             <th class="col-port">Port</th>
+            <th class="col-http-code">HTTP</th>
             <th class="col-owasp">OWASP</th>
             <th class="col-cves">CVEs</th>
             <th class="col-sources">Sources</th>
@@ -141,7 +142,7 @@
           </tr>
         </thead>
         <tbody id="findingsTbody">
-          <tr class="empty-row"><td colspan="11">No findings yet — start a tool to begin.</td></tr>
+          <tr class="empty-row"><td colspan="12">No findings yet — start a tool to begin.</td></tr>
         </tbody>
       </table>
     </div>
@@ -715,7 +716,8 @@ socket.on('fr_output', entry => appendLine('fr', entry));
 socket.on('si_output', entry => appendLine('si', entry));
 
 let _frRunning = false, _siRunning = false;
-let _structurePollTimer = null;
+let _structurePollTimer    = null;
+let _accessMatrixPollTimer = null;
 
 function _startStructurePoll() {
   if (_structurePollTimer) return;
@@ -725,15 +727,26 @@ function _stopStructurePoll() {
   if (_frRunning || _siRunning) return;
   if (_structurePollTimer) { clearInterval(_structurePollTimer); _structurePollTimer = null; }
 }
+function _startAccessMatrixPoll() {
+  if (_accessMatrixPollTimer) return;
+  _accessMatrixPollTimer = setInterval(() => {
+    _accessMatrixLoaded = false;
+    loadAccessMatrix();
+  }, 10000);
+}
+function _stopAccessMatrixPoll() {
+  if (_frRunning || _siRunning) return;
+  if (_accessMatrixPollTimer) { clearInterval(_accessMatrixPollTimer); _accessMatrixPollTimer = null; }
+}
 
-socket.on('fr_started', d => { _frRunning = true;  setStatus('fr','running'); setLastRun('fr', d.started_at || new Date().toISOString()); showToast(`Fracture started (PID ${d.pid})`, 'ok'); _startStructurePoll(); });
-socket.on('fr_done',    d => { _frRunning = false; setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _structureLoaded = false; loadStructure(); });
-socket.on('fr_stopped', () => { _frRunning = false; setStatus('fr','idle'); _stopStructurePoll(); });
+socket.on('fr_started', d => { _frRunning = true;  setStatus('fr','running'); setLastRun('fr', d.started_at || new Date().toISOString()); showToast(`Fracture started (PID ${d.pid})`, 'ok'); _startStructurePoll(); _startAccessMatrixPoll(); });
+socket.on('fr_done',    d => { _frRunning = false; setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _stopAccessMatrixPoll(); _structureLoaded = false; loadStructure(); _accessMatrixLoaded = false; loadAccessMatrix(); });
+socket.on('fr_stopped', () => { _frRunning = false; setStatus('fr','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('fr_error',   d => showToast(`FR: ${d.error}`, 'err'));
 
-socket.on('si_started', d => { _siRunning = true;  setStatus('si','running'); setLastRun('si', d.started_at || new Date().toISOString()); showToast(`Siphon started (PID ${d.pid})`, 'ok'); _startStructurePoll(); });
-socket.on('si_done',    d => { _siRunning = false; setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _structureLoaded = false; loadStructure(); });
-socket.on('si_stopped', () => { _siRunning = false; setStatus('si','idle'); _stopStructurePoll(); });
+socket.on('si_started', d => { _siRunning = true;  setStatus('si','running'); setLastRun('si', d.started_at || new Date().toISOString()); showToast(`Siphon started (PID ${d.pid})`, 'ok'); _startStructurePoll(); _startAccessMatrixPoll(); });
+socket.on('si_done',    d => { _siRunning = false; setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _stopAccessMatrixPoll(); _structureLoaded = false; loadStructure(); _accessMatrixLoaded = false; loadAccessMatrix(); });
+socket.on('si_stopped', () => { _siRunning = false; setStatus('si','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
 
 // ── Findings ──────────────────────────────────────────────
@@ -1030,6 +1043,7 @@ function renderFindings() {
       <td class="col-title-cell">${escHtml(f.title || f.detail || '')}</td>
       <td class="mono-sm">${escHtml(host)}</td>
       <td>${f.port || ''}</td>
+      <td>${f.http_code || ''}</td>
       <td>${_owaspPill(f)}</td>
       <td>${cves}</td>
       <td>${_srcPills(f.sources)}</td>
@@ -1756,16 +1770,22 @@ async function loadStructure(force = false) {
 let _accessMatrixLoaded = false;
 async function loadAccessMatrix(force = false) {
   if (_accessMatrixLoaded && !force) return;
-  _accessMatrixLoaded = true;
   const el = document.getElementById('accessMatrixContent');
   if (!el) return;
   try {
     const r = await fetch(`/api/access-matrix/${PROJECT_ID}`);
     const d = await r.json();
     if (!d.fr_matrix && !d.si_matrix) {
-      el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">No access matrix yet — enable Phase 20 and add credential roles in the engagement settings, then run a scan.</span>';
+      // Don't mark as loaded — allow the poller to retry while scan is running
+      if (!_frRunning && !_siRunning) {
+        _accessMatrixLoaded = true;
+        el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">No access matrix data found for this project.</span>';
+      } else {
+        el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">Waiting for first paths to be discovered\u2026</span>';
+      }
       return;
     }
+    _accessMatrixLoaded = true;
     let html = '';
     if (d.fr_matrix) html += _renderAccessMatrixSection('FR', 'Fracture — Web Application', d.fr_matrix);
     if (d.si_matrix) html += _renderAccessMatrixSection('SI', 'Siphon — API', d.si_matrix);
@@ -1783,16 +1803,19 @@ function _renderAccessMatrixSection(badge, title, matrix) {
 
   if (!roles.length && !items.length) return '';
 
+  // Display name: internal key "unauthenticated" → user-visible "Unauthenticated"
+  const _dispRole = r => r === 'unauthenticated' ? 'Unauthenticated' : r;
+
   let html = `<div class="form-section" style="margin-bottom:1.5rem">`;
   html += `<div class="form-section-title"><span class="tool-badge tool-${badge.toLowerCase()}">${badge}</span> ${_escHtml(title)}</div>`;
 
   // Summary row
   if (mostPriv) {
     html += `<div style="margin-bottom:.75rem;font-size:.85rem;color:#8b949e">`;
-    html += `Most privileged role: <strong style="color:#e6edf3">${_escHtml(mostPriv)}</strong>`;
+    html += `Most privileged role: <strong style="color:#e6edf3">${_escHtml(_dispRole(mostPriv))}</strong>`;
     if (Object.keys(counts).length) {
       html += ' &nbsp;|&nbsp; Access counts: ';
-      html += Object.entries(counts).map(([r,c]) => `<span style="color:#e6edf3">${_escHtml(r)}</span>: ${c}`).join(', ');
+      html += Object.entries(counts).map(([r,c]) => `<span style="color:#e6edf3">${_escHtml(_dispRole(r))}</span>: ${c}`).join(', ');
     }
     html += `</div>`;
   }
@@ -1802,14 +1825,14 @@ function _renderAccessMatrixSection(badge, title, matrix) {
     html += '</div>'; return html;
   }
 
-  // Table
-  const allRoles = ['unauthenticated', ...roles];
+  // Table — columns are exactly what matrix.roles contains; no injected defaults
+  const allRoles = roles.length ? roles : ['unauthenticated'];
   html += `<div style="overflow-x:auto"><table class="findings-table" style="min-width:600px">`;
   html += `<thead><tr><th style="text-align:left;padding:.4rem .6rem">Path / Endpoint</th>`;
   allRoles.forEach(role => {
     const isPriv = role === mostPriv;
     html += `<th style="text-align:center;padding:.4rem .6rem${isPriv?' color:#f0883e':''}">` +
-            `${_escHtml(role)}${isPriv ? ' &#x2605;' : ''}</th>`;
+            `${_escHtml(_dispRole(role))}${isPriv ? ' &#x2605;' : ''}</th>`;
   });
   html += `</tr></thead><tbody>`;
 
@@ -1943,15 +1966,15 @@ function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;
 <style>
 .struct-tree { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size:.82rem; line-height:1.6; }
 .struct-row { display:flex; align-items:center; gap:.4rem; padding:.15rem .25rem; border-radius:4px; }
-.struct-row:hover { background: rgba(88,166,255,.07); }
+.struct-row:hover { background: var(--bg-hover); }
 .struct-grayed { opacity: 0.45; }
-.struct-redirect { color: #6e7681; font-size: .78rem; font-style: italic; white-space: nowrap; }
-.struct-ep-row { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.3rem .5rem; border-bottom:1px solid #21262d; }
+.struct-redirect { color: var(--text-muted); font-size: .78rem; font-style: italic; white-space: nowrap; }
+.struct-ep-row { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.3rem .5rem; border-bottom:1px solid var(--border-mid); }
 .struct-ep-row:last-child { border-bottom:none; }
 .struct-ep-row.struct-rogue { background: rgba(248,81,73,.06); }
-.struct-children { padding-left:1.4rem; border-left:1px dashed #30363d; margin-left:.5rem; }
+.struct-children { padding-left:1.4rem; border-left:1px dashed var(--border-mid); margin-left:.5rem; }
 .struct-icon { width:1.2rem; text-align:center; }
-.struct-path { color:#e6edf3; font-weight:500; }
+.struct-path { color: var(--text-primary); font-weight:500; }
 .struct-status { padding:.1rem .35rem; border-radius:3px; font-size:.78rem; font-weight:600; }
 .struct-ok    { background:#1b4332; color:#3fb950; }
 .struct-redir { background:#332e14; color:#d29922; }

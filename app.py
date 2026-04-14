@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.5.14"
+VERSION = "1.5.18"
 
 import json
 import os
@@ -1684,12 +1684,12 @@ def api_export_access_matrix_xlsx(project_id: str):
     err_font  = Font(color="F85149")
 
     def _add_sheet(title: str, matrix: dict) -> None:
-        roles     = matrix.get("roles") or ["unauthenticated"]
-        all_roles = ["unauthenticated"] + [r for r in roles if r != "unauthenticated"]
+        all_roles = list(matrix.get("roles") or ["unauthenticated"])
         items     = matrix.get("paths") or []
         ws = wb.create_sheet(title=title[:31])
+        def _dr(r): return "Unauthenticated" if r == "unauthenticated" else r
         # Header row
-        ws.append(["Path"] + all_roles)
+        ws.append(["Path"] + [_dr(r) for r in all_roles])
         for cell in ws[1]:
             cell.font = hdr_font
             cell.fill = hdr_fill

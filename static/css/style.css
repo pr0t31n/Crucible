@@ -1752,6 +1752,9 @@ body {
   white-space: nowrap;
 }
 
+/* HTTP code column */
+.col-http-code { width: 52px; text-align: center; font-family: var(--font-mono); font-size: .75rem; }
+
 /* OWASP pills */
 .col-owasp { width: 58px; text-align: center; }
 .owasp-pill {
