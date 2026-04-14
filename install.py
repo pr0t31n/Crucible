@@ -167,6 +167,8 @@ PIP_PACKAGES = [
     "eventlet>=0.35.0",
     "psutil>=5.9.0",
     "werkzeug",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
 ]
 
 def install_pip():

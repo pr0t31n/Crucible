@@ -1,0 +1,24 @@
+{
+  "projects": {
+    "e455a380-627b-41a8-9b8d-ab0467b9871d": {
+      "name": "GRAIL - Grail.com",
+      "client_name": "GRAIL, Inc.",
+      "client_short": "grail",
+      "scope": "webapp",
+      "created": "2026-04-13",
+      "project_dir": "/Users/Shared/clients/grail/2026/fracture/grail_20260413_174442",
+      "fr_settings_file": "/Users/Shared/clients/grail/2026/fracture/grail_20260413_174442/fr_settings.json",
+      "si_settings_file": "/Users/Shared/clients/grail/2026/siphon/grail_20260413_174442/si_settings.json",
+      "fracture_output_dir": "/Users/Shared/clients/grail/2026/fracture/grail_20260413_174442",
+      "siphon_output_dir": "/Users/Shared/clients/grail/2026/siphon/grail_20260413_174442",
+      "tools": [
+        "fr"
+      ],
+      "fr_status": "done",
+      "si_status": "idle",
+      "fr_last_run": "2026-04-14T02:38:10.983747+00:00",
+      "si_last_run": null,
+      "fr_proj_name": "/Users/Shared/clients/grail/2026/fracture/grail_20260413_174442"
+    }
+  }
+}

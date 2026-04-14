@@ -115,6 +115,7 @@
       <select id="filterTool" style="display:none" aria-hidden="true"><option value=""></option></select>
       {% endif %}
       <span class="findings-count" id="findingsCount">0 findings</span>
+      <button class="btn btn-sm btn-ghost fp-toggle-btn" id="showFPBtn" onclick="toggleShowFP()" title="Show / hide false positives">FP</button>
       <button class="btn btn-sm btn-ghost" onclick="exportFindingsCSV()" title="Export findings as CSV">&#x2193; CSV</button>
     </div>
     <div class="findings-pager">
@@ -135,11 +136,12 @@
             <th class="col-cves">CVEs</th>
             <th class="col-sources">Sources</th>
             <th class="col-evidence">Evidence</th>
+            <th class="col-account">Account</th>
             <th class="col-actions"></th>
           </tr>
         </thead>
         <tbody id="findingsTbody">
-          <tr class="empty-row"><td colspan="10">No findings yet — start a tool to begin.</td></tr>
+          <tr class="empty-row"><td colspan="11">No findings yet — start a tool to begin.</td></tr>
         </tbody>
       </table>
     </div>
@@ -434,6 +436,8 @@
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Visual map of discovered paths and endpoints generated during the scan.</span>
         <button class="btn btn-sm btn-ghost" onclick="loadStructure(true)" title="Reload structure maps">&#x21bb; Refresh</button>
+        <a class="btn btn-sm btn-ghost" href="/api/export-structure-pdf/{{ project.id }}" title="Export structure as PDF" download>&#x2193; PDF</a>
+        <a class="btn btn-sm btn-ghost" href="/api/export-structure-html/{{ project.id }}" title="Export structure as HTML" download>&#x2193; HTML</a>
       </div>
 
       <!-- Fracture structure map -->
@@ -468,6 +472,7 @@
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Endpoint and file access results per credential role, generated during Phase 20.</span>
         <button class="btn btn-sm btn-ghost" onclick="loadAccessMatrix(true)" title="Reload">&#x21bb; Refresh</button>
+        <a class="btn btn-sm btn-ghost" href="/api/export-access-matrix-xlsx/{{ project.id }}" title="Export access matrix as XLSX" download>&#x2193; XLSX</a>
       </div>
       <div id="accessMatrixContent">
         <span style="color:#8b949e;font-size:.85rem">Loading&#8230;</span>
@@ -512,15 +517,68 @@
     <div class="modal-title" id="evidenceModalTitle">Evidence</div>
     <div class="modal-body">
       <div class="evidence-file-tabs" id="evidenceFileTabs"></div>
-      <div class="evidence-content">
+      <div class="evidence-content" id="evidenceContent">
         <pre class="evidence-pre" id="evidencePre"></pre>
         <div class="evidence-img-wrap hidden" id="evidenceImgWrap">
           <img class="evidence-img" id="evidenceImg" alt="Evidence screenshot" />
         </div>
       </div>
+      <div class="evidence-split hidden" id="evidenceSplit">
+        <div class="evidence-pane">
+          <div class="evidence-pane-label">Request:</div>
+          <pre class="evidence-pre" id="evidenceReqPre"></pre>
+        </div>
+        <div class="evidence-pane">
+          <div class="evidence-pane-label">Response:</div>
+          <pre class="evidence-pre" id="evidenceRespPre"></pre>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeEvidenceModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- False positive confirm modal -->
+<div class="modal-overlay hidden" id="fpConfirmModal" role="dialog" aria-modal="true">
+  <div class="modal-box confirm-modal-box">
+    <div class="modal-title">Mark as False Positive?</div>
+    <div class="modal-body" style="padding:1rem 1.25rem">
+      <p style="margin:0 0 .75rem;color:var(--text-secondary);font-size:.88rem">
+        <strong style="color:var(--risk-high)">Warning:</strong> Marking this finding as a False Positive will:
+      </p>
+      <ul style="margin:0 0 .75rem;padding-left:1.25rem;color:var(--text-secondary);font-size:.85rem;line-height:1.7">
+        <li>Remove it from the findings count and risk tallies</li>
+        <li>Hide it from the Findings tab by default</li>
+        <li>Exclude it from CSV exports and all summaries</li>
+      </ul>
+      <p style="margin:0;color:var(--text-muted);font-size:.82rem">You can recover the finding at any time by enabling &ldquo;Show FPs&rdquo; and clicking Recover.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cancelMarkFP()">Cancel</button>
+      <button class="btn btn-danger"    onclick="confirmMarkFP()">Mark as False Positive</button>
+    </div>
+  </div>
+</div>
+
+<!-- Recover finding confirm modal -->
+<div class="modal-overlay hidden" id="recoverConfirmModal" role="dialog" aria-modal="true">
+  <div class="modal-box confirm-modal-box">
+    <div class="modal-title">Recover Finding?</div>
+    <div class="modal-body" style="padding:1rem 1.25rem">
+      <p style="margin:0 0 .75rem;color:var(--text-secondary);font-size:.88rem">
+        <strong style="color:var(--accent-primary)">Warning:</strong> Recovering this finding will:
+      </p>
+      <ul style="margin:0 0 .75rem;padding-left:1.25rem;color:var(--text-secondary);font-size:.85rem;line-height:1.7">
+        <li>Restore it to its original risk level</li>
+        <li>Re-add it to the findings count and risk tallies</li>
+        <li>Include it in CSV exports and summaries</li>
+      </ul>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="cancelRecover()">Cancel</button>
+      <button class="btn btn-primary"   onclick="confirmRecover()">Recover Finding</button>
     </div>
   </div>
 </div>
@@ -573,6 +631,13 @@ let errFilter  = { tool: '', category: '' };
 // Findings pagination
 let _findPage = 0;
 const FIND_PER_PAGE = 25;
+
+// False positive suppression state
+const _suppressedSet = new Set();
+let _showFP = false;
+let _fpPendingKey  = null;
+let _fpPendingData = null;
+let _recoverPendingKey = null;
 
 // Status / phase state
 const frPhases = {};
@@ -649,14 +714,26 @@ document.querySelectorAll('[data-iso]').forEach(el => {
 socket.on('fr_output', entry => appendLine('fr', entry));
 socket.on('si_output', entry => appendLine('si', entry));
 
-socket.on('fr_started', d => { setStatus('fr','running'); setLastRun('fr', d.started_at || new Date().toISOString()); showToast(`Fracture started (PID ${d.pid})`, 'ok'); });
-socket.on('fr_done',    d => { setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _structureLoaded = false; loadStructure(); });
-socket.on('fr_stopped', () => setStatus('fr','idle'));
+let _frRunning = false, _siRunning = false;
+let _structurePollTimer = null;
+
+function _startStructurePoll() {
+  if (_structurePollTimer) return;
+  _structurePollTimer = setInterval(() => _fetchStructure(), 8000);
+}
+function _stopStructurePoll() {
+  if (_frRunning || _siRunning) return;
+  if (_structurePollTimer) { clearInterval(_structurePollTimer); _structurePollTimer = null; }
+}
+
+socket.on('fr_started', d => { _frRunning = true;  setStatus('fr','running'); setLastRun('fr', d.started_at || new Date().toISOString()); showToast(`Fracture started (PID ${d.pid})`, 'ok'); _startStructurePoll(); });
+socket.on('fr_done',    d => { _frRunning = false; setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _structureLoaded = false; loadStructure(); });
+socket.on('fr_stopped', () => { _frRunning = false; setStatus('fr','idle'); _stopStructurePoll(); });
 socket.on('fr_error',   d => showToast(`FR: ${d.error}`, 'err'));
 
-socket.on('si_started', d => { setStatus('si','running'); setLastRun('si', d.started_at || new Date().toISOString()); showToast(`Siphon started (PID ${d.pid})`, 'ok'); });
-socket.on('si_done',    d => { setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _structureLoaded = false; loadStructure(); });
-socket.on('si_stopped', () => setStatus('si','idle'));
+socket.on('si_started', d => { _siRunning = true;  setStatus('si','running'); setLastRun('si', d.started_at || new Date().toISOString()); showToast(`Siphon started (PID ${d.pid})`, 'ok'); _startStructurePoll(); });
+socket.on('si_done',    d => { _siRunning = false; setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _structureLoaded = false; loadStructure(); });
+socket.on('si_stopped', () => { _siRunning = false; setStatus('si','idle'); _stopStructurePoll(); });
 socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
 
 // ── Findings ──────────────────────────────────────────────
@@ -783,10 +860,11 @@ function addFinding(f) {
     _findingIdx.set(k, allFindings.length);
     allFindings.push(f);
   }
-  document.getElementById('findingsBadge').textContent = allFindings.length;
+  const activeFindings = allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
+  document.getElementById('findingsBadge').textContent = activeFindings.length;
 
-  const frCount = allFindings.filter(x => x._tool === 'fracture').length;
-  const siCount = allFindings.filter(x => x._tool === 'siphon').length;
+  const frCount = activeFindings.filter(x => x._tool === 'fracture').length;
+  const siCount = activeFindings.filter(x => x._tool === 'siphon').length;
   const frCnt = document.getElementById('fr-finding-count');
   const siCnt = document.getElementById('si-finding-count');
   if (frCnt) frCnt.textContent = frCount;
@@ -804,11 +882,18 @@ function findingsPage(dir) {
   renderFindings();
 }
 
+function _isSuppressed(f) {
+  return _suppressedSet.has(_fkeyF(f));
+}
+
 function _getFilteredFindings() {
   const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
   const risk = document.getElementById('filterRisk').value;
   const tool = document.getElementById('filterTool').value;
   return allFindings.filter(f => {
+    const suppressed = _isSuppressed(f);
+    if (suppressed && !_showFP) return false;
+    if (!suppressed && _showFP) return false;
     if (risk && (f.risk || 'INFO').toUpperCase() !== risk) return false;
     if (tool && (f._tool || '') !== tool) return false;
     if (q) {
@@ -835,6 +920,25 @@ function _srcPills(sources) {
   const srcs = sources.split(',').map(s => s.trim()).filter(Boolean);
   if (!srcs.length) return '';
   return `<div class="src-pills">${srcs.map(s => `<span class="src-pill">${escHtml(s)}</span>`).join('')}</div>`;
+}
+
+const _ADMIN_ROLE_RE = /admin|superuser|root|elevated|privileged|manager|owner/i;
+
+function _accountPills(accounts) {
+  if (!accounts || !accounts.length) return '';
+  return accounts.map(a => {
+    const role = (a.role || '').toLowerCase();
+    const user = (a.username || '').trim();
+    if (role === 'unauthenticated' || user.toUpperCase() === 'UNAUTH' || (!user && !role)) {
+      return `<span class="acct-pill acct-unauth" title="Unauthenticated">UNAUTH</span>`;
+    }
+    const label = escHtml(user || role);
+    const title = user && role && user !== role ? `${user} (${role})` : (user || role);
+    if (_ADMIN_ROLE_RE.test(role) || _ADMIN_ROLE_RE.test(user)) {
+      return `<span class="acct-pill acct-admin" title="${escHtml(title)}">${label}</span>`;
+    }
+    return `<span class="acct-pill acct-user" title="${escHtml(title)}">${label}</span>`;
+  }).join('');
 }
 
 function _owaspPill(f) {
@@ -878,7 +982,7 @@ function closeOwaspModal() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeOwaspModal(); closeDetailsModal(); closeEvidenceModal(); }
+  if (e.key === 'Escape') { closeOwaspModal(); closeDetailsModal(); closeEvidenceModal(); cancelMarkFP(); cancelRecover(); }
 });
 
 function renderFindings() {
@@ -895,7 +999,11 @@ function renderFindings() {
   document.getElementById('findBtnNext').disabled = _findPage >= pages - 1;
 
   if (!slice.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="10">${allFindings.length ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.'}</td></tr>`;
+    const activeCount = allFindings.filter(x => !_isSuppressed(x)).length;
+    const emptyMsg = _showFP
+      ? (allFindings.some(_isSuppressed) ? 'No false positives match filters.' : 'No false positives marked.')
+      : (activeCount ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.');
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${emptyMsg}</td></tr>`;
     return;
   }
 
@@ -903,12 +1011,21 @@ function renderFindings() {
     const host = f.hostname || f.url || f.ip || '';
     const cves = (f.cves || '').split(',').filter(Boolean).map(c => `<span class="cve-tag">${c.trim()}</span>`).join(' ');
     const fJson = escHtml(JSON.stringify(JSON.stringify(f)));
+    const fKey  = escHtml(JSON.stringify(_fkeyF(f)));
     const evidenceFiles = (f.output_file || '').split(',').map(s => s.trim()).filter(Boolean);
     const evidenceBtn = evidenceFiles.length
       ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(evidenceFiles))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View</button>`
       : '';
-    return `<tr class="finding-row" onclick="showFindingDetails(${fJson})">
-      <td>${_riskBadge(f.risk)}</td>
+    const isFP = _isSuppressed(f);
+    const riskCell = isFP
+      ? `<span class="risk-badge risk-fp">FP</span>`
+      : _riskBadge(f.risk);
+    const actionBtn = isFP
+      ? `<button class="btn btn-xs btn-recover" onclick="event.stopPropagation();recoverFinding(${fKey})">Recover</button>`
+      : `<button class="btn btn-xs btn-fp"      onclick="event.stopPropagation();markFalsePositive(${fKey},${fJson})">FP</button>`;
+    const accounts = Array.isArray(f.accounts) ? f.accounts : [];
+    return `<tr class="finding-row${isFP?' finding-row-fp':''}" onclick="showFindingDetails(${fJson})">
+      <td>${riskCell}</td>
       <td>${_toolBadge(f._tool)}</td>
       <td class="col-title-cell">${escHtml(f.title || f.detail || '')}</td>
       <td class="mono-sm">${escHtml(host)}</td>
@@ -917,7 +1034,11 @@ function renderFindings() {
       <td>${cves}</td>
       <td>${_srcPills(f.sources)}</td>
       <td>${evidenceBtn}</td>
-      <td><button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();showFindingDetails(${fJson})">Details</button></td>
+      <td><div class="acct-pills">${_accountPills(accounts)}</div></td>
+      <td>
+        <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();showFindingDetails(${fJson})">Details</button>
+        ${actionBtn}
+      </td>
     </tr>`;
   }).join('');
 }
@@ -958,12 +1079,49 @@ let _evidenceFiles = [];
 function viewEvidence(files, title) {
   _evidenceFiles = typeof files === 'string' ? JSON.parse(files) : files;
   document.getElementById('evidenceModalTitle').textContent = `Evidence — ${title || 'Finding'}`;
-  const tabs = document.getElementById('evidenceFileTabs');
-  tabs.innerHTML = _evidenceFiles.map((f, i) =>
-    `<button class="evidence-file-tab${i===0?' active':''}" onclick="loadEvidenceFile(${i},this)">${escHtml(f.split('/').pop())}</button>`
-  ).join('');
-  if (_evidenceFiles.length) loadEvidenceFile(0, tabs.firstChild);
+
+  const reqFile    = _evidenceFiles.find(f => f.endsWith('_request.txt'));
+  const respFile   = _evidenceFiles.find(f => f.endsWith('_response.txt'));
+  const otherFiles = _evidenceFiles.filter(f => !f.endsWith('_request.txt') && !f.endsWith('_response.txt'));
+  const splitView  = !!(reqFile && respFile);
+
+  const contentEl  = document.getElementById('evidenceContent');
+  const splitEl    = document.getElementById('evidenceSplit');
+  const modalBox   = document.querySelector('.evidence-modal-box');
+  const tabs       = document.getElementById('evidenceFileTabs');
+
+  if (splitView) {
+    contentEl.classList.add('hidden');
+    splitEl.classList.remove('hidden');
+    tabs.classList.add('hidden');
+    tabs.innerHTML = '';
+    modalBox.classList.add('evidence-modal-wide');
+    _loadEvidencePane(reqFile,  'evidenceReqPre');
+    _loadEvidencePane(respFile, 'evidenceRespPre');
+  } else {
+    contentEl.classList.remove('hidden');
+    splitEl.classList.add('hidden');
+    tabs.classList.remove('hidden');
+    modalBox.classList.remove('evidence-modal-wide');
+    tabs.innerHTML = _evidenceFiles.map((f, i) =>
+      `<button class="evidence-file-tab${i===0?' active':''}" onclick="loadEvidenceFile(${i},this)">${escHtml(f.split('/').pop())}</button>`
+    ).join('');
+    if (_evidenceFiles.length) loadEvidenceFile(0, tabs.firstChild);
+  }
   document.getElementById('evidenceModal').classList.remove('hidden');
+}
+
+function _loadEvidencePane(filePath, preId) {
+  const pre = document.getElementById(preId);
+  pre.textContent = 'Loading\u2026';
+  fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`)
+    .then(r => r.json())
+    .then(d => {
+      const raw = d.content || d.error || '(empty)';
+      const { display } = _beautifyContent(raw, filePath);
+      pre.textContent = display;
+    })
+    .catch(() => { pre.textContent = '(failed to load)'; });
 }
 
 const _IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
@@ -1188,7 +1346,17 @@ function loadEvidenceFile(idx, btn) {
 }
 
 function exportFindingsCSV() {
-  const filtered = _getFilteredFindings();
+  // Always export active (non-suppressed) findings only, regardless of FP view mode
+  const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
+  const risk = document.getElementById('filterRisk').value;
+  const tool = document.getElementById('filterTool').value;
+  const filtered = allFindings.filter(f => {
+    if (_isSuppressed(f)) return false;
+    if (risk && (f.risk || 'INFO').toUpperCase() !== risk) return false;
+    if (tool && (f._tool || '') !== tool) return false;
+    if (q) { if (!JSON.stringify(f).toLowerCase().includes(q)) return false; }
+    return true;
+  });
   const rows = [['Risk','Tool','Finding','Host','Port','CVEs','Sources','Evidence Files']];
   filtered.forEach(f => {
     rows.push([f.risk||'INFO', f._tool||'', f.title||f.detail||'',
@@ -1199,6 +1367,94 @@ function exportFindingsCSV() {
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
   a.download = `crucible_findings_${PROJECT_ID.slice(0,8)}.csv`;
   a.click();
+}
+
+// ── False Positive management ────────────────────────────
+function toggleShowFP() {
+  _showFP = !_showFP;
+  const btn = document.getElementById('showFPBtn');
+  if (btn) btn.classList.toggle('active', _showFP);
+  _findPage = 0;
+  renderFindings();
+}
+
+function markFalsePositive(key, fJsonStr) {
+  _fpPendingKey  = key;
+  _fpPendingData = fJsonStr;
+  document.getElementById('fpConfirmModal').classList.remove('hidden');
+}
+
+function cancelMarkFP() {
+  _fpPendingKey  = null;
+  _fpPendingData = null;
+  document.getElementById('fpConfirmModal').classList.add('hidden');
+}
+
+function confirmMarkFP() {
+  const key = _fpPendingKey;
+  cancelMarkFP();
+  if (!key) return;
+  fetch(`/api/suppress-finding/${PROJECT_ID}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key_hash: key})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      _suppressedSet.add(key);
+      // Recompute counts and re-render
+      const activeFindings = allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
+      document.getElementById('findingsBadge').textContent = activeFindings.length;
+      const frCnt = document.getElementById('fr-finding-count');
+      const siCnt = document.getElementById('si-finding-count');
+      if (frCnt) frCnt.textContent = activeFindings.filter(x => x._tool === 'fracture').length;
+      if (siCnt) siCnt.textContent = activeFindings.filter(x => x._tool === 'siphon').length;
+      _findPage = 0;
+      renderFindings();
+    } else {
+      alert('Failed to mark as false positive: ' + (d.error || 'unknown error'));
+    }
+  })
+  .catch(() => alert('Network error — failed to mark as false positive.'));
+}
+
+function recoverFinding(key) {
+  _recoverPendingKey = key;
+  document.getElementById('recoverConfirmModal').classList.remove('hidden');
+}
+
+function cancelRecover() {
+  _recoverPendingKey = null;
+  document.getElementById('recoverConfirmModal').classList.add('hidden');
+}
+
+function confirmRecover() {
+  const key = _recoverPendingKey;
+  cancelRecover();
+  if (!key) return;
+  fetch(`/api/unsuppress-finding/${PROJECT_ID}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key_hash: key})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      _suppressedSet.delete(key);
+      const activeFindings = allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
+      document.getElementById('findingsBadge').textContent = activeFindings.length;
+      const frCnt = document.getElementById('fr-finding-count');
+      const siCnt = document.getElementById('si-finding-count');
+      if (frCnt) frCnt.textContent = activeFindings.filter(x => x._tool === 'fracture').length;
+      if (siCnt) siCnt.textContent = activeFindings.filter(x => x._tool === 'siphon').length;
+      _findPage = 0;
+      renderFindings();
+    } else {
+      alert('Failed to recover finding: ' + (d.error || 'unknown error'));
+    }
+  })
+  .catch(() => alert('Network error — failed to recover finding.'));
 }
 
 // ── Logs ──────────────────────────────────────────────────
@@ -1449,8 +1705,14 @@ function escHtml(s) {
 }
 
 // ── Init ──────────────────────────────────────────────────
-// Load historical findings and logs
-fetch(`/api/findings/${PROJECT_ID}`).then(r => r.json()).then(arr => { arr.forEach(addFinding); });
+// Load suppressions first, then findings so counts are correct from the start
+fetch(`/api/suppressions/${PROJECT_ID}`)
+  .then(r => r.json())
+  .then(arr => { arr.forEach(k => _suppressedSet.add(k)); })
+  .catch(() => {})
+  .finally(() => {
+    fetch(`/api/findings/${PROJECT_ID}`).then(r => r.json()).then(arr => { arr.forEach(addFinding); });
+  });
 fetch(`/api/logs/${PROJECT_ID}`).then(r => r.json()).then(arr => {
   arr.forEach(e => {
     const key = `${e.ts}|${e.tool}|${e.message}`;
@@ -1471,9 +1733,7 @@ fetch(`/api/errors/${PROJECT_ID}`).then(r => r.json()).then(arr => {
 // ── Structure tab ──────────────────────────────────────────────────────────
 let _structureLoaded = false;
 
-async function loadStructure(force = false) {
-  if (_structureLoaded && !force) return;
-  _structureLoaded = true;
+async function _fetchStructure() {
   const frEl = document.getElementById('frStructureContainer');
   const siEl = document.getElementById('siStructureContainer');
   try {
@@ -1485,6 +1745,12 @@ async function loadStructure(force = false) {
     if (frEl) frEl.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load structure data.</span>';
     if (siEl) siEl.innerHTML = '';
   }
+}
+
+async function loadStructure(force = false) {
+  if (_structureLoaded && !force) return;
+  _structureLoaded = true;
+  await _fetchStructure();
 }
 
 let _accessMatrixLoaded = false;
@@ -1577,37 +1843,59 @@ function renderFrTree(frMap) {
     return '<span style="color:#8b949e;font-size:.85rem">Empty structure map.</span>';
   }
   const paths = frMap.paths;
-  // Build tree hierarchy
-  const tree = {};
+
+  // Build tree hierarchy — root node holds "/" info, children hold everything else
+  const root = { _info: paths['/'] || {}, _children: {} };
   for (const [path, info] of Object.entries(paths)) {
-    const parts = path.replace(/^\//, '').split('/');
-    let node = tree;
-    for (const part of parts) {
-      node[part] = node[part] || { _info: null, _children: {} };
+    if (path === '/') continue;
+    const parts = path.replace(/^\//, '').split('/').filter(p => p !== '');
+    let node = root._children;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!node[part]) node[part] = { _info: {}, _children: {} };
+      if (i === parts.length - 1) node[part]._info = info;
       node = node[part]._children;
     }
-    // Attach info to last segment
-    let n = tree;
-    for (let i = 0; i < parts.length - 1; i++) n = n[parts[i]]._children;
-    if (parts.length > 0) n[parts[parts.length - 1]]._info = info;
   }
-  return `<div class="struct-tree">${_renderFrNode(tree, '/')}</div>`;
+
+  // Render root "/" node then its children
+  const ri = root._info;
+  const rs = ri.status || '';
+  const rsCls = !rs ? '' : rs < 300 ? 'struct-ok' : rs < 400 ? 'struct-redir' : 'struct-err';
+  const rGrayed = rs && rs >= 300 ? ' struct-grayed' : '';
+  const rRedir = ri.redirect_to ? `<span class="struct-redirect">→ ${_escHtml(ri.redirect_to)}</span>` : '';
+  let html = '<div class="struct-tree">';
+  html += `<div class="struct-row${rGrayed}">`;
+  html += '<span class="struct-icon">📁</span>';
+  html += '<span class="struct-path">/</span>';
+  if (rs) html += `<span class="struct-status ${rsCls}">${rs}</span>`;
+  html += rRedir;
+  html += '</div>';
+  if (Object.keys(root._children).length > 0) {
+    html += `<div class="struct-children">${_renderFrNode(root._children, '/')}</div>`;
+  }
+  html += '</div>';
+  return html;
 }
 
 function _renderFrNode(node, prefix) {
   let html = '';
-  for (const [name, data] of Object.entries(node)) {
+  for (const [name, data] of Object.entries(node).sort()) {
     const info = data._info || {};
     const path = prefix === '/' ? '/' + name : prefix + '/' + name;
-    const status = info.max_status || '';
+    const status = info.status || '';
     const authOnly = info.auth_only ? `<span class="struct-auth-tag" title="Only accessible when authenticated">🔒 ${(info.auth_users||[]).join(', ')}</span>` : '';
-    const statusCls = status < 300 ? 'struct-ok' : status < 400 ? 'struct-redir' : 'struct-err';
+    const statusCls = !status ? '' : status < 300 ? 'struct-ok' : status < 400 ? 'struct-redir' : 'struct-err';
     const isDir = Object.keys(data._children).length > 0;
     const icon = isDir ? '📁' : '📄';
-    html += `<div class="struct-row">`;
+    const grayed = status && status >= 300 ? ' struct-grayed' : '';
+    const redirectTo = info.redirect_to || '';
+    const redirectTag = redirectTo ? `<span class="struct-redirect">→ ${_escHtml(redirectTo)}</span>` : '';
+    html += `<div class="struct-row${grayed}">`;
     html += `  <span class="struct-icon">${icon}</span>`;
-    html += `  <span class="struct-path">${_escHtml(name)}</span>`;
+    html += `  <span class="struct-path">${_escHtml(isDir ? name + '/' : name)}</span>`;
     if (status) html += `  <span class="struct-status ${statusCls}">${status}</span>`;
+    html += redirectTag;
     html += authOnly;
     html += `</div>`;
     if (isDir) {
@@ -1656,6 +1944,8 @@ function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;
 .struct-tree { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size:.82rem; line-height:1.6; }
 .struct-row { display:flex; align-items:center; gap:.4rem; padding:.15rem .25rem; border-radius:4px; }
 .struct-row:hover { background: rgba(88,166,255,.07); }
+.struct-grayed { opacity: 0.45; }
+.struct-redirect { color: #6e7681; font-size: .78rem; font-style: italic; white-space: nowrap; }
 .struct-ep-row { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.3rem .5rem; border-bottom:1px solid #21262d; }
 .struct-ep-row:last-child { border-bottom:none; }
 .struct-ep-row.struct-rogue { background: rgba(248,81,73,.06); }

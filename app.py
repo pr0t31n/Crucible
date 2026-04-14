@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.5.1"
+VERSION = "1.5.14"
 
 import json
 import os
@@ -1461,7 +1461,7 @@ def api_suppress_finding(project_id: str):
         return jsonify({"error": "not found"}), 404
     body     = request.json or {}
     key_hash = (body.get("key_hash") or "").strip()
-    if not key_hash or len(key_hash) != 64:
+    if not key_hash:
         return jsonify({"error": "Invalid key_hash"}), 400
     sp = _suppressions_path(project_id)
     suppressions = _load_suppressions(project_id)
@@ -1642,6 +1642,393 @@ def api_access_matrix(project_id: str):
         pass
 
     return jsonify(result)
+
+
+@app.route("/api/export-access-matrix-xlsx/<project_id>")
+def api_export_access_matrix_xlsx(project_id: str):
+    """Generate and download an XLSX file from the project's access_matrix.json."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    import io
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        return jsonify({"error": "openpyxl not installed"}), 500
+
+    def _load_matrix(settings_key: str) -> "dict | None":
+        try:
+            cfg_path = Path(proj.get(settings_key, ""))
+            if not cfg_path.exists():
+                return None
+            cfg = json.loads(cfg_path.read_text())
+            pdir = cfg.get("scan", {}).get("project", "")
+            if not pdir:
+                return None
+            am_file = Path(pdir) / "access_matrix.json"
+            if not am_file.exists():
+                return None
+            return json.loads(am_file.read_text())
+        except Exception:
+            return None
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)  # remove default sheet
+
+    hdr_fill  = PatternFill("solid", fgColor="161B22")
+    hdr_font  = Font(color="C9D1D9", bold=True)
+    ok_font   = Font(color="3FB950")
+    warn_font = Font(color="D29922")
+    err_font  = Font(color="F85149")
+
+    def _add_sheet(title: str, matrix: dict) -> None:
+        roles     = matrix.get("roles") or ["unauthenticated"]
+        all_roles = ["unauthenticated"] + [r for r in roles if r != "unauthenticated"]
+        items     = matrix.get("paths") or []
+        ws = wb.create_sheet(title=title[:31])
+        # Header row
+        ws.append(["Path"] + all_roles)
+        for cell in ws[1]:
+            cell.font = hdr_font
+            cell.fill = hdr_fill
+            cell.alignment = Alignment(horizontal="center")
+        ws.column_dimensions["A"].width = 50
+        for i in range(len(all_roles)):
+            ws.column_dimensions[chr(66 + i)].width = 18
+        # Data rows
+        for item in items:
+            path   = item.get("path", "")
+            access = item.get("access") or {}
+            row = [path]
+            for role in all_roles:
+                st = access.get(role)
+                row.append(st if st is not None else "—")
+            ws.append(row)
+            data_row = ws.max_row
+            for col_idx, role in enumerate(all_roles, start=2):
+                cell = ws.cell(row=data_row, column=col_idx)
+                st = access.get(role)
+                if isinstance(st, int):
+                    if st < 300:
+                        cell.font = ok_font
+                    elif st < 400:
+                        cell.font = warn_font
+                    else:
+                        cell.font = err_font
+
+    fr_matrix = _load_matrix("fr_settings_file")
+    si_matrix = _load_matrix("si_settings_file")
+
+    if fr_matrix:
+        _add_sheet("FR - Web App", fr_matrix)
+    if si_matrix:
+        _add_sheet("SI - API", si_matrix)
+
+    if not wb.sheetnames:
+        ws = wb.create_sheet("Access Matrix")
+        ws.append(["No access matrix data found."])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    proj_name = (proj.get("name") or project_id).replace(" ", "_")
+    filename  = f"access_matrix_{proj_name}.xlsx"
+    return app.response_class(
+        buf.read(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Structure export helpers ──────────────────────────────────────────────────
+
+def _load_fr_structure_map(proj: dict) -> "dict | None":
+    """Load structure_map.json from the Fracture project directory."""
+    try:
+        cfg_path = Path(proj.get("fr_settings_file", ""))
+        if not cfg_path.exists():
+            return None
+        cfg  = json.loads(cfg_path.read_text())
+        pdir = cfg.get("scan", {}).get("project", "")
+        if not pdir:
+            return None
+        sm = Path(pdir) / "structure_map.json"
+        return json.loads(sm.read_text()) if sm.exists() else None
+    except Exception:
+        return None
+
+
+def _build_structure_tree(paths: dict) -> dict:
+    """Convert flat {path: data} dict into a nested tree of nodes.
+
+    Each node: {"_data": {...}, "children": {name: node, ...}}
+    """
+    root: dict = {"_data": paths.get("/", {}), "children": {}}
+    for path, data in sorted(paths.items()):
+        if path == "/":
+            continue
+        segments = [s for s in path.strip("/").split("/") if s]
+        node = root
+        for seg in segments:
+            if seg not in node["children"]:
+                node["children"][seg] = {"_data": {}, "children": {}}
+            node = node["children"][seg]
+        node["_data"] = data
+    return root
+
+
+def _status_class(status: "int | None") -> str:
+    if status is None:
+        return ""
+    if status < 300:
+        return "ok"
+    if status < 400:
+        return "redir"
+    return "err"
+
+
+def _render_html_node(name: str, node: dict, depth: int = 0) -> str:
+    """Recursively render a tree node as HTML using <details>/<summary>."""
+    data      = node.get("_data", {})
+    children  = node.get("children", {})
+    status    = data.get("status")
+    redirect  = data.get("redirect_to", "")
+    is_dir    = bool(children)
+    is_root   = depth == 0
+
+    cls  = _status_class(status)
+    badge = f'<span class="st {cls}">{status}</span>' if status is not None else ""
+    arrow = f' <span class="redir-arrow">&#x2192; {redirect}</span>' if redirect else ""
+
+    label = "/" if is_root else (name + "/" if is_dir else name)
+    icon  = "&#128193;" if (is_dir or is_root) else "&#128196;"
+
+    row_inner = f'{icon} <span class="name">{label}</span> {badge}{arrow}'
+
+    if is_dir or is_root:
+        open_attr = " open" if is_root else ""
+        html = f'<details{open_attr}>\n<summary class="node">{row_inner}</summary>\n'
+        html += '<div class="children">\n'
+        for child_name, child_node in sorted(children.items()):
+            html += _render_html_node(child_name, child_node, depth + 1)
+        html += '</div>\n</details>\n'
+    else:
+        html = f'<div class="node leaf">{row_inner}</div>\n'
+    return html
+
+
+def _generate_structure_html(sm: dict, proj_name: str) -> str:
+    """Return a complete self-contained HTML document for the structure map."""
+    target    = sm.get("target", "")
+    generated = sm.get("generated_at", "")
+    paths     = sm.get("paths", {})
+    tree      = _build_structure_tree(paths)
+    body      = _render_html_node("/", tree, depth=0)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Structure Map — {proj_name}</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:#0d1117;color:#e6edf3;font-family:'Fira Code','Cascadia Code','Consolas',monospace;
+        font-size:13px;line-height:1.65;padding:2rem}}
+  h1{{font-size:1.1rem;color:#58a6ff;margin-bottom:.25rem}}
+  .meta{{font-size:.8rem;color:#8b949e;margin-bottom:1.5rem}}
+  details>summary{{cursor:pointer;list-style:none;user-select:none}}
+  details>summary::-webkit-details-marker{{display:none}}
+  .node{{display:flex;align-items:center;gap:.4rem;padding:.18rem .3rem;
+          border-radius:4px;white-space:nowrap}}
+  .node:hover{{background:rgba(88,166,255,.08)}}
+  .children{{padding-left:1.5rem;border-left:1px dashed #30363d;margin-left:.6rem}}
+  .name{{color:#e6edf3;font-weight:500}}
+  .st{{padding:.1rem .35rem;border-radius:3px;font-size:.75rem;font-weight:700}}
+  .ok{{background:#1b4332;color:#3fb950}}
+  .redir{{background:#332e14;color:#d29922}}
+  .err{{background:#3d1a1a;color:#f85149}}
+  .redir-arrow{{color:#6e7681;font-style:italic;font-size:.8rem}}
+</style>
+</head>
+<body>
+<h1>Structure Map</h1>
+<div class="meta">
+  Target: {target} &nbsp;|&nbsp; Generated: {generated} &nbsp;|&nbsp;
+  Paths: {len(paths)} &nbsp;|&nbsp; Project: {proj_name}
+</div>
+{body}
+</body>
+</html>"""
+
+
+@app.route("/api/export-structure-html/<project_id>")
+def api_export_structure_html(project_id: str):
+    """Generate and download a self-contained HTML structure map."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+    sm = _load_fr_structure_map(proj)
+    if not sm:
+        return jsonify({"error": "No structure map found"}), 404
+    proj_name = (proj.get("name") or project_id).replace(" ", "_")
+    html      = _generate_structure_html(sm, proj_name)
+    filename  = f"structure_{proj_name}.html"
+    return app.response_class(
+        html,
+        mimetype="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.route("/api/export-structure-pdf/<project_id>")
+def api_export_structure_pdf(project_id: str):
+    """Generate and download a multi-page PDF structure map using reportlab."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+    sm = _load_fr_structure_map(proj)
+    if not sm:
+        return jsonify({"error": "No structure map found"}), 404
+
+    try:
+        import io
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        KeepTogether, HRFlowable)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.colors import HexColor, black, white
+        from reportlab.lib.units import mm
+        from reportlab.lib.enums import TA_LEFT
+    except ImportError:
+        return jsonify({"error": "reportlab not installed"}), 500
+
+    proj_name = (proj.get("name") or project_id).replace(" ", "_")
+    target    = sm.get("target", "")
+    generated = sm.get("generated_at", "")
+    paths     = sm.get("paths", {})
+    tree      = _build_structure_tree(paths)
+
+    # ── Styles ──────────────────────────────────────────────────────────────
+    PAGE_W, PAGE_H = A4
+    MARGIN = 18 * mm
+
+    base = ParagraphStyle(
+        "base",
+        fontName="Courier",
+        fontSize=8.5,
+        leading=13,
+        leftIndent=0,
+        textColor=HexColor("#1a1a2e"),
+    )
+    title_style = ParagraphStyle(
+        "title",
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=18,
+        textColor=HexColor("#1a1a2e"),
+        spaceAfter=2 * mm,
+    )
+    meta_style = ParagraphStyle(
+        "meta",
+        fontName="Helvetica",
+        fontSize=8,
+        leading=11,
+        textColor=HexColor("#555555"),
+        spaceAfter=4 * mm,
+    )
+
+    C_OK    = HexColor("#1a7a3c")
+    C_REDIR = HexColor("#8a6a00")
+    C_ERR   = HexColor("#b02020")
+    C_GRAY  = HexColor("#555555")
+
+    def _status_tag(status):
+        if status is None:
+            return ""
+        if status < 300:
+            return f'<font color="#1a7a3c">[{status}]</font>'
+        if status < 400:
+            return f'<font color="#8a6a00">[{status}]</font>'
+        return f'<font color="#b02020">[{status}]</font>'
+
+    # ── Flatten tree to paragraphs ───────────────────────────────────────────
+    story = []
+
+    story.append(Paragraph(f"Structure Map — {proj_name}", title_style))
+    story.append(Paragraph(
+        f"Target: {target} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Generated: {generated} &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Paths: {len(paths)}",
+        meta_style,
+    ))
+    story.append(HRFlowable(width="100%", thickness=0.5,
+                            color=HexColor("#cccccc"), spaceAfter=4 * mm))
+
+    def _flatten(node: dict, name: str, depth: int, out: list):
+        data      = node.get("_data", {})
+        children  = node.get("children", {})
+        is_dir    = bool(children)
+        is_root   = depth == 0
+        status    = data.get("status")
+        redirect  = data.get("redirect_to", "")
+
+        label = "/" if is_root else (name + "/" if is_dir else name)
+        icon  = "&#9658;" if is_dir or is_root else "&#9642;"   # ▶ or ▪
+        indent = (depth * 12)                                    # points
+
+        st_tag  = _status_tag(status)
+        arr_tag = (f' <font color="#888888"><i>&#x2192; {redirect}</i></font>'
+                   if redirect else "")
+        weight  = "Bold" if (is_dir or is_root) else ""
+        fn      = f"Courier-{weight}" if weight else "Courier"
+
+        style = ParagraphStyle(
+            f"n{depth}",
+            parent=base,
+            fontName=fn,
+            leftIndent=indent,
+            spaceAfter=1,
+            spaceBefore=2 if (is_dir and depth > 0) else 0,
+        )
+        text = f'{icon} {label} {st_tag}{arr_tag}'
+        out.append(Paragraph(text, style))
+
+        for child_name, child_node in sorted(children.items()):
+            _flatten(child_node, child_name, depth + 1, out)
+
+    _flatten(tree, "/", 0, story)
+
+    # ── Page numbering callback ──────────────────────────────────────────────
+    def _on_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(HexColor("#888888"))
+        canvas.drawRightString(
+            PAGE_W - MARGIN, 10 * mm,
+            f"Page {doc.page}  |  {proj_name}  |  {target}",
+        )
+        canvas.restoreState()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=MARGIN, rightMargin=MARGIN,
+        topMargin=MARGIN,  bottomMargin=16 * mm,
+        title=f"Structure Map — {proj_name}",
+        author="Crucible",
+    )
+    doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
+    buf.seek(0)
+
+    filename = f"structure_{proj_name}.pdf"
+    return app.response_class(
+        buf.read(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.route("/api/logs/<project_id>")
