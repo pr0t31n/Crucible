@@ -6,8 +6,9 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.5.18"
+VERSION = "1.5.34"
 
+import io
 import json
 import os
 import platform
@@ -20,6 +21,7 @@ import sys
 import threading
 import time
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -422,12 +424,50 @@ def _update_project_field(project_id: str, **kwargs) -> None:
 # ---------------------------------------------------------------------------
 # Route helpers
 # ---------------------------------------------------------------------------
+def _checkpoint_status(proj: dict, tool: str) -> str:
+    """Return 'complete' if the tool's checkpoint.json has completed phases, else 'idle'."""
+    try:
+        settings_file = proj.get("fr_settings_file" if tool == "fr" else "si_settings_file", "")
+        cfg = json.loads(Path(settings_file).read_text())
+        proj_name = cfg.get("scan", {}).get(
+            "project", "fracture_output" if tool == "fr" else "siphon_output"
+        )
+        cp = Path(proj["project_dir"]) / proj_name / "checkpoint.json"
+        if cp.exists():
+            data = json.loads(cp.read_text())
+            if data.get("completed_phases"):
+                return "complete"
+    except Exception:
+        pass
+    return "idle"
+
+
 def _init_project_state(project_id: str) -> None:
-    _procs.setdefault(project_id,       {"fr": None, "si": None})
-    _buffers.setdefault(project_id,     {"fr": [],   "si": []})
-    _tool_status.setdefault(project_id, {"fr": "idle", "si": "idle"})
+    _procs.setdefault(project_id,    {"fr": None, "si": None})
+    _buffers.setdefault(project_id,  {"fr": [],   "si": []})
     _all_findings.setdefault(project_id, [])
     _status_cache.setdefault(project_id, {"fr": {}, "si": {}})
+    if project_id not in _tool_status:
+        proj_data = _get_project(project_id)
+        fr_s = "idle"
+        si_s = "idle"
+        if proj_data:
+            for _tool, _var in (("fr", "fr_status"), ("si", "si_status")):
+                raw = proj_data.get(_var, "idle")
+                if raw in ("complete", "done"):
+                    if _tool == "fr":
+                        fr_s = raw
+                    else:
+                        si_s = raw
+                elif raw == "running":
+                    # Process was killed / server restarted — derive real status from checkpoint
+                    derived = _checkpoint_status(proj_data, _tool)
+                    if _tool == "fr":
+                        fr_s = derived
+                    else:
+                        si_s = derived
+                    _update_project_field(project_id, **{_var: derived})
+        _tool_status[project_id] = {"fr": fr_s, "si": si_s}
 
 # ---------------------------------------------------------------------------
 # Project directory helpers
@@ -1374,56 +1414,42 @@ def api_console(project_id: str, tool: str):
 
 @app.route("/api/findings/<project_id>")
 def api_findings(project_id: str):
-    proj_findings = _all_findings.get(project_id)
-    if proj_findings:
-        return jsonify(proj_findings)
-
     proj = _get_project(project_id)
     if not proj:
         return jsonify([])
 
-    fallback: list[dict] = []
-    seen: set[tuple] = set()
+    # Always start from in-memory findings then merge any disk findings not yet ingested.
+    # This ensures the response is complete even when the watcher hasn't caught up yet.
+    result: list[dict] = list(_all_findings.get(project_id, []))
+    seen: set[tuple]   = {_fkey(f) for f in result}
 
-    # Fracture findings
-    fr_cfg_path = Path(proj.get("fr_settings_file", ""))
-    if fr_cfg_path.exists():
+    for _tool_name, _tool_key, _default in (
+        ("fracture", "fr_settings_file", "fracture_output"),
+        ("siphon",   "si_settings_file", "siphon_output"),
+    ):
+        _cfg_path = Path(proj.get(_tool_key, ""))
+        if not _cfg_path.exists():
+            continue
         try:
-            fr_cfg  = json.loads(fr_cfg_path.read_text())
-            fr_proj = fr_cfg.get("scan", {}).get("project", "fracture_output")
-            fp = Path(proj["project_dir"]) / fr_proj / "findings.json"
-            if fp.exists():
-                for raw in json.loads(fp.read_text()):
-                    f = dict(raw)
-                    f["_tool"] = "fracture"
-                    k = _fkey(f)
-                    if k not in seen:
-                        seen.add(k)
-                        fallback.append(f)
+            _cfg      = json.loads(_cfg_path.read_text())
+            _proj_dir = _cfg.get("scan", {}).get("project", _default)
+            _fp       = Path(proj["project_dir"]) / _proj_dir / "findings.json"
+            if not _fp.exists():
+                continue
+            _scope = "webapp" if _tool_name == "fracture" else "api"
+            for raw in json.loads(_fp.read_text()):
+                f = dict(raw)
+                f["_tool"]  = _tool_name
+                f["_scope"] = f.get("_scope") or _scope
+                k = _fkey(f)
+                if k not in seen:
+                    seen.add(k)
+                    result.append(f)
+                    _all_findings.setdefault(project_id, []).append(f)
         except Exception:
             pass
 
-    # Siphon findings
-    si_cfg_path = Path(proj.get("si_settings_file", ""))
-    if si_cfg_path.exists():
-        try:
-            si_cfg  = json.loads(si_cfg_path.read_text())
-            si_proj = si_cfg.get("scan", {}).get("project", "siphon_output")
-            fp = Path(proj["project_dir"]) / si_proj / "findings.json"
-            if fp.exists():
-                for raw in json.loads(fp.read_text()):
-                    f = dict(raw)
-                    f["_tool"] = "siphon"
-                    k = _fkey(f)
-                    if k not in seen:
-                        seen.add(k)
-                        fallback.append(f)
-        except Exception:
-            pass
-
-    if fallback:
-        _all_findings[project_id] = fallback
-    return jsonify(fallback)
+    return jsonify(result)
 
 
 def _suppressions_path(project_id: str) -> Path:
@@ -1570,6 +1596,38 @@ def api_compare_scans():
     })
 
 
+def _backfill_matrix_codes(matrix: dict, map_path: "Path") -> None:
+    """Ensure every declared role has an entry in every path's access dict.
+    For the unauthenticated role, fill null values from structure_map / api_map
+    when Phase 20 did not record a code (e.g. preliminary matrix or failed probe).
+    """
+    try:
+        sm_statuses: dict = {}
+        if map_path.exists():
+            sm = json.loads(map_path.read_text())
+            raw = sm.get("paths", {})
+            if isinstance(raw, dict):
+                for p, v in raw.items():
+                    if isinstance(v, dict) and v.get("status") is not None:
+                        sm_statuses[p] = v["status"]
+            elif isinstance(raw, list):
+                for item in raw:
+                    if isinstance(item, dict) and item.get("path") and item.get("status") is not None:
+                        sm_statuses[item["path"]] = item["status"]
+        all_roles = list(matrix.get("roles") or [])
+        for entry in matrix.get("paths", []):
+            access = entry.setdefault("access", {})
+            for role in all_roles:
+                if role not in access:
+                    access[role] = None
+            if access.get("unauthenticated") is None:
+                st = sm_statuses.get(entry.get("path", ""))
+                if st is not None:
+                    access["unauthenticated"] = st
+    except Exception:
+        pass
+
+
 @app.route("/api/structure/<project_id>")
 def api_structure(project_id: str):
     """Return structure maps for Fracture (structure_map.json) and Siphon (api_map.json)."""
@@ -1580,17 +1638,36 @@ def api_structure(project_id: str):
     result: dict = {"fr_map": None, "si_map": None}
 
     # Fracture structure map
+    fr_proj_dir = ""
     try:
         fr_path = Path(proj.get("fr_settings_file", ""))
         if fr_path.exists():
             fr_cfg  = json.loads(fr_path.read_text())
             fr_proj = fr_cfg.get("scan", {}).get("project", "")
             if fr_proj:
+                fr_proj_dir = fr_proj
                 sm = Path(fr_proj) / "structure_map.json"
                 if sm.exists():
                     result["fr_map"] = json.loads(sm.read_text())
     except Exception:
         pass
+
+    # Backfill structure_map path statuses from access_matrix unauthenticated codes
+    if result["fr_map"] and fr_proj_dir:
+        try:
+            am_file = Path(fr_proj_dir) / "access_matrix.json"
+            if am_file.exists():
+                am_data = json.loads(am_file.read_text())
+                unauth = {
+                    ep["path"]: ep["access"].get("unauthenticated")
+                    for ep in am_data.get("paths", [])
+                    if isinstance(ep.get("access", {}).get("unauthenticated"), int)
+                }
+                for p, data in (result["fr_map"].get("paths") or {}).items():
+                    if isinstance(data, dict) and data.get("status") is None and p in unauth:
+                        data["status"] = unauth[p]
+        except Exception:
+            pass
 
     # Siphon API map
     try:
@@ -1625,7 +1702,9 @@ def api_access_matrix(project_id: str):
             if fr_proj:
                 am = Path(fr_proj) / "access_matrix.json"
                 if am.exists():
-                    result["fr_matrix"] = json.loads(am.read_text())
+                    matrix = json.loads(am.read_text())
+                    _backfill_matrix_codes(matrix, Path(fr_proj) / "structure_map.json")
+                    result["fr_matrix"] = matrix
     except Exception:
         pass
 
@@ -1637,7 +1716,9 @@ def api_access_matrix(project_id: str):
             if si_proj:
                 am = Path(si_proj) / "access_matrix.json"
                 if am.exists():
-                    result["si_matrix"] = json.loads(am.read_text())
+                    matrix = json.loads(am.read_text())
+                    _backfill_matrix_codes(matrix, Path(si_proj) / "api_map.json")
+                    result["si_matrix"] = matrix
     except Exception:
         pass
 
@@ -2183,6 +2264,39 @@ def api_delete_project(project_id: str):
     return jsonify({"success": True})
 
 
+@app.route("/api/download-project/<project_id>", methods=["GET"])
+def api_download_project(project_id: str):
+    """Download the entire project directory as a zip archive."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+    project_dir = proj.get("project_dir", "")
+    if not project_dir or not os.path.isdir(project_dir):
+        return jsonify({"error": "project directory not found"}), 404
+    buf = io.BytesIO()
+    base = os.path.basename(project_dir.rstrip("/"))
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _dirs, files in os.walk(project_dir):
+            for fname in files:
+                abs_path = os.path.join(root, fname)
+                arc_name = os.path.join(base, os.path.relpath(abs_path, project_dir))
+                zf.write(abs_path, arc_name)
+    buf.seek(0)
+    client_short = re.sub(r"[^\w\-]", "_", proj.get("client_short", "") or proj.get("name", project_id))
+    dt_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    is_complete = (proj.get("fr_status") == "complete" or proj.get("si_status") == "complete")
+    if is_complete:
+        dl_name = f"{client_short}_Fracture_AllFiles_{dt_stamp}.zip"
+    else:
+        dl_name = f"{client_short}_Fracture_AllFiles_Incomplete_{dt_stamp}.zip"
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=dl_name,
+    )
+
+
 @app.route("/api/clear_project/<project_id>", methods=["POST"])
 def api_clear_project(project_id: str):
     """Clear all scan data for an engagement, preserving config files only."""
@@ -2289,9 +2403,45 @@ def on_join_project(data):
         for entry in lines:
             emit(f"{tool}_output", entry)
 
-    # Findings
-    for f in _all_findings.get(project_id, []):
+    # Findings — emit to this socket only (no room broadcast)
+    # Disk fallback when in-memory store is empty (e.g. after Crucible restart)
+    proj_findings = _all_findings.get(project_id, [])
+    if not proj_findings:
+        _pf = _all_findings.setdefault(project_id, [])
+        _loaded_keys: set = set()
+        for _tool_key, _tool_name, _scope_name in (
+            ("fr_settings_file", "fracture", "webapp"),
+            ("si_settings_file", "siphon", "api"),
+        ):
+            _cfg_path = Path(proj.get(_tool_key, ""))
+            if _cfg_path.exists():
+                try:
+                    _cfg_data = json.loads(_cfg_path.read_text())
+                    _proj_name = _cfg_data.get("scan", {}).get(
+                        "project",
+                        "fracture_output" if _tool_name == "fracture" else "siphon_output",
+                    )
+                    _fp = Path(proj["project_dir"]) / _proj_name / "findings.json"
+                    if _fp.exists():
+                        _existing = {_fkey(f) for f in _pf}
+                        for _raw in json.loads(_fp.read_text()):
+                            _f = dict(_raw)
+                            _f["_tool"]  = _tool_name
+                            _f["_scope"] = _scope_name
+                            _k = _fkey(_f)
+                            if _k not in _existing and _k not in _loaded_keys:
+                                _loaded_keys.add(_k)
+                                _pf.append(_f)
+                except Exception:
+                    pass
+        proj_findings = _all_findings.get(project_id, [])
+    for f in proj_findings:
         emit("finding", {"tool": f.get("_tool", ""), "finding": f})
+
+    # Restart watcher if a tool is currently running (handles reconnects mid-scan)
+    _live_status = _tool_status.get(project_id, {})
+    if _live_status.get("fr") == "running" or _live_status.get("si") == "running":
+        _ensure_watcher(project_id, proj)
 
     # Phase status
     sc = _status_cache.get(project_id, {})
@@ -2743,8 +2893,9 @@ def _wait_proc(project_id: str, tool: str, proc: subprocess.Popen) -> None:
     _procs.setdefault(project_id, {"fr": None, "si": None})
     _procs[project_id][tool] = None
     _tool_status.setdefault(project_id, {"fr": "idle", "si": "idle"})
-    _tool_status[project_id][tool] = "done"
-    _update_project_field(project_id, **{f"{tool}_status": "done"})
+    _final_status = "complete" if rc == 0 else "done"
+    _tool_status[project_id][tool] = _final_status
+    _update_project_field(project_id, **{f"{tool}_status": _final_status})
     _answer_queues.pop(_pkey(project_id, tool), None)
     _pending_prompts.pop(_pkey(project_id, tool), None)
 
@@ -2791,9 +2942,9 @@ def _kill_tool(project_id: str, tool: str) -> None:
 # Findings watcher — polls output dirs every 5 s
 # ---------------------------------------------------------------------------
 def _ensure_watcher(project_id: str, proj: dict) -> None:
+    _watcher_flags[project_id] = True  # revive flag even if watcher is mid-sleep
     if project_id in _watchers and _watchers[project_id].is_alive():
         return
-    _watcher_flags[project_id] = True
     t = threading.Thread(target=_finding_watcher, args=(project_id, proj), daemon=True)
     _watchers[project_id] = t
     t.start()
@@ -2830,6 +2981,10 @@ def _finding_watcher(project_id: str, proj: dict) -> None:
         if status.get("fr") != "running" and status.get("si") != "running":
             time.sleep(60)
             _ingest_all_final(project_id, proj, seen)
+            # Re-check: a new scan may have started during the 60 s cooldown
+            _rechk = _tool_status.get(project_id, {})
+            if _rechk.get("fr") == "running" or _rechk.get("si") == "running":
+                continue
             break
 
     _watcher_flags.pop(project_id, None)

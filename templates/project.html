@@ -19,18 +19,14 @@
     <button class="tab-btn"        data-tab="findings" onclick="switchTab('findings',this)">
       Findings <span class="tab-badge" id="findingsBadge">0</span>
     </button>
+    <button class="tab-btn"        data-tab="structure"  onclick="switchTab('structure',this);loadStructure()">Structure</button>
+    <button class="tab-btn"        data-tab="access-matrix" onclick="switchTab('access-matrix',this);loadAccessMatrix()">Access Matrix</button>
     <button class="tab-btn"        data-tab="status"   onclick="switchTab('status',this)">Status</button>
+    <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
+    <button class="tab-btn"        data-tab="summary"  onclick="switchTab('summary',this)">Summary</button>
     <button class="tab-btn"        data-tab="log"      onclick="switchTab('log',this)">
       Log <span class="tab-badge tab-badge-muted" id="logBadge">0</span>
     </button>
-    <button class="tab-btn"        data-tab="errors"   onclick="switchTab('errors',this)">
-      Errors <span class="tab-badge tab-badge-err" id="errorsBadge">0</span>
-    </button>
-    <button class="tab-btn"        data-tab="summary"  onclick="switchTab('summary',this)">Summary</button>
-    <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
-    <button class="tab-btn"        data-tab="checkpoint" onclick="switchTab('checkpoint',this)">Checkpoint</button>
-    <button class="tab-btn"        data-tab="structure"  onclick="switchTab('structure',this);loadStructure()">Structure</button>
-    <button class="tab-btn"        data-tab="access-matrix" onclick="switchTab('access-matrix',this);loadAccessMatrix()">Access Matrix</button>
   </nav>
 
   <!-- ════════════════ TAB: CONSOLE ════════════════ -->
@@ -116,7 +112,15 @@
       {% endif %}
       <span class="findings-count" id="findingsCount">0 findings</span>
       <button class="btn btn-sm btn-ghost fp-toggle-btn" id="showFPBtn" onclick="toggleShowFP()" title="Show / hide false positives">FP</button>
+      <button class="btn btn-sm btn-ghost" onclick="reloadFindings()" title="Reload findings from server">&#x21BB;</button>
       <button class="btn btn-sm btn-ghost" onclick="exportFindingsCSV()" title="Export findings as CSV">&#x2193; CSV</button>
+    </div>
+    <div class="risk-counts-bar" id="riskCountsBar">
+      <button class="risk-count-pill risk-critical" id="rcCritical" onclick="setRiskFilter('CRITICAL')" title="Filter Critical">0 Critical</button>
+      <button class="risk-count-pill risk-high"     id="rcHigh"     onclick="setRiskFilter('HIGH')"     title="Filter High">0 High</button>
+      <button class="risk-count-pill risk-medium"   id="rcMedium"   onclick="setRiskFilter('MEDIUM')"   title="Filter Medium">0 Medium</button>
+      <button class="risk-count-pill risk-low"      id="rcLow"      onclick="setRiskFilter('LOW')"      title="Filter Low">0 Low</button>
+      <button class="risk-count-pill risk-info"     id="rcInfo"     onclick="setRiskFilter('INFO')"     title="Filter Info">0 Info</button>
     </div>
     <div class="findings-pager">
       <button class="btn btn-sm btn-ghost" id="findBtnPrev" onclick="findingsPage(-1)" disabled>&#x2039; Prev</button>
@@ -237,49 +241,6 @@
   </div><!-- /tab-log -->
 
 
-  <!-- ════════════════ TAB: ERRORS ════════════════ -->
-  <div class="tab-panel" id="tab-errors">
-    <div class="panel">
-      <div class="log-toolbar">
-        <div class="log-filter-group">
-          <button class="log-filter-btn active" data-filter-key="etool" data-filter-val="" onclick="setErrFilter(this,'tool','')">All</button>
-          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="fr" onclick="setErrFilter(this,'tool','fr')">
-            <span class="tool-badge tool-fr">FR</span>
-          </button>
-          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="si" onclick="setErrFilter(this,'tool','si')">
-            <span class="tool-badge tool-si">SI</span>
-          </button>
-        </div>
-        <div class="log-filter-group">
-          <button class="log-filter-btn active" data-filter-key="ecat" data-filter-val="" onclick="setErrFilter(this,'category','')">All categories</button>
-          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Network" onclick="setErrFilter(this,'category','Network')">Network</button>
-          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Tool"    onclick="setErrFilter(this,'category','Tool')">Tool</button>
-          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Scan"    onclick="setErrFilter(this,'category','Scan')">Scan</button>
-        </div>
-        <button class="btn btn-sm btn-ghost" onclick="clearErrors()">Clear</button>
-      </div>
-      <div class="log-pager">
-        <button class="btn btn-sm btn-ghost" id="errsBtnPrev" onclick="errsPage(-1)" disabled>&#x2039; Prev</button>
-        <span id="errsPageLabel">&#8212;</span>
-        <button class="btn btn-sm btn-ghost" id="errsBtnNext" onclick="errsPage(1)" disabled>Next &#x203A;</button>
-      </div>
-      <div class="log-table-wrap">
-        <table class="log-table">
-          <thead>
-            <tr>
-              <th class="col-ts">Time</th>
-              <th class="col-tool-sm">Tool</th>
-              <th class="col-category">Category</th>
-              <th>Message</th>
-            </tr>
-          </thead>
-          <tbody id="errorsTbody">
-            <tr class="empty-row"><td colspan="4">No errors.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div><!-- /tab-errors -->
 
 
   <!-- ════════════════ TAB: SUMMARY ════════════════ -->
@@ -321,10 +282,28 @@
           </div>
           <div class="panel-body">
             <div class="summary-kv">
-              <div class="kv-row"><span class="kv-label">Last run</span>
-                <span class="kv-value" id="fr-last-run" data-iso="{{ project.fr_last_run or '' }}">{{ project.fr_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Target</span>
+                <span class="kv-value mono" id="fr-summary-target">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Auth</span>
+                <span class="kv-value" id="fr-summary-auth">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Started</span>
+                <span class="kv-value" id="fr-start-time" data-iso="{{ project.fr_last_run or '' }}">{{ project.fr_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Completed</span>
+                <span class="kv-value" id="fr-end-time">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Exit code</span>
+                <span class="kv-value mono" id="fr-exit-code">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Output dir</span>
+                <span class="kv-value mono" id="fr-summary-outdir">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Findings</span>
                 <span class="kv-value" id="fr-finding-count">0</span></div>
+              <div class="kv-row"><span class="kv-label">By risk</span>
+                <span class="kv-value summary-risk-pills" id="fr-risk-breakdown">
+                  <span class="risk-badge risk-critical" id="fr-rc-critical" title="Critical">0C</span>
+                  <span class="risk-badge risk-high"     id="fr-rc-high"     title="High">0H</span>
+                  <span class="risk-badge risk-medium"   id="fr-rc-medium"   title="Medium">0M</span>
+                  <span class="risk-badge risk-low"      id="fr-rc-low"      title="Low">0L</span>
+                  <span class="risk-badge risk-info"     id="fr-rc-info"     title="Info">0I</span>
+                </span></div>
             </div>
             <div id="fr-summary-detail" class="summary-detail"></div>
           </div>
@@ -340,10 +319,30 @@
           </div>
           <div class="panel-body">
             <div class="summary-kv">
-              <div class="kv-row"><span class="kv-label">Last run</span>
-                <span class="kv-value" id="si-last-run" data-iso="{{ project.si_last_run or '' }}">{{ project.si_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Target</span>
+                <span class="kv-value mono" id="si-summary-target">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Auth</span>
+                <span class="kv-value" id="si-summary-auth">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">API Spec</span>
+                <span class="kv-value mono" id="si-summary-spec">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Started</span>
+                <span class="kv-value" id="si-start-time" data-iso="{{ project.si_last_run or '' }}">{{ project.si_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Completed</span>
+                <span class="kv-value" id="si-end-time">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Exit code</span>
+                <span class="kv-value mono" id="si-exit-code">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Output dir</span>
+                <span class="kv-value mono" id="si-summary-outdir">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Findings</span>
                 <span class="kv-value" id="si-finding-count">0</span></div>
+              <div class="kv-row"><span class="kv-label">By risk</span>
+                <span class="kv-value summary-risk-pills" id="si-risk-breakdown">
+                  <span class="risk-badge risk-critical" id="si-rc-critical" title="Critical">0C</span>
+                  <span class="risk-badge risk-high"     id="si-rc-high"     title="High">0H</span>
+                  <span class="risk-badge risk-medium"   id="si-rc-medium"   title="Medium">0M</span>
+                  <span class="risk-badge risk-low"      id="si-rc-low"      title="Low">0L</span>
+                  <span class="risk-badge risk-info"     id="si-rc-info"     title="Info">0I</span>
+                </span></div>
             </div>
             <div id="si-summary-detail" class="summary-detail"></div>
           </div>
@@ -369,67 +368,232 @@
         </button>
         {% endif %}
       </div>
+
       {% if 'fr' in project.get('tools', ['fr','si']) %}
       <div class="settings-editor-panel active" id="settings-fr">
         <div class="settings-toolbar">
-          <span class="settings-label">fr_settings.json</span>
+          <span class="settings-label">Fracture Settings</span>
           <button class="btn btn-sm btn-primary" onclick="saveSettings('fr')">Save</button>
           <button class="btn btn-sm btn-ghost"   onclick="loadSettings('fr')">&#x21BB; Reload</button>
           <span class="settings-save-msg" id="fr-save-msg"></span>
         </div>
-        <textarea class="settings-editor" id="fr-settings-editor" spellcheck="false"></textarea>
+        <div class="sf-form">
+
+          <div class="sf-section">
+            <div class="sf-section-title">Engagement</div>
+            <div class="sf-row"><label class="sf-label">Consultant</label><input class="sf-input" type="text" data-sf-path="engagement.consultant"></div>
+            <div class="sf-row"><label class="sf-label">Client Name</label><input class="sf-input" type="text" data-sf-path="engagement.client_name"></div>
+            <div class="sf-row"><label class="sf-label">Client Short</label><input class="sf-input sf-input-sm" type="text" data-sf-path="engagement.client_short"></div>
+            <div class="sf-row"><label class="sf-label">Consultant Email</label><input class="sf-input" type="text" data-sf-path="engagement.consultant_email"></div>
+            <div class="sf-row"><label class="sf-label">Start Date</label><input class="sf-input sf-input-sm" type="text" data-sf-path="engagement.start_date" placeholder="YYYY-MM-DD"></div>
+            <div class="sf-row"><label class="sf-label">End Date</label><input class="sf-input sf-input-sm" type="text" data-sf-path="engagement.end_date" placeholder="YYYY-MM-DD"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Target</div>
+            <div class="sf-row"><label class="sf-label">Target URL</label><input class="sf-input" type="text" data-sf-path="scan.target_url" placeholder="https://example.com"></div>
+            <div class="sf-row"><label class="sf-label">Output Directory</label><input class="sf-input" type="text" data-sf-path="scan.project"></div>
+            <div class="sf-row"><label class="sf-label">Proxy</label><input class="sf-input" type="text" data-sf-path="scan.proxy" placeholder="http://127.0.0.1:8080"></div>
+            <div class="sf-row"><label class="sf-label">User Agent</label><input class="sf-input" type="text" data-sf-path="scan.user_agent"></div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Verify SSL</label><input class="sf-check" type="checkbox" data-sf-path="scan.verify_ssl"></div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Follow Redirects</label><input class="sf-check" type="checkbox" data-sf-path="scan.follow_redirects"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Scan Options</div>
+            <div class="sf-row"><label class="sf-label">Threads</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.threads" min="1" max="100"></div>
+            <div class="sf-row"><label class="sf-label">Timeout (s)</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.timeout" min="1"></div>
+            <div class="sf-row"><label class="sf-label">Crawl Depth</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.crawl_depth" min="1"></div>
+            <div class="sf-row"><label class="sf-label">Max Crawl Pages</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.crawl_max_pages" min="1"></div>
+            <div class="sf-row"><label class="sf-label">SQLmap Timeout (s)</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.sqlmap_timeout"></div>
+            <div class="sf-row"><label class="sf-label">Nuclei Timeout (s)</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.nuclei_timeout"></div>
+            <div class="sf-row"><label class="sf-label">Wordlist</label><input class="sf-input" type="text" data-sf-path="scan.wordlist"></div>
+            <div class="sf-row"><label class="sf-label">Gobuster Wordlist</label><input class="sf-input" type="text" data-sf-path="scan.gobuster_wordlist"></div>
+            <div class="sf-row"><label class="sf-label">WPScan Token</label><input class="sf-input" type="text" data-sf-path="scan.wpscan_token" placeholder="WPVulnDB API token"></div>
+            <div class="sf-row sf-row-tall"><label class="sf-label">Extra Headers</label>
+              <textarea class="sf-input sf-textarea" data-sf-path="scan.extra_headers" data-sf-type="headers" placeholder="Header-Name: value&#10;Another-Header: value"></textarea>
+            </div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Phases</div>
+            <div class="sf-phase-grid">
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.recon"> Recon</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.tls"> TLS</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.headers"> Headers</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.crawl"> Crawl</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.injection"> Injection</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.traversal"> Traversal</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.ssrf"> SSRF</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.auth_bypass"> Auth Bypass</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.files"> Files</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.vulnscan"> Vuln Scan</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.graphql"> GraphQL</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.auth_recon"> Auth Recon</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.authorization"> Authorization</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.session"> Session</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.csrf"> CSRF</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.cross_user"> Cross-User</label>
+            </div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Primary Authentication</div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Enabled</label><input class="sf-check" type="checkbox" data-sf-path="scan.auth.enabled"></div>
+            <div class="sf-row"><label class="sf-label">Method</label>
+              <select class="sf-input sf-select" data-sf-path="scan.auth.auth_method">
+                <option value="form_login">Form Login</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="api_key_header">API Key (Header)</option>
+                <option value="api_key_cookie">API Key (Cookie)</option>
+                <option value="oauth2">OAuth2</option>
+                <option value="session_cookie">Session Cookie</option>
+                <option value="custom_headers">Custom Headers</option>
+              </select>
+            </div>
+            <div class="sf-row"><label class="sf-label">Login URL</label><input class="sf-input" type="text" data-sf-path="scan.auth.login_url"></div>
+            <div class="sf-row"><label class="sf-label">Username</label><input class="sf-input" type="text" data-sf-path="scan.auth.username"></div>
+            <div class="sf-row"><label class="sf-label">Password</label><input class="sf-input" type="password" data-sf-path="scan.auth.password"></div>
+            <div class="sf-row"><label class="sf-label">Auth Token</label><input class="sf-input" type="text" data-sf-path="scan.auth.auth_token" placeholder="Bearer token value"></div>
+            <div class="sf-row"><label class="sf-label">Token Type</label><input class="sf-input sf-input-sm" type="text" data-sf-path="scan.auth.token_type" placeholder="Bearer"></div>
+            <div class="sf-row"><label class="sf-label">API Key Header</label><input class="sf-input sf-input-sm" type="text" data-sf-path="scan.auth.api_key_header" placeholder="X-API-Key"></div>
+            <div class="sf-row"><label class="sf-label">API Key Value</label><input class="sf-input" type="text" data-sf-path="scan.auth.api_key_value"></div>
+            <div class="sf-row"><label class="sf-label">Session Cookie</label><input class="sf-input" type="text" data-sf-path="scan.auth.session_cookie" placeholder="name=value"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Secondary Authentication</div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Enabled</label><input class="sf-check" type="checkbox" data-sf-path="scan.auth2.enabled"></div>
+            <div class="sf-row"><label class="sf-label">Method</label>
+              <select class="sf-input sf-select" data-sf-path="scan.auth2.auth_method">
+                <option value="form_login">Form Login</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="api_key_header">API Key (Header)</option>
+                <option value="session_cookie">Session Cookie</option>
+                <option value="custom_headers">Custom Headers</option>
+              </select>
+            </div>
+            <div class="sf-row"><label class="sf-label">Login URL</label><input class="sf-input" type="text" data-sf-path="scan.auth2.login_url"></div>
+            <div class="sf-row"><label class="sf-label">Username</label><input class="sf-input" type="text" data-sf-path="scan.auth2.username"></div>
+            <div class="sf-row"><label class="sf-label">Password</label><input class="sf-input" type="password" data-sf-path="scan.auth2.password"></div>
+            <div class="sf-row"><label class="sf-label">Auth Token</label><input class="sf-input" type="text" data-sf-path="scan.auth2.auth_token"></div>
+            <div class="sf-row"><label class="sf-label">Session Cookie</label><input class="sf-input" type="text" data-sf-path="scan.auth2.session_cookie" placeholder="name=value"></div>
+          </div>
+
+        </div>
       </div>
       {% endif %}
+
       {% if 'si' in project.get('tools', ['fr','si']) %}
       <div class="settings-editor-panel" id="settings-si">
         <div class="settings-toolbar">
-          <span class="settings-label">si_settings.json</span>
+          <span class="settings-label">Siphon Settings</span>
           <button class="btn btn-sm btn-primary" onclick="saveSettings('si')">Save</button>
           <button class="btn btn-sm btn-ghost"   onclick="loadSettings('si')">&#x21BB; Reload</button>
           <span class="settings-save-msg" id="si-save-msg"></span>
         </div>
-        <textarea class="settings-editor" id="si-settings-editor" spellcheck="false"></textarea>
+        <div class="sf-form">
+
+          <div class="sf-section">
+            <div class="sf-section-title">Engagement</div>
+            <div class="sf-row"><label class="sf-label">Consultant</label><input class="sf-input" type="text" data-sf-path="engagement.consultant"></div>
+            <div class="sf-row"><label class="sf-label">Client Name</label><input class="sf-input" type="text" data-sf-path="engagement.client_name"></div>
+            <div class="sf-row"><label class="sf-label">Client Short</label><input class="sf-input sf-input-sm" type="text" data-sf-path="engagement.client_short"></div>
+            <div class="sf-row"><label class="sf-label">Consultant Email</label><input class="sf-input" type="text" data-sf-path="engagement.consultant_email"></div>
+            <div class="sf-row"><label class="sf-label">Start Date</label><input class="sf-input sf-input-sm" type="text" data-sf-path="engagement.start_date" placeholder="YYYY-MM-DD"></div>
+            <div class="sf-row"><label class="sf-label">End Date</label><input class="sf-input sf-input-sm" type="text" data-sf-path="engagement.end_date" placeholder="YYYY-MM-DD"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Target</div>
+            <div class="sf-row"><label class="sf-label">Target URL</label><input class="sf-input" type="text" data-sf-path="scan.target_url" placeholder="https://api.example.com"></div>
+            <div class="sf-row"><label class="sf-label">API Spec URL</label><input class="sf-input" type="text" data-sf-path="scan.api_spec_url" placeholder="https://api.example.com/openapi.json"></div>
+            <div class="sf-row"><label class="sf-label">API Spec File</label><input class="sf-input" type="text" data-sf-path="scan.api_spec_file" placeholder="/path/to/openapi.yaml"></div>
+            <div class="sf-row"><label class="sf-label">Output Directory</label><input class="sf-input" type="text" data-sf-path="scan.project"></div>
+            <div class="sf-row"><label class="sf-label">Proxy</label><input class="sf-input" type="text" data-sf-path="scan.proxy" placeholder="http://127.0.0.1:8080"></div>
+            <div class="sf-row"><label class="sf-label">User Agent</label><input class="sf-input" type="text" data-sf-path="scan.user_agent"></div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Verify SSL</label><input class="sf-check" type="checkbox" data-sf-path="scan.verify_ssl"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Scan Options</div>
+            <div class="sf-row"><label class="sf-label">Threads</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.threads" min="1"></div>
+            <div class="sf-row"><label class="sf-label">Timeout (s)</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.timeout" min="1"></div>
+            <div class="sf-row"><label class="sf-label">Rate Limit Threshold</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.rate_limit_threshold" min="1"></div>
+            <div class="sf-row"><label class="sf-label">BOLA ID Range</label><input class="sf-input sf-input-sm" type="number" data-sf-path="scan.bola_id_range" min="1"></div>
+            <div class="sf-row"><label class="sf-label">Wordlist</label><input class="sf-input" type="text" data-sf-path="scan.wordlist"></div>
+            <div class="sf-row sf-row-tall"><label class="sf-label">Extra Headers</label>
+              <textarea class="sf-input sf-textarea" data-sf-path="scan.extra_headers" data-sf-type="headers" placeholder="Header-Name: value&#10;Another-Header: value"></textarea>
+            </div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Phases</div>
+            <div class="sf-phase-grid">
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.discovery"> Discovery</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.recon"> Recon</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.fuzzing"> Fuzzing</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.injection"> Injection</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.auth_bypass"> Auth Bypass</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.rate_limiting"> Rate Limiting</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.mass_assignment"> Mass Assignment</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.ssrf"> SSRF</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.data_exposure"> Data Exposure</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.graphql"> GraphQL</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.bola"> BOLA</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.bfla"> BFLA</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.cross_user"> Cross-User</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.session"> Session</label>
+              <label class="sf-phase-item"><input type="checkbox" data-sf-path="scan.phases.jwt"> JWT</label>
+            </div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Primary Authentication</div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Enabled</label><input class="sf-check" type="checkbox" data-sf-path="scan.auth.enabled"></div>
+            <div class="sf-row"><label class="sf-label">Method</label>
+              <select class="sf-input sf-select" data-sf-path="scan.auth.type">
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="api_key">API Key</option>
+                <option value="oauth2">OAuth2</option>
+              </select>
+            </div>
+            <div class="sf-row"><label class="sf-label">Token</label><input class="sf-input" type="text" data-sf-path="scan.auth.token" placeholder="Bearer token value"></div>
+            <div class="sf-row"><label class="sf-label">Username</label><input class="sf-input" type="text" data-sf-path="scan.auth.username"></div>
+            <div class="sf-row"><label class="sf-label">Password</label><input class="sf-input" type="password" data-sf-path="scan.auth.password"></div>
+            <div class="sf-row"><label class="sf-label">API Key</label><input class="sf-input" type="text" data-sf-path="scan.auth.api_key"></div>
+            <div class="sf-row"><label class="sf-label">API Key Header</label><input class="sf-input sf-input-sm" type="text" data-sf-path="scan.auth.api_key_header" placeholder="X-API-Key"></div>
+            <div class="sf-row"><label class="sf-label">OAuth URL</label><input class="sf-input" type="text" data-sf-path="scan.auth.oauth_url"></div>
+            <div class="sf-row"><label class="sf-label">Client ID</label><input class="sf-input" type="text" data-sf-path="scan.auth.client_id"></div>
+            <div class="sf-row"><label class="sf-label">Client Secret</label><input class="sf-input" type="text" data-sf-path="scan.auth.client_secret"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Secondary Authentication</div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Enabled</label><input class="sf-check" type="checkbox" data-sf-path="scan.auth2.enabled"></div>
+            <div class="sf-row"><label class="sf-label">Method</label>
+              <select class="sf-input sf-select" data-sf-path="scan.auth2.type">
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="api_key">API Key</option>
+              </select>
+            </div>
+            <div class="sf-row"><label class="sf-label">Token</label><input class="sf-input" type="text" data-sf-path="scan.auth2.token"></div>
+            <div class="sf-row"><label class="sf-label">Username</label><input class="sf-input" type="text" data-sf-path="scan.auth2.username"></div>
+            <div class="sf-row"><label class="sf-label">Password</label><input class="sf-input" type="password" data-sf-path="scan.auth2.password"></div>
+            <div class="sf-row"><label class="sf-label">API Key</label><input class="sf-input" type="text" data-sf-path="scan.auth2.api_key"></div>
+          </div>
+
+        </div>
       </div>
       {% endif %}
     </div>
   </div><!-- /tab-settings -->
 
 
-  <!-- ════════════════ TAB: CHECKPOINT ════════════════ -->
-  <div class="tab-panel" id="tab-checkpoint">
-    <div class="checkpoint-layout">
-      <div class="checkpoint-tool-tabs">
-        {% if 'fr' in project.get('tools', ['fr','si']) %}
-        <button class="settings-tool-tab active" onclick="switchCheckpointTool('fr', this)">
-          <span class="tool-badge tool-fr">FR</span> Fracture
-        </button>
-        {% endif %}
-        {% if 'si' in project.get('tools', ['fr','si']) %}
-        <button class="settings-tool-tab" onclick="switchCheckpointTool('si', this)">
-          <span class="tool-badge tool-si">SI</span> Siphon
-        </button>
-        {% endif %}
-      </div>
-      {% if 'fr' in project.get('tools', ['fr','si']) %}
-      <div class="checkpoint-panel active" id="checkpoint-fr">
-        <div class="settings-toolbar">
-          <span class="settings-label">Fracture checkpoint.json</span>
-          <button class="btn btn-sm btn-ghost" onclick="loadCheckpoint('fr')">&#x21BB; Refresh</button>
-        </div>
-        <pre class="checkpoint-view" id="fr-checkpoint-view">Loading&#8230;</pre>
-      </div>
-      {% endif %}
-      {% if 'si' in project.get('tools', ['fr','si']) %}
-      <div class="checkpoint-panel" id="checkpoint-si">
-        <div class="settings-toolbar">
-          <span class="settings-label">Siphon checkpoint.json</span>
-          <button class="btn btn-sm btn-ghost" onclick="loadCheckpoint('si')">&#x21BB; Refresh</button>
-        </div>
-        <pre class="checkpoint-view" id="si-checkpoint-view">Loading&#8230;</pre>
-      </div>
-      {% endif %}
-    </div>
-  </div><!-- /tab-checkpoint -->
 
   <!-- ════════════════ TAB: STRUCTURE ════════════════ -->
   <div class="tab-panel" id="tab-structure">
@@ -437,8 +601,8 @@
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Visual map of discovered paths and endpoints generated during the scan.</span>
         <button class="btn btn-sm btn-ghost" onclick="loadStructure(true)" title="Reload structure maps">&#x21bb; Refresh</button>
-        <a class="btn btn-sm btn-ghost" href="/api/export-structure-pdf/{{ project.id }}" title="Export structure as PDF" download>&#x2193; PDF</a>
-        <a class="btn btn-sm btn-ghost" href="/api/export-structure-html/{{ project.id }}" title="Export structure as HTML" download>&#x2193; HTML</a>
+        <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-structure-pdf/{{ project_id }}',_dlName('{{ project.client_short }}','Structure','pdf'),'application/pdf')" title="Export structure as PDF">&#x2193; PDF</button>
+        <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-structure-html/{{ project_id }}',_dlName('{{ project.client_short }}','Structure','html'),'text/html')" title="Export structure as HTML">&#x2193; HTML</button>
       </div>
 
       <!-- Fracture structure map -->
@@ -473,7 +637,12 @@
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Endpoint and file access results per credential role, generated during Phase 20.</span>
         <button class="btn btn-sm btn-ghost" onclick="loadAccessMatrix(true)" title="Reload">&#x21bb; Refresh</button>
-        <a class="btn btn-sm btn-ghost" href="/api/export-access-matrix-xlsx/{{ project.id }}" title="Export access matrix as XLSX" download>&#x2193; XLSX</a>
+        <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-access-matrix-xlsx/{{ project_id }}',_dlName('{{ project.client_short }}','Matrix','xlsx'),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')" title="Export access matrix as XLSX">&#x2193; XLSX</button>
+        <span style="color:#8b949e;font-size:.8rem;margin-left:.25rem">Filter:</span>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="200" onclick="_toggleAmFilter(200)" title="Show endpoints with any 2xx response">200</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="300" onclick="_toggleAmFilter(300)" title="Show endpoints with 3xx but no 2xx">300</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="400" onclick="_toggleAmFilter(400)" title="Show endpoints with 4xx but no 2xx">400</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="500" onclick="_toggleAmFilter(500)" title="Show endpoints with 5xx but no 2xx">500</button>
       </div>
       <div id="accessMatrixContent">
         <span style="color:#8b949e;font-size:.85rem">Loading&#8230;</span>
@@ -518,6 +687,10 @@
     <div class="modal-title" id="evidenceModalTitle">Evidence</div>
     <div class="modal-body">
       <div class="evidence-file-tabs" id="evidenceFileTabs"></div>
+      <div class="evidence-url-select-wrap hidden" id="evidenceUrlSelectWrap">
+        <label class="evidence-url-label">Affected:</label>
+        <select class="evidence-url-select" id="evidenceUrlSelect" onchange="_onEvidenceUrlChange()"></select>
+      </div>
       <div class="evidence-content" id="evidenceContent">
         <pre class="evidence-pre" id="evidencePre"></pre>
         <div class="evidence-img-wrap hidden" id="evidenceImgWrap">
@@ -615,19 +788,12 @@ let siAutoScroll = true;
 let allFindings  = [];
 const _findingIdx = new Map();
 
-// Log state
+// Log state (errors are merged in as level=ERROR)
 let allLogs    = [];
 const _logSeen = new Set();
 let logPage    = 0;
 const LOG_PER_PAGE = 20;
 let logFilter  = { tool: '', level: '' };
-
-// Error state
-let allErrors  = [];
-const _errSeen = new Set();
-let errPage    = 0;
-const ERR_PER_PAGE = 20;
-let errFilter  = { tool: '', category: '' };
 
 // Findings pagination
 let _findPage = 0;
@@ -687,8 +853,9 @@ function setStatus(tool, status) {
   if (kill)  kill.disabled  = (status !== 'running');
   const compTag = document.getElementById(`${tool}-comp-tag`);
   if (compTag) {
-    if (status === 'running') compTag.textContent = 'running';
-    else if (status === 'done') compTag.textContent = 'complete';
+    if (status === 'running')  compTag.textContent = 'running';
+    else if (status === 'complete') compTag.textContent = 'complete';
+    else if (status === 'done') compTag.textContent = 'exited';
     else if (status === 'idle') compTag.textContent = 'not started';
   }
 }
@@ -704,6 +871,39 @@ function fmtLastRun(iso) {
 function setLastRun(tool, iso) {
   const el = document.getElementById(`${tool}-last-run`);
   if (el) { el.innerHTML = fmtLastRun(iso); el.dataset.iso = iso || ''; }
+}
+function _setSummaryTime(id, iso) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = iso ? fmtLastRun(iso) : '&#8212;';
+  el.dataset.iso = iso || '';
+}
+function _setSummaryField(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+function _loadSummarySettings() {
+  ['fr','si'].forEach(tool => {
+    fetch(`/api/settings/${PROJECT_ID}/${tool}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        const target = (d.scan||{}).target_url || '—';
+        const auth   = (d.scan||{}).auth || {};
+        const authStr = auth.enabled
+          ? (auth.auth_method || auth.type || 'enabled')
+          : 'disabled';
+        const outdir = (d.scan||{}).project || '—';
+        const specUrl  = (d.scan||{}).api_spec_url  || '';
+        const specFile = (d.scan||{}).api_spec_file || '';
+        const spec = specUrl || specFile || '—';
+        _setSummaryField(`${tool}-summary-target`, target);
+        _setSummaryField(`${tool}-summary-auth`,   authStr);
+        _setSummaryField(`${tool}-summary-outdir`, outdir);
+        if (tool === 'si') _setSummaryField('si-summary-spec', spec);
+      })
+      .catch(() => {});
+  });
 }
 // Format any pre-loaded ISO timestamps on page load
 document.querySelectorAll('[data-iso]').forEach(el => {
@@ -739,13 +939,47 @@ function _stopAccessMatrixPoll() {
   if (_accessMatrixPollTimer) { clearInterval(_accessMatrixPollTimer); _accessMatrixPollTimer = null; }
 }
 
-socket.on('fr_started', d => { _frRunning = true;  setStatus('fr','running'); setLastRun('fr', d.started_at || new Date().toISOString()); showToast(`Fracture started (PID ${d.pid})`, 'ok'); _startStructurePoll(); _startAccessMatrixPoll(); });
-socket.on('fr_done',    d => { _frRunning = false; setStatus('fr','done');    showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _stopAccessMatrixPoll(); _structureLoaded = false; loadStructure(); _accessMatrixLoaded = false; loadAccessMatrix(); });
+socket.on('fr_started', d => {
+  _frRunning = true; setStatus('fr','running');
+  const iso = d.started_at || new Date().toISOString();
+  setLastRun('fr', iso);
+  _setSummaryTime('fr-start-time', iso);
+  _setSummaryTime('fr-end-time', null);
+  _setSummaryField('fr-exit-code', '—');
+  showToast(`Fracture started (PID ${d.pid})`, 'ok');
+  _startStructurePoll(); _startAccessMatrixPoll();
+});
+socket.on('fr_done', d => {
+  _frRunning = false; setStatus('fr','done');
+  _setSummaryTime('fr-end-time', new Date().toISOString());
+  _setSummaryField('fr-exit-code', String(d.returncode ?? '—'));
+  showToast(`Fracture exited (${d.returncode})`, d.returncode===0?'ok':'warn');
+  _stopStructurePoll(); _stopAccessMatrixPoll();
+  _structureLoaded = false; loadStructure();
+  _accessMatrixLoaded = false; loadAccessMatrix();
+});
 socket.on('fr_stopped', () => { _frRunning = false; setStatus('fr','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('fr_error',   d => showToast(`FR: ${d.error}`, 'err'));
 
-socket.on('si_started', d => { _siRunning = true;  setStatus('si','running'); setLastRun('si', d.started_at || new Date().toISOString()); showToast(`Siphon started (PID ${d.pid})`, 'ok'); _startStructurePoll(); _startAccessMatrixPoll(); });
-socket.on('si_done',    d => { _siRunning = false; setStatus('si','done');    showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn'); _stopStructurePoll(); _stopAccessMatrixPoll(); _structureLoaded = false; loadStructure(); _accessMatrixLoaded = false; loadAccessMatrix(); });
+socket.on('si_started', d => {
+  _siRunning = true; setStatus('si','running');
+  const iso = d.started_at || new Date().toISOString();
+  setLastRun('si', iso);
+  _setSummaryTime('si-start-time', iso);
+  _setSummaryTime('si-end-time', null);
+  _setSummaryField('si-exit-code', '—');
+  showToast(`Siphon started (PID ${d.pid})`, 'ok');
+  _startStructurePoll(); _startAccessMatrixPoll();
+});
+socket.on('si_done', d => {
+  _siRunning = false; setStatus('si','done');
+  _setSummaryTime('si-end-time', new Date().toISOString());
+  _setSummaryField('si-exit-code', String(d.returncode ?? '—'));
+  showToast(`Siphon exited (${d.returncode})`, d.returncode===0?'ok':'warn');
+  _stopStructurePoll(); _stopAccessMatrixPoll();
+  _structureLoaded = false; loadStructure();
+  _accessMatrixLoaded = false; loadAccessMatrix();
+});
 socket.on('si_stopped', () => { _siRunning = false; setStatus('si','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
 
@@ -763,15 +997,17 @@ socket.on('log_entry', data => {
   renderLogs();
 });
 
-// ── Error entries ─────────────────────────────────────────
+// ── Error entries — merged into Log tab as ERROR level ────
 socket.on('err_entry', data => {
-  const e = data.entry || data;
+  const raw = data.entry || data;
+  const msg = raw.category ? `[${raw.category}] ${raw.message || ''}` : (raw.message || '');
+  const e   = { ts: raw.ts, tool: raw.tool, level: 'ERROR', message: msg };
   const key = `${e.ts}|${e.tool}|${e.message}`;
-  if (_errSeen.has(key)) return;
-  _errSeen.add(key);
-  allErrors.push(e);
-  document.getElementById('errorsBadge').textContent = allErrors.length;
-  renderErrors();
+  if (_logSeen.has(key)) return;
+  _logSeen.add(key);
+  allLogs.push(e);
+  document.getElementById('logBadge').textContent = allLogs.length;
+  renderLogs();
 });
 
 // ── Phase status ──────────────────────────────────────────
@@ -855,9 +1091,9 @@ function switchTab(name, btn) {
   const panel = document.getElementById(`tab-${name}`);
   if (panel) panel.classList.add('active');
   if (btn) btn.classList.add('active');
-  if (name === 'findings') renderFindings();
+  if (name === 'findings') { if (allFindings.length === 0) reloadFindings(); renderFindings(); }
   if (name === 'settings') { loadSettings('fr'); loadSettings('si'); }
-  if (name === 'checkpoint') { loadCheckpoint('fr'); loadCheckpoint('si'); }
+  if (name === 'summary')  { _loadSummarySettings(); }
 }
 
 // ── Findings ──────────────────────────────────────────────
@@ -876,17 +1112,45 @@ function addFinding(f) {
   const activeFindings = allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
   document.getElementById('findingsBadge').textContent = activeFindings.length;
 
-  const frCount = activeFindings.filter(x => x._tool === 'fracture').length;
-  const siCount = activeFindings.filter(x => x._tool === 'siphon').length;
+  const frFindings = activeFindings.filter(x => x._tool === 'fracture');
+  const siFindings = activeFindings.filter(x => x._tool === 'siphon');
   const frCnt = document.getElementById('fr-finding-count');
   const siCnt = document.getElementById('si-finding-count');
-  if (frCnt) frCnt.textContent = frCount;
-  if (siCnt) siCnt.textContent = siCount;
+  if (frCnt) frCnt.textContent = frFindings.length;
+  if (siCnt) siCnt.textContent = siFindings.length;
+
+  // Update per-tool risk breakdowns in Summary tab
+  function _updateRiskBreakdown(prefix, findings) {
+    const risks = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
+    findings.forEach(x => { const r = (x.risk||'INFO').toUpperCase(); if (r in risks) risks[r]++; });
+    const el = (id) => document.getElementById(`${prefix}-rc-${id}`);
+    if (el('critical')) el('critical').textContent = `${risks.CRITICAL}C`;
+    if (el('high'))     el('high').textContent     = `${risks.HIGH}H`;
+    if (el('medium'))   el('medium').textContent   = `${risks.MEDIUM}M`;
+    if (el('low'))      el('low').textContent       = `${risks.LOW}L`;
+    if (el('info'))     el('info').textContent      = `${risks.INFO}I`;
+  }
+  _updateRiskBreakdown('fr', frFindings);
+  _updateRiskBreakdown('si', siFindings);
 
   renderFindings();
 }
 
 function filterFindings() { _findPage = 0; renderFindings(); }
+
+function setRiskFilter(risk) {
+  const sel = document.getElementById('filterRisk');
+  if (!sel) return;
+  sel.value = (sel.value === risk) ? '' : risk;
+  filterFindings();
+}
+
+function reloadFindings() {
+  fetch(`/api/findings/${PROJECT_ID}`)
+    .then(r => r.json())
+    .then(arr => { arr.forEach(addFinding); })
+    .catch(() => {});
+}
 
 function findingsPage(dir) {
   const filtered = _getFilteredFindings();
@@ -1005,6 +1269,25 @@ function renderFindings() {
   _findPage = Math.min(_findPage, pages - 1);
   const slice = filtered.slice(_findPage * FIND_PER_PAGE, (_findPage + 1) * FIND_PER_PAGE);
 
+  // Update risk counts bar (counts from all active findings, not just filtered)
+  const activeFindings = allFindings.filter(x => !_isSuppressed(x));
+  const _riskCounts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
+  activeFindings.forEach(x => { const r = (x.risk||'INFO').toUpperCase(); if (r in _riskCounts) _riskCounts[r]++; });
+  const _rcEls = {
+    CRITICAL: document.getElementById('rcCritical'),
+    HIGH:     document.getElementById('rcHigh'),
+    MEDIUM:   document.getElementById('rcMedium'),
+    LOW:      document.getElementById('rcLow'),
+    INFO:     document.getElementById('rcInfo'),
+  };
+  const _currentRisk = (document.getElementById('filterRisk') || {}).value || '';
+  for (const [r, el] of Object.entries(_rcEls)) {
+    if (el) {
+      el.textContent = `${_riskCounts[r]} ${r.charAt(0) + r.slice(1).toLowerCase()}`;
+      el.classList.toggle('active', _currentRisk === r);
+    }
+  }
+
   const tbody = document.getElementById('findingsTbody');
   document.getElementById('findingsCount').textContent = `${filtered.length} finding${filtered.length!==1?'s':''}`;
   document.getElementById('findPageLabel').textContent = `Page ${_findPage+1} / ${pages}`;
@@ -1025,9 +1308,9 @@ function renderFindings() {
     const cves = (f.cves || '').split(',').filter(Boolean).map(c => `<span class="cve-tag">${c.trim()}</span>`).join(' ');
     const fJson = escHtml(JSON.stringify(JSON.stringify(f)));
     const fKey  = escHtml(JSON.stringify(_fkeyF(f)));
-    const evidenceFiles = (f.output_file || '').split(',').map(s => s.trim()).filter(Boolean);
-    const evidenceBtn = evidenceFiles.length
-      ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(evidenceFiles))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View</button>`
+    const _evParsed = _parseEvidenceFiles(f.output_file || '');
+    const evidenceBtn = _evParsed.count > 0
+      ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(_evParsed))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View</button>`
       : '';
     const isFP = _isSuppressed(f);
     const riskCell = isFP
@@ -1059,10 +1342,12 @@ function renderFindings() {
 
 function showFindingDetails(jsonStr) {
   const f = JSON.parse(jsonStr);
-  const evidenceFiles = (f.output_file || '').split(',').map(s => s.trim()).filter(Boolean);
-  const evidenceHtml = evidenceFiles.length
-    ? `<div class="det-row"><span class="det-label">Evidence</span><button class="btn btn-xs btn-ghost" onclick="viewEvidence(${escHtml(JSON.stringify(evidenceFiles))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View Evidence (${evidenceFiles.length} file${evidenceFiles.length!==1?'s':''})</button></div>`
+  const _evParsedDet = _parseEvidenceFiles(f.output_file || '');
+  const evidenceHtml = _evParsedDet.count > 0
+    ? `<div class="det-row"><span class="det-label">Evidence</span><button class="btn btn-xs btn-ghost" onclick="viewEvidence(${escHtml(JSON.stringify(_evParsedDet))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View Evidence (${_evParsedDet.count} location${_evParsedDet.count!==1?'s':''})</button></div>`
     : '';
+  // Beautify inline text fields that may contain JSON/XML/HTTP content
+  const _detPre = text => escHtml(_beautifyContent(text, '').display);
   document.getElementById('detailsModalTitle').textContent = f.title || f.detail || 'Finding';
   document.getElementById('detailsModalBody').innerHTML = `
     <div class="det-row"><span class="det-label">Risk</span>${_riskBadge(f.risk)}</div>
@@ -1075,8 +1360,8 @@ function showFindingDetails(jsonStr) {
     ${evidenceHtml}
     ${f.description || f.detail ? `<div class="det-section"><div class="det-section-title">Description</div><pre class="det-pre">${escHtml(f.description||f.detail)}</pre></div>` : ''}
     ${f.remediation ? `<div class="det-section"><div class="det-section-title">Remediation</div><pre class="det-pre">${escHtml(f.remediation)}</pre></div>` : ''}
-    ${f.output ? `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${escHtml(f.output)}</pre></div>` : ''}
-    ${f.affected ? `<div class="det-section"><div class="det-section-title">Affected</div><pre class="det-pre">${escHtml(f.affected)}</pre></div>` : ''}
+    ${f.output ? `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${_detPre(f.output)}</pre></div>` : ''}
+    ${f.affected ? `<div class="det-section"><div class="det-section-title">Affected</div><pre class="det-pre">${_detPre(f.affected)}</pre></div>` : ''}
   `;
   document.getElementById('detailsModal').classList.remove('hidden');
 }
@@ -1089,40 +1374,113 @@ function closeEvidenceModal() {
   document.getElementById('evidenceModal').classList.add('hidden');
 }
 
-let _evidenceFiles = [];
-function viewEvidence(files, title) {
-  _evidenceFiles = typeof files === 'string' ? JSON.parse(files) : files;
+let _evidenceFiles   = [];
+let _evidenceEntries = [];
+
+function _parseEvidenceFiles(str) {
+  if (!str) return {type: 'none', count: 0};
+  const s = str.trim();
+  if (s.startsWith('[')) {
+    try {
+      const entries = JSON.parse(s);
+      if (Array.isArray(entries) && entries.length > 0 && typeof entries[0] === 'object' && 'url' in entries[0]) {
+        return {type: 'multi', entries, count: entries.length};
+      }
+    } catch(e) {}
+  }
+  const files = s.split(',').map(f => f.trim()).filter(Boolean);
+  if (!files.length) return {type: 'none', count: 0};
+  return {type: 'plain', files, count: files.length};
+}
+
+function viewEvidence(parsed, title) {
+  const ev = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
   document.getElementById('evidenceModalTitle').textContent = `Evidence — ${title || 'Finding'}`;
 
-  const reqFile    = _evidenceFiles.find(f => f.endsWith('_request.txt'));
-  const respFile   = _evidenceFiles.find(f => f.endsWith('_response.txt'));
-  const otherFiles = _evidenceFiles.filter(f => !f.endsWith('_request.txt') && !f.endsWith('_response.txt'));
-  const splitView  = !!(reqFile && respFile);
+  const contentEl = document.getElementById('evidenceContent');
+  const splitEl   = document.getElementById('evidenceSplit');
+  const modalBox  = document.querySelector('.evidence-modal-box');
+  const tabs      = document.getElementById('evidenceFileTabs');
+  const urlWrap   = document.getElementById('evidenceUrlSelectWrap');
 
-  const contentEl  = document.getElementById('evidenceContent');
-  const splitEl    = document.getElementById('evidenceSplit');
-  const modalBox   = document.querySelector('.evidence-modal-box');
-  const tabs       = document.getElementById('evidenceFileTabs');
+  tabs.innerHTML = '';
+  urlWrap.classList.add('hidden');
 
-  if (splitView) {
+  if (ev.type === 'multi') {
+    _evidenceEntries = ev.entries;
     contentEl.classList.add('hidden');
     splitEl.classList.remove('hidden');
     tabs.classList.add('hidden');
-    tabs.innerHTML = '';
     modalBox.classList.add('evidence-modal-wide');
-    _loadEvidencePane(reqFile,  'evidenceReqPre');
-    _loadEvidencePane(respFile, 'evidenceRespPre');
-  } else {
-    contentEl.classList.remove('hidden');
-    splitEl.classList.add('hidden');
-    tabs.classList.remove('hidden');
-    modalBox.classList.remove('evidence-modal-wide');
-    tabs.innerHTML = _evidenceFiles.map((f, i) =>
-      `<button class="evidence-file-tab${i===0?' active':''}" onclick="loadEvidenceFile(${i},this)">${escHtml(f.split('/').pop())}</button>`
+    urlWrap.classList.remove('hidden');
+    const sel = document.getElementById('evidenceUrlSelect');
+    sel.innerHTML = _evidenceEntries.map((e, i) =>
+      `<option value="${i}">${escHtml(e.url)}</option>`
     ).join('');
-    if (_evidenceFiles.length) loadEvidenceFile(0, tabs.firstChild);
+    sel.selectedIndex = 0;
+    _loadEvidenceEntry(0);
+  } else if (ev.type === 'plain') {
+    _evidenceFiles = ev.files;
+    // Build request/response pairs by matching base names
+    const _reqFiles = ev.files.filter(f => f.endsWith('_request.txt'));
+    const _respFiles = ev.files.filter(f => f.endsWith('_response.txt'));
+    const _pairs = [];
+    for (const req of _reqFiles) {
+      const base = req.slice(0, -'_request.txt'.length);
+      const resp = _respFiles.find(r => r.slice(0, -'_response.txt'.length) === base);
+      if (resp) {
+        const parts = base.split('/');
+        const fname = parts.pop() || '';
+        const parent = parts.length > 0 ? parts[parts.length - 1] : '';
+        // If the parent dir looks like an endpoint dir (METHOD__path), include it in the label
+        const label = parent && parent.includes('__')
+          ? parent.replace(/__/g, ' ') + ' \u2014 ' + fname
+          : fname;
+        _pairs.push({url: label, req, resp});
+      }
+    }
+    if (_pairs.length > 0) {
+      contentEl.classList.add('hidden');
+      splitEl.classList.remove('hidden');
+      tabs.classList.add('hidden');
+      modalBox.classList.add('evidence-modal-wide');
+      _evidenceEntries = _pairs;
+      if (_pairs.length > 1) {
+        urlWrap.classList.remove('hidden');
+        const sel = document.getElementById('evidenceUrlSelect');
+        sel.innerHTML = _pairs.map((p, i) =>
+          `<option value="${i}">${escHtml(p.url)}</option>`
+        ).join('');
+        sel.selectedIndex = 0;
+      } else {
+        urlWrap.classList.add('hidden');
+      }
+      _loadEvidenceEntry(0);
+    } else {
+      contentEl.classList.remove('hidden');
+      splitEl.classList.add('hidden');
+      tabs.classList.remove('hidden');
+      modalBox.classList.remove('evidence-modal-wide');
+      urlWrap.classList.add('hidden');
+      tabs.innerHTML = ev.files.map((f, i) =>
+        `<button class="evidence-file-tab${i===0?' active':''}" onclick="loadEvidenceFile(${i},this)">${escHtml(f.split('/').pop())}</button>`
+      ).join('');
+      if (ev.files.length) loadEvidenceFile(0, tabs.firstChild);
+    }
   }
   document.getElementById('evidenceModal').classList.remove('hidden');
+}
+
+function _loadEvidenceEntry(idx) {
+  const entry = _evidenceEntries[idx];
+  if (!entry) return;
+  _loadEvidencePane(entry.req,  'evidenceReqPre');
+  _loadEvidencePane(entry.resp, 'evidenceRespPre');
+}
+
+function _onEvidenceUrlChange() {
+  const sel = document.getElementById('evidenceUrlSelect');
+  _loadEvidenceEntry(parseInt(sel.value, 10));
 }
 
 function _loadEvidencePane(filePath, preId) {
@@ -1275,6 +1633,27 @@ function _prettyPhp(text) {
 function _beautifyContent(raw, filePath) {
   const t = raw.trimStart();
   const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+
+  // HTTP response file — headers + body separated by a blank line.
+  // Beautify JSON or XML in the body while preserving the status line and headers.
+  if (t.startsWith('HTTP/')) {
+    const sepIdx = raw.search(/\r?\n\r?\n/);
+    if (sepIdx !== -1) {
+      const headers = raw.slice(0, sepIdx);
+      const body = raw.slice(sepIdx).replace(/^\r?\n\r?\n/, '').trimStart();
+      if (body) {
+        const bt = body.trimStart();
+        let prettyBody = null;
+        if (bt.startsWith('{') || bt.startsWith('[')) {
+          prettyBody = _prettyJson(body);
+        } else if (bt.startsWith('<?xml') || (bt.startsWith('<') && !bt.toLowerCase().startsWith('<!doctype'))) {
+          prettyBody = _prettyXml(body);
+        }
+        if (prettyBody) return { format: 'http', display: headers + '\n\n' + prettyBody };
+      }
+    }
+    return { format: 'text', display: raw };
+  }
 
   // JSON — try content first, then extension
   if (t.startsWith('{') || t.startsWith('[') || ext === '.json') {
@@ -1524,55 +1903,6 @@ function renderLogs() {
   }).join('');
 }
 
-// ── Errors ────────────────────────────────────────────────
-function setErrFilter(btn, key, val) {
-  errFilter[key] = val;
-  errPage = 0;
-  const group = btn.closest('.log-filter-group');
-  if (group) group.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderErrors();
-}
-
-function clearErrors() { allErrors = []; _errSeen.clear(); errPage = 0; renderErrors(); document.getElementById('errorsBadge').textContent = '0'; }
-
-function errsPage(dir) {
-  const filtered = allErrors.filter(e => {
-    if (errFilter.tool && e.tool !== errFilter.tool) return false;
-    if (errFilter.category && (e.category||'') !== errFilter.category) return false;
-    return true;
-  });
-  const pages = Math.max(1, Math.ceil(filtered.length / ERR_PER_PAGE));
-  errPage = Math.max(0, Math.min(errPage + dir, pages - 1));
-  renderErrors();
-}
-
-function renderErrors() {
-  const filtered = allErrors.filter(e => {
-    if (errFilter.tool && e.tool !== errFilter.tool) return false;
-    if (errFilter.category && (e.category||'') !== errFilter.category) return false;
-    return true;
-  });
-  const pages = Math.max(1, Math.ceil(filtered.length / ERR_PER_PAGE));
-  errPage = Math.min(errPage, pages - 1);
-  const slice = filtered.slice(errPage * ERR_PER_PAGE, (errPage + 1) * ERR_PER_PAGE);
-  document.getElementById('errsPageLabel').textContent = `Page ${errPage+1} / ${pages}`;
-  document.getElementById('errsBtnPrev').disabled = errPage === 0;
-  document.getElementById('errsBtnNext').disabled = errPage >= pages - 1;
-  const tbody = document.getElementById('errorsTbody');
-  if (!slice.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No errors.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = slice.map(e => {
-    const toolBadge = e.tool === 'fr' ? '<span class="tool-badge tool-fr">FR</span>' :
-                      e.tool === 'si' ? '<span class="tool-badge tool-si">SI</span>' : '';
-    return `<tr><td class="mono-sm">${e.ts||''}</td>
-      <td>${toolBadge}</td>
-      <td><span class="err-cat">${escHtml(e.category||'')}</span></td>
-      <td>${escHtml(e.message||'')}</td></tr>`;
-  }).join('');
-}
 
 // ── Phase status ──────────────────────────────────────────
 function toggleSect(btn) {
@@ -1606,51 +1936,88 @@ function switchSettingsTool(tool, btn) {
   if (btn) btn.classList.add('active');
 }
 
+function _sfGet(obj, path) {
+  return path.split('.').reduce((o, k) => (o != null && o[k] !== undefined ? o[k] : undefined), obj);
+}
+function _sfSet(obj, path, val) {
+  const keys = path.split('.');
+  let o = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (o[keys[i]] == null || typeof o[keys[i]] !== 'object') o[keys[i]] = {};
+    o = o[keys[i]];
+  }
+  o[keys[keys.length - 1]] = val;
+}
+function _headersToObj(text) {
+  const out = {};
+  (text || '').split('\n').forEach(line => {
+    const idx = line.indexOf(':');
+    if (idx > 0) {
+      const k = line.slice(0, idx).trim();
+      const v = line.slice(idx + 1).trim();
+      if (k) out[k] = v;
+    }
+  });
+  return out;
+}
+function _objToHeaders(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  return Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
 function loadSettings(tool) {
   fetch(`/api/settings/${PROJECT_ID}/${tool}`)
     .then(r => r.json())
     .then(d => {
-      const el = document.getElementById(`${tool}-settings-editor`);
-      if (el) el.value = JSON.stringify(d, null, 2);
+      const panel = document.getElementById(`settings-${tool}`);
+      if (!panel) return;
+      panel.querySelectorAll('[data-sf-path]').forEach(el => {
+        const path = el.dataset.sfPath;
+        const val  = _sfGet(d, path);
+        if (el.dataset.sfType === 'headers') {
+          el.value = _objToHeaders(val);
+        } else if (el.type === 'checkbox') {
+          el.checked = !!val;
+        } else if (el.tagName === 'SELECT') {
+          if (val !== undefined && val !== null) el.value = String(val);
+        } else {
+          el.value = (val !== undefined && val !== null) ? val : '';
+        }
+      });
     })
     .catch(() => {});
 }
 
 function saveSettings(tool) {
-  const el = document.getElementById(`${tool}-settings-editor`);
-  if (!el) return;
-  let parsed;
-  try { parsed = JSON.parse(el.value); }
-  catch(e) { alert('Invalid JSON: ' + e.message); return; }
+  const panel = document.getElementById(`settings-${tool}`);
+  if (!panel) return;
+  const data = {};
+  panel.querySelectorAll('[data-sf-path]').forEach(el => {
+    const path = el.dataset.sfPath;
+    let val;
+    if (el.dataset.sfType === 'headers') {
+      val = _headersToObj(el.value);
+    } else if (el.type === 'checkbox') {
+      val = el.checked;
+    } else if (el.type === 'number') {
+      val = el.value === '' ? '' : Number(el.value);
+    } else {
+      val = el.value;
+    }
+    _sfSet(data, path, val);
+  });
   const msg = document.getElementById(`${tool}-save-msg`);
   fetch(`/api/settings/${PROJECT_ID}/${tool}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(parsed),
+    body: JSON.stringify(data),
   })
   .then(r => r.json())
   .then(d => {
     if (msg) { msg.textContent = d.success ? 'Saved.' : 'Error saving.'; setTimeout(() => msg.textContent = '', 3000); }
+    _loadSummarySettings();
   })
   .catch(() => { if (msg) { msg.textContent = 'Network error.'; setTimeout(() => msg.textContent = '', 3000); } });
-}
-
-// ── Checkpoint ────────────────────────────────────────────
-function switchCheckpointTool(tool, btn) {
-  document.querySelectorAll('.checkpoint-panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.checkpoint-tool-tabs .settings-tool-tab').forEach(b => b.classList.remove('active'));
-  const panel = document.getElementById(`checkpoint-${tool}`);
-  if (panel) panel.classList.add('active');
-  if (btn) btn.classList.add('active');
-}
-
-function loadCheckpoint(tool) {
-  const el = document.getElementById(`${tool}-checkpoint-view`);
-  if (!el) return;
-  fetch(`/api/checkpoint/${PROJECT_ID}/${tool}`)
-    .then(r => r.json())
-    .then(d => { el.textContent = JSON.stringify(d, null, 2); })
-    .catch(() => { el.textContent = 'Failed to load checkpoint.'; });
 }
 
 // ── Prompt modal ──────────────────────────────────────────
@@ -1702,6 +2069,37 @@ function reopenPrompt(tool) {
   }
 }
 
+// ── File download helper ───────────────────────────────────
+function _dlName(clientShort, label, ext) {
+  const d   = new Date();
+  const ymd = d.getFullYear() +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    String(d.getDate()).padStart(2, '0');
+  const prefix = (clientShort || 'Crucible').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `${prefix}_Fracture_${label}_${ymd}.${ext}`;
+}
+
+async function downloadFile(url, filename, mimeType) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      let errMsg = `Download failed (${r.status})`;
+      try { const d = await r.json(); errMsg = d.error || errMsg; } catch(_) {}
+      showToast(errMsg, 'err');
+      return;
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch(e) {
+    showToast('Download error: ' + e.message, 'err');
+  }
+}
+
 // ── Toast ─────────────────────────────────────────────────
 let _toastTimer = null;
 function showToast(msg, type) {
@@ -1724,25 +2122,25 @@ fetch(`/api/suppressions/${PROJECT_ID}`)
   .then(r => r.json())
   .then(arr => { arr.forEach(k => _suppressedSet.add(k)); })
   .catch(() => {})
-  .finally(() => {
-    fetch(`/api/findings/${PROJECT_ID}`).then(r => r.json()).then(arr => { arr.forEach(addFinding); });
+  .finally(() => { reloadFindings(); });
+Promise.all([
+  fetch(`/api/logs/${PROJECT_ID}`).then(r => r.json()).catch(() => []),
+  fetch(`/api/errors/${PROJECT_ID}`).then(r => r.json()).catch(() => []),
+]).then(([logs, errors]) => {
+  logs.forEach(e => {
+    const key = `${e.ts}|${e.tool}|${e.message}`;
+    if (!_logSeen.has(key)) { _logSeen.add(key); allLogs.push(e); }
   });
-fetch(`/api/logs/${PROJECT_ID}`).then(r => r.json()).then(arr => {
-  arr.forEach(e => {
+  errors.forEach(raw => {
+    const msg = raw.category ? `[${raw.category}] ${raw.message || ''}` : (raw.message || '');
+    const e   = { ts: raw.ts, tool: raw.tool, level: 'ERROR', message: msg };
     const key = `${e.ts}|${e.tool}|${e.message}`;
     if (!_logSeen.has(key)) { _logSeen.add(key); allLogs.push(e); }
   });
   document.getElementById('logBadge').textContent = allLogs.length;
   renderLogs();
 });
-fetch(`/api/errors/${PROJECT_ID}`).then(r => r.json()).then(arr => {
-  arr.forEach(e => {
-    const key = `${e.ts}|${e.tool}|${e.message}`;
-    if (!_errSeen.has(key)) { _errSeen.add(key); allErrors.push(e); }
-  });
-  document.getElementById('errorsBadge').textContent = allErrors.length;
-  renderErrors();
-});
+_loadSummarySettings();
 
 // ── Structure tab ──────────────────────────────────────────────────────────
 let _structureLoaded = false;
@@ -1768,6 +2166,33 @@ async function loadStructure(force = false) {
 }
 
 let _accessMatrixLoaded = false;
+let _amData = null;
+let _amFilter = null;
+const _AM_RANGE_COLORS = {200: '#3fb950', 300: '#d29922', 400: '#f85149', 500: '#f85149'};
+
+function _toggleAmFilter(range) {
+  _amFilter = (_amFilter === range) ? null : range;
+  document.querySelectorAll('.am-filter-btn').forEach(b => {
+    const r = parseInt(b.dataset.range);
+    const active = _amFilter === r;
+    const c = _AM_RANGE_COLORS[r] || '#e6edf3';
+    b.style.background   = active ? `${c}22` : '';
+    b.style.color        = active ? c : '';
+    b.style.borderColor  = active ? c : '';
+    b.style.outline      = active ? `1px solid ${c}` : '';
+  });
+  _redrawAccessMatrix();
+}
+
+function _redrawAccessMatrix() {
+  const el = document.getElementById('accessMatrixContent');
+  if (!el || !_amData) return;
+  let html = '';
+  if (_amData.fr_matrix) html += _renderAccessMatrixSection('FR', 'Fracture — Web Application', _amData.fr_matrix, _amFilter);
+  if (_amData.si_matrix) html += _renderAccessMatrixSection('SI', 'Siphon — API', _amData.si_matrix, _amFilter);
+  el.innerHTML = html;
+}
+
 async function loadAccessMatrix(force = false) {
   if (_accessMatrixLoaded && !force) return;
   const el = document.getElementById('accessMatrixContent');
@@ -1779,6 +2204,7 @@ async function loadAccessMatrix(force = false) {
       // Don't mark as loaded — allow the poller to retry while scan is running
       if (!_frRunning && !_siRunning) {
         _accessMatrixLoaded = true;
+        _amData = null;
         el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">No access matrix data found for this project.</span>';
       } else {
         el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">Waiting for first paths to be discovered\u2026</span>';
@@ -1786,16 +2212,14 @@ async function loadAccessMatrix(force = false) {
       return;
     }
     _accessMatrixLoaded = true;
-    let html = '';
-    if (d.fr_matrix) html += _renderAccessMatrixSection('FR', 'Fracture — Web Application', d.fr_matrix);
-    if (d.si_matrix) html += _renderAccessMatrixSection('SI', 'Siphon — API', d.si_matrix);
-    el.innerHTML = html;
+    _amData = d;
+    _redrawAccessMatrix();
   } catch(e) {
     el.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load access matrix.</span>';
   }
 }
 
-function _renderAccessMatrixSection(badge, title, matrix) {
+function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
   const roles = matrix.roles || [];
   const mostPriv = matrix.most_privileged || '';
   const counts = matrix.privilege_counts || {};
@@ -1805,6 +2229,23 @@ function _renderAccessMatrixSection(badge, title, matrix) {
 
   // Display name: internal key "unauthenticated" → user-visible "Unauthenticated"
   const _dispRole = r => r === 'unauthenticated' ? 'Unauthenticated' : r;
+
+  // Table — columns are exactly what matrix.roles contains; no injected defaults
+  const allRoles = roles.length ? roles : ['unauthenticated'];
+
+  // Row filter: check numeric HTTP codes across all role columns
+  const _rowMatches = (item) => {
+    if (filter === null) return true;
+    const codes = allRoles.map(r => (item.access || {})[r]).filter(v => typeof v === 'number');
+    const has = (lo, hi) => codes.some(c => c >= lo && c <= hi);
+    if (filter === 200) return has(200, 299);
+    if (filter === 300) return has(300, 399) && !has(200, 299);
+    if (filter === 400) return has(400, 499) && !has(200, 299);
+    if (filter === 500) return has(500, 599) && !has(200, 299);
+    return true;
+  };
+
+  const visibleItems = items.filter(_rowMatches);
 
   let html = `<div class="form-section" style="margin-bottom:1.5rem">`;
   html += `<div class="form-section-title"><span class="tool-badge tool-${badge.toLowerCase()}">${badge}</span> ${_escHtml(title)}</div>`;
@@ -1825,8 +2266,11 @@ function _renderAccessMatrixSection(badge, title, matrix) {
     html += '</div>'; return html;
   }
 
-  // Table — columns are exactly what matrix.roles contains; no injected defaults
-  const allRoles = roles.length ? roles : ['unauthenticated'];
+  if (!visibleItems.length) {
+    html += `<span style="color:#8b949e;font-size:.85rem">No endpoints match the selected filter.</span>`;
+    html += '</div>'; return html;
+  }
+
   html += `<div style="overflow-x:auto"><table class="findings-table" style="min-width:600px">`;
   html += `<thead><tr><th style="text-align:left;padding:.4rem .6rem">Path / Endpoint</th>`;
   allRoles.forEach(role => {
@@ -1836,7 +2280,7 @@ function _renderAccessMatrixSection(badge, title, matrix) {
   });
   html += `</tr></thead><tbody>`;
 
-  items.forEach(item => {
+  visibleItems.forEach(item => {
     const path = item.path || item.endpoint || '';
     html += `<tr><td style="font-family:monospace;font-size:.82rem;padding:.35rem .6rem">${_escHtml(path)}</td>`;
     allRoles.forEach(role => {

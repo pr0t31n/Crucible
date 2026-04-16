@@ -37,6 +37,7 @@
                 data-proj='{{ {"name": proj.name, "client_name": proj.client_name or "", "client_short": proj.client_short or "", "scope": proj.scope or "", "created": proj.created or "", "tools": proj.get("tools", []), "fr_status": proj.fr_status or "idle", "si_status": proj.si_status or "idle", "fr_last_run": proj.fr_last_run or "", "si_last_run": proj.si_last_run or "", "project_dir": proj.project_dir or "", "fr_settings_file": proj.fr_settings_file or "", "si_settings_file": proj.si_settings_file or "", "fracture_output_dir": proj.fracture_output_dir or "", "siphon_output_dir": proj.siphon_output_dir or ""} | tojson }}'
                 onclick="showProjInfo(event, this)" aria-label="Project info">&#x2699;</button>
               {% endif %}
+              <a href="/api/download-project/{{ pid }}" class="proj-card-dl-btn" title="Download project zip" onclick="event.stopPropagation()">&#x2B07;</a>
               <a href="/edit_project/{{ pid }}" class="proj-card-edit-btn" title="Edit engagement">&#x270E;</a>
               <button class="proj-card-clear-btn" title="Clear scan data" onclick="clearProject(event,'{{ pid }}','{{ proj.name|replace("'","\\'") }}')">&#x21BA;</button>
             </div>
