@@ -1787,9 +1787,11 @@ function _exportGetFiltered() {
 function _csvCell(val) {
   // Replace all line-break variants (including Unicode LS/PS) with a pipe separator.
   // Using CRLF row terminators below; cells must contain no bare CR or LF at all.
-  return String(val == null ? '' : val)
+  const s = String(val == null ? '' : val)
     .replace(/\r\n|\r|\n|\u2028|\u2029/g, ' | ')
     .replace(/"/g, '""');
+  // Excel hard-limits cells to 32,767 characters; truncate to prevent row-breaking.
+  return s.length > 32700 ? s.slice(0, 32700) + '\u2026[truncated]' : s;
 }
 
 function exportFindingsCSV() {
