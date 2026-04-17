@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.5.35"
+VERSION = "1.5.36"
 
 import io
 import socket
@@ -918,7 +918,6 @@ def nexus_status():
 # Arbiter integration — project list endpoint
 # ---------------------------------------------------------------------------
 @app.route("/api/arbiter-projects")
-@_auth.login_required
 def api_arbiter_projects():
     """Return a normalized project list for Arbiter discovery."""
     data = _load_projects()
