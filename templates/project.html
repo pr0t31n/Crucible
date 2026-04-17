@@ -1785,8 +1785,11 @@ function _exportGetFiltered() {
 }
 
 function _csvCell(val) {
-  // Replace newlines with pipe-separator so Excel doesn't split into multiple rows
-  return String(val == null ? '' : val).replace(/\r\n|\r|\n/g, ' | ').replace(/"/g, '""');
+  // Replace all line-break variants (including Unicode LS/PS) with a pipe separator.
+  // Using CRLF row terminators below; cells must contain no bare CR or LF at all.
+  return String(val == null ? '' : val)
+    .replace(/\r\n|\r|\n|\u2028|\u2029/g, ' | ')
+    .replace(/"/g, '""');
 }
 
 function exportFindingsCSV() {
@@ -1810,7 +1813,7 @@ function exportFindingsCSV() {
       _exportEvidenceField(f.output_file),
     ]);
   });
-  const csv = rows.map(r => r.map(c => `"${_csvCell(c)}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(c => `"${_csvCell(c)}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'}));
   a.download = `crucible_findings_${PROJECT_ID.slice(0,8)}.csv`;
