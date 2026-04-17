@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.7.2"
+VERSION = "1.7.3"
 
 import io
 import socket
@@ -2170,6 +2170,341 @@ def api_export_structure_pdf(project_id: str):
     return app.response_class(
         buf.read(),
         mimetype="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.route("/api/export-status-report-pdf/<project_id>")
+def api_export_status_report_pdf(project_id: str):
+    """Generate and download a Status Report PDF for the engagement."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    try:
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        Table, TableStyle, KeepTogether,
+                                        HRFlowable, PageBreak)
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.colors import HexColor, white, black
+        from reportlab.lib.units import mm
+    except ImportError:
+        return jsonify({"error": "reportlab not installed"}), 500
+
+    # ── Engagement metadata ──────────────────────────────────────────────────
+    engagement: dict = {}
+    fr_target = ""
+    si_target = ""
+    fr_proj_dir = ""
+    si_proj_dir = ""
+
+    try:
+        fr_cfg = json.loads(Path(proj.get("fr_settings_file", "")).read_text())
+        engagement = fr_cfg.get("engagement", {})
+        fr_scan = fr_cfg.get("scan", {})
+        fr_target = fr_scan.get("target_url", "")
+        fr_proj_dir = fr_scan.get("project", "fracture_output")
+    except Exception:
+        pass
+
+    try:
+        si_cfg = json.loads(Path(proj.get("si_settings_file", "")).read_text())
+        if not engagement:
+            engagement = si_cfg.get("engagement", {})
+        si_scan = si_cfg.get("scan", {})
+        si_target = si_scan.get("target_url", "")
+        si_proj_dir = si_scan.get("project", "siphon_output")
+    except Exception:
+        pass
+
+    consultant       = engagement.get("consultant", "") or ""
+    consultant_email = engagement.get("consultant_email", "") or ""
+    client_name      = proj.get("client_name") or engagement.get("client_name", "") or ""
+    proj_name        = proj.get("name", project_id)
+    scope_str        = proj.get("scope", "") or ""
+    start_date       = engagement.get("start_date", "") or ""
+    end_date         = engagement.get("end_date", "") or ""
+    generated_at     = datetime.now(timezone.utc).strftime("%Y-%m-%d (%Y-%m-%d %H:%M:%S UTC)")
+
+    # ── Load findings — LOW and above only ───────────────────────────────────
+    INCLUDE_RISKS = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
+    RISK_ORDER    = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    RISK_HEX      = {"CRITICAL": "dc2626", "HIGH": "ea580c", "MEDIUM": "d97706", "LOW": "2563eb"}
+
+    all_findings: list[dict] = []
+    for _tool_name, _subdir, _scope_lbl in [
+        ("fracture", fr_proj_dir, "webapp"),
+        ("siphon",   si_proj_dir, "api"),
+    ]:
+        if not _subdir:
+            continue
+        _fp = Path(proj["project_dir"]) / _subdir / "findings.json"
+        if _fp.exists():
+            try:
+                for _f in json.loads(_fp.read_text()):
+                    _f = dict(_f)
+                    if (_f.get("risk") or "INFO").upper() not in INCLUDE_RISKS:
+                        continue
+                    _f.setdefault("_tool", _tool_name)
+                    _f.setdefault("_scope", _scope_lbl)
+                    all_findings.append(_f)
+            except Exception:
+                pass
+
+    all_findings.sort(key=lambda _f: (
+        RISK_ORDER.get((_f.get("risk") or "LOW").upper(), 99),
+        _f.get("datetime", ""),
+    ))
+
+    web_findings = [_f for _f in all_findings if _f.get("_scope") == "webapp"]
+    api_findings = [_f for _f in all_findings if _f.get("_scope") == "api"]
+
+    # ── Scope parsing ────────────────────────────────────────────────────────
+    scope_parts   = [s.strip() for s in re.split(r'[\n,;]+', scope_str) if s.strip()]
+    scope_ips     = [s for s in scope_parts if re.match(r'^\d+\.\d+\.\d+\.\d+', s)]
+    scope_domains = [s for s in scope_parts if not re.match(r'^\d+\.\d+\.\d+\.\d+', s)]
+
+    # ── Layout constants ─────────────────────────────────────────────────────
+    PAGE_W, PAGE_H = A4
+    MARGIN = 20 * mm
+    CW     = PAGE_W - 2 * MARGIN
+
+    C_GRAY   = HexColor("#6b7280")
+    C_LIGHT  = HexColor("#f3f4f6")
+    C_BORDER = HexColor("#e5e7eb")
+
+    def _ps(name, **kw):
+        d = dict(fontName="Helvetica", fontSize=9, leading=13, textColor=black)
+        d.update(kw)
+        return ParagraphStyle(name, **d)
+
+    s_base  = _ps("sr_base")
+    s_h1    = _ps("sr_h1",  fontName="Helvetica-Bold", fontSize=20, leading=24,
+                  textColor=HexColor("#1a1a2e"), spaceAfter=3*mm)
+    s_h2    = _ps("sr_h2",  fontName="Helvetica-Bold", fontSize=13, leading=16,
+                  textColor=HexColor("#1a1a2e"), spaceBefore=5*mm, spaceAfter=3*mm)
+    s_h3    = _ps("sr_h3",  fontName="Helvetica-Bold", fontSize=10.5, leading=13,
+                  textColor=HexColor("#1a1a2e"), spaceBefore=3*mm, spaceAfter=2*mm)
+    s_label = _ps("sr_lbl", fontName="Helvetica-Bold", fontSize=8.5, leading=12, textColor=C_GRAY)
+    s_val   = _ps("sr_val", fontSize=9, leading=12)
+    s_meta  = _ps("sr_met", fontSize=8, leading=11, textColor=C_GRAY, spaceAfter=1*mm)
+    s_mono  = _ps("sr_mon", fontName="Courier", fontSize=8, leading=11)
+    s_issue = _ps("sr_iss", fontSize=9, leading=12, leftIndent=8, spaceAfter=1)
+
+    # ── Story ────────────────────────────────────────────────────────────────
+    story = []
+
+    # Title + generated stamp
+    story.append(Paragraph("Status Report", s_h1))
+    story.append(Paragraph(f"Generated: {generated_at}", s_meta))
+    story.append(HRFlowable(width="100%", thickness=1, color=C_BORDER, spaceAfter=4*mm))
+
+    # Metadata grid
+    meta_rows = [
+        [Paragraph("Customer:", s_label), Paragraph(client_name or "—", s_val),
+         Paragraph("Engagement:", s_label), Paragraph(proj_name, s_val)],
+        [Paragraph("Consultant:", s_label), Paragraph(consultant or "—", s_val),
+         Paragraph("Consultant Email:", s_label), Paragraph(consultant_email or "—", s_val)],
+    ]
+    if start_date or end_date:
+        meta_rows.append([
+            Paragraph("Start Date:", s_label), Paragraph(start_date or "—", s_val),
+            Paragraph("End Date:", s_label), Paragraph(end_date or "—", s_val),
+        ])
+    meta_t = Table(meta_rows, colWidths=[CW*0.14, CW*0.36, CW*0.16, CW*0.34])
+    meta_t.setStyle(TableStyle([
+        ("VALIGN",         (0,0), (-1,-1), "TOP"),
+        ("TOPPADDING",     (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING",  (0,0), (-1,-1), 3),
+    ]))
+    story.append(meta_t)
+    story.append(Spacer(1, 4*mm))
+
+    # ── Summary of Findings ──────────────────────────────────────────────────
+    story.append(Paragraph("Summary of Findings", s_h2))
+
+    def _summary_table(findings, label):
+        if not findings:
+            return
+        story.append(Paragraph(f"Summary of Findings — {label} ({len(findings)})", s_h3))
+        rows = [[
+            Paragraph("<b>Date</b>", s_base),
+            Paragraph("<b>Risk</b>", s_base),
+            Paragraph("<b>Description</b>", s_base),
+            Paragraph("<b>Status</b>", s_base),
+        ]]
+        for _f in findings:
+            _risk = (_f.get("risk") or "LOW").upper()
+            _hx   = RISK_HEX.get(_risk, "6b7280")
+            rows.append([
+                Paragraph((_f.get("datetime") or "")[:10], s_base),
+                Paragraph(f'<font color="#{_hx}">{_risk.capitalize()}</font>', s_base),
+                Paragraph(str(_f.get("title") or ""), s_base),
+                Paragraph(str(_f.get("status") or "Open"), s_base),
+            ])
+        tbl = Table(rows, colWidths=[CW*0.12, CW*0.10, CW*0.61, CW*0.17])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (-1,0),  C_LIGHT),
+            ("LINEBELOW",     (0,0), (-1,0),  0.5, C_BORDER),
+            ("LINEBELOW",     (0,1), (-1,-1), 0.3, C_BORDER),
+            ("VALIGN",        (0,0), (-1,-1), "TOP"),
+            ("TOPPADDING",    (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("LEFTPADDING",   (0,0), (-1,-1), 4),
+        ]))
+        story.append(tbl)
+        story.append(Spacer(1, 2*mm))
+
+    _summary_table(web_findings, "Web")
+    _summary_table(api_findings, "API")
+    if not all_findings:
+        story.append(Paragraph("No findings (Low severity or higher) recorded.", s_base))
+        story.append(Spacer(1, 3*mm))
+
+    # ── 1. Scope ─────────────────────────────────────────────────────────────
+    story.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER, spaceBefore=2*mm, spaceAfter=2*mm))
+    story.append(Paragraph("1. Scope", s_h2))
+    scope_tbl = Table([
+        [Paragraph(f"<b>External IPs ({len(scope_ips)})</b>", s_base),
+         Paragraph("<b>Internal IPs (0)</b>", s_base),
+         Paragraph(f"<b>Associated Domains / FQDNs ({len(scope_domains)})</b>", s_base)],
+        [Paragraph("\n".join(scope_ips) if scope_ips else "none", s_mono),
+         Paragraph("none", s_mono),
+         Paragraph("\n".join(scope_domains) if scope_domains else "none", s_mono)],
+    ], colWidths=[CW/3]*3)
+    scope_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,0),  C_LIGHT),
+        ("LINEBELOW",     (0,0), (-1,0),  0.5, C_BORDER),
+        ("BOX",           (0,0), (-1,-1), 0.5, C_BORDER),
+        ("VALIGN",        (0,0), (-1,-1), "TOP"),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("LEFTPADDING",   (0,0), (-1,-1), 6),
+    ]))
+    story.append(scope_tbl)
+    story.append(Spacer(1, 3*mm))
+
+    targets = []
+    if fr_target:
+        targets.append(fr_target)
+    if si_target and si_target not in targets:
+        targets.append(si_target)
+    if targets:
+        story.append(Paragraph("Target URLs:", s_label))
+        for _tu in targets:
+            story.append(Paragraph(_tu, s_mono))
+        story.append(Spacer(1, 3*mm))
+
+    # ── 2. Detailed Findings ─────────────────────────────────────────────────
+    if all_findings:
+        story.append(PageBreak())
+        story.append(Paragraph("2. Detailed Findings", s_h2))
+
+        def _detail_section(findings, section_label):
+            if not findings:
+                return
+            story.append(Paragraph(f"{section_label} ({len(findings)})", s_h3))
+            for _risk_level in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+                grp = [_f for _f in findings if (_f.get("risk") or "LOW").upper() == _risk_level]
+                if not grp:
+                    continue
+                _hx = RISK_HEX[_risk_level]
+                story.append(Paragraph(
+                    f'<font color="#{_hx}">{_risk_level.capitalize()} Severity Findings ({len(grp)})</font>',
+                    _ps(f"sr_rl_{_risk_level}", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
+                        spaceBefore=4*mm, spaceAfter=2*mm),
+                ))
+                for _f in grp:
+                    _title    = str(_f.get("title") or "Untitled")
+                    _status   = str(_f.get("status") or "Open")
+                    _date_str = (_f.get("datetime") or "")[:10]
+                    _desc     = str(_f.get("description") or "")
+                    _affected = _f.get("affected") or []
+                    if isinstance(_affected, str):
+                        _affected = [a.strip() for a in re.split(r'[\n,]+', _affected) if a.strip()]
+
+                    block = [
+                        Paragraph(f"<b>{_title}</b>",
+                                  _ps("sr_ft", fontName="Helvetica-Bold", fontSize=10,
+                                      leading=13, spaceBefore=3*mm, spaceAfter=1*mm)),
+                        Paragraph(
+                            f'Risk: <font color="#{_hx}">{_risk_level.capitalize()}</font>'
+                            f'&nbsp;&nbsp;|&nbsp;&nbsp;Status: {_status}'
+                            f'&nbsp;&nbsp;|&nbsp;&nbsp;Promoted: {_date_str}',
+                            s_meta,
+                        ),
+                        HRFlowable(width="100%", thickness=0.3, color=C_BORDER, spaceAfter=2*mm),
+                    ]
+
+                    if _desc:
+                        block.append(Paragraph("Observed Issues",
+                                               _ps("sr_oih", fontName="Helvetica-Bold",
+                                                   fontSize=9, leading=12, spaceAfter=1*mm)))
+                        for _line in _desc.split('\n'):
+                            _line = _line.strip()
+                            if _line:
+                                block.append(Paragraph(_line, s_issue))
+
+                    if _affected:
+                        block.append(Spacer(1, 2*mm))
+                        block.append(Paragraph("Affected Instances",
+                                               _ps("sr_aih", fontName="Helvetica-Bold",
+                                                   fontSize=9, leading=12, spaceAfter=1*mm)))
+                        aff_rows = [[Paragraph("<b>ID</b>", s_base),
+                                     Paragraph("<b>System</b>", s_base)]]
+                        for _idx, _item in enumerate(_affected[:50], 1):
+                            if isinstance(_item, dict):
+                                _sys = _item.get("url") or _item.get("system") or str(_item)
+                            else:
+                                _sys = str(_item)
+                            aff_rows.append([
+                                Paragraph(str(_idx), s_base),
+                                Paragraph(_sys[:250], s_mono),
+                            ])
+                        aff_t = Table(aff_rows, colWidths=[CW*0.07, CW*0.93])
+                        aff_t.setStyle(TableStyle([
+                            ("BACKGROUND",    (0,0), (-1,0),  C_LIGHT),
+                            ("LINEBELOW",     (0,0), (-1,0),  0.5, C_BORDER),
+                            ("LINEBELOW",     (0,1), (-1,-1), 0.3, C_BORDER),
+                            ("VALIGN",        (0,0), (-1,-1), "TOP"),
+                            ("TOPPADDING",    (0,0), (-1,-1), 2),
+                            ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                            ("LEFTPADDING",   (0,0), (-1,-1), 4),
+                        ]))
+                        block.append(aff_t)
+
+                    story.append(KeepTogether(block))
+                    story.append(Spacer(1, 3*mm))
+
+        _detail_section(web_findings, "Web Application Findings")
+        _detail_section(api_findings, "API Findings")
+
+    # ── Build PDF ────────────────────────────────────────────────────────────
+    def _on_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(C_GRAY)
+        canvas.drawString(MARGIN, 10*mm, proj_name)
+        canvas.drawRightString(PAGE_W - MARGIN, 10*mm, f"Page {doc.page}")
+        canvas.restoreState()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=MARGIN, rightMargin=MARGIN,
+        topMargin=18*mm, bottomMargin=15*mm,
+        title=f"Status Report — {proj_name}",
+        author="Crucible",
+    )
+    doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
+    buf.seek(0)
+
+    _client_short = re.sub(r"[^\w\-]", "_", proj.get("client_short", "") or proj.get("name", project_id))
+    _dt_stamp = datetime.now().strftime("%Y%m%d")
+    filename = f"StatusReport_{_client_short}_{_dt_stamp}.pdf"
+    return app.response_class(
+        buf.read(), mimetype="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
