@@ -1750,10 +1750,30 @@ function exportFindingsCSV() {
     if (q) { if (!JSON.stringify(f).toLowerCase().includes(q)) return false; }
     return true;
   });
-  const rows = [['Risk','Tool','Finding','Host','Port','CVEs','Sources','Evidence Files']];
+  // Sort: risk highest→lowest, then title A→Z
+  filtered.sort((a, b) => {
+    const rA = RISK_ORDER.indexOf((a.risk || 'INFO').toUpperCase());
+    const rB = RISK_ORDER.indexOf((b.risk || 'INFO').toUpperCase());
+    if (rA !== rB) return rA - rB;
+    return (a.title || a.detail || '').toLowerCase().localeCompare((b.title || b.detail || '').toLowerCase());
+  });
+  const rows = [['Risk','Tool','Finding','Host','Port','HTTP Code','OWASP','CVEs','Sources','Description','Affected','Remediation','Evidence Files']];
   filtered.forEach(f => {
-    rows.push([f.risk||'INFO', f._tool||'', f.title||f.detail||'',
-               f.hostname||f.url||f.ip||'', f.port||'', f.cves||'', f.sources||'', f.output_file||'']);
+    rows.push([
+      f.risk || 'INFO',
+      f._tool || '',
+      f.title || f.detail || '',
+      f.hostname || f.url || f.ip || '',
+      f.port || '',
+      f.http_code || '',
+      f.owasp || '',
+      f.cves || '',
+      f.sources || '',
+      f.description || f.detail || '',
+      f.affected || '',
+      f.remediation || '',
+      f.output_file || '',
+    ]);
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
