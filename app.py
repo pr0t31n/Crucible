@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.7.3"
+VERSION = "1.8.0"
 
 import io
 import socket
@@ -175,6 +175,11 @@ _err_buffers: dict[str, list] = {}
 _status_cache: dict[str, dict] = {}
 
 _projects_lock = threading.Lock()
+
+# Job queue — execute-project requests that arrive while a scan is running
+_job_queue: list = []
+_queue_lock = threading.Lock()
+_QUEUE_FILE = CRUCIBLE_DIR / "execute_queue.json"
 
 # ---------------------------------------------------------------------------
 # Default settings templates
@@ -3295,6 +3300,7 @@ def _wait_proc(project_id: str, tool: str, proc: subprocess.Popen) -> None:
     _update_project_field(project_id, **{f"{tool}_status": _final_status})
     _answer_queues.pop(_pkey(project_id, tool), None)
     _pending_prompts.pop(_pkey(project_id, tool), None)
+    threading.Thread(target=_dequeue_next, daemon=True).start()
 
     label = "Fracture" if tool == "fr" else "Siphon"
     _emit_line(project_id, tool,
@@ -3467,9 +3473,237 @@ def _ingest(project_id: str, fp: Path, tool: str, scope: str, seen: set) -> None
 
 
 # ---------------------------------------------------------------------------
+# Job queue helpers
+# ---------------------------------------------------------------------------
+
+def _load_execute_queue() -> None:
+    global _job_queue
+    try:
+        if _QUEUE_FILE.exists():
+            _job_queue = json.loads(_QUEUE_FILE.read_text())
+    except Exception:
+        _job_queue = []
+
+
+def _save_execute_queue() -> None:
+    try:
+        _QUEUE_FILE.write_text(json.dumps(_job_queue, indent=2))
+    except Exception:
+        pass
+
+
+def _is_any_running() -> bool:
+    for procs in _procs.values():
+        if procs and (procs.get("fr") or procs.get("si")):
+            return True
+    return False
+
+
+def _launch_tool_bg(project_id: str, tool: str) -> None:
+    """Launch fr or si for a project without requiring a SocketIO context."""
+    proj = _get_project(project_id)
+    if not proj:
+        return
+    if (_procs.get(project_id) or {}).get(tool):
+        return
+    settings_key = "fr_settings_file" if tool == "fr" else "si_settings_file"
+    script = FRACTURE_SCRIPT if tool == "fr" else SIPHON_SCRIPT
+    settings_path = proj.get(settings_key, "")
+    if not settings_path or not Path(settings_path).exists():
+        logger.warning(f"[queue] {tool} settings not found for {project_id}")
+        return
+    try:
+        cfg = json.loads(Path(settings_path).read_text())
+        proj_name = cfg.get("scan", {}).get("project", f"{tool}_output")
+    except Exception:
+        proj_name = f"{tool}_output"
+    cwd = proj["project_dir"]
+    Path(cwd).mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["CRUCIBLE_MANAGED"] = "1"
+    env["PYTHONUNBUFFERED"] = "1"
+    _tp = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+    _cp = env.get("PATH", "")
+    _extra = ":".join(d for d in _tp if d not in _cp.split(":"))
+    if _extra:
+        env["PATH"] = _extra + (":" + _cp if _cp else "")
+    cmd = [sys.executable, str(script), "--settings", settings_path]
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE, text=True, bufsize=1, cwd=cwd, env=env,
+        )
+    except Exception as exc:
+        logger.error(f"[queue] Failed to launch {tool} for {project_id}: {exc}")
+        return
+    _init_project_state(project_id)
+    _procs[project_id][tool] = proc
+    _tool_status[project_id][tool] = "running"
+    _answer_queues[_pkey(project_id, tool)] = queue.Queue()
+    label = "Fracture" if tool == "fr" else "Siphon"
+    _update_project_field(project_id, **{
+        f"{tool}_status": "running",
+        f"{tool}_last_run": datetime.now(timezone.utc).isoformat(),
+        f"{tool}_proj_name": proj_name,
+    })
+    socketio.emit("tool_status", _tool_status[project_id], room=_room(project_id))
+    _emit_line(project_id, tool,
+        f"[Crucible] {label} started (queued) — PID {proc.pid}", "system")
+    threading.Thread(target=_reader,
+        args=(project_id, tool, proc.stdout, "stdout", proc), daemon=True).start()
+    threading.Thread(target=_reader,
+        args=(project_id, tool, proc.stderr, "stderr", proc), daemon=True).start()
+    threading.Thread(target=_wait_proc,
+        args=(project_id, tool, proc), daemon=True).start()
+    _ensure_watcher(project_id, proj)
+
+
+def _execute_queued_job(job: dict) -> None:
+    project_id = job.get("project_id", "")
+    tools = job.get("tools", ["fr", "si"])
+    if not project_id:
+        return
+    for tool in tools:
+        _launch_tool_bg(project_id, tool)
+
+
+def _dequeue_next() -> None:
+    with _queue_lock:
+        if not _job_queue or _is_any_running():
+            return
+        job = _job_queue.pop(0)
+        _save_execute_queue()
+    threading.Thread(target=_execute_queued_job, args=(job,), daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# API: Project template + remote execute
+# ---------------------------------------------------------------------------
+
+@app.route("/api/project-template")
+def api_project_template():
+    return jsonify({
+        "tool": "crucible",
+        "description": "Web application and API assessment platform",
+        "fields": {
+            "engagement_name":   {"type": "string",  "required": True,  "label": "Engagement Name"},
+            "client_name":       {"type": "string",  "required": True,  "label": "Client Name"},
+            "client_short":      {"type": "string",  "required": False, "label": "Client Short Name"},
+            "scope":             {"type": "select",  "required": False, "label": "Scope",
+                                  "options": ["webapp", "api", "both"], "default": "both"},
+            "start_date":        {"type": "date",    "required": False, "label": "Start Date"},
+            "include_fr":        {"type": "boolean", "required": False, "label": "Include Fracture", "default": True},
+            "include_si":        {"type": "boolean", "required": False, "label": "Include Siphon",   "default": True},
+            "fr_target_urls":    {"type": "text",    "required": False, "label": "Fracture Target URL(s)", "hint": "One URL per line"},
+            "fr_auth_method":    {"type": "select",  "required": False, "label": "Fracture Auth Method",
+                                  "options": ["none", "basic", "form", "token", "api_key", "oauth2"], "default": "none"},
+            "fr_auth_username":  {"type": "string",  "required": False, "label": "Fracture Username"},
+            "fr_auth_password":  {"type": "string",  "required": False, "label": "Fracture Password", "sensitive": True},
+            "fr_auth_token":     {"type": "string",  "required": False, "label": "Fracture Token",    "sensitive": True},
+            "fr_auth_login_url": {"type": "string",  "required": False, "label": "Fracture Login URL"},
+            "si_target_urls":    {"type": "text",    "required": False, "label": "Siphon Target URL(s)", "hint": "One URL per line"},
+            "si_api_spec_url":   {"type": "string",  "required": False, "label": "Siphon API Spec URL"},
+            "si_auth_method":    {"type": "select",  "required": False, "label": "Siphon Auth Method",
+                                  "options": ["none", "basic", "token", "api_key", "oauth2"], "default": "none"},
+            "si_auth_username":  {"type": "string",  "required": False, "label": "Siphon Username"},
+            "si_auth_password":  {"type": "string",  "required": False, "label": "Siphon Password",  "sensitive": True},
+            "si_auth_token":     {"type": "string",  "required": False, "label": "Siphon Token",     "sensitive": True},
+        },
+    })
+
+
+@app.route("/api/execute-project", methods=["POST"])
+def api_execute_project():
+    body = request.get_json(force=True, silent=True) or {}
+    execute = body.get("execute", True)
+
+    project_id = str(uuid.uuid4())
+    cfg_dir    = PROJECTS_DIR / project_id
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+
+    client_short = re.sub(r'[^\w-]', '_',
+        (body.get("client_short") or "client").strip().lower())
+    scope_str = {"webapp": "webapp", "api": "api", "both": "both"}.get(
+        body.get("scope", "both").lower(), "both")
+    year = _extract_year(body.get("start_date", ""))
+
+    fr_output_dir = _build_project_dir(client_short, year, "fracture")
+    si_output_dir = _build_project_dir(client_short, year, "siphon")
+
+    fr = _deepcopy_template(FR_DEFAULTS)
+    for k in fr["engagement"]:
+        fr["engagement"][k] = body.get(k, "")
+    fr["scan"]["project"] = str(fr_output_dir)
+    fr_url_list = _parse_url_list(body.get("fr_target_urls", "") or body.get("fr_target_url", ""))
+    fr["scan"]["target_url"]  = fr_url_list[0] if fr_url_list else ""
+    fr["scan"]["target_urls"] = fr_url_list
+    if body.get("fr_auth_method") and body["fr_auth_method"] != "none":
+        fr["scan"]["auth"] = _build_fr_auth_from_body(body)
+
+    si = _deepcopy_template(SI_DEFAULTS)
+    for k in si["engagement"]:
+        si["engagement"][k] = body.get(k, "")
+    si["scan"]["project"] = str(si_output_dir)
+    si_url_list = _parse_url_list(body.get("si_target_urls", "") or body.get("si_target_url", ""))
+    si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
+    si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
+    si["scan"]["api_spec_url"]  = body.get("si_api_spec_url", "")
+    si["scan"]["auth"] = _build_si_auth_from_body(body)
+
+    fr_path = fr_output_dir / "fr_settings.json"
+    si_path = si_output_dir / "si_settings.json"
+    fr_path.write_text(json.dumps(fr, indent=2))
+    si_path.write_text(json.dumps(si, indent=2))
+
+    tools = []
+    if body.get("include_fr", True):
+        tools.append("fr")
+    if body.get("include_si", True):
+        tools.append("si")
+    if not tools:
+        tools = ["fr", "si"]
+
+    proj = {
+        "name":              body.get("engagement_name") or f"Engagement {project_id[:8]}",
+        "client_name":       body.get("client_name", ""),
+        "client_short":      client_short,
+        "scope":             scope_str,
+        "created":           datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "project_dir":       str(fr_output_dir),
+        "fr_settings_file":  str(fr_path),
+        "si_settings_file":  str(si_path),
+        "fracture_output_dir": str(fr_output_dir),
+        "siphon_output_dir":   str(si_output_dir),
+        "tools":             tools,
+        "fr_status":         "idle",
+        "si_status":         "idle",
+        "fr_last_run":       None,
+        "si_last_run":       None,
+    }
+    data = _load_projects()
+    data["projects"][project_id] = proj
+    _save_projects(data)
+
+    if not execute:
+        return jsonify({"ok": True, "project_id": project_id, "queued": False, "started": False})
+
+    job = {"project_id": project_id, "tools": tools}
+    with _queue_lock:
+        if _is_any_running():
+            position = len(_job_queue) + 1
+            _job_queue.append(job)
+            _save_execute_queue()
+            return jsonify({"ok": True, "project_id": project_id, "queued": True, "position": position})
+
+    threading.Thread(target=_execute_queued_job, args=(job,), daemon=True).start()
+    return jsonify({"ok": True, "project_id": project_id, "queued": False, "started": True})
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    _load_execute_queue()
     print("=" * 54)
     print(f" Crucible — Web & API Assessment Platform  v{VERSION}")
     print(" https://0.0.0.0:5500")
