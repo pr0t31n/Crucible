@@ -6,9 +6,10 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.5.34"
+VERSION = "1.5.35"
 
 import io
+import socket
 import json
 import os
 import platform
@@ -911,7 +912,58 @@ def nexus_status():
         for procs in _procs.values()
         for p in procs.values()
     )
-    return jsonify({"app": "crucible", "scanning": active, "version": VERSION})
+    return jsonify({"app": "crucible", "tool": "crucible", "hostname": socket.gethostname(), "scanning": active, "version": VERSION})
+
+# ---------------------------------------------------------------------------
+# Arbiter integration — project list endpoint
+# ---------------------------------------------------------------------------
+@app.route("/api/arbiter-projects")
+@_auth.login_required
+def api_arbiter_projects():
+    """Return a normalized project list for Arbiter discovery."""
+    data = _load_projects()
+    out = []
+    for pid, proj in data.get("projects", {}).items():
+        scope = proj.get("scope", "")
+        # Determine which tools are active for this project
+        tools = []
+        if proj.get("fr_settings_file") or proj.get("fracture_output_dir"):
+            tools.append("fracture")
+        if proj.get("si_settings_file") or proj.get("siphon_output_dir"):
+            tools.append("siphon")
+        if not tools:
+            if scope in ("fracture", "both"):
+                tools.append("fracture")
+            if scope in ("siphon", "both"):
+                tools.append("siphon")
+            if not tools:
+                tools = ["fracture"]
+        # Count findings on disk
+        finding_count = 0
+        for _tool_name, _dir_key in (("fracture", "fracture_output_dir"), ("siphon", "siphon_output_dir")):
+            d = proj.get(_dir_key, "")
+            if d:
+                fp = Path(d) / "findings.json"
+                if not fp.exists():
+                    fp = Path(proj.get("project_dir", "")) / _dir_key / "findings.json"
+                try:
+                    finding_count += len(json.loads(fp.read_text())) if fp.exists() else 0
+                except Exception:
+                    pass
+        out.append({
+            "id":            pid,
+            "name":          proj.get("name", pid),
+            "client_name":   proj.get("client_name") or proj.get("client_short", ""),
+            "tools":         tools,
+            "scope":         scope,
+            "created":       proj.get("created", ""),
+            "project_dir":   proj.get("project_dir", ""),
+            "fracture_dir":  proj.get("fracture_output_dir", ""),
+            "siphon_dir":    proj.get("siphon_output_dir", ""),
+            "finding_count": finding_count,
+            "has_findings":  finding_count > 0,
+        })
+    return jsonify(out)
 
 # ---------------------------------------------------------------------------
 # HTTP routes
