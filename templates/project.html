@@ -114,6 +114,7 @@
       <button class="btn btn-sm btn-ghost fp-toggle-btn" id="showFPBtn" onclick="toggleShowFP()" title="Show / hide false positives">FP</button>
       <button class="btn btn-sm btn-ghost" onclick="reloadFindings()" title="Reload findings from server">&#x21BB;</button>
       <button class="btn btn-sm btn-ghost" onclick="exportFindingsCSV()" title="Export findings as CSV">&#x2193; CSV</button>
+      <button class="btn btn-sm btn-ghost" onclick="exportFindingsJSON()" title="Export findings as JSON">&#x2193; JSON</button>
     </div>
     <div class="risk-counts-bar" id="riskCountsBar">
       <button class="risk-count-pill risk-critical" id="rcCritical" onclick="setRiskFilter('CRITICAL')" title="Filter Critical">0 Critical</button>
@@ -779,8 +780,9 @@
 <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
 <script>
 'use strict';
-const PROJECT_ID = "{{ project_id }}";
-const socket     = io();
+const PROJECT_ID  = "{{ project_id }}";
+const PROJECT_DIR = "{{ project.project_dir or '' }}";
+const socket      = io();
 
 // State
 let frAutoScroll = true;
@@ -1738,8 +1740,31 @@ function loadEvidenceFile(idx, btn) {
   }
 }
 
-function exportFindingsCSV() {
-  // Always export active (non-suppressed) findings only, regardless of FP view mode
+/* ── Export helpers ─────────────────────────────────────── */
+function _exportRelPath(absPath) {
+  if (!absPath || !PROJECT_DIR) return absPath;
+  const dir = PROJECT_DIR.endsWith('/') ? PROJECT_DIR : PROJECT_DIR + '/';
+  return absPath.startsWith(dir) ? absPath.slice(dir.length) : absPath;
+}
+
+function _exportEvidenceField(outputFile) {
+  if (!outputFile) return '';
+  try {
+    const parsed = JSON.parse(outputFile);
+    if (Array.isArray(parsed)) {
+      return parsed.map(e => {
+        const parts = [];
+        if (e.url)  parts.push(e.url);
+        if (e.req)  parts.push(_exportRelPath(e.req));
+        if (e.resp) parts.push(_exportRelPath(e.resp));
+        return parts.join(' | ');
+      }).join('; ');
+    }
+  } catch(_) {}
+  return outputFile.split(',').map(p => _exportRelPath(p.trim())).filter(Boolean).join('; ');
+}
+
+function _exportGetFiltered() {
   const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
   const risk = document.getElementById('filterRisk').value;
   const tool = document.getElementById('filterTool').value;
@@ -1750,17 +1775,27 @@ function exportFindingsCSV() {
     if (q) { if (!JSON.stringify(f).toLowerCase().includes(q)) return false; }
     return true;
   });
-  // Sort: risk highest→lowest, then title A→Z
   filtered.sort((a, b) => {
     const rA = RISK_ORDER.indexOf((a.risk || 'INFO').toUpperCase());
     const rB = RISK_ORDER.indexOf((b.risk || 'INFO').toUpperCase());
     if (rA !== rB) return rA - rB;
     return (a.title || a.detail || '').toLowerCase().localeCompare((b.title || b.detail || '').toLowerCase());
   });
-  const rows = [['Risk','Tool','Finding','Host','Port','HTTP Code','OWASP','CVEs','Sources','Description','Affected','Remediation','Evidence Files']];
+  return filtered;
+}
+
+function _csvCell(val) {
+  // Replace newlines with pipe-separator so Excel doesn't split into multiple rows
+  return String(val == null ? '' : val).replace(/\r\n|\r|\n/g, ' | ').replace(/"/g, '""');
+}
+
+function exportFindingsCSV() {
+  const filtered = _exportGetFiltered();
+  const rows = [['Risk','DateTime','Tool','Finding','Host','Port','HTTP Code','OWASP','CVEs','Sources','Description','Affected','Remediation','Evidence Files']];
   filtered.forEach(f => {
     rows.push([
       f.risk || 'INFO',
+      f.datetime || '',
       f._tool || '',
       f.title || f.detail || '',
       f.hostname || f.url || f.ip || '',
@@ -1772,13 +1807,46 @@ function exportFindingsCSV() {
       f.description || f.detail || '',
       f.affected || '',
       f.remediation || '',
-      f.output_file || '',
+      _exportEvidenceField(f.output_file),
     ]);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(c => `"${_csvCell(c)}"`).join(',')).join('\n');
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'}));
   a.download = `crucible_findings_${PROJECT_ID.slice(0,8)}.csv`;
+  a.click();
+}
+
+function exportFindingsJSON() {
+  const filtered = _exportGetFiltered();
+  const output = filtered.map(f => ({
+    risk:        f.risk || 'INFO',
+    datetime:    f.datetime || '',
+    tool:        f._tool || '',
+    title:       f.title || f.detail || '',
+    host:        f.hostname || f.url || f.ip || '',
+    port:        f.port || '',
+    http_code:   f.http_code || '',
+    owasp:       f.owasp || '',
+    owasp_url:   f.owasp_url || '',
+    nist:        f.nist || '',
+    cves:        f.cves || '',
+    sources:     f.sources || '',
+    description: f.description || f.detail || '',
+    affected:    f.affected || '',
+    remediation: f.remediation || '',
+    evidence:    _exportEvidenceField(f.output_file),
+    output:      f.output || '',
+  }));
+  const json = JSON.stringify({
+    project_id:     PROJECT_ID,
+    exported_at:    new Date().toISOString(),
+    total_findings: output.length,
+    findings:       output,
+  }, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], {type:'application/json'}));
+  a.download = `crucible_findings_${PROJECT_ID.slice(0,8)}.json`;
   a.click();
 }
 
