@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.5.36"
+VERSION = "1.5.37"
 
 import io
 import socket
@@ -924,19 +924,28 @@ def api_arbiter_projects():
     out = []
     for pid, proj in data.get("projects", {}).items():
         scope = proj.get("scope", "")
-        # Determine which tools are active for this project
-        tools = []
-        if proj.get("fr_settings_file") or proj.get("fracture_output_dir"):
-            tools.append("fracture")
-        if proj.get("si_settings_file") or proj.get("siphon_output_dir"):
-            tools.append("siphon")
-        if not tools:
-            if scope in ("fracture", "both"):
-                tools.append("fracture")
-            if scope in ("siphon", "both"):
-                tools.append("siphon")
-            if not tools:
-                tools = ["fracture"]
+        # Determine which tools are in scope — scope field is authoritative
+        if scope == "both":
+            tools = ["fracture", "siphon"]
+        elif scope in ("api", "siphon"):
+            tools = ["siphon"]
+        else:
+            # "webapp", "fracture", legacy, or unknown → fracture only
+            tools = ["fracture"]
+        # Determine project status from per-tool status fields
+        fr_status = proj.get("fr_status", "idle")
+        si_status = proj.get("si_status", "idle")
+        in_scope_statuses = []
+        if "fracture" in tools:
+            in_scope_statuses.append(fr_status)
+        if "siphon" in tools:
+            in_scope_statuses.append(si_status)
+        if in_scope_statuses and all(s in ("complete", "done") for s in in_scope_statuses):
+            proj_status = "complete"
+        elif any(s == "running" for s in in_scope_statuses):
+            proj_status = "running"
+        else:
+            proj_status = "idle"
         # Count findings on disk
         finding_count = 0
         for _tool_name, _dir_key in (("fracture", "fracture_output_dir"), ("siphon", "siphon_output_dir")):
@@ -955,6 +964,8 @@ def api_arbiter_projects():
             "client_name":   proj.get("client_name") or proj.get("client_short", ""),
             "tools":         tools,
             "scope":         scope,
+            "status":        proj_status,
+            "completed":     proj_status == "complete",
             "created":       proj.get("created", ""),
             "project_dir":   proj.get("project_dir", ""),
             "fracture_dir":  proj.get("fracture_output_dir", ""),
