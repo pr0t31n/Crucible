@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-palette="foundry" data-mode="dark">
+<html lang="en" data-palette="resume" data-mode="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,9 +18,9 @@
         var m = localStorage.getItem('crucible-mode');
         var html = document.documentElement;
         if (p && PALETTES.indexOf(p) !== -1) html.setAttribute('data-palette', p);
-        else html.setAttribute('data-palette', 'foundry');
+        else html.setAttribute('data-palette', 'resume');
         if (m === 'light' || m === 'dark') html.setAttribute('data-mode', m);
-        else html.setAttribute('data-mode', 'dark');
+        else html.setAttribute('data-mode', 'light');
       } catch(e) {}
     })();
   </script>
