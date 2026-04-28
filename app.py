@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.5"
+VERSION = "1.8.6"
 
 import io
 import socket
@@ -2972,6 +2972,8 @@ def on_fr_start(data):
     cmd = [sys.executable, str(FRACTURE_SCRIPT),
            "--settings", fr_settings_path]
 
+    resume = bool(data.get("resume", False))
+
     try:
         fr_cfg = json.loads(Path(fr_settings_path).read_text())
         fr_proj_name = fr_cfg.get("scan", {}).get("project", "fracture_output")
@@ -2982,6 +2984,14 @@ def on_fr_start(data):
 
     cwd = proj["project_dir"]
     Path(cwd).mkdir(parents=True, exist_ok=True)
+
+    if not resume:
+        try:
+            _cp = Path(cwd) / fr_proj_name / "checkpoint.json"
+            if _cp.exists():
+                _cp.unlink()
+        except Exception:
+            pass
 
     env = dict(os.environ)
     env["CRUCIBLE_MANAGED"] = "1"
@@ -3059,6 +3069,8 @@ def on_si_start(data):
     cmd = [sys.executable, str(SIPHON_SCRIPT),
            "--settings", si_settings_path]
 
+    resume = bool(data.get("resume", False))
+
     try:
         si_cfg = json.loads(Path(si_settings_path).read_text())
         si_proj_name = si_cfg.get("scan", {}).get("project", "siphon_output")
@@ -3067,6 +3079,14 @@ def on_si_start(data):
 
     cwd = proj["project_dir"]
     Path(cwd).mkdir(parents=True, exist_ok=True)
+
+    if not resume:
+        try:
+            _cp = Path(cwd) / si_proj_name / "checkpoint.json"
+            if _cp.exists():
+                _cp.unlink()
+        except Exception:
+            pass
 
     env = dict(os.environ)
     env["CRUCIBLE_MANAGED"] = "1"

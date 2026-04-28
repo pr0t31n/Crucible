@@ -42,8 +42,9 @@
             <span class="status-pill" id="fr-status-pill">idle</span>
           </div>
           <div class="console-header-right">
-            <button class="btn btn-sm btn-primary"  id="fr-start-btn" onclick="startTool('fr')">&#9654; Start</button>
-            <button class="btn btn-sm btn-danger"   id="fr-kill-btn"  onclick="killTool('fr')" disabled>&#9632; Kill</button>
+            <button class="btn btn-sm btn-primary"  id="fr-start-btn"  onclick="startTool('fr')">&#9654; Start</button>
+            <button class="btn btn-sm btn-secondary" id="fr-resume-btn" onclick="resumeTool('fr')" title="Resume from checkpoint">&#x27A6; Resume</button>
+            <button class="btn btn-sm btn-danger"   id="fr-kill-btn"   onclick="killTool('fr')" disabled>&#9632; Kill</button>
             <button class="btn btn-sm btn-ghost"    onclick="clearConsole('fr')" title="Clear">&#x2715;</button>
             <button class="btn btn-sm btn-ghost"    id="fr-scroll-btn" onclick="toggleScroll('fr')" title="Auto-scroll">&#x2193;</button>
           </div>
@@ -65,8 +66,9 @@
             <span class="status-pill" id="si-status-pill">idle</span>
           </div>
           <div class="console-header-right">
-            <button class="btn btn-sm btn-primary"  id="si-start-btn" onclick="startTool('si')">&#9654; Start</button>
-            <button class="btn btn-sm btn-danger"   id="si-kill-btn"  onclick="killTool('si')" disabled>&#9632; Kill</button>
+            <button class="btn btn-sm btn-primary"  id="si-start-btn"  onclick="startTool('si')">&#9654; Start</button>
+            <button class="btn btn-sm btn-secondary" id="si-resume-btn" onclick="resumeTool('si')" title="Resume from checkpoint">&#x27A6; Resume</button>
+            <button class="btn btn-sm btn-danger"   id="si-kill-btn"   onclick="killTool('si')" disabled>&#9632; Kill</button>
             <button class="btn btn-sm btn-ghost"    onclick="clearConsole('si')" title="Clear">&#x2715;</button>
             <button class="btn btn-sm btn-ghost"    id="si-scroll-btn" onclick="toggleScroll('si')" title="Auto-scroll">&#x2193;</button>
           </div>
@@ -853,10 +855,12 @@ function setStatus(tool, status) {
     el.textContent = status;
     el.className   = `status-pill status-${status}`;
   });
-  const start = document.getElementById(`${tool}-start-btn`);
-  const kill  = document.getElementById(`${tool}-kill-btn`);
-  if (start) start.disabled = (status === 'running');
-  if (kill)  kill.disabled  = (status !== 'running');
+  const start  = document.getElementById(`${tool}-start-btn`);
+  const resume = document.getElementById(`${tool}-resume-btn`);
+  const kill   = document.getElementById(`${tool}-kill-btn`);
+  if (start)  start.disabled  = (status === 'running');
+  if (resume) resume.disabled = (status === 'running');
+  if (kill)   kill.disabled   = (status !== 'running');
   const compTag = document.getElementById(`${tool}-comp-tag`);
   if (compTag) {
     if (status === 'running')  compTag.textContent = 'running';
@@ -1083,12 +1087,16 @@ function toggleScroll(tool) {
 }
 
 // ── Tool control ──────────────────────────────────────────
-function startTool(tool) {
+function startTool(tool, resume) {
   if (!socket.connected) {
     showToast('Not connected to server — try refreshing the page.', 'err');
     return;
   }
-  socket.emit(`${tool}_start`, {project_id: PROJECT_ID});
+  socket.emit(`${tool}_start`, {project_id: PROJECT_ID, resume: !!resume});
+}
+
+function resumeTool(tool) {
+  startTool(tool, true);
 }
 
 function killTool(tool) {
