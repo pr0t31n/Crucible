@@ -1036,10 +1036,16 @@ socket.on('crucible_prompt', data => {
 });
 
 socket.on('prompt_resolved', data => {
-  const tool = data.tool;
+  const tool     = data.tool;
+  const promptId = data.prompt_id || '';
   const reopenBtn = document.getElementById(`${tool}-reopen-btn`);
-  if (reopenBtn) reopenBtn.classList.add('hidden');
-  if (_promptTool === tool) closePromptModal();
+  // Only close/hide if this resolved event is for the currently open prompt.
+  // A stale prompt_resolved (e.g. from a prior answer) must not close a newer
+  // prompt that is already displaying.
+  if (!promptId || promptId === _promptId) {
+    if (reopenBtn) reopenBtn.classList.add('hidden');
+    if (_promptTool === tool) closePromptModal();
+  }
 });
 
 // ── Console functions ─────────────────────────────────────

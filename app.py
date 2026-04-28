@@ -2904,8 +2904,8 @@ def on_crucible_answer(data):
                             pending.get("question", ""), re.I)))
     echo = "[password entered]" if is_pw else f"< {answer}"
     _emit_line(project_id, tool, f"[Crucible] Prompt response: {echo}", "system")
-    _pending_prompts.pop(pkey, None)
-    socketio.emit("prompt_resolved", {"tool": tool}, room=_room(project_id))
+    # NOTE: do NOT emit prompt_resolved here — the _reader thread emits it
+    # after _write_to_stdin() completes, ensuring no race with the next prompt.
 
 
 # ---------------------------------------------------------------------------
@@ -3189,7 +3189,11 @@ def _reader(project_id: str, tool: str, stream,
                 _emit_line(project_id, tool,
                            "[Crucible] No answer queue for prompt — subprocess may be stuck",
                            "system")
+            _prompt_id = payload.get("id", "")
             _pending_prompts.pop(pkey, None)
+            socketio.emit("prompt_resolved",
+                {"tool": tool, "prompt_id": _prompt_id},
+                room=_room(project_id))
             return
 
         # Phase status
