@@ -16,6 +16,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import urllib.request
 
 # ---------------------------------------------------------------------------
 # ANSI colours
@@ -171,11 +172,148 @@ PIP_PACKAGES = [
     "reportlab>=4.0.0",
 ]
 
+OFFLINE_BUNDLE_URLS = {
+    "flask":          "https://raw.githubusercontent.com/pr0t31n/OfflineInstallers/main/flask_offline_kali.tar.gz",
+    "flask-socketio": "https://raw.githubusercontent.com/pr0t31n/OfflineInstallers/main/flask_socketio_offline_kali.tar.gz",
+    "eventlet":       "https://raw.githubusercontent.com/pr0t31n/OfflineInstallers/main/eventlet_offline_kali.tar.gz",
+    "werkzeug":       "https://raw.githubusercontent.com/pr0t31n/OfflineInstallers/main/werkzeug_offline_kali.tar.gz",
+    "openpyxl":       "https://raw.githubusercontent.com/pr0t31n/OfflineInstallers/main/openpyxl_offline_kali.tar.gz",
+    "reportlab":      "https://raw.githubusercontent.com/pr0t31n/OfflineInstallers/main/reportlab_offline_kali.tar.gz",
+}
+
+_OFFLINE_REPO_DIR = "/opt/OfflineInstallers"
+_OFFLINE_REPO_URL = "https://github.com/pr0t31n/OfflineInstallers"
+
+
+def _install_from_local_repo(pkg_name: str, tarball: str) -> bool:
+    """Copy/reassemble a bundle from the already-cloned OfflineInstallers repo.
+    Returns True if tarball was written successfully."""
+    _local_tar = os.path.join(_OFFLINE_REPO_DIR, f"{pkg_name}_offline_kali.tar.gz")
+    if os.path.isfile(_local_tar):
+        shutil.copy2(_local_tar, tarball)
+        return True
+    _repo_parts = sorted([
+        os.path.join(_OFFLINE_REPO_DIR, f)
+        for f in os.listdir(_OFFLINE_REPO_DIR)
+        if f.startswith(f"{pkg_name}_offline_kali.part.")
+    ])
+    if _repo_parts:
+        info(f"  Reassembling {len(_repo_parts)} part(s) from cloned repo ...")
+        with open(tarball, "wb") as _out:
+            for _p in _repo_parts:
+                with open(_p, "rb") as _f:
+                    _out.write(_f.read())
+        return True
+    warn(f"{pkg_name} not found in cloned OfflineInstallers repo")
+    return False
+
+
+def _install_from_bundle(pkg_name: str, url: str) -> bool:
+    """Download a pre-built offline bundle from GitHub and run install_offline.sh.
+    Handles both single .tar.gz files and split .part.* files.
+    If the OfflineInstallers repo is already cloned at /opt/OfflineInstallers,
+    installs directly from there without any network downloads."""
+    import tempfile
+    _tmp = tempfile.mkdtemp(prefix=f"crucible_bundle_{pkg_name}_")
+    _tarball = os.path.join(_tmp, f"{pkg_name}_offline_kali.tar.gz")
+    _downloaded = False
+
+    try:
+        # Fast path: OfflineInstallers repo already cloned — skip all network attempts
+        if os.path.isdir(os.path.join(_OFFLINE_REPO_DIR, ".git")):
+            info(f"OfflineInstallers repo already cloned — installing {pkg_name} directly ...")
+            _downloaded = _install_from_local_repo(pkg_name, _tarball)
+        else:
+            info(f"Downloading offline bundle for {pkg_name} ...")
+            try:
+                urllib.request.urlretrieve(url, _tarball)
+                _downloaded = True
+            except Exception:
+                # Single file unavailable — try split parts (.part.aa, .part.ab, ...)
+                _base = url.rsplit("/", 1)[0]
+                _parts = []
+                _found_gap = False
+                for _a in "abcdefghijklmnopqrstuvwxyz":
+                    if _found_gap:
+                        break
+                    for _b in "abcdefghijklmnopqrstuvwxyz":
+                        _sfx = _a + _b
+                        _pu = f"{_base}/{pkg_name}_offline_kali.part.{_sfx}"
+                        _pp = os.path.join(_tmp, f"part.{_sfx}")
+                        try:
+                            urllib.request.urlretrieve(_pu, _pp)
+                            _parts.append(_pp)
+                        except Exception:
+                            _found_gap = True
+                            break
+                if _parts:
+                    info(f"  Reassembling {len(_parts)} part(s) ...")
+                    with open(_tarball, "wb") as _out:
+                        for _p in sorted(_parts):
+                            with open(_p, "rb") as _f:
+                                _out.write(_f.read())
+                    _downloaded = True
+
+            if not _downloaded:
+                # Final fallback: clone OfflineInstallers repo to /opt/ and install from there
+                _git = shutil.which("git")
+                if _git:
+                    info("githubusercontent.com inaccessible — cloning OfflineInstallers to /opt/ ...")
+                    if os.path.isdir(os.path.join(_OFFLINE_REPO_DIR, ".git")):
+                        subprocess.run([_git, "-C", _OFFLINE_REPO_DIR, "pull", "--ff-only"],
+                                       check=False)
+                    else:
+                        subprocess.run([_git, "clone", "--depth=1", _OFFLINE_REPO_URL,
+                                        _OFFLINE_REPO_DIR], check=False)
+                    if os.path.isdir(_OFFLINE_REPO_DIR):
+                        _downloaded = _install_from_local_repo(pkg_name, _tarball)
+
+        if not _downloaded:
+            warn(f"Could not download offline bundle for {pkg_name}")
+            return False
+
+        if subprocess.run(["tar", "xzf", _tarball, "-C", _tmp],
+                          check=False).returncode != 0:
+            warn(f"Failed to extract offline bundle for {pkg_name}")
+            return False
+
+        _install_sh = None
+        for _root, _dirs, _files in os.walk(_tmp):
+            if "install_offline.sh" in _files:
+                _install_sh = os.path.join(_root, "install_offline.sh")
+                break
+
+        if not _install_sh:
+            warn(f"install_offline.sh not found in {pkg_name} bundle")
+            return False
+
+        os.chmod(_install_sh, 0o755)
+        _ok = subprocess.run(["bash", _install_sh], check=False).returncode == 0
+        if _ok:
+            info(f"{pkg_name} installed from offline bundle")
+        else:
+            warn(f"Offline bundle install failed for {pkg_name}")
+        return _ok
+
+    finally:
+        shutil.rmtree(_tmp, ignore_errors=True)
+
+
 def install_pip():
     banner("Phase: pip packages")
     info("Installing Crucible Python dependencies ...")
-    run([sys.executable, "-m", "pip", "install", "--break-system-packages"] + PIP_PACKAGES,
-        check=False)
+    for _pkg in PIP_PACKAGES:
+        _r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--break-system-packages", _pkg],
+            check=False,
+        )
+        if _r.returncode != 0:
+            _name = _pkg.split(">=")[0].split("==")[0].split("[")[0].strip()
+            if _name in OFFLINE_BUNDLE_URLS:
+                warn(f"pip install failed for {_name} — trying offline bundle ...")
+                _install_from_bundle(_name, OFFLINE_BUNDLE_URLS[_name])
+            else:
+                warn(f"pip install failed for {_name}")
 
 # ---------------------------------------------------------------------------
 # Service files
