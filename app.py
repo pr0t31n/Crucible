@@ -2931,6 +2931,8 @@ def on_fr_start(data):
     try:
         fr_cfg = json.loads(Path(fr_settings_path).read_text())
         fr_proj_name = fr_cfg.get("scan", {}).get("project", "fracture_output")
+        if fr_cfg.get("scan", {}).get("browser_auth"):
+            cmd.append("--browser-auth")
     except Exception:
         fr_proj_name = "fracture_output"
 
