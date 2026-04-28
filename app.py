@@ -1551,6 +1551,7 @@ def api_findings(project_id: str):
             if not _fp.exists():
                 continue
             _scope = "webapp" if _tool_name == "fracture" else "api"
+            _mem_findings = _all_findings.setdefault(project_id, [])
             for raw in json.loads(_fp.read_text()):
                 f = dict(raw)
                 f["_tool"]  = _tool_name
@@ -1559,7 +1560,18 @@ def api_findings(project_id: str):
                 if k not in seen:
                     seen.add(k)
                     result.append(f)
-                    _all_findings.setdefault(project_id, []).append(f)
+                    _mem_findings.append(f)
+                else:
+                    # Merge accounts from disk into the cached in-memory entry
+                    new_accts = f.get("accounts") or []
+                    if new_accts:
+                        for _ex in _mem_findings:
+                            if _fkey(_ex) == k:
+                                _ex_acct_keys = {(a.get("username", ""), a.get("role", "")) for a in (_ex.get("accounts") or [])}
+                                _added = [a for a in new_accts if (a.get("username", ""), a.get("role", "")) not in _ex_acct_keys]
+                                if _added:
+                                    _ex.setdefault("accounts", []).extend(_added)
+                                break
         except Exception:
             pass
 
@@ -3502,7 +3514,7 @@ def _ingest(project_id: str, fp: Path, tool: str, scope: str, seen: set) -> None
         f["_scope"] = scope or f.get("_scope", "")
         k = _fkey(f)
         if k in seen:
-            # Merge sources and cves into existing entry
+            # Merge sources, cves, and accounts into existing entry
             for existing in proj_findings:
                 if _fkey(existing) == k:
                     changed = False
@@ -3516,6 +3528,14 @@ def _ingest(project_id: str, fp: Path, tool: str, scope: str, seen: set) -> None
                     if new_cves - ex_cves:
                         existing["cves"] = ",".join(sorted(ex_cves | new_cves))
                         changed = True
+                    ex_accts = existing.get("accounts") or []
+                    new_accts = f.get("accounts") or []
+                    if new_accts:
+                        ex_acct_keys = {(a.get("username", ""), a.get("role", "")) for a in ex_accts}
+                        added = [a for a in new_accts if (a.get("username", ""), a.get("role", "")) not in ex_acct_keys]
+                        if added:
+                            existing["accounts"] = ex_accts + added
+                            changed = True
                     if changed:
                         socketio.emit("finding",
                             {"tool": tool[:2], "finding": existing},
