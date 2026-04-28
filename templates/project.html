@@ -662,6 +662,7 @@
   <div class="modal-box">
     <div class="modal-title" id="modalTitle">&#x2699; Input Required</div>
     <div class="modal-body">
+      <div class="modal-role-tag hidden" id="modalRoleTag"></div>
       <div class="modal-prompt-text" id="modalPromptText"></div>
       <div class="modal-option-grid" id="modalOptionBtns"></div>
       <div class="modal-input-row">
@@ -2129,6 +2130,13 @@ function showPromptModal(payload, tool) {
 
   document.getElementById('modalTitle').textContent = '&#x2699; Input Required';
   document.getElementById('modalPromptText').textContent = payload.question || '';
+  const roleTag = document.getElementById('modalRoleTag');
+  if (payload.role) {
+    roleTag.textContent = 'Role: ' + payload.role;
+    roleTag.classList.remove('hidden');
+  } else {
+    roleTag.classList.add('hidden');
+  }
 
   const input = document.getElementById('modalTextInput');
   input.type = isPassword ? 'password' : 'text';
@@ -2332,8 +2340,8 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
   // Display name: internal key "unauthenticated" → user-visible "Unauthenticated"
   const _dispRole = r => r === 'unauthenticated' ? 'Unauthenticated' : r;
 
-  // Table — columns are exactly what matrix.roles contains; no injected defaults
-  const allRoles = roles.length ? roles : ['unauthenticated'];
+  // Table — columns are exactly what matrix.roles contains
+  const allRoles = roles.slice();
 
   // Row filter: check numeric HTTP codes across all role columns
   const _rowMatches = (item) => {

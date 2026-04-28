@@ -2152,6 +2152,24 @@ body {
   flex-shrink: 0;
 }
 .modal-prompt-text { font-size: .85rem; color: var(--text-primary); line-height: 1.55; }
+.modal-role-tag {
+  display: inline-block;
+  padding: .15rem .5rem;
+  border-radius: 3px;
+  font-size: .72rem; font-weight: 700;
+  letter-spacing: .04em;
+  background: rgba(240,165,0,.15);
+  color: var(--accent-primary);
+}
+.modal-role-tag {
+  display: inline-block;
+  padding: .15rem .5rem;
+  border-radius: 3px;
+  font-size: .72rem; font-weight: 700;
+  letter-spacing: .04em;
+  background: rgba(240,165,0,.15);
+  color: var(--accent-primary);
+}
 .modal-option-grid { display: flex; flex-wrap: wrap; gap: .4rem; }
 .modal-input-row input {
   width: 100%;
