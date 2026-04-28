@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.3"
+VERSION = "1.8.4"
 
 import io
 import socket
@@ -1711,33 +1711,18 @@ def api_compare_scans():
 
 
 def _backfill_matrix_codes(matrix: dict, map_path: "Path") -> None:
-    """Ensure every declared role has an entry in every path's access dict.
-    For the unauthenticated role, fill null values from structure_map / api_map
-    when Phase 20 did not record a code (e.g. preliminary matrix or failed probe).
+    """Ensure every declared role has a null-initialized entry in every path's
+    access dict.  Does NOT fill the unauthenticated column from structure_map —
+    that column must only be populated by Fracture's explicit unauthenticated
+    context pass so it is never shown as probed before that phase has run.
     """
     try:
-        sm_statuses: dict = {}
-        if map_path.exists():
-            sm = json.loads(map_path.read_text())
-            raw = sm.get("paths", {})
-            if isinstance(raw, dict):
-                for p, v in raw.items():
-                    if isinstance(v, dict) and v.get("status") is not None:
-                        sm_statuses[p] = v["status"]
-            elif isinstance(raw, list):
-                for item in raw:
-                    if isinstance(item, dict) and item.get("path") and item.get("status") is not None:
-                        sm_statuses[item["path"]] = item["status"]
         all_roles = list(matrix.get("roles") or [])
         for entry in matrix.get("paths", []):
             access = entry.setdefault("access", {})
             for role in all_roles:
                 if role not in access:
                     access[role] = None
-            if access.get("unauthenticated") is None:
-                st = sm_statuses.get(entry.get("path", ""))
-                if st is not None:
-                    access["unauthenticated"] = st
     except Exception:
         pass
 
