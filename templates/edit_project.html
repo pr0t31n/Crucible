@@ -206,6 +206,7 @@
               <select name="fr_auth_method" class="form-control" id="frAuthMethod"
                       onchange="frAuthMethodChanged()" style="flex:1;min-width:260px">
                 <option value="none" {{ 'selected' if _frm == 'none' else '' }}>None — unauthenticated</option>
+                <option value="auto" {{ 'selected' if _frm == 'auto' else '' }}>Auto-Detect  (try form login → token → basic → digest → NTLM)</option>
                 <option value="form_login" {{ 'selected' if _frm == 'form_login' else '' }}>Form Login  (POST credentials → session)</option>
                 <option value="basic" {{ 'selected' if _frm == 'basic' else '' }}>HTTP Basic Auth  (username:password)</option>
                 <option value="digest" {{ 'selected' if _frm == 'digest' else '' }}>HTTP Digest Auth</option>
@@ -233,6 +234,24 @@
                       title="Fill in auth fields and target URL, then click to test">&#x26A1; Test Connection</button>
               <span id="frAuthTestResult" style="font-size:.82rem"></span>
             </div>
+          </div>
+        </div>
+
+        <!-- auto -->
+        <div class="fr-auth-group form-grid" id="frAuth-auto"
+             style="{{ '' if _frm == 'auto' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="fr_auth_username" class="form-control" autocomplete="off"
+                   value="{{ _fa.get('username','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group span2">
+            <span class="form-hint">Tries form login → token login → basic → digest → NTLM in order; stops at first success.</span>
           </div>
         </div>
 
@@ -797,6 +816,7 @@
               <select name="si_auth_method" class="form-control" id="siAuthMethod"
                       onchange="siAuthMethodChanged()" style="flex:1;min-width:260px">
                 <option value="none"               {% if _sm == 'none'               %}selected{% endif %}>No Authentication</option>
+                <option value="auto"               {% if _sm == 'auto'               %}selected{% endif %}>Auto-Detect  (try token → basic → cookie login → digest → NTLM)</option>
                 <option value="bearer"             {% if _sm == 'bearer'             %}selected{% endif %}>Bearer Token  (Authorization: Bearer …)</option>
                 <option value="jwt_bearer"         {% if _sm == 'jwt_bearer'         %}selected{% endif %}>JWT Bearer  (decode + verify JWT, set as Bearer)</option>
                 <option value="basic"              {% if _sm == 'basic'              %}selected{% endif %}>HTTP Basic Auth  (username / password)</option>
@@ -826,6 +846,25 @@
                       title="Fill in auth fields and API URL, then click to test">&#x26A1; Test Connection</button>
               <span id="siAuthTestResult" style="font-size:.82rem"></span>
             </div>
+          </div>
+        </div>
+
+        <!-- ── Auto-Detect ──────────────────────────────────────────────── -->
+        <div class="si-auth-group form-grid" id="siAuth-auto"
+             style="{{ '' if _sm == 'auto' else 'display:none;' }}margin-top:.5rem">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" name="si_auth_username" class="form-control" autocomplete="off"
+                   value="{{ _sa.get('username','') }}" oninput="_updateSiTestBtn()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" name="si_auth_password" class="form-control" autocomplete="new-password"
+                   oninput="_updateSiTestBtn()">
+            <span class="form-hint">Leave blank to keep existing</span>
+          </div>
+          <div class="form-group span2">
+            <span class="form-hint">Tries token login → basic → cookie login → digest → NTLM in order; stops at first success.</span>
           </div>
         </div>
 
@@ -1814,6 +1853,7 @@ function _updateFrTestBtn() {
     const activeGrp = document.getElementById('frAuth-' + method);
     const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
     if      (method === 'bearer')                ready = !!q('fr_auth_token');
+    else if (method === 'auto')                  ready = !!q('fr_auth_username');
     else if (['basic','digest','ntlm'].includes(method)) ready = !!q('fr_auth_username');
     else if (method === 'form_login' || method === 'token_login') ready = !!q('fr_auth_login_url');
     else if (method === 'oauth2_client_creds')   ready = !!(q('fr_auth_oauth_token_url') && q('fr_auth_oauth_client_id'));
@@ -1902,6 +1942,7 @@ function _updateSiTestBtn() {
     const activeGrp = document.getElementById('siAuth-' + method);
     const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
     if      (method === 'bearer')              ready = !!q('si_auth_token');
+    else if (method === 'auto')                ready = !!q('si_auth_username');
     else if (method === 'basic' || method === 'digest' || method === 'ntlm') ready = !!q('si_auth_username');
     else if (method === 'apikey')              ready = !!q('si_auth_api_key');
     else if (method === 'cookie_login' || method === 'token_login') ready = !!q('si_auth_login_url');
