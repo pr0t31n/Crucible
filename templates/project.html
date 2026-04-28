@@ -142,7 +142,7 @@
             <th class="col-cves">CVEs</th>
             <th class="col-sources">Sources</th>
             <th class="col-evidence">Evidence</th>
-            <th class="col-account">Account</th>
+            <th class="col-account">Roles</th>
             <th class="col-actions"></th>
           </tr>
         </thead>
@@ -1217,16 +1217,14 @@ function _accountPills(accounts) {
   if (!accounts || !accounts.length) return '';
   return accounts.map(a => {
     const role = (a.role || '').toLowerCase();
-    const user = (a.username || '').trim();
-    if (role === 'unauthenticated' || user.toUpperCase() === 'UNAUTH' || (!user && !role)) {
+    if (role === 'unauthenticated' || role === '') {
       return `<span class="acct-pill acct-unauth" title="Unauthenticated">UNAUTH</span>`;
     }
-    const label = escHtml(user || role);
-    const title = user && role && user !== role ? `${user} (${role})` : (user || role);
-    if (_ADMIN_ROLE_RE.test(role) || _ADMIN_ROLE_RE.test(user)) {
-      return `<span class="acct-pill acct-admin" title="${escHtml(title)}">${label}</span>`;
+    const label = escHtml(a.role || a.username || role);
+    if (_ADMIN_ROLE_RE.test(role)) {
+      return `<span class="acct-pill acct-admin" title="${label}">${label}</span>`;
     }
-    return `<span class="acct-pill acct-user" title="${escHtml(title)}">${label}</span>`;
+    return `<span class="acct-pill acct-user" title="${label}">${label}</span>`;
   }).join('');
 }
 
