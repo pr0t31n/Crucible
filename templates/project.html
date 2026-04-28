@@ -2371,16 +2371,6 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
     html += `</div>`;
   }
 
-  if (!items.length) {
-    html += '<span style="color:#8b949e;font-size:.85rem">No endpoint data.</span>';
-    html += '</div>'; return html;
-  }
-
-  if (!visibleItems.length) {
-    html += `<span style="color:#8b949e;font-size:.85rem">No endpoints match the selected filter.</span>`;
-    html += '</div>'; return html;
-  }
-
   html += `<div style="overflow-x:auto"><table class="findings-table" style="min-width:600px">`;
   html += `<thead><tr><th style="text-align:left;padding:.4rem .6rem">Path / Endpoint</th>`;
   allRoles.forEach(role => {
@@ -2390,6 +2380,11 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
   });
   html += `</tr></thead><tbody>`;
 
+  if (!items.length) {
+    html += `<tr><td colspan="${allRoles.length + 1}" style="text-align:center;color:#8b949e;font-size:.85rem;padding:.75rem">No endpoints discovered yet.</td></tr>`;
+  } else if (!visibleItems.length) {
+    html += `<tr><td colspan="${allRoles.length + 1}" style="text-align:center;color:#8b949e;font-size:.85rem;padding:.75rem">No endpoints match the selected filter.</td></tr>`;
+  } else {
   visibleItems.forEach(item => {
     const path = item.path || item.endpoint || '';
     html += `<tr><td style="font-family:monospace;font-size:.82rem;padding:.35rem .6rem">${_escHtml(path)}</td>`;
@@ -2409,6 +2404,7 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
     html += `</tr>`;
   });
 
+  }
   html += `</tbody></table></div>`;
   html += `</div>`;
   return html;
