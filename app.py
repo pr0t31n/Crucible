@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 
 import io
 import socket
@@ -1066,6 +1066,39 @@ def edit_project_page(project_id: str):
 # ---------------------------------------------------------------------------
 # API — project management
 # ---------------------------------------------------------------------------
+def _write_initial_access_matrix(output_dir: Path, auth_matrix: list) -> None:
+    """Create or update access_matrix.json with role columns pre-initialized.
+
+    Preserves any existing path data; adds null entries for new roles so
+    Crucible shows all columns immediately (displaying — for unprobed slots).
+    """
+    roles = [r.get("role") or f"role_{i+1}" for i, r in enumerate(auth_matrix)]
+    if "unauthenticated" not in roles:
+        roles.append("unauthenticated")
+    am_path = output_dir / "access_matrix.json"
+    try:
+        existing = json.loads(am_path.read_text()) if am_path.exists() else {}
+    except Exception:
+        existing = {}
+    merged_roles = list(existing.get("roles", []))
+    for r in roles:
+        if r not in merged_roles:
+            merged_roles.append(r)
+    paths = existing.get("paths", [])
+    for entry in paths:
+        acc = entry.setdefault("access", {})
+        for r in merged_roles:
+            if r not in acc:
+                acc[r] = None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    am_path.write_text(json.dumps({
+        "roles":            merged_roles,
+        "most_privileged":  existing.get("most_privileged") or (merged_roles[0] if len(merged_roles) > 1 else None),
+        "privilege_counts": existing.get("privilege_counts", {}),
+        "paths":            paths,
+    }, indent=2))
+
+
 @app.route("/api/create_project", methods=["POST"])
 def api_create_project():
     body = request.json or {}
@@ -1174,6 +1207,12 @@ def api_create_project():
     data = _load_projects()
     data["projects"][project_id] = proj
     _save_projects(data)
+    if auth_matrix:
+        try:
+            _write_initial_access_matrix(fr_output_dir, auth_matrix)
+            _write_initial_access_matrix(si_output_dir, auth_matrix)
+        except Exception:
+            pass
     return jsonify({"success": True, "project_id": project_id})
 
 
@@ -1266,6 +1305,14 @@ def api_update_project(project_id: str):
     data = _load_projects()
     data["projects"][project_id] = proj
     _save_projects(data)
+    if "auth_matrix" in body:
+        try:
+            _upd_am = _parse_auth_matrix_from_body(body)
+            if _upd_am:
+                _write_initial_access_matrix(Path(proj["fracture_output_dir"]), _upd_am)
+                _write_initial_access_matrix(Path(proj["siphon_output_dir"]), _upd_am)
+        except Exception:
+            pass
     return jsonify({"success": True, "project_id": project_id})
 
 
