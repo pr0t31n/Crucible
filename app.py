@@ -1567,8 +1567,8 @@ def api_findings(project_id: str):
                     if new_accts:
                         for _ex in _mem_findings:
                             if _fkey(_ex) == k:
-                                _ex_acct_keys = {(a.get("username", ""), a.get("role", "")) for a in (_ex.get("accounts") or [])}
-                                _added = [a for a in new_accts if (a.get("username", ""), a.get("role", "")) not in _ex_acct_keys]
+                                _ex_roles = {a.get("role", "") for a in (_ex.get("accounts") or [])}
+                                _added = [a for a in new_accts if a.get("role", "") not in _ex_roles]
                                 if _added:
                                     _ex.setdefault("accounts", []).extend(_added)
                                 break
@@ -3531,8 +3531,8 @@ def _ingest(project_id: str, fp: Path, tool: str, scope: str, seen: set) -> None
                     ex_accts = existing.get("accounts") or []
                     new_accts = f.get("accounts") or []
                     if new_accts:
-                        ex_acct_keys = {(a.get("username", ""), a.get("role", "")) for a in ex_accts}
-                        added = [a for a in new_accts if (a.get("username", ""), a.get("role", "")) not in ex_acct_keys]
+                        ex_roles = {a.get("role", "") for a in ex_accts}
+                        added = [a for a in new_accts if a.get("role", "") not in ex_roles]
                         if added:
                             existing["accounts"] = ex_accts + added
                             changed = True
