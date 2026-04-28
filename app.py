@@ -3083,14 +3083,21 @@ def on_si_input(data):
 # ---------------------------------------------------------------------------
 # Subprocess helpers
 # ---------------------------------------------------------------------------
-def _write_to_stdin(proc: subprocess.Popen, text: str) -> None:
+def _write_to_stdin(proc: subprocess.Popen, text: str,
+                    project_id: str = "", tool: str = "") -> None:
     """Safely write a line to a subprocess stdin."""
     try:
         if proc.stdin and not proc.stdin.closed:
             proc.stdin.write(text + "\n")
             proc.stdin.flush()
-    except Exception:
-        pass
+        elif proc.stdin and proc.stdin.closed:
+            if project_id:
+                _emit_line(project_id, tool,
+                           "[Crucible] stdin write skipped — pipe already closed", "system")
+    except Exception as _e:
+        if project_id:
+            _emit_line(project_id, tool,
+                       f"[Crucible] stdin write error: {_e}", "system")
 
 
 def _reader(project_id: str, tool: str, stream,
@@ -3155,22 +3162,34 @@ def _reader(project_id: str, tool: str, stream,
 
         # Interactive prompt
         if line.startswith(_CP_PROMPT):
+            # Parse payload — bail out on bad JSON
             try:
                 payload = json.loads(line[len(_CP_PROMPT):])
-                _pending_prompts[pkey] = payload
+            except Exception:
+                _emit_line(project_id, tool, line, stream_name)
+                return
+            _pending_prompts[pkey] = payload
+            # Notify browser — log any emit error but don't skip the stdin write
+            try:
                 socketio.emit("crucible_prompt",
                     {"tool": tool, "payload": payload},
                     room=_room(project_id))
-                q = _answer_queues.get(pkey)
-                if q:
-                    try:
-                        answer = q.get(timeout=1800)
-                    except queue.Empty:
-                        answer = ""
-                    _write_to_stdin(proc, answer)
-                _pending_prompts.pop(pkey, None)
-            except Exception:
-                _emit_line(project_id, tool, line, stream_name)
+            except Exception as _pe:
+                _emit_line(project_id, tool,
+                           f"[Crucible] prompt emit error: {_pe}", "system")
+            # Always wait for the answer and deliver it to the subprocess stdin
+            q = _answer_queues.get(pkey)
+            if q:
+                try:
+                    answer = q.get(timeout=1800)
+                except queue.Empty:
+                    answer = ""
+                _write_to_stdin(proc, answer, project_id, tool)
+            else:
+                _emit_line(project_id, tool,
+                           "[Crucible] No answer queue for prompt — subprocess may be stuck",
+                           "system")
+            _pending_prompts.pop(pkey, None)
             return
 
         # Phase status
