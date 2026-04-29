@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.9"
+VERSION = "1.8.10"
 
 import io
 import socket
@@ -1723,18 +1723,39 @@ def api_compare_scans():
 
 
 def _backfill_matrix_codes(matrix: dict, map_path: "Path") -> None:
-    """Ensure every declared role has a null-initialized entry in every path's
-    access dict.  Does NOT fill the unauthenticated column from structure_map —
-    that column must only be populated by Fracture's explicit unauthenticated
-    context pass so it is never shown as probed before that phase has run.
+    """Ensure every declared role has an entry in every path's access dict.
+
+    For the first role (roles[0] — the most privileged by configuration),
+    null entries are provisionally backfilled with structure_map HTTP status
+    codes so the Access Matrix shows live response codes during scanning,
+    before Fracture's per-role probing (_probe_role_paths) completes.
+    All other role columns remain None (shown as —) until Fracture fills
+    them in with actual probed values.
+
+    This is a display-only operation on the in-memory dict returned by the
+    API — it does not write to disk and does not affect Fracture's probing.
     """
     try:
         all_roles = list(matrix.get("roles") or [])
+        # First role gets provisional backfill from structure_map; others stay None
+        first_role = all_roles[0] if all_roles else None
+        sm_by_path: dict = {}
+        if first_role and map_path and map_path.exists():
+            try:
+                sm_data = json.loads(map_path.read_text())
+                sm_by_path = sm_data.get("paths", {})
+            except Exception:
+                pass
         for entry in matrix.get("paths", []):
             access = entry.setdefault("access", {})
+            path = entry.get("path", "")
+            sm_entry = sm_by_path.get(path) if path else None
+            sm_status = sm_entry.get("status") if isinstance(sm_entry, dict) else None
             for role in all_roles:
                 if role not in access:
                     access[role] = None
+                if access[role] is None and role == first_role and sm_status is not None:
+                    access[role] = sm_status
     except Exception:
         pass
 
