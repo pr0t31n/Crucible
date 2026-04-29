@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.8"
+VERSION = "1.8.9"
 
 import io
 import socket
@@ -3201,8 +3201,21 @@ def _reader(project_id: str, tool: str, stream,
                 lvl = entry.get("level", "INFO")
                 _emit_line(project_id, tool,
                            f"[{lvl}] {entry.get('message', '')}", stream_name)
+                # WARNING messages that are informational noise — do not route
+                # to the Errors tab.  These indicate expected fallback conditions,
+                # not actionable scan failures.
+                _WARN_SUPPRESS = (
+                    "could not build xauthority",
+                    "could not automate js navigation",
+                    "vhost hits suppressed",
+                )
+                _msg_lower = entry.get("message", "").lower()
+                _suppress_err_tab = (
+                    lvl == "WARNING"
+                    and any(s in _msg_lower for s in _WARN_SUPPRESS)
+                )
                 # Also route WARNING/ERROR level entries to the Errors tab
-                if lvl in ("WARNING", "ERROR"):
+                if lvl in ("WARNING", "ERROR") and not _suppress_err_tab:
                     _buf_append_err(project_id, {
                         "ts":       entry.get("ts", datetime.now(timezone.utc).isoformat()),
                         "source":   tool,
