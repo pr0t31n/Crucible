@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.7"
+VERSION = "1.8.8"
 
 import io
 import socket
@@ -3155,9 +3155,15 @@ def _write_to_stdin(proc: subprocess.Popen, text: str,
             proc.stdin.write(text + "\n")
             proc.stdin.flush()
         elif proc.stdin and proc.stdin.closed:
-            if project_id:
+            # Pipe is closed. If the process has already exited this is expected
+            # (the reader thread was blocked on a prompt answer when the process
+            # finished and _wait_proc closed stdin). Suppress the log in that case
+            # — it is not an error. Only log when the process is still running but
+            # stdin is unexpectedly closed, which indicates a real pipe failure.
+            if project_id and proc.poll() is None:
                 _emit_line(project_id, tool,
-                           "[Crucible] stdin write skipped — pipe already closed", "system")
+                           "[Crucible] stdin write skipped — pipe closed while process running",
+                           "system")
     except Exception as _e:
         if project_id:
             _emit_line(project_id, tool,
