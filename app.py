@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.10"
+VERSION = "1.8.11"
 
 import io
 import socket
@@ -1760,6 +1760,36 @@ def _backfill_matrix_codes(matrix: dict, map_path: "Path") -> None:
         pass
 
 
+def _annotate_access_hints(matrix: dict) -> None:
+    """Add size-based restriction flags to access_meta for display in Crucible.
+
+    For each path entry that has access_meta body_len data, compares every
+    secondary role's response body length to the most privileged role (roles[0]).
+    If a role's body is less than 50% of roles[0]'s body, sets _size_restricted=True
+    in that role's access_meta so the frontend can show a RESTRICTED pill.
+
+    Display-only — does not write to disk.
+    """
+    try:
+        roles = list(matrix.get("roles") or [])
+        if len(roles) < 2:
+            return
+        priv_role = roles[0]
+        for entry in matrix.get("paths", []):
+            meta = entry.get("access_meta") or {}
+            priv_meta = meta.get(priv_role) or {}
+            priv_len = priv_meta.get("body_len", 0) or 0
+            for role in roles[1:]:
+                role_meta = meta.get(role)
+                if not isinstance(role_meta, dict):
+                    continue
+                role_len = role_meta.get("body_len", 0) or 0
+                if priv_len > 0 and role_len > 0 and role_len < priv_len * 0.5:
+                    role_meta["_size_restricted"] = True
+    except Exception:
+        pass
+
+
 @app.route("/api/structure/<project_id>")
 def api_structure(project_id: str):
     """Return structure maps for Fracture (structure_map.json) and Siphon (api_map.json)."""
@@ -1836,6 +1866,7 @@ def api_access_matrix(project_id: str):
                 if am.exists():
                     matrix = json.loads(am.read_text())
                     _backfill_matrix_codes(matrix, Path(fr_proj) / "structure_map.json")
+                    _annotate_access_hints(matrix)
                     result["fr_matrix"] = matrix
     except Exception:
         pass
@@ -1850,6 +1881,7 @@ def api_access_matrix(project_id: str):
                 if am.exists():
                     matrix = json.loads(am.read_text())
                     _backfill_matrix_codes(matrix, Path(si_proj) / "api_map.json")
+                    _annotate_access_hints(matrix)
                     result["si_matrix"] = matrix
     except Exception:
         pass

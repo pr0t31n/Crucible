@@ -2396,16 +2396,24 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
     html += `<tr><td style="font-family:monospace;font-size:.82rem;padding:.35rem .6rem">${_escHtml(path)}</td>`;
     allRoles.forEach(role => {
       const access = (item.access || {})[role];
-      let cell = '—', cls = 'color:#8b949e';
+      const meta   = ((item.access_meta || {})[role]) || {};
+      let cell = '—', cls = 'color:#8b949e', pill = '';
       if (access !== undefined && access !== null) {
         if (access === true || access === 'ok') { cell = '✓'; cls = 'color:#3fb950'; }
         else if (access === false || access === 'denied') { cell = '✗'; cls = 'color:#f85149'; }
         else if (typeof access === 'number') {
           cell = String(access);
           cls = access < 300 ? 'color:#3fb950' : access < 400 ? 'color:#d29922' : 'color:#f85149';
+          if (access >= 200 && access < 300) {
+            if (meta.body_denied) {
+              pill = '<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:3px;font-size:.68rem;font-weight:700;background:#f85149;color:#fff;vertical-align:middle" title="Response body contains access-denial indicators">DENIED</span>';
+            } else if (meta._size_restricted) {
+              pill = '<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:3px;font-size:.68rem;font-weight:700;background:#d29922;color:#000;vertical-align:middle" title="Response body significantly smaller than most-privileged role — possible restricted view">RESTRICTED</span>';
+            }
+          }
         } else { cell = String(access); }
       }
-      html += `<td style="text-align:center;padding:.35rem .6rem;${cls}">${cell}</td>`;
+      html += `<td style="text-align:center;padding:.35rem .6rem;${cls}">${cell}${pill}</td>`;
     });
     html += `</tr>`;
   });
