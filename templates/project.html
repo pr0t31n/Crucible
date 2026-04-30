@@ -292,11 +292,17 @@
             <div class="kv-row" id="tp-row-powered-by" style="display:none">
               <span class="kv-label">Powered by</span><span class="kv-value mono" id="tp-powered-by"></span>
             </div>
+            <div class="kv-row" id="tp-row-web-structure" style="display:none">
+              <span class="kv-label">Web structure</span><span class="kv-value" id="tp-web-structure"></span>
+            </div>
             <div class="kv-row" id="tp-row-cms" style="display:none">
               <span class="kv-label">CMS</span><span class="kv-value" id="tp-cms"></span>
             </div>
             <div class="kv-row" id="tp-row-waf" style="display:none">
-              <span class="kv-label">WAF / CDN</span><span class="kv-value" id="tp-waf"></span>
+              <span class="kv-label">WAF</span><span class="kv-value" id="tp-waf"></span>
+            </div>
+            <div class="kv-row" id="tp-row-cdn" style="display:none">
+              <span class="kv-label">CDN</span><span class="kv-value" id="tp-cdn"></span>
             </div>
             <div class="kv-row" id="tp-row-auth" style="display:none">
               <span class="kv-label">Auth method</span><span class="kv-value" id="tp-auth-method"></span>
@@ -317,6 +323,10 @@
           <div id="tp-tech-section" style="display:none;margin-top:.6rem">
             <div class="tp-section-label">Technologies</div>
             <div id="tp-tech-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
+          </div>
+          <div id="tp-bi-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">BI / Monitoring</div>
+            <div id="tp-bi-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
           </div>
           <div id="tp-hdrs-section" style="display:none;margin-top:.6rem">
             <div class="tp-section-label">Security Headers</div>
@@ -985,12 +995,14 @@ function _loadTargetProfile() {
       if (!d || !Object.keys(d).length) return;
       const card = document.getElementById('tp-card');
       if (card) card.style.display = '';
-      _tpShow('tp-row-server',      'tp-server',      d.server);
-      _tpShow('tp-row-powered-by',  'tp-powered-by',  d.powered_by);
-      _tpShow('tp-row-cms',         'tp-cms',         (d.cms||[]).join(', '));
-      _tpShow('tp-row-waf',         'tp-waf',         d.waf);
-      _tpShow('tp-row-auth',        'tp-auth-method', d.auth_method);
-      _tpShow('tp-row-auth-page',   'tp-auth-page',   d.auth_page);
+      _tpShow('tp-row-server',         'tp-server',       d.server);
+      _tpShow('tp-row-powered-by',     'tp-powered-by',   d.powered_by);
+      _tpShow('tp-row-web-structure',  'tp-web-structure', d.web_structure);
+      _tpShow('tp-row-cms',            'tp-cms',          (d.cms||[]).join(', '));
+      _tpShow('tp-row-waf',            'tp-waf',          d.waf);
+      _tpShow('tp-row-cdn',            'tp-cdn',          d.cdn);
+      _tpShow('tp-row-auth',           'tp-auth-method',  d.auth_method);
+      _tpShow('tp-row-auth-page',      'tp-auth-page',    d.auth_page);
       if (d.cert_subject) {
         const cert = d.cert_subject + (d.cert_valid === 'self-signed' ? ' (self-signed)' : '');
         _tpShow('tp-row-tls-cert', 'tp-tls-cert', cert);
@@ -1013,6 +1025,15 @@ function _loadTargetProfile() {
             const label = t.version ? `${t.name} ${t.version}` : t.name;
             return `<span class="tech-tag">${_escHtml(label)}</span>`;
           }).join('');
+        }
+      }
+      // BI / Monitoring tools
+      if ((d.bi_tools||[]).length) {
+        const biSec = document.getElementById('tp-bi-section');
+        const biLst = document.getElementById('tp-bi-list');
+        if (biSec && biLst) {
+          biSec.style.display = '';
+          biLst.innerHTML = d.bi_tools.map(t => `<span class="tech-tag tech-tag-bi">${_escHtml(t)}</span>`).join('');
         }
       }
       // Security headers
