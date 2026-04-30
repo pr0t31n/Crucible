@@ -1967,6 +1967,14 @@ body {
 .mono { font-family: var(--font-mono); font-size: .72rem; }
 .summary-detail { margin-top: .5rem; font-size: .78rem; color: var(--text-secondary); }
 
+/* ── Target profile card ─────────────────────────────────── */
+.tp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .2rem .75rem; }
+@media (max-width: 520px) { .tp-grid { grid-template-columns: 1fr; } }
+.tp-section-label { font-size: .68rem; color: var(--text-muted); margin-bottom: .2rem; text-transform: uppercase; letter-spacing: .06em; }
+.tech-tag { display: inline-block; padding: .1rem .4rem; border-radius: 3px; font-size: .68rem; font-family: var(--font-mono); background: rgba(91,141,238,.12); color: var(--risk-info); }
+.tech-tag-ok   { background: rgba(76,175,80,.12);  color: var(--risk-low); }
+.tech-tag-miss { background: rgba(255,107,53,.12); color: var(--risk-high); }
+
 /* ── Settings editor ──────────────────────────────────────── */
 .settings-layout { display: flex; flex-direction: column; flex: 1; gap: .5rem; }
 .settings-tool-tabs { display: flex; gap: .35rem; }

@@ -278,6 +278,59 @@
         </div>
       </div>
 
+      {% if 'fr' in project.get('tools', ['fr','si']) %}
+      <div class="panel" id="tp-card" style="display:none">
+        <div class="panel-header">
+          <span class="panel-title">TARGET PROFILE</span>
+          <span id="tp-last-updated" style="font-size:.68rem;color:var(--text-muted);font-family:var(--font-mono)"></span>
+        </div>
+        <div class="panel-body">
+          <div class="tp-grid">
+            <div class="kv-row" id="tp-row-server" style="display:none">
+              <span class="kv-label">Server</span><span class="kv-value mono" id="tp-server"></span>
+            </div>
+            <div class="kv-row" id="tp-row-powered-by" style="display:none">
+              <span class="kv-label">Powered by</span><span class="kv-value mono" id="tp-powered-by"></span>
+            </div>
+            <div class="kv-row" id="tp-row-cms" style="display:none">
+              <span class="kv-label">CMS</span><span class="kv-value" id="tp-cms"></span>
+            </div>
+            <div class="kv-row" id="tp-row-waf" style="display:none">
+              <span class="kv-label">WAF / CDN</span><span class="kv-value" id="tp-waf"></span>
+            </div>
+            <div class="kv-row" id="tp-row-auth" style="display:none">
+              <span class="kv-label">Auth method</span><span class="kv-value" id="tp-auth-method"></span>
+            </div>
+            <div class="kv-row" id="tp-row-auth-page" style="display:none">
+              <span class="kv-label">Auth page</span><span class="kv-value mono" id="tp-auth-page"></span>
+            </div>
+            <div class="kv-row" id="tp-row-tls-cert" style="display:none">
+              <span class="kv-label">TLS cert</span><span class="kv-value mono" id="tp-tls-cert"></span>
+            </div>
+            <div class="kv-row" id="tp-row-cert-expiry" style="display:none">
+              <span class="kv-label">Cert expiry</span><span class="kv-value mono" id="tp-cert-expiry"></span>
+            </div>
+            <div class="kv-row" id="tp-row-protocols" style="display:none">
+              <span class="kv-label">TLS protocols</span><span class="kv-value mono" id="tp-protocols"></span>
+            </div>
+          </div>
+          <div id="tp-tech-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">Technologies</div>
+            <div id="tp-tech-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
+          </div>
+          <div id="tp-hdrs-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">Security Headers</div>
+            <div id="tp-hdrs-present" style="display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:.3rem"></div>
+            <div id="tp-hdrs-missing" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
+          </div>
+          <div id="tp-cookies-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">Cookies</div>
+            <div id="tp-cookies-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="summary-tools">
         {% if 'fr' in project.get('tools', ['fr','si']) %}
         <div class="panel tool-summary-card">
@@ -915,6 +968,75 @@ function _loadSummarySettings() {
       .catch(() => {});
   });
 }
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _tpShow(rowId, valId, val) {
+  if (!val) return;
+  const row = document.getElementById(rowId);
+  const el  = document.getElementById(valId);
+  if (row) row.style.display = '';
+  if (el)  el.textContent = val;
+}
+function _loadTargetProfile() {
+  fetch(`/api/target_profile/${PROJECT_ID}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d || !Object.keys(d).length) return;
+      const card = document.getElementById('tp-card');
+      if (card) card.style.display = '';
+      _tpShow('tp-row-server',      'tp-server',      d.server);
+      _tpShow('tp-row-powered-by',  'tp-powered-by',  d.powered_by);
+      _tpShow('tp-row-cms',         'tp-cms',         (d.cms||[]).join(', '));
+      _tpShow('tp-row-waf',         'tp-waf',         d.waf);
+      _tpShow('tp-row-auth',        'tp-auth-method', d.auth_method);
+      _tpShow('tp-row-auth-page',   'tp-auth-page',   d.auth_page);
+      if (d.cert_subject) {
+        const cert = d.cert_subject + (d.cert_valid === 'self-signed' ? ' (self-signed)' : '');
+        _tpShow('tp-row-tls-cert', 'tp-tls-cert', cert);
+      }
+      _tpShow('tp-row-cert-expiry', 'tp-cert-expiry', d.cert_expiry);
+      if ((d.protocols||[]).length) {
+        _tpShow('tp-row-protocols', 'tp-protocols', d.protocols.join(', '));
+      }
+      if (d.last_updated) {
+        const el = document.getElementById('tp-last-updated');
+        if (el) el.textContent = 'updated ' + fmtLastRun(d.last_updated);
+      }
+      // Technologies
+      if ((d.technologies||[]).length) {
+        const sec = document.getElementById('tp-tech-section');
+        const lst = document.getElementById('tp-tech-list');
+        if (sec && lst) {
+          sec.style.display = '';
+          lst.innerHTML = d.technologies.map(t => {
+            const label = t.version ? `${t.name} ${t.version}` : t.name;
+            return `<span class="tech-tag">${_escHtml(label)}</span>`;
+          }).join('');
+        }
+      }
+      // Security headers
+      const sh = d.security_headers || {};
+      if ((sh.present||[]).length || (sh.missing||[]).length) {
+        const sec = document.getElementById('tp-hdrs-section');
+        if (sec) sec.style.display = '';
+        const pEl = document.getElementById('tp-hdrs-present');
+        const mEl = document.getElementById('tp-hdrs-missing');
+        if (pEl) pEl.innerHTML = (sh.present||[]).map(h => `<span class="tech-tag tech-tag-ok">${_escHtml(h)}</span>`).join('');
+        if (mEl) mEl.innerHTML = (sh.missing||[]).map(h => `<span class="tech-tag tech-tag-miss">${_escHtml(h)}</span>`).join('');
+      }
+      // Cookies
+      if ((d.cookies||[]).length) {
+        const sec = document.getElementById('tp-cookies-section');
+        const lst = document.getElementById('tp-cookies-list');
+        if (sec && lst) {
+          sec.style.display = '';
+          lst.innerHTML = d.cookies.map(c => `<span class="tech-tag">${_escHtml(c)}</span>`).join('');
+        }
+      }
+    })
+    .catch(() => {});
+}
 // Format any pre-loaded ISO timestamps on page load
 document.querySelectorAll('[data-iso]').forEach(el => {
   const iso = el.dataset.iso;
@@ -1113,7 +1235,7 @@ function switchTab(name, btn) {
   if (btn) btn.classList.add('active');
   if (name === 'findings') { if (allFindings.length === 0) reloadFindings(); renderFindings(); }
   if (name === 'settings') { loadSettings('fr'); loadSettings('si'); }
-  if (name === 'summary')  { _loadSummarySettings(); }
+  if (name === 'summary')  { _loadSummarySettings(); _loadTargetProfile(); }
 }
 
 // ── Findings ──────────────────────────────────────────────
@@ -2124,7 +2246,7 @@ function saveSettings(tool) {
   .then(r => r.json())
   .then(d => {
     if (msg) { msg.textContent = d.success ? 'Saved.' : 'Error saving.'; setTimeout(() => msg.textContent = '', 3000); }
-    _loadSummarySettings();
+    _loadSummarySettings(); _loadTargetProfile();
   })
   .catch(() => { if (msg) { msg.textContent = 'Network error.'; setTimeout(() => msg.textContent = '', 3000); } });
 }
@@ -2257,6 +2379,7 @@ Promise.all([
   renderLogs();
 });
 _loadSummarySettings();
+_loadTargetProfile();
 
 // ── Structure tab ──────────────────────────────────────────────────────────
 let _structureLoaded = false;

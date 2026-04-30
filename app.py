@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.12"
+VERSION = "1.8.13"
 
 import io
 import socket
@@ -2753,6 +2753,26 @@ def api_summary(project_id: str):
             pass
 
     return jsonify(result)
+
+
+@app.route("/api/target_profile/<project_id>")
+def api_target_profile(project_id: str):
+    """Return target_profile.json written by Fracture during a scan."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({}), 404
+    fr_settings_path = Path(proj.get("fr_settings_file", ""))
+    if not fr_settings_path.exists():
+        return jsonify({}), 200
+    try:
+        fr_cfg  = json.loads(fr_settings_path.read_text())
+        fr_proj = fr_cfg.get("scan", {}).get("project", "")
+        tp_path = Path(proj["project_dir"]) / fr_proj / "target_profile.json"
+        if tp_path.exists():
+            return jsonify(json.loads(tp_path.read_text()))
+    except Exception:
+        pass
+    return jsonify({}), 200
 
 
 @app.route("/api/delete_project/<project_id>", methods=["DELETE"])
