@@ -1974,7 +1974,8 @@ body {
 .tech-tag { display: inline-block; padding: .1rem .4rem; border-radius: 3px; font-size: .68rem; font-family: var(--font-mono); background: rgba(91,141,238,.12); color: var(--risk-info); }
 .tech-tag-ok   { background: rgba(76,175,80,.12);  color: var(--risk-low); }
 .tech-tag-miss { background: rgba(255,107,53,.12); color: var(--risk-high); }
-.tech-tag-bi   { background: rgba(147,112,219,.15); color: #b69bec; }
+.tech-tag-bi       { background: rgba(147,112,219,.15); color: #b69bec; }
+.tech-tag-edge-sec { background: rgba(255,165,0,.13);  color: #e09c40; }
 
 /* ── Settings editor ──────────────────────────────────────── */
 .settings-layout { display: flex; flex-direction: column; flex: 1; gap: .5rem; }

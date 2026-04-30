@@ -328,6 +328,10 @@
             <div class="tp-section-label">BI / Monitoring</div>
             <div id="tp-bi-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
           </div>
+          <div id="tp-edge-sec-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">Edge Security</div>
+            <div id="tp-edge-sec-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
+          </div>
           <div id="tp-hdrs-section" style="display:none;margin-top:.6rem">
             <div class="tp-section-label">Security Headers</div>
             <div id="tp-hdrs-present" style="display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:.3rem"></div>
@@ -1034,6 +1038,15 @@ function _loadTargetProfile() {
         if (biSec && biLst) {
           biSec.style.display = '';
           biLst.innerHTML = d.bi_tools.map(t => `<span class="tech-tag tech-tag-bi">${_escHtml(t)}</span>`).join('');
+        }
+      }
+      // Edge security platforms
+      if ((d.edge_security||[]).length) {
+        const esSec = document.getElementById('tp-edge-sec-section');
+        const esLst = document.getElementById('tp-edge-sec-list');
+        if (esSec && esLst) {
+          esSec.style.display = '';
+          esLst.innerHTML = d.edge_security.map(t => `<span class="tech-tag tech-tag-edge-sec">${_escHtml(t)}</span>`).join('');
         }
       }
       // Security headers
