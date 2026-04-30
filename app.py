@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.16"
+VERSION = "1.8.17"
 
 import io
 import socket
@@ -1810,14 +1810,22 @@ def api_structure(project_id: str):
     # Fracture structure map
     fr_proj_dir = ""
     try:
-        fr_path = Path(proj.get("fr_settings_file", ""))
-        if fr_path.exists():
-            fr_cfg  = json.loads(fr_path.read_text())
-            fr_proj = fr_cfg.get("scan", {}).get("project", "")
-            if fr_proj:
-                fr_proj_dir = fr_proj
-                sm = Path(fr_proj) / "structure_map.json"
+        _sf = proj.get("fr_settings_file") or ""
+        if _sf and Path(_sf).is_file():
+            fr_cfg = json.loads(Path(_sf).read_text())
+            _fp = fr_cfg.get("scan", {}).get("project", "")
+            if _fp:
+                fr_proj_dir = _fp
+                sm = Path(_fp) / "structure_map.json"
                 if sm.exists():
+                    result["fr_map"] = json.loads(sm.read_text())
+        # Fallback: use fracture_output_dir directly (discovered projects)
+        if result["fr_map"] is None:
+            _fdir = proj.get("fracture_output_dir") or ""
+            if _fdir:
+                sm = Path(_fdir) / "structure_map.json"
+                if sm.exists():
+                    fr_proj_dir = _fdir
                     result["fr_map"] = json.loads(sm.read_text())
     except Exception:
         pass
@@ -1841,12 +1849,18 @@ def api_structure(project_id: str):
 
     # Siphon API map
     try:
-        si_path = Path(proj.get("si_settings_file", ""))
-        if si_path.exists():
-            si_cfg  = json.loads(si_path.read_text())
-            si_proj = si_cfg.get("scan", {}).get("project", "")
-            if si_proj:
-                am = Path(si_proj) / "api_map.json"
+        _sf = proj.get("si_settings_file") or ""
+        if _sf and Path(_sf).is_file():
+            si_cfg = json.loads(Path(_sf).read_text())
+            _sp = si_cfg.get("scan", {}).get("project", "")
+            if _sp:
+                am = Path(_sp) / "api_map.json"
+                if am.exists():
+                    result["si_map"] = json.loads(am.read_text())
+        if result["si_map"] is None:
+            _sdir = proj.get("siphon_output_dir") or ""
+            if _sdir:
+                am = Path(_sdir) / "api_map.json"
                 if am.exists():
                     result["si_map"] = json.loads(am.read_text())
     except Exception:
@@ -1865,32 +1879,38 @@ def api_access_matrix(project_id: str):
     result: dict = {"fr_matrix": None, "si_matrix": None}
 
     try:
-        fr_path = Path(proj.get("fr_settings_file", ""))
-        if fr_path.exists():
-            fr_cfg  = json.loads(fr_path.read_text())
-            fr_proj = fr_cfg.get("scan", {}).get("project", "")
-            if fr_proj:
-                am = Path(fr_proj) / "access_matrix.json"
-                if am.exists():
-                    matrix = json.loads(am.read_text())
-                    _backfill_matrix_codes(matrix, Path(fr_proj) / "structure_map.json")
-                    _annotate_access_hints(matrix)
-                    result["fr_matrix"] = matrix
+        _sf = proj.get("fr_settings_file") or ""
+        _fr_proj = ""
+        if _sf and Path(_sf).is_file():
+            fr_cfg = json.loads(Path(_sf).read_text())
+            _fr_proj = fr_cfg.get("scan", {}).get("project", "")
+        if not _fr_proj:
+            _fr_proj = proj.get("fracture_output_dir") or ""
+        if _fr_proj:
+            am = Path(_fr_proj) / "access_matrix.json"
+            if am.exists():
+                matrix = json.loads(am.read_text())
+                _backfill_matrix_codes(matrix, Path(_fr_proj) / "structure_map.json")
+                _annotate_access_hints(matrix)
+                result["fr_matrix"] = matrix
     except Exception:
         pass
 
     try:
-        si_path = Path(proj.get("si_settings_file", ""))
-        if si_path.exists():
-            si_cfg  = json.loads(si_path.read_text())
-            si_proj = si_cfg.get("scan", {}).get("project", "")
-            if si_proj:
-                am = Path(si_proj) / "access_matrix.json"
-                if am.exists():
-                    matrix = json.loads(am.read_text())
-                    _backfill_matrix_codes(matrix, Path(si_proj) / "api_map.json")
-                    _annotate_access_hints(matrix)
-                    result["si_matrix"] = matrix
+        _sf = proj.get("si_settings_file") or ""
+        _si_proj = ""
+        if _sf and Path(_sf).is_file():
+            si_cfg = json.loads(Path(_sf).read_text())
+            _si_proj = si_cfg.get("scan", {}).get("project", "")
+        if not _si_proj:
+            _si_proj = proj.get("siphon_output_dir") or ""
+        if _si_proj:
+            am = Path(_si_proj) / "access_matrix.json"
+            if am.exists():
+                matrix = json.loads(am.read_text())
+                _backfill_matrix_codes(matrix, Path(_si_proj) / "api_map.json")
+                _annotate_access_hints(matrix)
+                result["si_matrix"] = matrix
     except Exception:
         pass
 
@@ -2000,14 +2020,16 @@ def api_export_access_matrix_xlsx(project_id: str):
 def _load_fr_structure_map(proj: dict) -> "dict | None":
     """Load structure_map.json from the Fracture project directory."""
     try:
-        cfg_path = Path(proj.get("fr_settings_file", ""))
-        if not cfg_path.exists():
+        _sf = proj.get("fr_settings_file") or ""
+        _pdir = ""
+        if _sf and Path(_sf).is_file():
+            cfg  = json.loads(Path(_sf).read_text())
+            _pdir = cfg.get("scan", {}).get("project", "")
+        if not _pdir:
+            _pdir = proj.get("fracture_output_dir") or ""
+        if not _pdir:
             return None
-        cfg  = json.loads(cfg_path.read_text())
-        pdir = cfg.get("scan", {}).get("project", "")
-        if not pdir:
-            return None
-        sm = Path(pdir) / "structure_map.json"
+        sm = Path(_pdir) / "structure_map.json"
         return json.loads(sm.read_text()) if sm.exists() else None
     except Exception:
         return None
