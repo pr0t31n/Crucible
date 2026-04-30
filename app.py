@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.14"
+VERSION = "1.8.16"
 
 import io
 import socket
@@ -1510,13 +1510,21 @@ def api_settings(project_id: str, tool: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
     key  = "fr_settings_file" if tool == "fr" else "si_settings_file"
-    path = Path(proj[key])
+    _sf  = proj.get(key) or ""
+    path = Path(_sf) if _sf else None
     if request.method == "GET":
-        if path.exists():
+        if path and path.is_file():
             return jsonify(json.loads(path.read_text()))
         return jsonify(FR_DEFAULTS if tool == "fr" else SI_DEFAULTS)
     body = request.json or {}
+    if not path or not path.parent.is_dir():
+        _pdir = proj.get("project_dir", "")
+        _fname = "fr_settings.json" if tool == "fr" else "si_settings.json"
+        path = Path(_pdir) / _fname if _pdir else None
+    if not path:
+        return jsonify({"error": "no settings path available"}), 400
     path.write_text(json.dumps(body, indent=2))
+    _update_project_field(project_id, **{key: str(path)})
     return jsonify({"success": True})
 
 
@@ -2761,15 +2769,21 @@ def api_target_profile(project_id: str):
     proj = _get_project(project_id)
     if not proj:
         return jsonify({}), 404
-    fr_settings_path = Path(proj.get("fr_settings_file", ""))
-    if not fr_settings_path.exists():
-        return jsonify({}), 200
+    _sf   = proj.get("fr_settings_file") or ""
+    _pdir = Path(proj["project_dir"]) if proj.get("project_dir") else None
     try:
-        fr_cfg  = json.loads(fr_settings_path.read_text())
-        fr_proj = fr_cfg.get("scan", {}).get("project", "")
-        tp_path = Path(proj["project_dir"]) / fr_proj / "target_profile.json"
-        if tp_path.exists():
-            return jsonify(json.loads(tp_path.read_text()))
+        if _sf and Path(_sf).is_file():
+            fr_cfg  = json.loads(Path(_sf).read_text())
+            fr_proj = fr_cfg.get("scan", {}).get("project", "")
+            if fr_proj and _pdir:
+                tp_path = _pdir / fr_proj / "target_profile.json"
+                if tp_path.exists():
+                    return jsonify(json.loads(tp_path.read_text()))
+        # Fallback: target_profile.json directly in project_dir (discovered projects)
+        if _pdir:
+            tp_path = _pdir / "target_profile.json"
+            if tp_path.exists():
+                return jsonify(json.loads(tp_path.read_text()))
     except Exception:
         pass
     return jsonify({}), 200
