@@ -2411,6 +2411,9 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
               pill = '<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:3px;font-size:.68rem;font-weight:700;background:#d29922;color:#000;vertical-align:middle" title="Response body significantly smaller than most-privileged role — possible restricted view">RESTRICTED</span>';
             }
           }
+          if (meta.waf_blocked) {
+            pill = '<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:3px;font-size:.68rem;font-weight:700;background:#8957e5;color:#fff;vertical-align:middle" title="WAF/CDN blocked this request — result may be a false positive">WAF</span>';
+          }
         } else { cell = String(access); }
       }
       html += `<td style="text-align:center;padding:.35rem .6rem;${cls}">${cell}${pill}</td>`;
