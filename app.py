@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.18"
+VERSION = "1.8.20"
 
 import io
 import socket
@@ -2359,10 +2359,27 @@ def api_export_status_report_pdf(project_id: str):
     end_date         = engagement.get("end_date", "") or ""
     generated_at     = datetime.now(timezone.utc).strftime("%Y-%m-%d (%Y-%m-%d %H:%M:%S UTC)")
 
-    # ── Load findings — LOW and above only ───────────────────────────────────
+    # ── Load target profile ──────────────────────────────────────────────────
+    target_profile: dict = {}
+    try:
+        _tp_paths = []
+        if fr_proj_dir and proj.get("project_dir"):
+            _tp_paths.append(Path(proj["project_dir"]) / fr_proj_dir / "target_profile.json")
+        if proj.get("project_dir"):
+            _tp_paths.append(Path(proj["project_dir"]) / "target_profile.json")
+        for _tp_p in _tp_paths:
+            if _tp_p.exists():
+                target_profile = json.loads(_tp_p.read_text())
+                break
+    except Exception:
+        pass
+
+    # ── Load findings — LOW and above only, excluding false positives ────────
     INCLUDE_RISKS = {"CRITICAL", "HIGH", "MEDIUM", "LOW"}
     RISK_ORDER    = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
     RISK_HEX      = {"CRITICAL": "dc2626", "HIGH": "ea580c", "MEDIUM": "d97706", "LOW": "2563eb"}
+
+    _suppressions = _load_suppressions(project_id)
 
     all_findings: list[dict] = []
     for _tool_name, _subdir, _scope_lbl in [
@@ -2380,6 +2397,8 @@ def api_export_status_report_pdf(project_id: str):
                         continue
                     _f.setdefault("_tool", _tool_name)
                     _f.setdefault("_scope", _scope_lbl)
+                    if _fkey_hash(_f) in _suppressions:
+                        continue
                     all_findings.append(_f)
             except Exception:
                 pass
@@ -2528,10 +2547,95 @@ def api_export_status_report_pdf(project_id: str):
             story.append(Paragraph(_tu, s_mono))
         story.append(Spacer(1, 3*mm))
 
-    # ── 2. Detailed Findings ─────────────────────────────────────────────────
+    # ── 2. Target Profile ────────────────────────────────────────────────────
+    if target_profile:
+        story.append(HRFlowable(width="100%", thickness=0.5, color=C_BORDER,
+                                spaceBefore=2*mm, spaceAfter=2*mm))
+        story.append(Paragraph("2. Target Profile", s_h2))
+
+        # Key-value rows — only emit rows that have a value
+        def _tp_kv_rows():
+            rows = []
+            def _add(label, val):
+                if val:
+                    rows.append([Paragraph(label, s_label), Paragraph(str(val), s_val)])
+            _add("Server",          target_profile.get("server") or "")
+            _add("Powered By",      target_profile.get("powered_by") or "")
+            _add("Web Structure",   target_profile.get("web_structure") or "")
+            _add("CMS",             ", ".join(target_profile.get("cms") or []))
+            _add("CDN",             target_profile.get("cdn") or "")
+            _add("WAF",             target_profile.get("waf") or "")
+            _add("Edge Security",   ", ".join(target_profile.get("edge_security") or []))
+            _add("Auth Method",     target_profile.get("auth_method") or "")
+            _add("Auth Page",       target_profile.get("auth_page") or "")
+            _add("TLS Cert",        target_profile.get("tls_cert") or "")
+            _add("Cert Expiry",     target_profile.get("cert_expiry") or "")
+            _tlsp = target_profile.get("protocols")
+            if _tlsp:
+                _add("TLS Protocols", ", ".join(_tlsp) if isinstance(_tlsp, list) else str(_tlsp))
+            return rows
+
+        _tp_rows = _tp_kv_rows()
+        if _tp_rows:
+            _tp_tbl = Table(_tp_rows, colWidths=[CW * 0.22, CW * 0.78])
+            _tp_tbl.setStyle(TableStyle([
+                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING",    (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("LINEBELOW",     (0, 0), (-1, -1), 0.3, C_BORDER),
+            ]))
+            story.append(_tp_tbl)
+            story.append(Spacer(1, 3*mm))
+
+        # Technologies pill list
+        _tp_techs = target_profile.get("technologies") or []
+        if isinstance(_tp_techs, list) and _tp_techs:
+            _tech_names = []
+            for _t in _tp_techs:
+                if isinstance(_t, dict):
+                    _tn = _t.get("name", "")
+                    _tv = _t.get("version", "")
+                    _tech_names.append(f"{_tn} {_tv}".strip() if _tv else _tn)
+                elif isinstance(_t, str):
+                    _tech_names.append(_t)
+            if _tech_names:
+                story.append(Paragraph("Technologies", s_label))
+                story.append(Paragraph(", ".join(_tech_names), s_val))
+                story.append(Spacer(1, 2*mm))
+
+        # BI / Monitoring tools
+        _tp_bi = target_profile.get("bi_tools") or []
+        if _tp_bi:
+            story.append(Paragraph("BI / Monitoring", s_label))
+            story.append(Paragraph(", ".join(_tp_bi), s_val))
+            story.append(Spacer(1, 2*mm))
+
+        # Security headers
+        _tp_sh = target_profile.get("security_headers") or {}
+        _sh_present = _tp_sh.get("present") or []
+        _sh_missing = _tp_sh.get("missing") or []
+        if _sh_present or _sh_missing:
+            story.append(Paragraph("Security Headers", s_label))
+            if _sh_present:
+                story.append(Paragraph(
+                    f"<font color='#16a34a'>Present:</font> {', '.join(_sh_present)}", s_val))
+            if _sh_missing:
+                story.append(Paragraph(
+                    f"<font color='#dc2626'>Missing:</font> {', '.join(_sh_missing)}", s_val))
+            story.append(Spacer(1, 2*mm))
+
+        # Cookies
+        _tp_ck = target_profile.get("cookies") or []
+        if _tp_ck:
+            story.append(Paragraph("Cookies", s_label))
+            story.append(Paragraph(", ".join(_tp_ck), s_val))
+            story.append(Spacer(1, 2*mm))
+
+    # ── 3. Detailed Findings ─────────────────────────────────────────────────
     if all_findings:
         story.append(PageBreak())
-        story.append(Paragraph("2. Detailed Findings", s_h2))
+        story.append(Paragraph("3. Detailed Findings", s_h2))
 
         def _detail_section(findings, section_label):
             if not findings:
