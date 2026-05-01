@@ -876,7 +876,8 @@ const FIND_PER_PAGE = 25;
 
 // False positive suppression state
 const _suppressedSet = new Set();
-let _showFP = false;
+let _showFP    = false;
+let _fpFindings = [];
 let _fpPendingKey  = null;
 let _fpPendingData = null;
 let _recoverPendingKey = null;
@@ -1322,9 +1323,21 @@ function setRiskFilter(risk) {
 }
 
 function reloadFindings() {
+  if (_showFP) { reloadFalsePositives(); return; }
   fetch(`/api/findings/${PROJECT_ID}`)
     .then(r => r.json())
     .then(arr => { arr.forEach(addFinding); })
+    .catch(() => {});
+}
+
+function reloadFalsePositives() {
+  fetch(`/api/false-positives/${PROJECT_ID}`)
+    .then(r => r.json())
+    .then(arr => {
+      _fpFindings = arr;
+      _findPage = 0;
+      renderFindings();
+    })
     .catch(() => {});
 }
 
@@ -1343,10 +1356,8 @@ function _getFilteredFindings() {
   const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
   const risk = document.getElementById('filterRisk').value;
   const tool = document.getElementById('filterTool').value;
-  return allFindings.filter(f => {
-    const suppressed = _isSuppressed(f);
-    if (suppressed && !_showFP) return false;
-    if (!suppressed && _showFP) return false;
+  const src  = _showFP ? _fpFindings : allFindings;
+  return src.filter(f => {
     if (risk && (f.risk || 'INFO').toUpperCase() !== risk) return false;
     if (tool && (f._tool || '') !== tool) return false;
     if (q) {
@@ -1469,10 +1480,9 @@ function renderFindings() {
   document.getElementById('findBtnNext').disabled = _findPage >= pages - 1;
 
   if (!slice.length) {
-    const activeCount = allFindings.filter(x => !_isSuppressed(x)).length;
     const emptyMsg = _showFP
-      ? (allFindings.some(_isSuppressed) ? 'No false positives match filters.' : 'No false positives marked.')
-      : (activeCount ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.');
+      ? (_fpFindings.length ? 'No false positives match filters.' : 'No false positives marked.')
+      : (allFindings.length ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.');
     tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${emptyMsg}</td></tr>`;
     return;
   }
@@ -1486,7 +1496,7 @@ function renderFindings() {
     const evidenceBtn = _evParsed.count > 0
       ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(_evParsed))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View</button>`
       : '';
-    const isFP = _isSuppressed(f);
+    const isFP = _showFP || _isSuppressed(f);
     const riskCell = isFP
       ? `<span class="risk-badge risk-fp">FP</span>`
       : _riskBadge(f.risk);
@@ -2033,7 +2043,12 @@ function toggleShowFP() {
   const btn = document.getElementById('showFPBtn');
   if (btn) btn.classList.toggle('active', _showFP);
   _findPage = 0;
-  renderFindings();
+  if (_showFP) {
+    reloadFalsePositives();
+  } else {
+    _fpFindings = [];
+    renderFindings();
+  }
 }
 
 function markFalsePositive(key, fJsonStr) {
@@ -2049,25 +2064,35 @@ function cancelMarkFP() {
 }
 
 function confirmMarkFP() {
-  const key = _fpPendingKey;
+  const key     = _fpPendingKey;
+  const finding = _fpPendingData ? JSON.parse(_fpPendingData) : null;
   cancelMarkFP();
-  if (!key) return;
+  if (!key || !finding) return;
   fetch(`/api/suppress-finding/${PROJECT_ID}`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({key_hash: key})
+    body: JSON.stringify({key_hash: key, finding})
   })
   .then(r => r.json())
   .then(d => {
     if (d.success) {
-      _suppressedSet.add(key);
-      // Recompute counts and re-render
-      const activeFindings = allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
-      document.getElementById('findingsBadge').textContent = activeFindings.length;
+      // Remove from allFindings + re-index
+      const idx = _findingIdx.get(key);
+      if (idx !== undefined) {
+        allFindings.splice(idx, 1);
+        _findingIdx.delete(key);
+        for (let i = idx; i < allFindings.length; i++) {
+          _findingIdx.set(_fkeyF(allFindings[i]), i);
+        }
+      }
+      // Add to FP list
+      _fpFindings.push(finding);
+      // Update badges
+      document.getElementById('findingsBadge').textContent = allFindings.length;
       const frCnt = document.getElementById('fr-finding-count');
       const siCnt = document.getElementById('si-finding-count');
-      if (frCnt) frCnt.textContent = activeFindings.filter(x => x._tool === 'fracture').length;
-      if (siCnt) siCnt.textContent = activeFindings.filter(x => x._tool === 'siphon').length;
+      if (frCnt) frCnt.textContent = allFindings.filter(x => x._tool === 'fracture').length;
+      if (siCnt) siCnt.textContent = allFindings.filter(x => x._tool === 'siphon').length;
       _findPage = 0;
       renderFindings();
     } else {
@@ -2099,13 +2124,11 @@ function confirmRecover() {
   .then(r => r.json())
   .then(d => {
     if (d.success) {
-      _suppressedSet.delete(key);
-      const activeFindings = allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
-      document.getElementById('findingsBadge').textContent = activeFindings.length;
-      const frCnt = document.getElementById('fr-finding-count');
-      const siCnt = document.getElementById('si-finding-count');
-      if (frCnt) frCnt.textContent = activeFindings.filter(x => x._tool === 'fracture').length;
-      if (siCnt) siCnt.textContent = activeFindings.filter(x => x._tool === 'siphon').length;
+      // Remove from FP list
+      const fpIdx = _fpFindings.findIndex(f => _fkeyF(f) === key);
+      if (fpIdx !== -1) _fpFindings.splice(fpIdx, 1);
+      // Add back to active findings (addFinding updates allFindings, _findingIdx, and badge)
+      if (d.finding) addFinding(d.finding);
       _findPage = 0;
       renderFindings();
     } else {

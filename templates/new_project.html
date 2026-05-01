@@ -189,56 +189,26 @@
       </div>
 
       <div class="fr-auth-group form-grid" id="frAuth-auto" style="display:none;margin-top:.5rem">
-        <div class="form-group">
-          <label class="form-label">Username</label>
-          <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
-        </div>
         <div class="form-group span2">
-          <span class="form-hint">Tries form login → token login → basic → digest → NTLM in order; stops at first success.</span>
+          <span class="form-hint">Tries form login → token login → basic → digest → NTLM in order; stops at first success. Credentials are sourced from the Credential Matrix below.</span>
         </div>
       </div>
 
-      <div class="fr-auth-group form-grid" id="frAuth-basic" style="display:none;margin-top:.5rem">
-        <div class="form-group">
-          <label class="form-label">Username</label>
-          <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
-        </div>
+      <div class="fr-auth-group" id="frAuth-basic" style="display:none;margin-top:.5rem">
+        <span class="form-hint">Uses HTTP Basic authentication. Credentials are sourced from the Credential Matrix below.</span>
       </div>
 
-      <div class="fr-auth-group form-grid" id="frAuth-digest" style="display:none;margin-top:.5rem">
-        <div class="form-group">
-          <label class="form-label">Username</label>
-          <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
-        </div>
+      <div class="fr-auth-group" id="frAuth-digest" style="display:none;margin-top:.5rem">
+        <span class="form-hint">Uses HTTP Digest authentication. Credentials are sourced from the Credential Matrix below.</span>
       </div>
 
       <div class="fr-auth-group form-grid" id="frAuth-ntlm" style="display:none;margin-top:.5rem">
-        <div class="form-group">
-          <label class="form-label">Username</label>
-          <input type="text" name="fr_auth_username" class="form-control" placeholder="jsmith" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
-        </div>
         <div class="form-group">
           <label class="form-label">Domain</label>
           <input type="text" name="fr_auth_domain" class="form-control" placeholder="CORP">
         </div>
         <div class="form-group">
-          <span class="form-hint">Requires: pip install requests-ntlm</span>
+          <span class="form-hint">Credentials are sourced from the Credential Matrix below. Requires: pip install requests-ntlm</span>
         </div>
       </div>
 
@@ -273,16 +243,11 @@
               <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username" value="username">
             </div>
             <div class="form-group">
-              <label class="form-label">Username</label>
-              <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
-            </div>
-            <div class="form-group">
               <label class="form-label">Password Field Name</label>
               <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password" value="password">
             </div>
-            <div class="form-group">
-              <label class="form-label">Password</label>
-              <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            <div class="form-group span2">
+              <span class="form-hint">Credentials (username / password) are sourced from the Credential Matrix below.</span>
             </div>
           </div>
         </div>
@@ -314,16 +279,11 @@
               <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username" value="username">
             </div>
             <div class="form-group">
-              <label class="form-label">Username</label>
-              <input type="text" name="fr_auth_username" class="form-control" placeholder="admin" autocomplete="off">
-            </div>
-            <div class="form-group">
               <label class="form-label">Password Field Name</label>
               <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password" value="password">
             </div>
-            <div class="form-group">
-              <label class="form-label">Password</label>
-              <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
+            <div class="form-group span2">
+              <span class="form-hint">Credentials (username / password) are sourced from the Credential Matrix below.</span>
             </div>
           </div>
         </div>
@@ -412,17 +372,11 @@
       <!-- ── NTLMv2 ────────────────────────────────────────────────────────── -->
       <div class="fr-auth-group form-grid" id="frAuth-ntlm_v2" style="display:none;margin-top:.5rem">
         <div class="form-group">
-          <label class="form-label">Username</label>
-          <input type="text" name="fr_auth_username" class="form-control" placeholder="jsmith" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
-        </div>
-        <div class="form-group">
           <label class="form-label">Domain</label>
           <input type="text" name="fr_auth_domain" class="form-control" placeholder="CORP">
-          <span class="form-hint">Requires: pip install requests-ntlm</span>
+        </div>
+        <div class="form-group">
+          <span class="form-hint">Credentials are sourced from the Credential Matrix below. Requires: pip install requests-ntlm</span>
         </div>
       </div>
 
@@ -508,14 +462,6 @@
           <label class="form-label">Login URL <span class="req">*</span></label>
           <input type="url" name="fr_auth_login_url" class="form-control"
                  oninput="_updateFrTestBtn()" placeholder="https://app.example.com/login">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Username</label>
-          <input type="text" name="fr_auth_username" class="form-control" autocomplete="off" oninput="_updateFrTestBtn()">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Password</label>
-          <input type="password" name="fr_auth_password" class="form-control" autocomplete="new-password">
         </div>
         <div class="form-group">
           <label class="form-label">TOTP Secret (Base32) <span class="req">*</span></label>
@@ -1233,7 +1179,7 @@
 
     <!-- Credential Matrix -->
     <div class="form-section" id="credMatrixSection">
-      <div class="form-section-title">Credential Matrix <span class="form-hint" style="font-weight:normal;font-size:.85rem">(optional — define multiple roles for privilege comparison and BFLA testing)</span></div>
+      <div class="form-section-title">Credential Matrix <span id="credMatrixRequired" class="req" style="display:none"> *</span><span class="form-hint" style="font-weight:normal;font-size:.85rem"> — define roles for privilege comparison and BFLA testing</span></div>
       <div style="margin-bottom:.75rem;color:#8b949e;font-size:.85rem">Add one entry per role. Siphon and Fracture will test every identified endpoint with each set of credentials and unauthenticated, comparing access across roles.</div>
       <div id="credMatrixRows" style="display:flex;flex-direction:column;gap:.5rem"></div>
       <button type="button" class="btn btn-sm btn-ghost" style="margin-top:.75rem" onclick="addCredRow()">+ Add Role</button>
@@ -1482,6 +1428,7 @@ function _syncCredMatrix() {
     if (role && username) rows.push({ role: role, username: username, password: password });
   });
   document.getElementById('authMatrixHidden').value = JSON.stringify(rows);
+  if (typeof _updateFrTestBtn === 'function') _updateFrTestBtn();
 }
 function _escAttr(s) {
   return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1500,6 +1447,11 @@ function submitForm(e) {
   if (failedUploads.length) {
     if (!confirm(`${failedUploads.length} spec file(s) failed to upload and will not be included. Continue?`))
       return;
+  }
+  if (document.getElementById('chkFR').checked && _frNeedsMatrix() && !_frMatrixHasCredRow()) {
+    alert('The selected Fracture auth method requires at least one role with username and password in the Credential Matrix.');
+    document.getElementById('credMatrixSection').scrollIntoView({ behavior: 'smooth' });
+    return;
   }
 
   const btn = document.getElementById('submitBtn');
@@ -1614,17 +1566,49 @@ function frLoginModeChanged(method) {
   _updateFrTestBtn();
 }
 
+const _FR_CRED_METHODS = ['auto','basic','digest','ntlm','ntlm_v2','form_login','token_login','totp_mfa'];
+function _frNeedsMatrix() {
+  const method = document.getElementById('frAuthMethod').value;
+  if (!_FR_CRED_METHODS.includes(method)) return false;
+  if (method === 'form_login' || method === 'token_login') {
+    const grp = document.getElementById('frAuth-' + method);
+    const mode = grp?.querySelector('[name="fr_auth_login_mode"]')?.value || 'fields';
+    return mode === 'fields';
+  }
+  return true;
+}
+function _frMatrixHasCredRow() {
+  const rows = document.querySelectorAll('#credMatrixRows > div');
+  for (const row of rows) {
+    const u = (row.querySelector('.cred-username')?.value || '').trim();
+    const p = (row.querySelector('.cred-password')?.value || '').trim();
+    if (u && p) return true;
+  }
+  return false;
+}
+function _frFirstCred() {
+  const rows = document.querySelectorAll('#credMatrixRows > div');
+  for (const row of rows) {
+    const u = (row.querySelector('.cred-username')?.value || '').trim();
+    const p = row.querySelector('.cred-password')?.value || '';
+    if (u) return { username: u, password: p };
+  }
+  return { username: '', password: '' };
+}
 function _updateFrTestBtn() {
   const method = document.getElementById('frAuthMethod').value;
   const urlRaw = (document.getElementById('frTargetUrls')?.value || '').trim();
+  const needsMatrix = _frNeedsMatrix();
+  const req = document.getElementById('credMatrixRequired');
+  if (req) req.style.display = needsMatrix ? '' : 'none';
   let ready = method !== 'none' && urlRaw.length > 0;
   if (ready) {
     const activeGrp = document.getElementById('frAuth-' + method);
     const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
     if      (method === 'bearer')                ready = !!q('fr_auth_token');
-    else if (method === 'auto')                  ready = !!q('fr_auth_username');
-    else if (['basic','digest','ntlm'].includes(method)) ready = !!q('fr_auth_username');
-    else if (method === 'form_login' || method === 'token_login') ready = !!q('fr_auth_login_url');
+    else if (['auto','basic','digest','ntlm','ntlm_v2'].includes(method)) ready = _frMatrixHasCredRow();
+    else if (method === 'form_login' || method === 'token_login') ready = !!q('fr_auth_login_url') && (!needsMatrix || _frMatrixHasCredRow());
+    else if (method === 'totp_mfa')              ready = !!(q('fr_auth_login_url') && q('fr_auth_totp_secret')) && _frMatrixHasCredRow();
     else if (method === 'oauth2_client_creds')   ready = !!(q('fr_auth_oauth_token_url') && q('fr_auth_oauth_client_id'));
     else if (method === 'apikey_header' || method === 'apikey_cookie') ready = !!q('fr_auth_api_key_value');
     else if (method === 'header_creds')          ready = !!q('fr_auth_custom_headers');
@@ -1642,10 +1626,11 @@ async function testFrConnection() {
   const q = s => ((activeGrp || document).querySelector('[name="' + s + '"]')?.value || '').trim();
   let ch = {};
   try { ch = JSON.parse(q('fr_auth_custom_headers') || '{}'); } catch {}
+  const _cred = _frFirstCred();
   const auth = {
     auth_method: method,
     auth_token: q('fr_auth_token'), token_type: q('fr_auth_token_type') || 'Bearer',
-    username: q('fr_auth_username'), password: q('fr_auth_password'), domain: q('fr_auth_domain'),
+    username: _cred.username, password: _cred.password, domain: q('fr_auth_domain'),
     api_key_value: q('fr_auth_api_key_value'),
     api_key_header: q('fr_auth_api_key_header') || 'X-API-Key',
     api_key_cookie_name: q('fr_auth_api_key_cookie') || 'api_key',

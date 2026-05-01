@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.21"
+VERSION = "1.8.25"
 
 import io
 import socket
@@ -206,7 +206,8 @@ FR_DEFAULTS: dict = {
             "injection": True, "traversal": True, "ssrf": True,
             "auth_bypass": True, "files": True, "vulnscan": True,
             "graphql": False, "auth_recon": False, "authorization": False,
-            "session": False, "csrf": False, "cross_user": False
+            "session": False, "csrf": False, "cross_user": False,
+            "logout": False
         },
         "auth": {
             "enabled": False, "auth_method": "form_login",
@@ -703,6 +704,11 @@ def _build_fr_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
         "proxy_header_value":    _keep("proxy_header_value",    "fr_auth_proxy_header_value"),
         # Custom headers
         "custom_headers":        _json_field("fr_auth_custom_headers", "custom_headers", "{}"),
+        # Login profile — ID of a stored Fracture login profile to replay.
+        # Populated automatically from AuthProbe output; can also be set manually.
+        # Empty string means auto-detect (fingerprint matching); a specific ID
+        # pins the profile; "none" forces a fresh browser-assisted login.
+        "login_profile_id":      _keep("login_profile_id",      "fr_auth_login_profile_id"),
     }
     return auth
 
@@ -1161,6 +1167,9 @@ def api_create_project():
     # Fracture auth
     if body.get("fr_auth_method") and body["fr_auth_method"] != "none":
         fr["scan"]["auth"] = _build_fr_auth_from_body(body)
+        # Enable auth-dependent phases now that credentials are configured
+        for _ap in ("auth_recon", "authorization", "session", "csrf", "logout"):
+            fr["scan"]["phases"][_ap] = True
 
     # Siphon auth
     si["scan"]["auth"] = _build_si_auth_from_body(body)
@@ -1249,6 +1258,9 @@ def api_update_project(project_id: str):
         # Fracture auth (only update when method key present in body)
         if "fr_auth_method" in body:
             fr["scan"]["auth"] = _build_fr_auth_from_body(body, fr["scan"].get("auth"))
+            if body.get("fr_auth_method") and body["fr_auth_method"] != "none":
+                for _ap in ("auth_recon", "authorization", "session", "csrf", "logout"):
+                    fr["scan"]["phases"][_ap] = True
         if "auth_matrix" in body:
             fr["scan"]["auth_matrix"] = _parse_auth_matrix_from_body(body)
         fr_path.write_text(json.dumps(fr, indent=2))
@@ -1497,7 +1509,26 @@ def api_authprobe():
         raw = proc.stdout + (("\n" + proc.stderr) if proc.stderr.strip() else "")
         # Strip ANSI escape codes (AuthProbe disables them for non-tty, but just in case)
         output = re.sub(r'\x1b\[[0-9;]*m', '', raw).strip()
-        return jsonify({"success": True, "output": output})
+
+        # Extract matched login profile ID from the output so the UI can surface
+        # it and optionally pre-fill fr_auth_login_profile_id for the next scan.
+        _lp_id = ""
+        _lp_conf = 0
+        for _ln in output.splitlines():
+            _ln = _ln.strip()
+            if _ln.startswith("Profile ID:"):
+                _lp_id = _ln.split(":", 1)[1].strip()
+            elif _ln.startswith("Confidence:"):
+                try:
+                    _lp_conf = int(re.sub(r"[^0-9]", "", _ln.split(":", 1)[1]))
+                except Exception:
+                    pass
+
+        _resp: dict = {"success": True, "output": output}
+        if _lp_id:
+            _resp["login_profile_id"]   = _lp_id
+            _resp["login_profile_conf"] = _lp_conf
+        return jsonify(_resp)
     except subprocess.TimeoutExpired:
         return jsonify({"success": False, "error": "AuthProbe timed out (60 s)"})
     except Exception as exc:
@@ -1583,6 +1614,9 @@ def api_findings(project_id: str):
         except Exception:
             pass
 
+    suppressions = _load_suppressions(project_id)
+    if suppressions:
+        result = [f for f in result if _fkey_hash(f) not in suppressions]
     return jsonify(result)
 
 
@@ -1604,6 +1638,37 @@ def _load_suppressions(project_id: str) -> set:
         return set()
 
 
+def _false_positives_path(project_id: str) -> Path:
+    proj = _get_project(project_id)
+    if not proj:
+        return PROJECTS_DIR / project_id / "falsePositives.json"
+    return Path(proj.get("project_dir", str(PROJECTS_DIR / project_id))) / "falsePositives.json"
+
+
+def _load_false_positives(project_id: str) -> list:
+    fpp = _false_positives_path(project_id)
+    if not fpp.exists():
+        return []
+    try:
+        return json.loads(fpp.read_text())
+    except Exception:
+        return []
+
+
+def _tool_findings_path(proj: dict, tool_name: str) -> "Path | None":
+    key     = "fr_settings_file" if tool_name == "fracture" else "si_settings_file"
+    default = "fracture_output"  if tool_name == "fracture" else "siphon_output"
+    cfg_path = Path(proj.get(key, ""))
+    if not cfg_path.exists():
+        return None
+    try:
+        cfg      = json.loads(cfg_path.read_text())
+        proj_dir = cfg.get("scan", {}).get("project", default)
+        return Path(proj["project_dir"]) / proj_dir / "findings.json"
+    except Exception:
+        return None
+
+
 def _fkey_hash(f: dict) -> str:
     """Return the suppression key for finding *f*.
 
@@ -1618,45 +1683,135 @@ def _fkey_hash(f: dict) -> str:
 
 @app.route("/api/suppress-finding/<project_id>", methods=["POST"])
 def api_suppress_finding(project_id: str):
-    """Mark a finding as suppressed (false positive / accepted risk).
+    """Mark a finding as a false positive.
 
-    Body: {"key_hash": "<sha256>", "reason": "..."}
-    The key_hash is computed from _fkey_hash(finding) in the frontend.
+    Moves the finding from findings.json to falsePositives.json and records
+    the key in suppressions.json for backward compatibility.
+    Body: {"key_hash": "<pipe-joined key>", "finding": {<full finding object>}}
     """
-    if not _get_project(project_id):
+    proj = _get_project(project_id)
+    if not proj:
         return jsonify({"error": "not found"}), 404
     body     = request.json or {}
     key_hash = (body.get("key_hash") or "").strip()
+    finding  = body.get("finding")
     if not key_hash:
         return jsonify({"error": "Invalid key_hash"}), 400
+
+    # Record in suppressions index (backward compat)
     sp = _suppressions_path(project_id)
     suppressions = _load_suppressions(project_id)
     suppressions.add(key_hash)
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(sorted(suppressions), indent=2))
+
+    if finding:
+        key_tuple = _fkey(finding)
+
+        # Remove from the tool's findings.json
+        tool_fp_path = _tool_findings_path(proj, finding.get("_tool", ""))
+        if tool_fp_path and tool_fp_path.exists():
+            try:
+                existing = json.loads(tool_fp_path.read_text())
+                tool_fp_path.write_text(
+                    json.dumps([f for f in existing if _fkey(f) != key_tuple], indent=2)
+                )
+            except Exception:
+                pass
+
+        # Add to falsePositives.json (deduplicated)
+        fpp     = _false_positives_path(project_id)
+        fp_list = _load_false_positives(project_id)
+        if not any(_fkey(f) == key_tuple for f in fp_list):
+            fp_list.append(finding)
+            fpp.parent.mkdir(parents=True, exist_ok=True)
+            fpp.write_text(json.dumps(fp_list, indent=2))
+
+        # Remove from in-memory cache
+        if project_id in _all_findings:
+            _all_findings[project_id] = [
+                f for f in _all_findings[project_id] if _fkey(f) != key_tuple
+            ]
+
     return jsonify({"success": True, "suppressed": key_hash})
 
 
 @app.route("/api/unsuppress-finding/<project_id>", methods=["POST"])
 def api_unsuppress_finding(project_id: str):
-    """Remove a finding from the suppressed set."""
-    if not _get_project(project_id):
+    """Recover a false positive back to the active findings list.
+
+    Moves the finding from falsePositives.json back into findings.json and
+    removes the key from suppressions.json.
+    Body: {"key_hash": "<pipe-joined key>"}
+    Response: {"success": true, "finding": {<recovered finding object>}}
+    """
+    proj = _get_project(project_id)
+    if not proj:
         return jsonify({"error": "not found"}), 404
     body     = request.json or {}
     key_hash = (body.get("key_hash") or "").strip()
     if not key_hash:
         return jsonify({"error": "Missing key_hash"}), 400
+
+    # Remove from suppressions index
     sp = _suppressions_path(project_id)
     suppressions = _load_suppressions(project_id)
     suppressions.discard(key_hash)
     sp.write_text(json.dumps(sorted(suppressions), indent=2))
-    return jsonify({"success": True})
+
+    # Find and remove from falsePositives.json
+    fpp       = _false_positives_path(project_id)
+    fp_list   = _load_false_positives(project_id)
+    recovered = None
+    remaining = []
+    for f in fp_list:
+        if _fkey_hash(f) == key_hash:
+            recovered = f
+        else:
+            remaining.append(f)
+
+    if recovered:
+        fpp.write_text(json.dumps(remaining, indent=2))
+
+        # Write back to tool's findings.json
+        tool_fp_path = _tool_findings_path(proj, recovered.get("_tool", ""))
+        if tool_fp_path:
+            try:
+                existing  = json.loads(tool_fp_path.read_text()) if tool_fp_path.exists() else []
+                key_tuple = _fkey(recovered)
+                if not any(_fkey(f) == key_tuple for f in existing):
+                    clean = {k: v for k, v in recovered.items() if not k.startswith("_")}
+                    existing.append(clean)
+                    tool_fp_path.parent.mkdir(parents=True, exist_ok=True)
+                    tool_fp_path.write_text(json.dumps(existing, indent=2))
+            except Exception:
+                pass
+
+        # Add back to in-memory cache
+        if project_id in _all_findings:
+            key_tuple = _fkey(recovered)
+            if not any(_fkey(f) == key_tuple for f in _all_findings[project_id]):
+                _all_findings[project_id].append(recovered)
+
+    return jsonify({"success": True, "finding": recovered})
 
 
 @app.route("/api/suppressions/<project_id>")
 def api_suppressions(project_id: str):
     """Return the set of suppressed finding key hashes for a project."""
     return jsonify(sorted(_load_suppressions(project_id)))
+
+
+@app.route("/api/false-positives/<project_id>")
+def api_false_positives(project_id: str):
+    """Return all false positive findings from falsePositives.json."""
+    if not _get_project(project_id):
+        return jsonify([])
+    fp_list = _load_false_positives(project_id)
+    for f in fp_list:
+        if not f.get("_scope"):
+            f["_scope"] = "webapp" if f.get("_tool") == "fracture" else "api"
+    return jsonify(fp_list)
 
 
 @app.route("/api/compare-scans", methods=["POST"])
