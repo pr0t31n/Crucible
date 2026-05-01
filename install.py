@@ -318,7 +318,7 @@ def install_pip():
 # ---------------------------------------------------------------------------
 # Service files
 # ---------------------------------------------------------------------------
-APP_DIR  = "/Users/pr0t31n/Crucible"
+APP_DIR  = "/opt/pr0t31n/Crucible"
 APP_FILE = f"{APP_DIR}/app.py"
 SVC_NAME = "pr0t31n-crucible"
 PORT     = 5500
@@ -419,8 +419,8 @@ def print_dependency_warning():
   These tools and all their dependencies must be installed
   separately using their own install scripts:
 
-    python3 /Users/pr0t31n/Fracture/install.py
-    python3 /Users/pr0t31n/Siphon/install.py
+    python3 /opt/pr0t31n/Fracture/install.py
+    python3 /opt/pr0t31n/Siphon/install.py
 
   Without these, Crucible will start but scan functionality
   will not be available.
@@ -450,7 +450,6 @@ def run_check():
     print(f"\n{C}Subprocess dependencies:{W}")
 
     fracture_candidates = [
-        "/Users/pr0t31n/Fracture/fracture.py",
         "/opt/pr0t31n/Fracture/fracture.py",
     ]
     fracture_found = any(os.path.isfile(p) for p in fracture_candidates)
@@ -460,7 +459,6 @@ def run_check():
         warn(f"{'fracture.py':30s} {Y}NOT FOUND — install separately{W}")
 
     siphon_candidates = [
-        "/Users/pr0t31n/Siphon/siphon.py",
         "/opt/pr0t31n/Siphon/siphon.py",
     ]
     siphon_found = any(os.path.isfile(p) for p in siphon_candidates)
