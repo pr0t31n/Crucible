@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.20"
+VERSION = "1.8.21"
 
 import io
 import socket
@@ -1605,9 +1605,15 @@ def _load_suppressions(project_id: str) -> set:
 
 
 def _fkey_hash(f: dict) -> str:
-    import hashlib
-    key = str(_fkey(f))
-    return hashlib.sha256(key.encode()).hexdigest()
+    """Return the suppression key for finding *f*.
+
+    Must match _fkeyF() in project.html exactly:
+      `${title}|${ip}|${port}|${_scope}|${hostname}`
+    The frontend stores this raw pipe-joined string as the suppression key —
+    NOT a hash — so the backend must produce the same string, not a digest.
+    """
+    t = _fkey(f)  # (title, ip, port, _scope, hostname)
+    return f"{t[0]}|{t[1]}|{t[2]}|{t[3]}|{t[4]}"
 
 
 @app.route("/api/suppress-finding/<project_id>", methods=["POST"])
