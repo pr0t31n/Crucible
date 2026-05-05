@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.25"
+VERSION = "1.8.26"
 
 import io
 import socket
@@ -2072,6 +2072,48 @@ def api_access_matrix(project_id: str):
                 _backfill_matrix_codes(matrix, Path(_si_proj) / "api_map.json")
                 _annotate_access_hints(matrix)
                 result["si_matrix"] = matrix
+    except Exception:
+        pass
+
+    return jsonify(result)
+
+
+@app.route("/api/auth-status/<project_id>")
+def api_auth_status(project_id: str):
+    """Return authentication_status.json produced by Fracture and/or Siphon."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    result: dict = {"fr_auth": None, "si_auth": None}
+
+    try:
+        _sf = proj.get("fr_settings_file") or ""
+        _fr_proj = ""
+        if _sf and Path(_sf).is_file():
+            fr_cfg = json.loads(Path(_sf).read_text())
+            _fr_proj = fr_cfg.get("scan", {}).get("project", "")
+        if not _fr_proj:
+            _fr_proj = proj.get("fracture_output_dir") or ""
+        if _fr_proj:
+            af = Path(_fr_proj) / "authentication_status.json"
+            if af.exists():
+                result["fr_auth"] = json.loads(af.read_text())
+    except Exception:
+        pass
+
+    try:
+        _sf = proj.get("si_settings_file") or ""
+        _si_proj = ""
+        if _sf and Path(_sf).is_file():
+            si_cfg = json.loads(Path(_sf).read_text())
+            _si_proj = si_cfg.get("scan", {}).get("project", "")
+        if not _si_proj:
+            _si_proj = proj.get("siphon_output_dir") or ""
+        if _si_proj:
+            af = Path(_si_proj) / "authentication_status.json"
+            if af.exists():
+                result["si_auth"] = json.loads(af.read_text())
     except Exception:
         pass
 

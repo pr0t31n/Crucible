@@ -21,6 +21,7 @@
     </button>
     <button class="tab-btn"        data-tab="structure"  onclick="switchTab('structure',this);loadStructure()">Structure</button>
     <button class="tab-btn"        data-tab="access-matrix" onclick="switchTab('access-matrix',this);loadAccessMatrix()">Access Matrix</button>
+    <button class="tab-btn"        data-tab="authentication" onclick="switchTab('authentication',this);loadAuthStatus()">Authentication</button>
     <button class="tab-btn"        data-tab="status"   onclick="switchTab('status',this)">Status</button>
     <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
     <button class="tab-btn"        data-tab="summary"  onclick="switchTab('summary',this)">Summary</button>
@@ -723,8 +724,47 @@
     </div>
   </div><!-- /tab-access-matrix -->
 
+  <div class="tab-panel" id="tab-authentication">
+    <div style="padding:1rem 0">
+      <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+        <span style="font-size:.9rem;color:#8b949e">Session authentication status per credential role, written after each scan.</span>
+        <button class="btn btn-sm btn-ghost" onclick="loadAuthStatus(true)" title="Reload">&#x21bb; Refresh</button>
+      </div>
+      <div id="authStatusContent">
+        <span style="color:#8b949e;font-size:.85rem">Loading&#8230;</span>
+      </div>
+    </div>
+  </div><!-- /tab-authentication -->
+
 </div><!-- /project-layout -->
 
+
+<!-- Landing page modal -->
+<div class="modal-overlay hidden" id="landingModal" role="dialog" aria-modal="true"
+     onclick="if(event.target===this)closeLandingModal()">
+  <div class="modal-box landing-modal-box">
+    <div class="modal-title" id="landingModalTitle">Landing Page</div>
+    <div class="modal-body" style="padding:0;overflow:hidden;flex:1;display:flex;flex-direction:column">
+      <div style="padding:.5rem .75rem;background:var(--bg-secondary);border-bottom:1px solid var(--border-mid);display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+        <span style="font-size:.78rem;color:#8b949e">URL:</span>
+        <span class="landing-modal-url" id="landingModalUrl" style="font-size:.78rem;color:#58a6ff;font-family:monospace;word-break:break-all"></span>
+        <span style="font-size:.78rem;color:#8b949e;margin-left:.5rem">Status:</span>
+        <span class="landing-modal-code" id="landingModalCode" style="font-size:.78rem;font-weight:700;font-family:monospace"></span>
+      </div>
+      <div style="display:flex;gap:.5rem;padding:.4rem .75rem;background:var(--bg-secondary);border-bottom:1px solid var(--border-mid)">
+        <button class="btn btn-sm btn-ghost" id="landingViewRendered" onclick="_landingToggleView('rendered')" style="font-size:.75rem">Rendered</button>
+        <button class="btn btn-sm btn-ghost" id="landingViewSource" onclick="_landingToggleView('source')" style="font-size:.75rem">Source</button>
+      </div>
+      <div style="flex:1;overflow:hidden;position:relative">
+        <iframe id="landingIframe" sandbox="allow-same-origin" style="width:100%;height:100%;border:none;display:block"></iframe>
+        <pre id="landingSource" style="display:none;margin:0;padding:.75rem;font-size:.78rem;line-height:1.5;overflow:auto;height:100%;box-sizing:border-box;white-space:pre-wrap;word-break:break-all;color:var(--text-primary);background:var(--bg-primary)"></pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeLandingModal()">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- Prompt modal -->
 <div class="modal-overlay hidden" id="promptModal" role="dialog" aria-modal="true">
@@ -1124,6 +1164,7 @@ socket.on('fr_done', d => {
   _stopStructurePoll(); _stopAccessMatrixPoll();
   _structureLoaded = false; loadStructure();
   _accessMatrixLoaded = false; loadAccessMatrix();
+  _authStatusLoaded = false; loadAuthStatus();
 });
 socket.on('fr_stopped', () => { _frRunning = false; setStatus('fr','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('fr_error',   d => showToast(`FR: ${d.error}`, 'err'));
@@ -1146,6 +1187,7 @@ socket.on('si_done', d => {
   _stopStructurePoll(); _stopAccessMatrixPoll();
   _structureLoaded = false; loadStructure();
   _accessMatrixLoaded = false; loadAccessMatrix();
+  _authStatusLoaded = false; loadAuthStatus();
 });
 socket.on('si_stopped', () => { _siRunning = false; setStatus('si','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
@@ -2515,6 +2557,167 @@ async function loadAccessMatrix(force = false) {
   }
 }
 
+// ── Authentication Status ─────────────────────────────────────────────────────
+
+let _authStatusLoaded = false;
+let _landingBodyStore = {};  // key: "<tool>_<role>" → {url, code, body}
+
+async function loadAuthStatus(force = false) {
+  if (_authStatusLoaded && !force) return;
+  const el = document.getElementById('authStatusContent');
+  if (!el) return;
+  try {
+    const r = await fetch(`/api/auth-status/${PROJECT_ID}`);
+    const d = await r.json();
+    if (!d.fr_auth && !d.si_auth) {
+      if (!_frRunning && !_siRunning) {
+        _authStatusLoaded = true;
+        el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">No authentication status data found. Run a scan first.</span>';
+      } else {
+        el.innerHTML = '<span style="color:#8b949e;font-size:.85rem">Waiting for authentication data\u2026</span>';
+      }
+      return;
+    }
+    _authStatusLoaded = true;
+    _landingBodyStore = {};
+    let html = '';
+    if (d.fr_auth && d.fr_auth.length) {
+      html += _renderAuthSection('FR', 'Fracture', d.fr_auth);
+    }
+    if (d.si_auth && d.si_auth.length) {
+      html += _renderAuthSection('SI', 'Siphon', d.si_auth);
+    }
+    el.innerHTML = html || '<span style="color:#8b949e;font-size:.85rem">No authentication entries.</span>';
+  } catch(e) {
+    el.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load authentication status.</span>';
+  }
+}
+
+function _renderAuthSection(badge, title, entries) {
+  let html = `<div class="form-section" style="margin-bottom:1.5rem">`;
+  html += `<div class="form-section-title"><span class="tool-badge tool-${badge.toLowerCase()}">${badge}</span> ${_escHtml(title)}</div>`;
+  html += `<div class="auth-role-grid">`;
+  for (const e of entries) {
+    const role      = e.role || '';
+    const username  = e.username || '';
+    const status    = (e.status || '').toLowerCase();
+    const cookies   = e.cookies || [];
+    const headers   = e.auth_headers || [];
+    const sessionName = e.session_name || '';
+    const storeKey  = `${badge}_${role}`;
+
+    if (e.landing_url || e.landing_body) {
+      _landingBodyStore[storeKey] = {
+        url:  e.landing_url  || '',
+        code: e.landing_code || 0,
+        body: e.landing_body || ''
+      };
+    }
+
+    let statusCls = 'auth-status-unknown';
+    if (status === 'success')         statusCls = 'auth-status-success';
+    else if (status === 'failed')     statusCls = 'auth-status-failed';
+    else if (status === 'unauthenticated') statusCls = 'auth-status-unauth';
+
+    const dispRole = role === 'unauthenticated' ? 'Unauthenticated' : _escHtml(role);
+
+    html += `<div class="auth-role-card">`;
+    html += `<div class="auth-role-header">`;
+    html += `<span class="auth-role-name">${dispRole}</span>`;
+    html += `<span class="auth-status-badge ${statusCls}">${_escHtml(status || 'unknown')}</span>`;
+    html += `</div>`;
+
+    if (username) {
+      html += `<div class="auth-field-row"><span class="auth-field-label">Username</span><span class="auth-field-val">${_escHtml(username)}</span></div>`;
+    }
+    if (sessionName) {
+      html += `<div class="auth-field-row"><span class="auth-field-label">Session</span><span class="auth-field-val mono">${_escHtml(sessionName)}</span></div>`;
+    }
+
+    if (headers.length) {
+      html += `<div class="auth-field-row auth-field-row-top"><span class="auth-field-label">Auth Headers</span><div class="auth-cookie-table-wrap"><table class="auth-cookie-table">`;
+      html += `<thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>`;
+      for (const h of headers) {
+        html += `<tr><td>${_escHtml(h.name || '')}</td><td class="mono">${_escHtml(h.value || '')}</td></tr>`;
+      }
+      html += `</tbody></table></div></div>`;
+    }
+
+    if (cookies.length) {
+      html += `<div class="auth-field-row auth-field-row-top"><span class="auth-field-label">Cookies</span><div class="auth-cookie-table-wrap"><table class="auth-cookie-table">`;
+      html += `<thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Secure</th><th>HttpOnly</th><th>Expires</th></tr></thead><tbody>`;
+      for (const c of cookies) {
+        html += `<tr>`;
+        html += `<td class="mono">${_escHtml(c.name || '')}</td>`;
+        html += `<td class="mono auth-cookie-val" title="${_escHtml(c.value || '')}">${_escHtml((c.value||'').length > 40 ? (c.value||'').slice(0,40)+'…' : (c.value||''))}</td>`;
+        html += `<td>${_escHtml(c.domain || '')}</td>`;
+        html += `<td>${_escHtml(c.path || '')}</td>`;
+        html += `<td>${c.secure  ? '&#x2713;' : ''}</td>`;
+        html += `<td>${c.httpOnly ? '&#x2713;' : ''}</td>`;
+        html += `<td style="font-size:.75rem;color:#8b949e">${_escHtml(c.expires || '')}</td>`;
+        html += `</tr>`;
+      }
+      html += `</tbody></table></div></div>`;
+    }
+
+    if (_landingBodyStore[storeKey] && _landingBodyStore[storeKey].body) {
+      const code = _landingBodyStore[storeKey].code;
+      const codeCls = code >= 200 && code < 300 ? 'struct-ok' : code >= 300 && code < 400 ? 'struct-redir' : code >= 400 ? 'struct-err' : '';
+      html += `<div class="auth-field-row" style="margin-top:.5rem">`;
+      html += `<button class="btn btn-sm btn-ghost auth-landing-pill" onclick="openLandingModal('${_escHtml(storeKey)}','${_escHtml(role)}')" title="View initial landing page after authentication">`;
+      html += `&#x1F5CF; Landing Page`;
+      if (code) html += ` <span class="struct-status ${codeCls}" style="margin-left:.3rem">${code}</span>`;
+      html += `</button>`;
+      html += `</div>`;
+    }
+
+    html += `</div>`;  // /auth-role-card
+  }
+  html += `</div>`;  // /auth-role-grid
+  html += `</div>`;  // /form-section
+  return html;
+}
+
+function openLandingModal(storeKey, roleLabel) {
+  const d = _landingBodyStore[storeKey];
+  if (!d) return;
+  document.getElementById('landingModalTitle').textContent = `Landing Page — ${roleLabel === 'unauthenticated' ? 'Unauthenticated' : roleLabel}`;
+  document.getElementById('landingModalUrl').textContent   = d.url || '';
+  const codeEl = document.getElementById('landingModalCode');
+  codeEl.textContent = d.code ? String(d.code) : '';
+  codeEl.className = 'landing-modal-code ' + (d.code >= 200 && d.code < 300 ? 'struct-ok' : d.code >= 300 && d.code < 400 ? 'struct-redir' : d.code >= 400 ? 'struct-err' : '');
+  document.getElementById('landingSource').textContent = d.body || '';
+  const iframe = document.getElementById('landingIframe');
+  iframe.srcdoc = d.body || '';
+  _landingToggleView('rendered');
+  document.getElementById('landingModal').classList.remove('hidden');
+}
+
+function closeLandingModal() {
+  document.getElementById('landingModal').classList.add('hidden');
+  document.getElementById('landingIframe').srcdoc = '';
+}
+
+function _landingToggleView(mode) {
+  const iframe  = document.getElementById('landingIframe');
+  const source  = document.getElementById('landingSource');
+  const btnR    = document.getElementById('landingViewRendered');
+  const btnS    = document.getElementById('landingViewSource');
+  if (mode === 'rendered') {
+    iframe.style.display  = 'block';
+    source.style.display  = 'none';
+    btnR.style.fontWeight = '700';
+    btnS.style.fontWeight = '';
+  } else {
+    iframe.style.display  = 'none';
+    source.style.display  = 'block';
+    btnR.style.fontWeight = '';
+    btnS.style.fontWeight = '700';
+  }
+}
+
+// ── Access Matrix ─────────────────────────────────────────────────────────────
+
 function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
   const roles = matrix.roles || [];
   const mostPriv = matrix.most_privileged || '';
@@ -2741,5 +2944,31 @@ function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;
 .struct-method-pill.delete { background:#3d1a1a; color:#f85149; }
 .struct-method-pill.head   { background:#1e1e1e; color:#8b949e; }
 .struct-method-pill.options{ background:#1e1e1e; color:#8b949e; }
+
+/* Authentication tab */
+.auth-role-grid { display:flex; flex-wrap:wrap; gap:1rem; }
+.auth-role-card { background:var(--bg-secondary); border:1px solid var(--border-mid); border-radius:6px; padding:.75rem 1rem; min-width:320px; flex:1 1 320px; max-width:600px; }
+.auth-role-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:.6rem; gap:.5rem; }
+.auth-role-name { font-weight:600; color:var(--text-primary); font-size:.92rem; }
+.auth-status-badge { border-radius:10px; padding:.15rem .55rem; font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.auth-status-success { background:#1b4332; color:#3fb950; }
+.auth-status-failed  { background:#3d1a1a; color:#f85149; }
+.auth-status-unauth  { background:#1e1e2e; color:#8b949e; }
+.auth-status-unknown { background:#252525; color:#8b949e; }
+.auth-field-row { display:flex; align-items:flex-start; gap:.5rem; margin-bottom:.35rem; font-size:.83rem; }
+.auth-field-row-top { align-items:flex-start; }
+.auth-field-label { color:#8b949e; min-width:90px; flex-shrink:0; padding-top:.1rem; }
+.auth-field-val { color:var(--text-primary); word-break:break-all; }
+.auth-field-val.mono { font-family:monospace; font-size:.8rem; }
+.mono { font-family:monospace; }
+.auth-cookie-table-wrap { overflow-x:auto; flex:1; }
+.auth-cookie-table { width:100%; border-collapse:collapse; font-size:.78rem; }
+.auth-cookie-table th { text-align:left; padding:.25rem .4rem; color:#8b949e; border-bottom:1px solid var(--border-mid); white-space:nowrap; }
+.auth-cookie-table td { padding:.2rem .4rem; border-bottom:1px solid var(--border-subtle); color:var(--text-primary); vertical-align:top; }
+.auth-cookie-table tr:last-child td { border-bottom:none; }
+.auth-cookie-val { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.auth-landing-pill { display:inline-flex; align-items:center; gap:.35rem; }
+.landing-modal-box { width:90vw; max-width:1000px; height:80vh; display:flex; flex-direction:column; }
+.landing-modal-url { flex:1; min-width:0; }
 </style>
 {% endblock %}
