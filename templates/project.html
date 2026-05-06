@@ -333,6 +333,10 @@
             <div class="tp-section-label">Edge Security</div>
             <div id="tp-edge-sec-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
           </div>
+          <div id="tp-mfa-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">MFA / Token Service</div>
+            <div id="tp-mfa-list" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
+          </div>
           <div id="tp-hdrs-section" style="display:none;margin-top:.6rem">
             <div class="tp-section-label">Security Headers</div>
             <div id="tp-hdrs-present" style="display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:.3rem"></div>
@@ -1088,6 +1092,15 @@ function _loadTargetProfile() {
         if (esSec && esLst) {
           esSec.style.display = '';
           esLst.innerHTML = d.edge_security.map(t => `<span class="tech-tag tech-tag-edge-sec">${_escHtml(t)}</span>`).join('');
+        }
+      }
+      // MFA / Token services
+      if ((d.mfa_providers||[]).length) {
+        const mfaSec = document.getElementById('tp-mfa-section');
+        const mfaLst = document.getElementById('tp-mfa-list');
+        if (mfaSec && mfaLst) {
+          mfaSec.style.display = '';
+          mfaLst.innerHTML = d.mfa_providers.map(t => `<span class="tech-tag tech-tag-bi">${_escHtml(t)}</span>`).join('');
         }
       }
       // Security headers

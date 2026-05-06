@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.26"
+VERSION = "1.8.27"
 
 import io
 import socket
@@ -2771,6 +2771,7 @@ def api_export_status_report_pdf(project_id: str):
             _add("Edge Security",   ", ".join(target_profile.get("edge_security") or []))
             _add("Auth Method",     target_profile.get("auth_method") or "")
             _add("Auth Page",       target_profile.get("auth_page") or "")
+            _add("MFA",             ", ".join(target_profile.get("mfa_providers") or []))
             _add("TLS Cert",        target_profile.get("tls_cert") or "")
             _add("Cert Expiry",     target_profile.get("cert_expiry") or "")
             _tlsp = target_profile.get("protocols")
