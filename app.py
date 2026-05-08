@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.8.27"
+VERSION = "1.9.1"
 
 import io
 import socket
@@ -59,6 +59,7 @@ PROJECTS_FILE = CRUCIBLE_DIR / "projects.json"
 PROJECTS_DIR  = CRUCIBLE_DIR / "projects"
 FRACTURE_SCRIPT = Path("/opt/pr0t31n/Fracture/fracture.py")
 SIPHON_SCRIPT   = Path("/opt/pr0t31n/Siphon/siphon.py")
+AUGER_SCRIPT    = Path("/opt/pr0t31n/Auger/auger.py")
 
 PROJECTS_DIR.mkdir(exist_ok=True)
 
@@ -273,6 +274,33 @@ SI_DEFAULTS: dict = {
     }
 }
 
+DB_DEFAULTS: dict = {
+    "engagement": {
+        "consultant": "", "client_name": "", "client_short": "",
+        "consultant_email": "", "start_date": "", "end_date": ""
+    },
+    "scan": {
+        "project":    "auger_output",
+        "host":       "",
+        "port":       "",
+        "db_type":    "mysql",
+        "username":   "",
+        "password":   "",
+        "database":   "",
+        "jdbc":       "",
+        "auth_type":  "password",
+        "ssl":        False,
+        "ssl_ca":     "",
+        "ssl_cert":   "",
+        "ssl_key":    "",
+        "ssl_verify": False,
+        "aws_profile":  "",
+        "aws_region":   "",
+        "timeout":    10,
+        "threads":    4,
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -288,7 +316,7 @@ def _pkey(project_id: str, tool: str) -> str:
 
 def _emit_line(project_id: str, tool: str, text: str, stream: str = "stdout") -> None:
     entry = {"text": text, "stream": stream, "ts": _now_ts()}
-    buf = _buffers.setdefault(project_id, {"fr": [], "si": []})
+    buf = _buffers.setdefault(project_id, {"fr": [], "si": [], "db": []})
     lst = buf.setdefault(tool, [])
     lst.append(entry)
     if len(lst) > _MAX_CONSOLE:
@@ -434,11 +462,11 @@ def _update_project_field(project_id: str, **kwargs) -> None:
 def _checkpoint_status(proj: dict, tool: str) -> str:
     """Return 'complete' if the tool's checkpoint.json has completed phases, else 'idle'."""
     try:
-        settings_file = proj.get("fr_settings_file" if tool == "fr" else "si_settings_file", "")
+        _key_map = {"fr": "fr_settings_file", "si": "si_settings_file", "db": "db_settings_file"}
+        _def_map = {"fr": "fracture_output",  "si": "siphon_output",    "db": "auger_output"}
+        settings_file = proj.get(_key_map.get(tool, "si_settings_file"), "")
         cfg = json.loads(Path(settings_file).read_text())
-        proj_name = cfg.get("scan", {}).get(
-            "project", "fracture_output" if tool == "fr" else "siphon_output"
-        )
+        proj_name = cfg.get("scan", {}).get("project", _def_map.get(tool, f"{tool}_output"))
         cp = Path(proj["project_dir"]) / proj_name / "checkpoint.json"
         if cp.exists():
             data = json.loads(cp.read_text())
@@ -450,31 +478,36 @@ def _checkpoint_status(proj: dict, tool: str) -> str:
 
 
 def _init_project_state(project_id: str) -> None:
-    _procs.setdefault(project_id,    {"fr": None, "si": None})
-    _buffers.setdefault(project_id,  {"fr": [],   "si": []})
+    _procs.setdefault(project_id,    {"fr": None, "si": None, "db": None})
+    _buffers.setdefault(project_id,  {"fr": [],   "si": [],   "db": []})
     _all_findings.setdefault(project_id, [])
-    _status_cache.setdefault(project_id, {"fr": {}, "si": {}})
+    _status_cache.setdefault(project_id, {"fr": {}, "si": {}, "db": {}})
     if project_id not in _tool_status:
         proj_data = _get_project(project_id)
         fr_s = "idle"
         si_s = "idle"
+        db_s = "idle"
         if proj_data:
-            for _tool, _var in (("fr", "fr_status"), ("si", "si_status")):
+            for _tool, _var in (("fr", "fr_status"), ("si", "si_status"), ("db", "db_status")):
                 raw = proj_data.get(_var, "idle")
                 if raw in ("complete", "done"):
                     if _tool == "fr":
                         fr_s = raw
-                    else:
+                    elif _tool == "si":
                         si_s = raw
+                    else:
+                        db_s = raw
                 elif raw == "running":
                     # Process was killed / server restarted — derive real status from checkpoint
                     derived = _checkpoint_status(proj_data, _tool)
                     if _tool == "fr":
                         fr_s = derived
-                    else:
+                    elif _tool == "si":
                         si_s = derived
+                    else:
+                        db_s = derived
                     _update_project_field(project_id, **{_var: derived})
-        _tool_status[project_id] = {"fr": fr_s, "si": si_s}
+        _tool_status[project_id] = {"fr": fr_s, "si": si_s, "db": db_s}
 
 # ---------------------------------------------------------------------------
 # Project directory helpers
@@ -711,6 +744,51 @@ def _build_fr_auth_from_body(body: dict, existing: "dict | None" = None) -> dict
         "login_profile_id":      _keep("login_profile_id",      "fr_auth_login_profile_id"),
     }
     return auth
+
+
+def _build_db_settings_from_body(body: dict, existing: "dict | None" = None) -> dict:
+    """Build Auger scan settings dict from form body keys (db_*)."""
+    ex = existing or {}
+
+    def _keep(scan_key: str, form_key: str, default: str = "") -> str:
+        v = body.get(form_key, "").strip()
+        return v if v else ex.get("scan", {}).get(scan_key, default)
+
+    db = _deepcopy_template(DB_DEFAULTS)
+    for k in db["engagement"]:
+        db["engagement"][k] = body.get(k, ex.get("engagement", {}).get(k, ""))
+
+    db["scan"]["host"]       = _keep("host",       "db_host")
+    db["scan"]["port"]       = _keep("port",       "db_port")
+    db["scan"]["db_type"]    = _keep("db_type",    "db_type",   "mysql")
+    db["scan"]["username"]   = _keep("username",   "db_username")
+    db["scan"]["password"]   = _keep("password",   "db_password")
+    db["scan"]["database"]   = _keep("database",   "db_database")
+    db["scan"]["jdbc"]       = _keep("jdbc",       "db_jdbc")
+    db["scan"]["auth_type"]  = _keep("auth_type",  "db_auth_type", "password")
+    db["scan"]["ssl"]        = body.get("db_ssl", "") in ("true", "1", "on", True)
+    db["scan"]["ssl_ca"]     = _keep("ssl_ca",     "db_ssl_ca")
+    db["scan"]["ssl_cert"]   = _keep("ssl_cert",   "db_ssl_cert")
+    db["scan"]["ssl_key"]    = _keep("ssl_key",    "db_ssl_key")
+    db["scan"]["ssl_verify"] = body.get("db_ssl_verify", "") in ("true", "1", "on", True)
+    db["scan"]["aws_profile"]= _keep("aws_profile","db_aws_profile")
+    db["scan"]["aws_region"] = _keep("aws_region", "db_aws_region")
+
+    raw_timeout = body.get("db_timeout", "")
+    if raw_timeout:
+        try:
+            db["scan"]["timeout"] = int(raw_timeout)
+        except ValueError:
+            pass
+
+    raw_threads = body.get("db_threads", "")
+    if raw_threads:
+        try:
+            db["scan"]["threads"] = int(raw_threads)
+        except ValueError:
+            pass
+
+    return db
 
 
 def _parse_auth_matrix_from_body(body: dict) -> list:
@@ -1053,6 +1131,7 @@ def edit_project_page(project_id: str):
         return redirect(url_for("index"))
     fr_settings: dict = {}
     si_settings: dict = {}
+    db_settings: dict = {}
     try:
         fr_settings = json.loads(Path(proj["fr_settings_file"]).read_text())
     except Exception:
@@ -1061,12 +1140,17 @@ def edit_project_page(project_id: str):
         si_settings = json.loads(Path(proj["si_settings_file"]).read_text())
     except Exception:
         pass
+    try:
+        db_settings = json.loads(Path(proj["db_settings_file"]).read_text())
+    except Exception:
+        pass
     return render_template(
         "edit_project.html",
         project=proj,
         project_id=project_id,
         fr=fr_settings,
         si=si_settings,
+        db=db_settings,
     )
 
 # ---------------------------------------------------------------------------
@@ -1131,6 +1215,7 @@ def api_create_project():
     # Per-tool output directories under the structured client path
     fr_output_dir = _build_project_dir(client_short, year, "fracture")
     si_output_dir = _build_project_dir(client_short, year, "siphon")
+    db_output_dir = _build_project_dir(client_short, year, "auger")
     # Config/settings files live alongside the Fracture output directory
     project_dir   = fr_output_dir
 
@@ -1174,6 +1259,10 @@ def api_create_project():
     # Siphon auth
     si["scan"]["auth"] = _build_si_auth_from_body(body)
 
+    # Auger settings
+    db = _build_db_settings_from_body(body)
+    db["scan"]["project"] = str(db_output_dir)
+
     # Multi-credential access matrix
     auth_matrix = _parse_auth_matrix_from_body(body)
     if auth_matrix:
@@ -1182,16 +1271,21 @@ def api_create_project():
 
     fr_path = fr_output_dir / "fr_settings.json"
     si_path = si_output_dir / "si_settings.json"
+    db_path = db_output_dir / "db_settings.json"
     fr_path.write_text(json.dumps(fr, indent=2))
     si_path.write_text(json.dumps(si, indent=2))
+    db_path.write_text(json.dumps(db, indent=2))
 
     include_fr = body.get("include_fr", True)
     include_si = body.get("include_si", True)
+    include_db = body.get("include_db", False)
     tools = []
     if include_fr:
         tools.append("fr")
     if include_si:
         tools.append("si")
+    if include_db:
+        tools.append("db")
     if not tools:
         tools = ["fr", "si"]
 
@@ -1204,13 +1298,17 @@ def api_create_project():
         "project_dir":       str(project_dir),
         "fr_settings_file":  str(fr_path),
         "si_settings_file":  str(si_path),
+        "db_settings_file":  str(db_path),
         "fracture_output_dir": str(fr_output_dir),
         "siphon_output_dir":   str(si_output_dir),
+        "auger_output_dir":    str(db_output_dir),
         "tools":             tools,
         "fr_status":         "idle",
         "si_status":         "idle",
+        "db_status":         "idle",
         "fr_last_run":       None,
         "si_last_run":       None,
+        "db_last_run":       None,
     }
 
     data = _load_projects()
@@ -1302,14 +1400,34 @@ def api_update_project(project_id: str):
     except Exception:
         pass
 
+    # Update Auger settings on disk (best-effort)
+    try:
+        db_path = Path(proj.get("db_settings_file", ""))
+        if db_path.exists():
+            db = json.loads(db_path.read_text())
+            for k in ("consultant", "consultant_email", "client_name", "client_short",
+                      "start_date", "end_date"):
+                if k in body:
+                    db["engagement"][k] = body[k]
+            if body.get("db_host") is not None:
+                updated_db = _build_db_settings_from_body(body, db)
+                updated_db["scan"]["project"] = db["scan"].get("project", "auger_output")
+                db = updated_db
+            db_path.write_text(json.dumps(db, indent=2))
+    except Exception:
+        pass
+
     # Update tools list
     include_fr = body.get("include_fr", "fr" in proj.get("tools", ["fr"]))
     include_si = body.get("include_si", "si" in proj.get("tools", ["si"]))
+    include_db = body.get("include_db", "db" in proj.get("tools", []))
     tools = []
     if include_fr:
         tools.append("fr")
     if include_si:
         tools.append("si")
+    if include_db:
+        tools.append("db")
     if not tools:
         tools = ["fr", "si"]
     proj["tools"] = tools
@@ -1540,17 +1658,20 @@ def api_settings(project_id: str, tool: str):
     proj = _get_project(project_id)
     if not proj:
         return jsonify({"error": "not found"}), 404
-    key  = "fr_settings_file" if tool == "fr" else "si_settings_file"
+    _key_map      = {"fr": "fr_settings_file", "si": "si_settings_file", "db": "db_settings_file"}
+    _default_map  = {"fr": FR_DEFAULTS,        "si": SI_DEFAULTS,        "db": DB_DEFAULTS}
+    _fname_map    = {"fr": "fr_settings.json", "si": "si_settings.json", "db": "db_settings.json"}
+    key = _key_map.get(tool, "si_settings_file")
     _sf  = proj.get(key) or ""
     path = Path(_sf) if _sf else None
     if request.method == "GET":
         if path and path.is_file():
             return jsonify(json.loads(path.read_text()))
-        return jsonify(FR_DEFAULTS if tool == "fr" else SI_DEFAULTS)
+        return jsonify(_default_map.get(tool, SI_DEFAULTS))
     body = request.json or {}
     if not path or not path.parent.is_dir():
         _pdir = proj.get("project_dir", "")
-        _fname = "fr_settings.json" if tool == "fr" else "si_settings.json"
+        _fname = _fname_map.get(tool, "si_settings.json")
         path = Path(_pdir) / _fname if _pdir else None
     if not path:
         return jsonify({"error": "no settings path available"}), 400
@@ -1579,6 +1700,7 @@ def api_findings(project_id: str):
     for _tool_name, _tool_key, _default in (
         ("fracture", "fr_settings_file", "fracture_output"),
         ("siphon",   "si_settings_file", "siphon_output"),
+        ("auger",    "db_settings_file", "auger_output"),
     ):
         _cfg_path = Path(proj.get(_tool_key, ""))
         if not _cfg_path.exists():
@@ -1589,7 +1711,7 @@ def api_findings(project_id: str):
             _fp       = Path(proj["project_dir"]) / _proj_dir / "findings.json"
             if not _fp.exists():
                 continue
-            _scope = "webapp" if _tool_name == "fracture" else "api"
+            _scope = "webapp" if _tool_name == "fracture" else ("database" if _tool_name == "auger" else "api")
             _mem_findings = _all_findings.setdefault(project_id, [])
             for raw in json.loads(_fp.read_text()):
                 f = dict(raw)
@@ -2027,7 +2149,68 @@ def api_structure(project_id: str):
     except Exception:
         pass
 
+    # Auger DB schema
+    try:
+        _db_sf = proj.get("db_settings_file") or ""
+        _db_schema_path = None
+        if _db_sf and Path(_db_sf).is_file():
+            db_cfg = json.loads(Path(_db_sf).read_text())
+            _dp = db_cfg.get("scan", {}).get("project", "")
+            if _dp:
+                _db_schema_path = Path(_dp) / "db_schema.json"
+        if _db_schema_path is None or not _db_schema_path.exists():
+            _ddir = proj.get("auger_output_dir") or ""
+            if _ddir:
+                _db_schema_path = Path(_ddir) / "db_schema.json"
+        if _db_schema_path and _db_schema_path.exists():
+            result["db_schema"] = json.loads(_db_schema_path.read_text())
+    except Exception:
+        pass
+
     return jsonify(result)
+
+
+@app.route("/api/test-db-connection/<project_id>")
+def api_test_db_connection(project_id: str):
+    """Run testConnection.py against the project's DB settings and return result."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"success": False, "message": "Project not found"}), 404
+
+    db_sf = proj.get("db_settings_file", "")
+    if not db_sf or not Path(db_sf).is_file():
+        return jsonify({"success": False, "message": "DB settings not configured"}), 400
+
+    script = Path(AUGER_SCRIPT)
+    test_script = script.parent / "testConnection.py"
+    if not test_script.exists():
+        return jsonify({"success": False, "message": "testConnection.py not found"}), 500
+
+    import subprocess
+    try:
+        result = subprocess.run(
+            [sys.executable, str(test_script), "--settings", db_sf],
+            capture_output=True, text=True, timeout=20
+        )
+        # Parse __CRUCIBLE_STATUS__ from stdout
+        for line in result.stdout.splitlines():
+            if line.startswith("__CRUCIBLE_STATUS__:"):
+                data = json.loads(line[len("__CRUCIBLE_STATUS__:"):])
+                return jsonify({
+                    "success": True,
+                    "message": data.get("label", "Connected"),
+                    "db_version": data.get("db_version", ""),
+                })
+        # Parse __CRUCIBLE_ERR__ from stderr
+        for line in (result.stderr + result.stdout).splitlines():
+            if line.startswith("__CRUCIBLE_ERR__:"):
+                data = json.loads(line[len("__CRUCIBLE_ERR__:"):])
+                return jsonify({"success": False, "message": data.get("message", "Connection failed")})
+        return jsonify({"success": False, "message": result.stderr[:200] or "Connection failed"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "message": "Connection timed out (20s)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 
 @app.route("/api/access-matrix/<project_id>")
@@ -3562,6 +3745,89 @@ def on_si_input(data):
 
 
 # ---------------------------------------------------------------------------
+# SocketIO — Auger control
+# ---------------------------------------------------------------------------
+@socketio.on("db_start")
+def on_db_start(data):
+    project_id = data.get("project_id", "")
+    proj = _get_project(project_id)
+    if not proj:
+        return emit("db_error", {"error": "Project not found"})
+    if _procs.get(project_id, {}).get("db"):
+        return emit("db_error", {"error": "Auger already running"})
+
+    db_settings_path = proj.get("db_settings_file", "")
+    if not db_settings_path:
+        return emit("db_error", {"error": "Auger settings file not configured for this project."})
+    if not Path(db_settings_path).exists():
+        return emit("db_error", {"error": f"Auger settings file not found: {db_settings_path}"})
+
+    cmd = [sys.executable, str(AUGER_SCRIPT), "--settings", db_settings_path]
+
+    try:
+        db_cfg = json.loads(Path(db_settings_path).read_text())
+        db_proj_name = db_cfg.get("scan", {}).get("project", "auger_output")
+    except Exception:
+        db_proj_name = "auger_output"
+
+    cwd = proj["project_dir"]
+    Path(cwd).mkdir(parents=True, exist_ok=True)
+
+    env = dict(os.environ)
+    env["CRUCIBLE_MANAGED"] = "1"
+    env["PYTHONUNBUFFERED"] = "1"
+    _tool_path_dirs = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"]
+    _cur_path = env.get("PATH", "")
+    _extra = ":".join(d for d in _tool_path_dirs if d not in _cur_path.split(":"))
+    if _extra:
+        env["PATH"] = _extra + (":" + _cur_path if _cur_path else "")
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            text=True, bufsize=1, cwd=cwd, env=env,
+        )
+    except Exception as exc:
+        return emit("db_error", {"error": str(exc)})
+
+    _init_project_state(project_id)
+    _procs[project_id]["db"]       = proc
+    _tool_status[project_id]["db"] = "running"
+    _answer_queues[_pkey(project_id, "db")] = queue.Queue()
+    _db_started_at = datetime.now(timezone.utc).isoformat()
+    _update_project_field(project_id,
+        db_status="running",
+        db_last_run=_db_started_at,
+        db_proj_name=db_proj_name,
+    )
+
+    socketio.emit("db_started",   {"pid": proc.pid, "started_at": _db_started_at}, room=_room(project_id))
+    socketio.emit("tool_status",  _tool_status[project_id], room=_room(project_id))
+    _emit_line(project_id, "db",
+        f"[Crucible] Auger started — PID {proc.pid}  cwd={cwd}", "system")
+
+    threading.Thread(target=_reader,
+        args=(project_id, "db", proc.stdout, "stdout", proc), daemon=True).start()
+    threading.Thread(target=_reader,
+        args=(project_id, "db", proc.stderr, "stderr", proc), daemon=True).start()
+    threading.Thread(target=_wait_proc,
+        args=(project_id, "db", proc), daemon=True).start()
+    _ensure_watcher(project_id, proj)
+
+
+@socketio.on("db_kill")
+def on_db_kill(data):
+    _kill_tool(data.get("project_id", ""), "db")
+
+
+@socketio.on("db_input")
+def on_db_input(data):
+    on_crucible_answer({**data, "tool": "db"})
+
+
+# ---------------------------------------------------------------------------
 # Subprocess helpers
 # ---------------------------------------------------------------------------
 def _write_to_stdin(proc: subprocess.Popen, text: str,
@@ -3701,7 +3967,7 @@ def _reader(project_id: str, tool: str, stream,
             try:
                 sdata = json.loads(line[len(_CP_STATUS):])
                 sdata["tool"] = tool
-                sc = _status_cache.setdefault(project_id, {"fr": {}, "si": {}})
+                sc = _status_cache.setdefault(project_id, {"fr": {}, "si": {}, "db": {}})
                 sc.setdefault(tool, {})[sdata.get("phase", "?")] = sdata
                 socketio.emit("crucible_status", sdata, room=_room(project_id))
                 # Mirror phase transitions to console
@@ -3817,9 +4083,9 @@ def _wait_proc(project_id: str, tool: str, proc: subprocess.Popen) -> None:
                 _pipe.close()
             except (BrokenPipeError, OSError):
                 pass
-    _procs.setdefault(project_id, {"fr": None, "si": None})
+    _procs.setdefault(project_id, {"fr": None, "si": None, "db": None})
     _procs[project_id][tool] = None
-    _tool_status.setdefault(project_id, {"fr": "idle", "si": "idle"})
+    _tool_status.setdefault(project_id, {"fr": "idle", "si": "idle", "db": "idle"})
     _final_status = "complete" if rc == 0 else "done"
     _tool_status[project_id][tool] = _final_status
     _update_project_field(project_id, **{f"{tool}_status": _final_status})
@@ -3827,7 +4093,8 @@ def _wait_proc(project_id: str, tool: str, proc: subprocess.Popen) -> None:
     _pending_prompts.pop(_pkey(project_id, tool), None)
     threading.Thread(target=_dequeue_next, daemon=True).start()
 
-    label = "Fracture" if tool == "fr" else "Siphon"
+    _label_map = {"fr": "Fracture", "si": "Siphon", "db": "Auger"}
+    label = _label_map.get(tool, tool.upper())
     _emit_line(project_id, tool,
         f"[Crucible] {label} exited — return code {rc}", "system")
     socketio.emit(f"{tool}_done",   {"returncode": rc}, room=_room(project_id))
@@ -3838,7 +4105,8 @@ def _kill_tool(project_id: str, tool: str) -> None:
     proc = (_procs.get(project_id) or {}).get(tool)
     if not proc:
         return
-    label = "Fracture" if tool == "fr" else "Siphon"
+    _label_map = {"fr": "Fracture", "si": "Siphon", "db": "Auger"}
+    label = _label_map.get(tool, tool.upper())
 
     try:
         import psutil
@@ -4027,20 +4295,22 @@ def _save_execute_queue() -> None:
 
 def _is_any_running() -> bool:
     for procs in _procs.values():
-        if procs and (procs.get("fr") or procs.get("si")):
+        if procs and (procs.get("fr") or procs.get("si") or procs.get("db")):
             return True
     return False
 
 
 def _launch_tool_bg(project_id: str, tool: str) -> None:
-    """Launch fr or si for a project without requiring a SocketIO context."""
+    """Launch fr, si, or db for a project without requiring a SocketIO context."""
     proj = _get_project(project_id)
     if not proj:
         return
     if (_procs.get(project_id) or {}).get(tool):
         return
-    settings_key = "fr_settings_file" if tool == "fr" else "si_settings_file"
-    script = FRACTURE_SCRIPT if tool == "fr" else SIPHON_SCRIPT
+    _settings_key_map = {"fr": "fr_settings_file", "si": "si_settings_file", "db": "db_settings_file"}
+    _script_map       = {"fr": FRACTURE_SCRIPT,     "si": SIPHON_SCRIPT,      "db": AUGER_SCRIPT}
+    settings_key = _settings_key_map.get(tool, "si_settings_file")
+    script = _script_map.get(tool, SIPHON_SCRIPT)
     settings_path = proj.get(settings_key, "")
     if not settings_path or not Path(settings_path).exists():
         logger.warning(f"[queue] {tool} settings not found for {project_id}")
@@ -4073,7 +4343,8 @@ def _launch_tool_bg(project_id: str, tool: str) -> None:
     _procs[project_id][tool] = proc
     _tool_status[project_id][tool] = "running"
     _answer_queues[_pkey(project_id, tool)] = queue.Queue()
-    label = "Fracture" if tool == "fr" else "Siphon"
+    _label_map = {"fr": "Fracture", "si": "Siphon", "db": "Auger"}
+    label = _label_map.get(tool, tool.upper())
     _update_project_field(project_id, **{
         f"{tool}_status": "running",
         f"{tool}_last_run": datetime.now(timezone.utc).isoformat(),

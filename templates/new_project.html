@@ -115,6 +115,13 @@
             <div class="tool-select-desc">API security testing — OWASP API Top 10, BOLA/BFLA, JWT, GraphQL, rate limiting</div>
           </div>
         </label>
+        <label class="tool-select-card">
+          <input type="checkbox" name="include_db" value="1" id="chkDB">
+          <div>
+            <div class="tool-select-label"><span class="tool-badge tool-db">DB</span> &nbsp;Auger</div>
+            <div class="tool-select-desc">Database security audit — MySQL, PostgreSQL, MSSQL, Oracle, MongoDB, Redis, Cassandra and more</div>
+          </div>
+        </label>
       </div>
     </div>
 
@@ -1177,6 +1184,104 @@
 
     </div>
 
+    <!-- Auger Settings -->
+    <div class="form-section" id="sectionDB" style="display:none">
+      <div class="form-section-title">
+        <span class="tool-badge tool-db">DB</span> Auger — Database Security Audit
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Host</label>
+          <input type="text" name="db_host" class="form-control" placeholder="192.168.1.10 or hostname">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Port</label>
+          <input type="text" name="db_port" class="form-control" placeholder="3306 (leave blank for default)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Database Type</label>
+          <select name="db_type" class="form-control">
+            <option value="mysql">MySQL</option>
+            <option value="mariadb">MariaDB</option>
+            <option value="postgresql">PostgreSQL</option>
+            <option value="mssql">MSSQL</option>
+            <option value="oracle">Oracle</option>
+            <option value="mongodb">MongoDB</option>
+            <option value="redis">Redis</option>
+            <option value="cassandra">Cassandra</option>
+            <option value="elasticsearch">Elasticsearch</option>
+            <option value="couchdb">CouchDB</option>
+            <option value="influxdb">InfluxDB</option>
+            <option value="neo4j">Neo4j</option>
+            <option value="memcached">Memcached</option>
+            <option value="redshift">AWS Redshift</option>
+            <option value="dynamodb">AWS DynamoDB</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Database / Schema</label>
+          <input type="text" name="db_database" class="form-control" placeholder="database name">
+        </div>
+        <div class="form-group form-group--full">
+          <label class="form-label">JDBC URL <span class="form-hint">(overrides host/port/type)</span></label>
+          <input type="text" name="db_jdbc" class="form-control" placeholder="jdbc:mysql://host:3306/dbname">
+        </div>
+      </div>
+      <div class="form-subsection-title" style="margin-top:1rem">Authentication</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Auth Type</label>
+          <select name="db_auth_type" class="form-control">
+            <option value="password">Password</option>
+            <option value="kerberos">Kerberos</option>
+            <option value="ldap">LDAP</option>
+            <option value="iam">AWS IAM</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input type="text" name="db_username" class="form-control" placeholder="database user">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="db_password" class="form-control" placeholder="database password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">AWS Profile <span class="form-hint">(IAM only)</span></label>
+          <input type="text" name="db_aws_profile" class="form-control" placeholder="default">
+        </div>
+        <div class="form-group">
+          <label class="form-label">AWS Region <span class="form-hint">(IAM only)</span></label>
+          <input type="text" name="db_aws_region" class="form-control" placeholder="us-east-1">
+        </div>
+      </div>
+      <div class="form-subsection-title" style="margin-top:1rem">TLS / SSL</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label form-label--checkbox">
+            <input type="checkbox" name="db_ssl" value="true" id="chkDbSSL"> Enable TLS/SSL
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CA Certificate</label>
+          <input type="text" name="db_ssl_ca" class="form-control" placeholder="/path/to/ca.pem">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Certificate</label>
+          <input type="text" name="db_ssl_cert" class="form-control" placeholder="/path/to/client.pem">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Client Key</label>
+          <input type="text" name="db_ssl_key" class="form-control" placeholder="/path/to/client.key">
+        </div>
+        <div class="form-group">
+          <label class="form-label form-label--checkbox">
+            <input type="checkbox" name="db_ssl_verify" value="true"> Verify server certificate
+          </label>
+        </div>
+      </div>
+    </div>
+
     <!-- Credential Matrix -->
     <div class="form-section" id="credMatrixSection">
       <div class="form-section-title">Credential Matrix <span id="credMatrixRequired" class="req" style="display:none"> *</span><span class="form-hint" style="font-weight:normal;font-size:.85rem"> — define roles for privilege comparison and BFLA testing</span></div>
@@ -1464,6 +1569,7 @@ function submitForm(e) {
   fd.forEach((v, k) => body[k] = v);
   body.include_fr = document.getElementById('chkFR').checked;
   body.include_si = document.getElementById('chkSI').checked;
+  body.include_db = document.getElementById('chkDB').checked;
 
   // Send textarea content as multi-URL fields
   body.fr_target_urls = document.getElementById('frTargetUrls').value;
@@ -1522,9 +1628,11 @@ function submitForm(e) {
 function updateToolSections() {
   document.getElementById('sectionFR').style.display = document.getElementById('chkFR').checked ? '' : 'none';
   document.getElementById('sectionSI').style.display = document.getElementById('chkSI').checked ? '' : 'none';
+  document.getElementById('sectionDB').style.display = document.getElementById('chkDB').checked ? '' : 'none';
 }
 document.getElementById('chkFR').addEventListener('change', updateToolSections);
 document.getElementById('chkSI').addEventListener('change', updateToolSections);
+document.getElementById('chkDB').addEventListener('change', updateToolSections);
 updateToolSections();
 
 // Scope -> tool checkboxes + section visibility

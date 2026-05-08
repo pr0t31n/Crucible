@@ -82,6 +82,29 @@
       </div>
       {% endif %}
 
+      {% if 'db' in project.get('tools', []) %}
+      <div class="console-pane" id="db-pane">
+        <div class="console-header">
+          <div class="console-header-left">
+            <span class="tool-badge tool-db">DB</span>
+            <span class="console-tool-name">Auger</span>
+            <span class="status-pill" id="db-status-pill">idle</span>
+          </div>
+          <div class="console-header-right">
+            <button class="btn btn-sm btn-primary"  id="db-start-btn"  onclick="startTool('db')">&#9654; Start</button>
+            <button class="btn btn-sm btn-danger"   id="db-kill-btn"   onclick="killTool('db')" disabled>&#9632; Kill</button>
+            <button class="btn btn-sm btn-ghost"    onclick="clearConsole('db')" title="Clear">&#x2715;</button>
+            <button class="btn btn-sm btn-ghost"    id="db-scroll-btn" onclick="toggleScroll('db')" title="Auto-scroll">&#x2193;</button>
+          </div>
+        </div>
+        <div class="console-body" id="db-console"></div>
+        <div class="console-footer" id="db-footer">
+          <span class="footer-last-line" id="db-footer-text"></span>
+          <button class="btn btn-sm btn-prompt hidden" id="db-reopen-btn" onclick="reopenPrompt('db')">&#x2691; Answer Pending</button>
+        </div>
+      </div>
+      {% endif %}
+
     </div>
   </div><!-- /tab-console -->
 
@@ -104,11 +127,13 @@
       </select>
       {% set _has_fr = 'fr' in project.get('tools', ['fr','si']) %}
       {% set _has_si = 'si' in project.get('tools', ['fr','si']) %}
-      {% if _has_fr and _has_si %}
+      {% set _has_db = 'db' in project.get('tools', []) %}
+      {% if (_has_fr and _has_si) or (_has_fr and _has_db) or (_has_si and _has_db) %}
       <select class="form-control select-sm" id="filterTool" onchange="filterFindings()">
-        <option value="">Both tools</option>
-        <option value="fracture">Fracture</option>
-        <option value="siphon">Siphon</option>
+        <option value="">All tools</option>
+        {% if _has_fr %}<option value="fracture">Fracture</option>{% endif %}
+        {% if _has_si %}<option value="siphon">Siphon</option>{% endif %}
+        {% if _has_db %}<option value="auger">Auger</option>{% endif %}
       </select>
       {% else %}
       <select id="filterTool" style="display:none" aria-hidden="true"><option value=""></option></select>
@@ -193,6 +218,22 @@
       </div>
       {% endif %}
 
+      {% if 'db' in project.get('tools', []) %}
+      <div class="st-section">
+        <button class="st-sect-btn" aria-expanded="true" onclick="toggleSect(this)">
+          <span class="st-chevron"></span>
+          <span class="tool-badge tool-db">DB</span>
+          <span class="st-sect-name">Auger</span>
+          <span class="status-pill" id="db-status-pill-2">idle</span>
+          <span class="st-spacer"></span>
+          <span class="st-comp-tag" id="db-comp-tag">not started</span>
+        </button>
+        <div class="st-sect-body" id="st-body-db">
+          <div id="st-rows-db"></div>
+        </div>
+      </div>
+      {% endif %}
+
     </div>
   </div><!-- /tab-status -->
 
@@ -209,6 +250,11 @@
           <button class="log-filter-btn" data-filter-key="tool" data-filter-val="si" onclick="setLogFilter(this,'tool','si')">
             <span class="tool-badge tool-si">SI</span>
           </button>
+          {% if 'db' in project.get('tools', []) %}
+          <button class="log-filter-btn" data-filter-key="tool" data-filter-val="db" onclick="setLogFilter(this,'tool','db')">
+            <span class="tool-badge tool-db">DB</span>
+          </button>
+          {% endif %}
         </div>
         <div class="log-filter-group">
           <button class="log-filter-btn active" data-filter-key="level" data-filter-val="" onclick="setLogFilter(this,'level','')">All levels</button>
@@ -261,9 +307,13 @@
             <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '&#8212;' }}</span></div>
             <div class="kv-row"><span class="kv-label">Type</span><span class="kv-value">
               {% set _t = project.get('tools', ['fr','si']) %}
-              {% if 'fr' in _t and 'si' in _t %}Web Application &amp; API
+              {% if 'fr' in _t and 'si' in _t and 'db' in _t %}Web Application, API &amp; Database
+              {% elif 'fr' in _t and 'si' in _t %}Web Application &amp; API
+              {% elif 'fr' in _t and 'db' in _t %}Web Application &amp; Database
+              {% elif 'si' in _t and 'db' in _t %}API &amp; Database
               {% elif 'fr' in _t %}Web Application
               {% elif 'si' in _t %}API
+              {% elif 'db' in _t %}Database
               {% else %}&#8212;{% endif %}
             </span></div>
             <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '&#8212;' }}</span></div>
@@ -274,6 +324,9 @@
             {% endif %}
             {% if project.get('siphon_output_dir') and 'si' in project.get('tools', ['fr','si']) %}
             <div class="kv-row"><span class="kv-label">Siphon output</span><span class="kv-value mono">{{ project.siphon_output_dir }}</span></div>
+            {% endif %}
+            {% if project.get('auger_output_dir') and 'db' in project.get('tools', []) %}
+            <div class="kv-row"><span class="kv-label">Auger output</span><span class="kv-value mono">{{ project.auger_output_dir }}</span></div>
             {% endif %}
           </div>
         </div>
@@ -426,6 +479,52 @@
           </div>
         </div>
         {% endif %}
+
+        {% if 'db' in project.get('tools', []) %}
+        <div class="panel tool-summary-card">
+          <div class="panel-header">
+            <span class="tool-badge tool-db">DB</span>
+            <span class="panel-title">Auger</span>
+            <span class="status-pill" id="db-summary-status">{{ project.db_status or 'idle' }}</span>
+          </div>
+          <div class="panel-body">
+            <div class="summary-kv">
+              <div class="kv-row"><span class="kv-label">Host:Port</span>
+                <span class="kv-value mono" id="db-summary-target">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">DB Type</span>
+                <span class="kv-value" id="db-summary-dbtype">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">DB Version</span>
+                <span class="kv-value mono" id="db-summary-version">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Auth Type</span>
+                <span class="kv-value" id="db-summary-auth">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Started</span>
+                <span class="kv-value" id="db-start-time" data-iso="{{ project.db_last_run or '' }}">{{ project.db_last_run or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Completed</span>
+                <span class="kv-value" id="db-end-time">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Exit code</span>
+                <span class="kv-value mono" id="db-exit-code">&#8212;</span></div>
+              <div class="kv-row"><span class="kv-label">Output dir</span>
+                <span class="kv-value mono" id="db-summary-outdir">{{ project.auger_output_dir or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Findings</span>
+                <span class="kv-value" id="db-finding-count">0</span></div>
+              <div class="kv-row"><span class="kv-label">By risk</span>
+                <span class="kv-value summary-risk-pills" id="db-risk-breakdown">
+                  <span class="risk-badge risk-critical" id="db-rc-critical" title="Critical">0C</span>
+                  <span class="risk-badge risk-high"     id="db-rc-high"     title="High">0H</span>
+                  <span class="risk-badge risk-medium"   id="db-rc-medium"   title="Medium">0M</span>
+                  <span class="risk-badge risk-low"      id="db-rc-low"      title="Low">0L</span>
+                  <span class="risk-badge risk-info"     id="db-rc-info"     title="Info">0I</span>
+                </span></div>
+              <div class="kv-row"><span class="kv-label">Test Conn</span>
+                <span class="kv-value">
+                  <button class="btn btn-sm btn-ghost" id="db-test-btn" onclick="testDbConnection()">&#x2714; Test Connection</button>
+                  <span id="db-test-result" style="font-size:.8rem;margin-left:.5rem"></span>
+                </span></div>
+            </div>
+            <div id="db-summary-detail" class="summary-detail"></div>
+          </div>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div><!-- /tab-summary -->
@@ -443,6 +542,11 @@
         {% if 'si' in project.get('tools', ['fr','si']) %}
         <button class="settings-tool-tab" onclick="switchSettingsTool('si', this)">
           <span class="tool-badge tool-si">SI</span> Siphon
+        </button>
+        {% endif %}
+        {% if 'db' in project.get('tools', []) %}
+        <button class="settings-tool-tab" onclick="switchSettingsTool('db', this)">
+          <span class="tool-badge tool-db">DB</span> Auger
         </button>
         {% endif %}
       </div>
@@ -668,6 +772,88 @@
         </div>
       </div>
       {% endif %}
+
+      {% if 'db' in project.get('tools', []) %}
+      <div class="settings-editor-panel" id="settings-db">
+        <div class="settings-toolbar">
+          <span class="settings-label">Auger Settings</span>
+          <button class="btn btn-sm btn-primary" onclick="saveSettings('db')">Save</button>
+          <button class="btn btn-sm btn-ghost"   onclick="loadSettings('db')">&#x21BB; Reload</button>
+          <span class="settings-save-msg" id="db-save-msg"></span>
+        </div>
+        <div class="sf-form">
+
+          <div class="sf-section">
+            <div class="sf-section-title">Engagement</div>
+            <div class="sf-row"><label class="sf-label">Consultant</label><input class="sf-input" type="text" data-sf-path="engagement.consultant"></div>
+            <div class="sf-row"><label class="sf-label">Client</label><input class="sf-input" type="text" data-sf-path="engagement.client_name"></div>
+            <div class="sf-row"><label class="sf-label">Start date</label><input class="sf-input" type="date" data-sf-path="engagement.start_date"></div>
+            <div class="sf-row"><label class="sf-label">End date</label><input class="sf-input" type="date" data-sf-path="engagement.end_date"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Target</div>
+            <div class="sf-row"><label class="sf-label">Host</label><input class="sf-input" type="text" data-sf-path="scan.host" placeholder="192.168.1.10 or hostname"></div>
+            <div class="sf-row"><label class="sf-label">Port</label><input class="sf-input" type="text" data-sf-path="scan.port" placeholder="e.g. 3306"></div>
+            <div class="sf-row"><label class="sf-label">DB type</label>
+              <select class="sf-input" data-sf-path="scan.db_type">
+                <option value="mysql">MySQL</option>
+                <option value="mariadb">MariaDB</option>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="mssql">MSSQL</option>
+                <option value="oracle">Oracle</option>
+                <option value="mongodb">MongoDB</option>
+                <option value="redis">Redis</option>
+                <option value="cassandra">Cassandra</option>
+                <option value="elasticsearch">Elasticsearch</option>
+                <option value="couchdb">CouchDB</option>
+                <option value="influxdb">InfluxDB</option>
+                <option value="neo4j">Neo4j</option>
+                <option value="memcached">Memcached</option>
+                <option value="redshift">AWS Redshift</option>
+                <option value="dynamodb">AWS DynamoDB</option>
+              </select>
+            </div>
+            <div class="sf-row"><label class="sf-label">Database</label><input class="sf-input" type="text" data-sf-path="scan.database" placeholder="database / schema name"></div>
+            <div class="sf-row"><label class="sf-label">JDBC URL</label><input class="sf-input" type="text" data-sf-path="scan.jdbc" placeholder="jdbc:mysql://host:port/db"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Authentication</div>
+            <div class="sf-row"><label class="sf-label">Auth type</label>
+              <select class="sf-input" data-sf-path="scan.auth_type">
+                <option value="password">Password</option>
+                <option value="kerberos">Kerberos</option>
+                <option value="ldap">LDAP</option>
+                <option value="iam">AWS IAM</option>
+              </select>
+            </div>
+            <div class="sf-row"><label class="sf-label">Username</label><input class="sf-input" type="text" data-sf-path="scan.username"></div>
+            <div class="sf-row"><label class="sf-label">Password</label><input class="sf-input" type="password" data-sf-path="scan.password"></div>
+            <div class="sf-row"><label class="sf-label">AWS Profile</label><input class="sf-input" type="text" data-sf-path="scan.aws_profile" placeholder="IAM auth only"></div>
+            <div class="sf-row"><label class="sf-label">AWS Region</label><input class="sf-input" type="text" data-sf-path="scan.aws_region" placeholder="us-east-1"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">TLS / SSL</div>
+            <div class="sf-row"><label class="sf-label">Enable TLS</label><input class="sf-input" type="checkbox" data-sf-path="scan.ssl"></div>
+            <div class="sf-row"><label class="sf-label">CA cert</label><input class="sf-input" type="text" data-sf-path="scan.ssl_ca" placeholder="/path/to/ca.pem"></div>
+            <div class="sf-row"><label class="sf-label">Client cert</label><input class="sf-input" type="text" data-sf-path="scan.ssl_cert" placeholder="/path/to/client.pem"></div>
+            <div class="sf-row"><label class="sf-label">Client key</label><input class="sf-input" type="text" data-sf-path="scan.ssl_key" placeholder="/path/to/client.key"></div>
+            <div class="sf-row"><label class="sf-label">Verify cert</label><input class="sf-input" type="checkbox" data-sf-path="scan.ssl_verify"></div>
+          </div>
+
+          <div class="sf-section">
+            <div class="sf-section-title">Scan Options</div>
+            <div class="sf-row"><label class="sf-label">Timeout (s)</label><input class="sf-input" type="number" data-sf-path="scan.timeout" min="1" max="120"></div>
+            <div class="sf-row"><label class="sf-label">Threads</label><input class="sf-input" type="number" data-sf-path="scan.threads" min="1" max="16"></div>
+            <div class="sf-row"><label class="sf-label">Output dir</label><input class="sf-input" type="text" data-sf-path="scan.project" placeholder="auger_output"></div>
+          </div>
+
+        </div>
+      </div>
+      {% endif %}
+
     </div>
   </div><!-- /tab-settings -->
 
@@ -702,6 +888,18 @@
           <span class="tool-badge tool-si">SI</span> Siphon — API Endpoint Map
         </div>
         <div id="siStructureContainer">
+          <span style="color:#8b949e;font-size:.85rem">Loading…</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Auger DB schema -->
+      {% if 'db' in project.get('tools', []) %}
+      <div class="form-section" style="margin-top:1.5rem">
+        <div class="form-section-title">
+          <span class="tool-badge tool-db">DB</span> Auger — Database Schema
+        </div>
+        <div id="dbStructureContainer">
           <span style="color:#8b949e;font-size:.85rem">Loading…</span>
         </div>
       </div>
@@ -954,6 +1152,7 @@ socket.on('disconnect', reason => {
 socket.on('tool_status', status => {
   setStatus('fr', status.fr || 'idle');
   setStatus('si', status.si || 'idle');
+  setStatus('db', status.db || 'idle');
 });
 
 function setStatus(tool, status) {
@@ -1026,6 +1225,41 @@ function _loadSummarySettings() {
       })
       .catch(() => {});
   });
+  // Auger DB settings
+  fetch(`/api/settings/${PROJECT_ID}/db`)
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (!d) return;
+      const s = d.scan || {};
+      const host = s.host || '';
+      const port = s.port || '';
+      _setSummaryField('db-summary-target',  host && port ? `${host}:${port}` : (host || '—'));
+      _setSummaryField('db-summary-dbtype',  s.db_type || '—');
+      _setSummaryField('db-summary-auth',    s.auth_type || 'password');
+      _setSummaryField('db-summary-outdir',  s.project || '—');
+    })
+    .catch(() => {});
+}
+
+async function testDbConnection() {
+  const btn = document.getElementById('db-test-btn');
+  const res = document.getElementById('db-test-result');
+  if (btn) btn.disabled = true;
+  if (res) res.textContent = 'Testing…';
+  try {
+    const r = await fetch(`/api/test-db-connection/${PROJECT_ID}`);
+    const d = await r.json();
+    if (d.success) {
+      if (res) { res.textContent = `Connected — ${d.db_version || ''}`.trim(); res.style.color = '#3fb950'; }
+      _setSummaryField('db-summary-version', d.db_version || '—');
+    } else {
+      if (res) { res.textContent = d.message || 'Failed'; res.style.color = '#f85149'; }
+    }
+  } catch(e) {
+    if (res) { res.textContent = 'Error'; res.style.color = '#f85149'; }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 function _escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1204,6 +1438,28 @@ socket.on('si_done', d => {
 });
 socket.on('si_stopped', () => { _siRunning = false; setStatus('si','idle'); _stopStructurePoll(); _stopAccessMatrixPoll(); });
 socket.on('si_error',   d => showToast(`SI: ${d.error}`, 'err'));
+
+socket.on('db_started', d => {
+  setStatus('db','running');
+  const iso = d.started_at || new Date().toISOString();
+  setLastRun('db', iso);
+  _setSummaryTime('db-start-time', iso);
+  _setSummaryTime('db-end-time', null);
+  _setSummaryField('db-exit-code', '—');
+  showToast(`Auger started (PID ${d.pid})`, 'ok');
+});
+socket.on('db_done', d => {
+  setStatus('db', d.returncode===0 ? 'complete' : 'done');
+  _setSummaryTime('db-end-time', new Date().toISOString());
+  _setSummaryField('db-exit-code', String(d.returncode ?? '—'));
+  showToast(`Auger exited (${d.returncode})`, d.returncode===0?'ok':'warn');
+  _structureLoaded = false; loadStructure();
+});
+socket.on('db_stopped', () => { setStatus('db','idle'); });
+socket.on('db_error',   d => showToast(`DB: ${d.error}`, 'err'));
+
+// ── db console output ─────────────────────────────────────
+socket.on('db_output', entry => appendConsole('db', entry));
 
 // ── Findings ──────────────────────────────────────────────
 socket.on('finding', data => addFinding(data.finding));
@@ -2499,15 +2755,42 @@ let _structureLoaded = false;
 async function _fetchStructure() {
   const frEl = document.getElementById('frStructureContainer');
   const siEl = document.getElementById('siStructureContainer');
+  const dbEl = document.getElementById('dbStructureContainer');
   try {
     const r = await fetch(`/api/structure/${PROJECT_ID}`);
     const d = await r.json();
     if (frEl) frEl.innerHTML = d.fr_map ? renderFrTree(d.fr_map) : '<span style="color:#8b949e;font-size:.85rem">No structure map yet — run Fracture to generate one.</span>';
     if (siEl) siEl.innerHTML = d.si_map ? renderApiTree(d.si_map) : '<span style="color:#8b949e;font-size:.85rem">No API map yet — run Siphon to generate one.</span>';
+    if (dbEl) dbEl.innerHTML = d.db_schema ? renderDbSchemaTree(d.db_schema) : '<span style="color:#8b949e;font-size:.85rem">No schema yet — run Auger to enumerate the database schema.</span>';
   } catch(e) {
     if (frEl) frEl.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load structure data.</span>';
     if (siEl) siEl.innerHTML = '';
+    if (dbEl) dbEl.innerHTML = '';
   }
+}
+
+function renderDbSchemaTree(schema) {
+  if (!schema || !schema.databases || !schema.databases.length) {
+    return '<span style="color:#8b949e;font-size:.85rem">Schema enumeration returned no databases.</span>';
+  }
+  const meta = `<div class="db-schema-meta">${schema.db_type || ''} ${schema.db_version || ''} &mdash; ${schema.host || ''}:${schema.port || ''} &mdash; enumerated ${schema.generated_at || ''}</div>`;
+  const dbs = schema.databases.map(db => {
+    const tables = (db.tables || []).map(tbl => {
+      const sensTag = tbl.sensitive ? `<span class="db-schema-sensitive-badge">&#9888; PII/PCI</span>` : '';
+      const colRows = (tbl.columns || []).map(col => {
+        const sens = col.sensitive ? ' db-schema-sensitive-row' : '';
+        const pii  = col.sensitive ? '<span class="db-schema-pii-tag">PII</span>' : '';
+        const key  = col.key ? `<span style="color:#58a6ff;font-size:.75rem">[${col.key}]</span>` : '';
+        return `<tr class="${sens}"><td class="db-schema-col-name">${col.name}${pii}</td><td class="db-schema-type">${col.type || ''}</td><td>${key}</td><td>${col.nullable ? 'NULL' : 'NOT NULL'}</td></tr>`;
+      }).join('');
+      const colTable = colRows ? `<table class="db-schema-col-table"><thead><tr><th>Column</th><th>Type</th><th>Key</th><th>Nullable</th></tr></thead><tbody>${colRows}</tbody></table>` : '';
+      const rowCount = tbl.row_count ? `<span class="db-schema-row-count">~${tbl.row_count.toLocaleString()} rows</span>` : '';
+      return `<details class="db-schema-table"><summary class="db-schema-table-name">${tbl.name}${rowCount}${sensTag}</summary>${colTable}</details>`;
+    }).join('');
+    const tblCount = `<span class="db-schema-table-count">${(db.tables||[]).length} tables</span>`;
+    return `<details class="db-schema-db" open><summary class="db-schema-db-name">${db.name}${tblCount}</summary><div class="db-schema-tables">${tables || '<span style="color:#8b949e;font-size:.8rem;padding:.5rem">No tables found.</span>'}</div></details>`;
+  }).join('');
+  return `${meta}<div class="db-schema-tree">${dbs}</div>`;
 }
 
 async function loadStructure(force = false) {
