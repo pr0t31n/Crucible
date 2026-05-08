@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 
 import io
 import socket
@@ -1047,20 +1047,39 @@ def api_arbiter_projects():
                     finding_count += len(json.loads(fp.read_text())) if fp.exists() else 0
                 except Exception:
                     pass
+        # Read engagement metadata from settings files
+        _consultant = _consultant_email = _client_short = _start = _end = ""
+        for _sf in (proj.get("fr_settings_file", ""), proj.get("si_settings_file", "")):
+            if not _sf:
+                continue
+            try:
+                _se = json.loads(Path(_sf).read_text()).get("engagement", {})
+                _consultant       = _consultant       or str(_se.get("consultant", "") or "")
+                _consultant_email = _consultant_email or str(_se.get("consultant_email", "") or "")
+                _client_short     = _client_short     or str(_se.get("client_short", "") or "")
+                _start            = _start            or str(_se.get("start_date", "") or "")
+                _end              = _end              or str(_se.get("end_date", "") or "")
+            except Exception:
+                pass
         out.append({
-            "id":            pid,
-            "name":          proj.get("name", pid),
-            "client_name":   proj.get("client_name") or proj.get("client_short", ""),
-            "tools":         tools,
-            "scope":         scope,
-            "status":        proj_status,
-            "completed":     proj_status == "complete",
-            "created":       proj.get("created", ""),
-            "project_dir":   proj.get("project_dir", ""),
-            "fracture_dir":  proj.get("fracture_output_dir", ""),
-            "siphon_dir":    proj.get("siphon_output_dir", ""),
-            "finding_count": finding_count,
-            "has_findings":  finding_count > 0,
+            "id":               pid,
+            "name":             proj.get("name", pid),
+            "client_name":      proj.get("client_name") or proj.get("client_short", ""),
+            "client_short":     _client_short or proj.get("client_short", ""),
+            "consultant":       _consultant,
+            "consultant_email": _consultant_email,
+            "start_date":       _start,
+            "end_date":         _end,
+            "tools":            tools,
+            "scope":            scope,
+            "status":           proj_status,
+            "completed":        proj_status == "complete",
+            "created":          proj.get("created", ""),
+            "project_dir":      proj.get("project_dir", ""),
+            "fracture_dir":     proj.get("fracture_output_dir", ""),
+            "siphon_dir":       proj.get("siphon_output_dir", ""),
+            "finding_count":    finding_count,
+            "has_findings":     finding_count > 0,
         })
     return jsonify(out)
 
