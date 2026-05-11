@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.9.2"
+VERSION = "1.9.3"
 
 import io
 import socket
@@ -52,7 +52,7 @@ _cors_origins = (
         "https://localhost:5000", "https://127.0.0.1:5000",
     ]
 )
-socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="threading", manage_session=False)
 
 CRUCIBLE_DIR  = Path(__file__).parent.resolve()
 PROJECTS_FILE = CRUCIBLE_DIR / "projects.json"
@@ -1082,6 +1082,65 @@ def api_arbiter_projects():
             "has_findings":     finding_count > 0,
         })
     return jsonify(out)
+
+
+@app.route("/api/projects/<project_id>/status")
+def api_project_status(project_id: str):
+    """Standardized status endpoint polled by Arbiter's scan_poll_worker."""
+    proj = _get_project(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    live = _tool_status.get(project_id, {})
+    fr_live = live.get("fr", "idle")
+    si_live = live.get("si", "idle")
+
+    procs = _procs.get(project_id, {})
+    if fr_live != "running" and procs.get("fr") and procs["fr"].poll() is None:
+        fr_live = "running"
+    if si_live != "running" and procs.get("si") and procs["si"].poll() is None:
+        si_live = "running"
+
+    running = (fr_live == "running" or si_live == "running")
+
+    queue_position = None
+    with _queue_lock:
+        for i, job in enumerate(_job_queue):
+            if job.get("project_id") == project_id:
+                queue_position = i + 1
+                break
+
+    if running:
+        overall = "running"
+    elif queue_position is not None:
+        overall = "queued"
+    else:
+        fr_status = proj.get("fr_status", "idle")
+        si_status = proj.get("si_status", "idle")
+        tools = proj.get("tools", ["fr", "si"])
+        in_scope = []
+        if "fr" in tools:
+            in_scope.append(fr_status)
+        if "si" in tools:
+            in_scope.append(si_status)
+        if in_scope and all(s in ("complete", "done") for s in in_scope):
+            overall = "complete"
+        elif any(s == "error" for s in in_scope):
+            overall = "error"
+        else:
+            overall = "idle"
+
+    return jsonify({
+        "project_id":     project_id,
+        "status":         overall,
+        "tool":           "crucible",
+        "tools":          {
+            "fr": fr_live if running else proj.get("fr_status", "idle"),
+            "si": si_live if running else proj.get("si_status", "idle"),
+        },
+        "queue_position": queue_position,
+    })
+
 
 # ---------------------------------------------------------------------------
 # HTTP routes
