@@ -1667,7 +1667,7 @@ function _getFilteredFindings() {
   const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
   const risk = document.getElementById('filterRisk').value;
   const tool = document.getElementById('filterTool').value;
-  const src  = _showFP ? _fpFindings : allFindings;
+  const src  = _showFP ? _fpFindings : allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
   return src.filter(f => {
     if (risk && (f.risk || 'INFO').toUpperCase() !== risk) return false;
     if (tool && (f._tool || '') !== tool) return false;
