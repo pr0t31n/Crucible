@@ -1093,6 +1093,7 @@
 
 
 <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pr0t31n_v11_enrichment.js') }}"></script>
 <script>
 'use strict';
 const PROJECT_ID  = "{{ project_id }}";
@@ -1857,6 +1858,7 @@ function showFindingDetails(jsonStr) {
     ${f.remediation ? `<div class="det-section"><div class="det-section-title">Remediation</div><pre class="det-pre">${escHtml(f.remediation)}</pre></div>` : ''}
     ${f.output ? `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${_detPre(f.output)}</pre></div>` : ''}
     ${f.affected ? `<div class="det-section"><div class="det-section-title">Affected</div><pre class="det-pre">${_detPre(f.affected)}</pre></div>` : ''}
+    ${(window.renderV11Enrichment ? window.renderV11Enrichment(f) : '')}
   `;
   document.getElementById('detailsModal').classList.remove('hidden');
 }
