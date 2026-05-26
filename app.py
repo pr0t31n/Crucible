@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 
 import io
 import socket
@@ -1994,6 +1994,130 @@ def api_unsuppress_finding(project_id: str):
                 _all_findings[project_id].append(recovered)
 
     return jsonify({"success": True, "finding": recovered})
+
+
+# ─── Cross-app shared modules — workflow + intel ─────────────────────────
+def _c_load_shared(name):
+    try:
+        import sys as _s
+        if "/opt/pr0t31n/shared" not in _s.path:
+            _s.path.insert(0, "/opt/pr0t31n/shared")
+        return __import__(name)
+    except ImportError:
+        return None
+
+
+def _c_project_dir(project_id):
+    raw = load_projects()
+    proj = raw.get("projects", {}).get(project_id) if isinstance(raw, dict) else None
+    if proj:
+        pdir = proj.get("project_dir", str(PROJECTS_DIR / project_id))
+    else:
+        pdir = str(PROJECTS_DIR / project_id)
+    return pdir if os.path.isdir(pdir) else None
+
+
+@app.route("/api/finding/risk-override", methods=["POST"])
+def api_finding_risk_override():
+    wf = _c_load_shared("pr0t31n_workflow")
+    if wf is None: return jsonify({"error": "pr0t31n_workflow not installed"}), 500
+    d = request.get_json(force=True) or {}
+    pdir = _c_project_dir(d.get("project_id", ""))
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    fid = (d.get("finding_id") or "").strip()
+    if not fid: return jsonify({"error": "finding_id required"}), 400
+    new_risk = d.get("new_risk")
+    try:
+        if new_risk in (None, "", "none"):
+            return jsonify({"success": True, "removed": wf.unset_risk(pdir, fid)})
+        rec = wf.set_risk(pdir, fid, new_risk,
+                          original_risk=d.get("original_risk", ""),
+                          reason=d.get("reason", ""), operator=d.get("operator", ""))
+        return jsonify({"success": True, "override": rec})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/finding/accept", methods=["POST"])
+def api_finding_accept():
+    wf = _c_load_shared("pr0t31n_workflow")
+    if wf is None: return jsonify({"error": "pr0t31n_workflow not installed"}), 500
+    d = request.get_json(force=True) or {}
+    pdir = _c_project_dir(d.get("project_id", ""))
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    try:
+        rec = wf.accept_finding(pdir, d.get("finding_id", ""),
+                                 justification=d.get("justification", ""),
+                                 accepted_by=d.get("accepted_by", ""))
+        return jsonify({"success": True, "acceptance": rec})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/finding/unaccept", methods=["POST"])
+def api_finding_unaccept():
+    wf = _c_load_shared("pr0t31n_workflow")
+    if wf is None: return jsonify({"error": "pr0t31n_workflow not installed"}), 500
+    d = request.get_json(force=True) or {}
+    pdir = _c_project_dir(d.get("project_id", ""))
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    return jsonify({"success": True,
+        "acceptance": wf.unaccept_finding(pdir, d.get("finding_id", ""),
+                                          operator=d.get("operator", ""))})
+
+
+@app.route("/api/finding/note", methods=["POST"])
+def api_finding_note_add():
+    wf = _c_load_shared("pr0t31n_workflow")
+    if wf is None: return jsonify({"error": "pr0t31n_workflow not installed"}), 500
+    d = request.get_json(force=True) or {}
+    pdir = _c_project_dir(d.get("project_id", ""))
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    try:
+        rec = wf.add_note(pdir, d.get("finding_id", ""),
+                          d.get("text", ""), author=d.get("author", ""))
+        return jsonify({"success": True, "note": rec})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/finding/note", methods=["DELETE"])
+def api_finding_note_delete():
+    wf = _c_load_shared("pr0t31n_workflow")
+    if wf is None: return jsonify({"error": "pr0t31n_workflow not installed"}), 500
+    d = request.get_json(force=True) or {}
+    pdir = _c_project_dir(d.get("project_id", ""))
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    try: idx = int(d.get("note_idx", -1))
+    except (TypeError, ValueError): return jsonify({"error": "note_idx must be int"}), 400
+    return jsonify({"success": True,
+        "removed": wf.remove_note(pdir, d.get("finding_id", ""), idx)})
+
+
+@app.route("/api/finding/workflow/<project_id>")
+def api_finding_workflow_load(project_id):
+    wf = _c_load_shared("pr0t31n_workflow")
+    if wf is None: return jsonify({"error": "pr0t31n_workflow not installed"}), 500
+    pdir = _c_project_dir(project_id)
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    return jsonify({
+        "notes":       wf.load_notes(pdir),
+        "overrides":   wf.load_overrides(pdir),
+        "acceptances": wf.load_acceptances(pdir),
+    })
+
+
+@app.route("/api/intel/<project_id>")
+def api_intel(project_id):
+    """API Intelligence — Crucible/Siphon flavour (endpoints, methods, owasp_api)."""
+    intel = _c_load_shared("pr0t31n_intel")
+    if intel is None: return jsonify({"error": "pr0t31n_intel not installed"}), 500
+    pdir = _c_project_dir(project_id)
+    if not pdir: return jsonify({"error": "project not found"}), 404
+    findings = intel.load_universal_findings(pdir)
+    inv      = intel.load_inventory_dir(pdir)
+    envelope = intel.aggregator_api(findings, inv.get("endpoints", []))
+    return jsonify(envelope)
 
 
 @app.route("/api/suppressions/<project_id>")
