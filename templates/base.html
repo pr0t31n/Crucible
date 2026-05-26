@@ -90,6 +90,16 @@
       <button class="icon-btn mobile-only" id="themeToggleMobile" title="Toggle light/dark">
         <span id="modeLabel">Dark</span>
       </button>
+
+      {% if session.get('username') %}
+      <a href="{{ url_for('logout') }}" class="nav-logout"
+         style="margin-left:.6rem;padding:.35rem .8rem;border:1px solid var(--border-dim);
+                border-radius:4px;color:var(--text-secondary);text-decoration:none;
+                font-size:.78rem;font-weight:500;transition:all .15s"
+         onmouseover="this.style.borderColor='var(--danger,#c04030)';this.style.color='var(--danger,#c04030)'"
+         onmouseout="this.style.borderColor='var(--border-dim)';this.style.color='var(--text-secondary)'"
+         title="Sign out of Crucible">Logout</a>
+      {% endif %}
     </div>
   </nav>
 
