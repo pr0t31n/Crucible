@@ -915,10 +915,10 @@
         <button class="btn btn-sm btn-ghost" onclick="loadAccessMatrix(true)" title="Reload">&#x21bb; Refresh</button>
         <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-access-matrix-xlsx/{{ project_id }}',_dlName('{{ project.client_short }}','Matrix','xlsx'),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')" title="Export access matrix as XLSX">&#x2193; XLSX</button>
         <span style="color:#8b949e;font-size:.8rem;margin-left:.25rem">Filter:</span>
-        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="200" onclick="_toggleAmFilter(200)" title="Show endpoints with any 2xx response">200</button>
-        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="300" onclick="_toggleAmFilter(300)" title="Show endpoints with 3xx but no 2xx">300</button>
-        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="400" onclick="_toggleAmFilter(400)" title="Show endpoints with 4xx but no 2xx">400</button>
-        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="500" onclick="_toggleAmFilter(500)" title="Show endpoints with 5xx but no 2xx">500</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="200" onclick="_toggleAmFilter(200)" title="Show endpoints where any role returned a 2xx response">200</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="300" onclick="_toggleAmFilter(300)" title="Show endpoints where any role returned a 3xx response">300</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="400" onclick="_toggleAmFilter(400)" title="Show endpoints where any role returned a 4xx response">400</button>
+        <button class="btn btn-sm btn-ghost am-filter-btn" data-range="500" onclick="_toggleAmFilter(500)" title="Show endpoints where any role returned a 5xx response">500</button>
       </div>
       <div id="accessMatrixContent">
         <span style="color:#8b949e;font-size:.85rem">Loading&#8230;</span>
@@ -3081,15 +3081,21 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
   // Table — columns are exactly what matrix.roles contains
   const allRoles = roles.slice();
 
-  // Row filter: check numeric HTTP codes across all role columns
+  // Row filter: show a row when ANY role's code falls in the requested
+  // range. Previously the 3xx/4xx/5xx filters also excluded rows where
+  // any role had a 2xx, so a row where role[0] (typically the most
+  // privileged) got 200 always hid regardless of what the other roles
+  // returned — symptom looked like "filtering only on the first role".
+  // The user's rule: one matching cell anywhere in the row reveals
+  // the endpoint.
   const _rowMatches = (item) => {
     if (filter === null) return true;
     const codes = allRoles.map(r => (item.access || {})[r]).filter(v => typeof v === 'number');
     const has = (lo, hi) => codes.some(c => c >= lo && c <= hi);
     if (filter === 200) return has(200, 299);
-    if (filter === 300) return has(300, 399) && !has(200, 299);
-    if (filter === 400) return has(400, 499) && !has(200, 299);
-    if (filter === 500) return has(500, 599) && !has(200, 299);
+    if (filter === 300) return has(300, 399);
+    if (filter === 400) return has(400, 499);
+    if (filter === 500) return has(500, 599);
     return true;
   };
 
