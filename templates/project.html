@@ -974,6 +974,7 @@
     <div class="modal-title" id="modalTitle">&#x2699; Input Required</div>
     <div class="modal-body">
       <div class="modal-role-tag hidden" id="modalRoleTag"></div>
+      <div class="modal-user-tag hidden" id="modalUserTag"></div>
       <div class="modal-prompt-text" id="modalPromptText"></div>
       <div class="modal-option-grid" id="modalOptionBtns"></div>
       <div class="modal-input-row">
@@ -1880,12 +1881,34 @@ function _parseEvidenceFiles(str) {
   if (s.startsWith('[')) {
     try {
       const entries = JSON.parse(s);
-      if (Array.isArray(entries) && entries.length > 0 && typeof entries[0] === 'object' && 'url' in entries[0]) {
-        return {type: 'multi', entries, count: entries.length};
+      if (Array.isArray(entries) && entries.length > 0
+          && entries.every(e => typeof e === 'object' && e !== null)) {
+        // Accept entries with EITHER url (HTTP exchange) OR file (plain file).
+        // The Fracture v2.18.2+ merge produces mixed arrays whenever a
+        // plain-path output_file (e.g. WhatWeb's saved JSON) is combined
+        // into a finding that already had URL-exchange evidence. Before
+        // this change the parser dropped mixed arrays entirely and the
+        // Evidence column rendered "[]".
+        const valid = entries.filter(e =>
+          'url' in e || 'file' in e || 'req' in e || 'resp' in e
+        );
+        if (valid.length) {
+          // Decide rendering type: 'multi' (HTTP exchange viewer) if any
+          // entry has url/req/resp; otherwise 'plain' (file list).
+          const hasExchange = valid.some(e => 'url' in e || 'req' in e || 'resp' in e);
+          if (hasExchange) {
+            return {type: 'multi', entries: valid, count: valid.length};
+          }
+          // All entries are {file: "..."} — flatten to plain-file list
+          const files = valid.map(e => String(e.file || '')).filter(Boolean);
+          return {type: 'plain', files, count: files.length};
+        }
       }
     } catch(e) {}
   }
-  const files = s.split(',').map(f => f.trim()).filter(Boolean);
+  // Plain/legacy form — accept BOTH newline and comma as separators.
+  // Scattershot3 ≥ 1.15.0 writes newlines; ≤ 1.14.x wrote commas.
+  const files = s.split(/[,\n\r]+/).map(f => f.trim()).filter(Boolean);
   if (!files.length) return {type: 'none', count: 0};
   return {type: 'plain', files, count: files.length};
 }
@@ -1911,9 +1934,19 @@ function viewEvidence(parsed, title) {
     modalBox.classList.add('evidence-modal-wide');
     urlWrap.classList.remove('hidden');
     const sel = document.getElementById('evidenceUrlSelect');
-    sel.innerHTML = _evidenceEntries.map((e, i) =>
-      `<option value="${i}">${escHtml(e.url)}</option>`
-    ).join('');
+    // Entries can be either HTTP exchanges {url, req, resp} or synthetic
+    // file entries {file} produced by the Fracture v2.18.2+ merge when a
+    // plain output_file (e.g. WhatWeb saved JSON) is combined into a
+    // finding that already had URL-exchange evidence. Label each option
+    // with whatever is available so neither type renders as blank.
+    sel.innerHTML = _evidenceEntries.map((e, i) => {
+      let label;
+      if (e.url) label = e.url;
+      else if (e.file) label = (String(e.file).split('/').pop() || e.file);
+      else if (e.req)  label = (String(e.req).split('/').pop() || e.req);
+      else             label = `Entry ${i + 1}`;
+      return `<option value="${i}">${escHtml(label)}</option>`;
+    }).join('');
     sel.selectedIndex = 0;
     _loadEvidenceEntry(0);
   } else if (ev.type === 'plain') {
@@ -2626,14 +2659,32 @@ function showPromptModal(payload, tool) {
   const isPassword = payload.type === 'password' ||
     /password|passphrase|secret|sudo/i.test(payload.question || '');
 
-  document.getElementById('modalTitle').textContent = '&#x2699; Input Required';
+  // Use the literal Unicode character (U+2699 GEAR) so textContent renders
+  // it correctly. Writing '&#x2699;' via textContent shows the raw entity.
+  document.getElementById('modalTitle').textContent = '⚙️ Input Required';
   document.getElementById('modalPromptText').textContent = payload.question || '';
+
+  // ── Context tags (role + user) ─────────────────────────────────────────
+  // payload.role     — short label of the auth role this prompt is for
+  //                    (Master / primary / Role 2 / …).
+  // payload.username — account name the role is authenticating as.
+  // Both are sent by Fracture v2.17.1+ for MFA / OTP / multi-step prompts
+  // so the operator can immediately see which login the OTP belongs to.
   const roleTag = document.getElementById('modalRoleTag');
   if (payload.role) {
     roleTag.textContent = 'Role: ' + payload.role;
     roleTag.classList.remove('hidden');
   } else {
     roleTag.classList.add('hidden');
+  }
+  const userTag = document.getElementById('modalUserTag');
+  if (userTag) {
+    if (payload.username) {
+      userTag.textContent = 'User: ' + payload.username;
+      userTag.classList.remove('hidden');
+    } else {
+      userTag.classList.add('hidden');
+    }
   }
 
   const input = document.getElementById('modalTextInput');

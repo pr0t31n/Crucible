@@ -39,6 +39,30 @@
       "fr_last_run": "2026-05-06T21:55:50.961770+00:00",
       "si_last_run": null,
       "fr_proj_name": "/Users/Shared/clients/fms/2026/fracture/fms_20260506_205936"
+    },
+    "d53ee15d-b684-4dcc-9c74-803ca54dc4b3": {
+      "name": "RCAB WebApp 2026",
+      "client_name": "Roman Catholic Archdiocese of Boston",
+      "client_short": "rcab",
+      "scope": "webapp",
+      "created": "2026-05-26",
+      "project_dir": "/Users/Shared/clients/rcab/2026/fracture/rcab_20260526_142202",
+      "fr_settings_file": "/Users/Shared/clients/rcab/2026/fracture/rcab_20260526_142202/fr_settings.json",
+      "si_settings_file": "/Users/Shared/clients/rcab/2026/siphon/rcab_20260526_142202/si_settings.json",
+      "db_settings_file": "/Users/Shared/clients/rcab/2026/auger/rcab_20260526_142202/db_settings.json",
+      "fracture_output_dir": "/Users/Shared/clients/rcab/2026/fracture/rcab_20260526_142202",
+      "siphon_output_dir": "/Users/Shared/clients/rcab/2026/siphon/rcab_20260526_142202",
+      "auger_output_dir": "/Users/Shared/clients/rcab/2026/auger/rcab_20260526_142202",
+      "tools": [
+        "fr"
+      ],
+      "fr_status": "running",
+      "si_status": "idle",
+      "db_status": "idle",
+      "fr_last_run": "2026-05-26T23:57:10.211197+00:00",
+      "si_last_run": null,
+      "db_last_run": null,
+      "fr_proj_name": "/Users/Shared/clients/rcab/2026/fracture/rcab_20260526_142202"
     }
   }
 }
