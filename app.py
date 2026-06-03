@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.11.4"
+VERSION = "1.11.5"
 
 import io
 import socket
@@ -1869,6 +1869,128 @@ def _tool_findings_path(proj: dict, tool_name: str) -> "Path | None":
         return None
 
 
+def _tool_findings_paths_all(proj: dict, tool_name: str) -> "list[Path]":
+    """Return every findings.json that Crucible should keep in sync for *tool_name*.
+
+    Includes the legacy tool-managed scan-output path AND any universal-schema
+    run-directory under <clients_base>/<client_short>/<year>/<tool>/ (per
+    CLAUDE.md Section 13a). When Fracture/Siphon begin dual-writing universal
+    findings.json the suppression flow will pick them up automatically with no
+    further changes here."""
+    out: "list[Path]" = []
+    legacy = _tool_findings_path(proj, tool_name)
+    if legacy:
+        out.append(legacy)
+    try:
+        import sys as _s
+        if "/opt/pr0t31n/shared" not in _s.path:
+            _s.path.insert(0, "/opt/pr0t31n/shared")
+        import pr0t31n_schema as _us  # noqa: F401
+        base = _us.clients_base()
+        client_short = ""
+        try:
+            stt = json.loads(Path(proj.get(
+                "fr_settings_file" if tool_name == "fracture" else "si_settings_file",
+                "/dev/null",
+            )).read_text())
+            client_short = (stt.get("engagement", {}).get("client_short", "") or "").strip()
+        except Exception:
+            pass
+        if client_short and Path(base).exists():
+            tool_dir = Path(base) / client_short
+            if tool_dir.exists():
+                for run_root in tool_dir.glob(f"*/{tool_name}/*"):
+                    cand = run_root / "findings.json"
+                    if cand.exists() and cand not in out:
+                        out.append(cand)
+    except Exception:
+        pass
+    return out
+
+
+def _findings_csv_for(json_path: Path) -> Path:
+    return json_path.with_name("findings.csv")
+
+
+def _csv_fieldnames(csv_path: Path) -> "list[str] | None":
+    if not csv_path.exists() or csv_path.stat().st_size == 0:
+        return None
+    try:
+        import csv as _csv
+        with csv_path.open(newline="", encoding="utf-8") as fh:
+            reader = _csv.reader(fh)
+            header = next(reader, None)
+        return header if header else None
+    except Exception:
+        return None
+
+
+def _remove_finding_from_csv(csv_path: Path, key_tuple: tuple) -> bool:
+    if not csv_path.exists():
+        return False
+    try:
+        import csv as _csv
+        with csv_path.open(newline="", encoding="utf-8") as fh:
+            rows = list(_csv.DictReader(fh))
+        if not rows:
+            return False
+        fieldnames = list(rows[0].keys())
+        kept, removed_any = [], False
+        kt = (
+            (key_tuple[0] or ""),
+            (key_tuple[1] or ""),
+            str(key_tuple[2] or ""),
+            (key_tuple[3] or ""),
+            (key_tuple[4] or ""),
+        )
+        for r in rows:
+            r_key = (
+                (r.get("title") or ""),
+                (r.get("ip") or ""),
+                str(r.get("port") or ""),
+                (r.get("_scope") or r.get("scope") or ""),
+                (r.get("hostname") or ""),
+            )
+            if r_key == kt:
+                removed_any = True
+            else:
+                kept.append(r)
+        if not removed_any:
+            return False
+        tmp = csv_path.with_suffix(".csv.tmp")
+        with tmp.open("w", newline="", encoding="utf-8") as fh:
+            wr = _csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+            wr.writeheader()
+            wr.writerows(kept)
+        tmp.replace(csv_path)
+        return True
+    except Exception:
+        return False
+
+
+def _append_finding_to_csv(csv_path: Path, finding: dict) -> bool:
+    try:
+        import csv as _csv
+        clean = {k: v for k, v in finding.items() if not k.startswith("_")}
+        fieldnames = _csv_fieldnames(csv_path)
+        new_file = fieldnames is None
+        if new_file:
+            fieldnames = list(clean.keys())
+        with csv_path.open("a", newline="", encoding="utf-8") as fh:
+            wr = _csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+            if new_file:
+                wr.writeheader()
+            wr.writerow(clean)
+        return True
+    except Exception:
+        return False
+
+
+def _fp_csv_path(project_id: str) -> Path:
+    """Sibling CSV next to falsePositives.json."""
+    return _false_positives_path(project_id).with_name("falsePositives.csv")
+
+
 def _fkey_hash(f: dict) -> str:
     """Return the suppression key for finding *f*.
 
@@ -1908,24 +2030,47 @@ def api_suppress_finding(project_id: str):
     if finding:
         key_tuple = _fkey(finding)
 
-        # Remove from the tool's findings.json
-        tool_fp_path = _tool_findings_path(proj, finding.get("_tool", ""))
-        if tool_fp_path and tool_fp_path.exists():
+        # Remove from EVERY findings.json (legacy + any universal-schema
+        # run-dirs that may exist) and from each sibling findings.csv.
+        # Capture the CSV fieldnames from the first tool findings.csv we see
+        # so the FP CSV mirror uses the same column order.
+        tool_csv_fields: "list[str] | None" = None
+        for jp in _tool_findings_paths_all(proj, finding.get("_tool", "")):
             try:
-                existing = json.loads(tool_fp_path.read_text())
-                tool_fp_path.write_text(
-                    json.dumps([f for f in existing if _fkey(f) != key_tuple], indent=2)
-                )
+                existing = json.loads(jp.read_text())
+                if isinstance(existing, list):
+                    jp.write_text(
+                        json.dumps([f for f in existing if _fkey(f) != key_tuple], indent=2)
+                    )
             except Exception:
                 pass
+            cp = _findings_csv_for(jp)
+            _remove_finding_from_csv(cp, key_tuple)
+            if tool_csv_fields is None:
+                tool_csv_fields = _csv_fieldnames(cp)
 
-        # Add to falsePositives.json (deduplicated)
-        fpp     = _false_positives_path(project_id)
-        fp_list = _load_false_positives(project_id)
-        if not any(_fkey(f) == key_tuple for f in fp_list):
-            fp_list.append(finding)
-            fpp.parent.mkdir(parents=True, exist_ok=True)
-            fpp.write_text(json.dumps(fp_list, indent=2))
+        # Add to falsePositives.json + falsePositives.csv via the shared helper
+        # (canonical CSV mirror per CLAUDE.md Section 13g). The shared helper
+        # dedupes idempotently and handles both JSON and CSV in one call.
+        try:
+            import sys as _s
+            if "/opt/pr0t31n/shared" not in _s.path:
+                _s.path.insert(0, "/opt/pr0t31n/shared")
+            import pr0t31n_false_positives as _fp
+            _fp.add_false_positive(
+                Path(proj.get("project_dir", str(PROJECTS_DIR / project_id))),
+                finding,
+                csv_fieldnames=tool_csv_fields,
+            )
+        except Exception:
+            # Fall back to the legacy JSON-only path so we never silently drop
+            # an FP if the shared helper is missing.
+            fpp     = _false_positives_path(project_id)
+            fp_list = _load_false_positives(project_id)
+            if not any(_fkey(f) == key_tuple for f in fp_list):
+                fp_list.append(finding)
+                fpp.parent.mkdir(parents=True, exist_ok=True)
+                fpp.write_text(json.dumps(fp_list, indent=2))
 
         # Remove from in-memory cache
         if project_id in _all_findings:
@@ -1973,23 +2118,33 @@ def api_unsuppress_finding(project_id: str):
     if recovered:
         fpp.write_text(json.dumps(remaining, indent=2))
 
-        # Write back to tool's findings.json
-        tool_fp_path = _tool_findings_path(proj, recovered.get("_tool", ""))
-        if tool_fp_path:
+        # Also remove the row from falsePositives.csv to keep the mirror in
+        # sync. Done in-place by key_tuple regardless of whether the finding
+        # has an 'id' field (Fracture findings currently do not).
+        key_tuple = _fkey(recovered)
+        _remove_finding_from_csv(_fp_csv_path(project_id), key_tuple)
+
+        # Write back to EVERY findings.json (legacy + universal run-dirs)
+        # AND each sibling findings.csv. The CSV side is what was previously
+        # missing — without this, a recovered finding would silently fail to
+        # reappear in the CSV mirror, leaving the FP delete-and-recover round
+        # trip lossy.
+        clean = {k: v for k, v in recovered.items() if not k.startswith("_")}
+        for jp in _tool_findings_paths_all(proj, recovered.get("_tool", "")):
             try:
-                existing  = json.loads(tool_fp_path.read_text()) if tool_fp_path.exists() else []
-                key_tuple = _fkey(recovered)
+                existing = json.loads(jp.read_text()) if jp.exists() else []
+                if not isinstance(existing, list):
+                    existing = []
                 if not any(_fkey(f) == key_tuple for f in existing):
-                    clean = {k: v for k, v in recovered.items() if not k.startswith("_")}
                     existing.append(clean)
-                    tool_fp_path.parent.mkdir(parents=True, exist_ok=True)
-                    tool_fp_path.write_text(json.dumps(existing, indent=2))
+                    jp.parent.mkdir(parents=True, exist_ok=True)
+                    jp.write_text(json.dumps(existing, indent=2))
             except Exception:
                 pass
+            _append_finding_to_csv(_findings_csv_for(jp), clean)
 
         # Add back to in-memory cache
         if project_id in _all_findings:
-            key_tuple = _fkey(recovered)
             if not any(_fkey(f) == key_tuple for f in _all_findings[project_id]):
                 _all_findings[project_id].append(recovered)
 
