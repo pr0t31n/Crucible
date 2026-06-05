@@ -241,6 +241,16 @@
   <!-- ════════════════ TAB: LOG ════════════════ -->
   <div class="tab-panel" id="tab-log">
     <div class="panel">
+      <!-- Time-range filter (CLAUDE.md Section 14) ────────────────────── -->
+      <div class="log-toolbar" style="border-bottom:1px solid var(--border, #2a2a2a); padding-bottom:6px; margin-bottom:6px;">
+        <label style="font-size:0.85em; opacity:0.8;">From:
+          <input type="datetime-local" id="logFromDT" step="1" oninput="renderLogs()">
+        </label>
+        <label style="font-size:0.85em; opacity:0.8;">To:
+          <input type="datetime-local" id="logToDT"   step="1" oninput="renderLogs()">
+        </label>
+        <button class="btn btn-sm btn-ghost" onclick="clearLogTimeRange()">Clear range</button>
+      </div>
       <div class="log-toolbar">
         <div class="log-filter-group">
           <button class="log-filter-btn active" data-filter-key="tool" data-filter-val="" onclick="setLogFilter(this,'tool','')">All</button>
@@ -1473,7 +1483,7 @@ socket.on('log_entry', data => {
   if (_logSeen.has(key)) return;
   _logSeen.add(key);
   allLogs.push(e);
-  document.getElementById('logBadge').textContent = allLogs.length;
+  if (typeof _updateLogPill === 'function') _updateLogPill(); else document.getElementById('logBadge').textContent = allLogs.length;
   renderLogs();
 });
 
@@ -1486,7 +1496,7 @@ socket.on('err_entry', data => {
   if (_logSeen.has(key)) return;
   _logSeen.add(key);
   allLogs.push(e);
-  document.getElementById('logBadge').textContent = allLogs.length;
+  if (typeof _updateLogPill === 'function') _updateLogPill(); else document.getElementById('logBadge').textContent = allLogs.length;
   renderLogs();
 });
 
@@ -2503,9 +2513,48 @@ function logsPage(dir) {
   renderLogs();
 }
 
+// ── Time-range filter helpers (CLAUDE.md Section 14) ─────────
+const _ERR_LEVELS = new Set(['ERROR','EXCEPTION','TOOL_ERROR','FATAL','CRITICAL']);
+function _isErrEntry(e) {
+  const lv = (e?.level || e?.severity || e?.risk || '').toString().toUpperCase();
+  return _ERR_LEVELS.has(lv);
+}
+function _parseDTLocal(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+function _entryTs(e) {
+  if (!e || !e.ts) return null;
+  const d = new Date(e.ts);
+  return isNaN(d.getTime()) ? null : d.getTime();
+}
+function _filterByRange(arr, fromId, toId) {
+  const f = _parseDTLocal(document.getElementById(fromId)?.value);
+  const t = _parseDTLocal(document.getElementById(toId)?.value);
+  if (f === null && t === null) return arr;
+  return arr.filter(e => {
+    const ts = _entryTs(e);
+    if (ts === null) return true;
+    if (f !== null && ts < f) return false;
+    if (t !== null && ts > t) return false;
+    return true;
+  });
+}
+// Pill reflects ERROR count only — per CLAUDE.md §14.
+function _updateLogPill() {
+  const b = document.getElementById('logBadge');
+  if (b) b.textContent = allLogs.filter(_isErrEntry).length;
+}
+function clearLogTimeRange() {
+  ['logFromDT','logToDT'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderLogs();
+}
+
 function _getFilteredLogs() {
   const q = (document.getElementById('logSearch')?.value || '').toLowerCase();
-  return allLogs.filter(e => {
+  const inRange = _filterByRange(allLogs, 'logFromDT', 'logToDT');
+  return inRange.filter(e => {
     if (logFilter.tool && e.tool !== logFilter.tool) return false;
     if (logFilter.level && (e.level||'') !== logFilter.level) return false;
     if (q && !JSON.stringify(e).toLowerCase().includes(q)) return false;
@@ -2514,6 +2563,7 @@ function _getFilteredLogs() {
 }
 
 function renderLogs() {
+  _updateLogPill();
   const filtered = _getFilteredLogs();
   const pages = Math.max(1, Math.ceil(filtered.length / LOG_PER_PAGE));
   logPage = Math.min(logPage, pages - 1);
@@ -2796,7 +2846,7 @@ Promise.all([
     const key = `${e.ts}|${e.tool}|${e.message}`;
     if (!_logSeen.has(key)) { _logSeen.add(key); allLogs.push(e); }
   });
-  document.getElementById('logBadge').textContent = allLogs.length;
+  if (typeof _updateLogPill === 'function') _updateLogPill(); else document.getElementById('logBadge').textContent = allLogs.length;
   renderLogs();
 });
 _loadSummarySettings();

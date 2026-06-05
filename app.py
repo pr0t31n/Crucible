@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.11.5"
+VERSION = "1.12.0"
 
 import io
 import socket
@@ -3489,17 +3489,40 @@ def api_export_status_report_pdf(project_id: str):
     )
 
 
+# ── Time-range filter helpers (CLAUDE.md Section 14) ────────────────────────
+def _log_filter_module():
+    try:
+        import sys as _s
+        if "/opt/pr0t31n/shared" not in _s.path:
+            _s.path.insert(0, "/opt/pr0t31n/shared")
+        import pr0t31n_event_log as _el
+        return _el
+    except ImportError:
+        return None
+
+
+def _apply_time_filter(entries):
+    _el = _log_filter_module()
+    if _el is None:
+        return entries
+    f = _el.parse_dt_arg(request.args.get("from"))
+    t = _el.parse_dt_arg(request.args.get("to"))
+    if f is None and t is None:
+        return entries
+    return _el.filter_entries(entries, from_dt=f, to_dt=t)
+
+
 @app.route("/api/logs/<project_id>")
 def api_logs(project_id: str):
     proj = _get_project(project_id)
     in_mem = _log_buffers.get(project_id, [])
     if in_mem:
-        return jsonify(in_mem)
+        return jsonify(_apply_time_filter(in_mem))
     if proj:
         entries = _read_jsonl(Path(proj["project_dir"]) / "crucible_logs.jsonl")
         if entries:
             _log_buffers[project_id] = entries
-        return jsonify(entries)
+        return jsonify(_apply_time_filter(entries))
     return jsonify([])
 
 
@@ -3508,13 +3531,13 @@ def api_errors(project_id: str):
     proj = _get_project(project_id)
     in_mem = _err_buffers.get(project_id, [])
     if in_mem:
-        return jsonify(in_mem)
+        return jsonify(_apply_time_filter(in_mem))
     if proj:
         entries = _read_jsonl(Path(proj["project_dir"]) / "crucible_errors.jsonl",
                               limit=_MAX_ERR)
         if entries:
             _err_buffers[project_id] = entries
-        return jsonify(entries)
+        return jsonify(_apply_time_filter(entries))
     return jsonify([])
 
 
