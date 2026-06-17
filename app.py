@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.12.0"
+VERSION = "1.13.0"
 
 import io
 import socket
@@ -1319,6 +1319,7 @@ def api_create_project():
     si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
     si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
     si["scan"]["api_spec_url"]  = body.get("si_api_spec_url", "")
+    si["scan"]["environment"]   = body.get("si_environment", "")
 
     # Move staged spec files into the siphon output directory
     spec_dir = si_output_dir / "spec_files"
@@ -1461,6 +1462,8 @@ def api_update_project(project_id: str):
             si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
         if body.get("si_api_spec_url") is not None:
             si["scan"]["api_spec_url"] = body["si_api_spec_url"]
+        if body.get("si_environment"):
+            si["scan"]["environment"] = body["si_environment"]
         # Commit any newly staged spec files
         spec_file_ids = body.get("si_api_spec_file_ids", [])
         if spec_file_ids:
@@ -4832,6 +4835,7 @@ def api_execute_project():
     si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
     si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
     si["scan"]["api_spec_url"]  = body.get("si_api_spec_url", "")
+    si["scan"]["environment"]   = body.get("si_environment", "")
     si["scan"]["auth"] = _build_si_auth_from_body(body)
 
     fr_path = fr_output_dir / "fr_settings.json"

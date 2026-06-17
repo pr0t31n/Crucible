@@ -669,6 +669,16 @@
             <span class="form-hint">One URL per line or comma-separated. Each URL is scanned independently.</span>
           </div>
           <div class="form-group span2">
+            <label class="form-label">Target Environment <span class="req">*</span></label>
+            {% set _si_env = (si.scan.environment if si and si.scan else '') %}
+            <select name="si_environment" class="form-control" required>
+              <option value="" disabled {{ 'selected' if _si_env not in ['production','non-production'] else '' }}>— Select environment (required) —</option>
+              <option value="non-production" {{ 'selected' if _si_env == 'non-production' else '' }}>Non-production (full testing)</option>
+              <option value="production" {{ 'selected' if _si_env == 'production' else '' }}>Production (partial — no write-method state changes, no business-flow / mass-assignment)</option>
+            </select>
+            <span class="form-hint">Mandatory. Governs Siphon's safety model.</span>
+          </div>
+          <div class="form-group span2">
             <label class="form-label">Remote API Spec URL</label>
             <input type="url" name="si_api_spec_url" class="form-control"
                    placeholder="https://api.example.com/openapi.json"
