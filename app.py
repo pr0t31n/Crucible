@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.13.1"
+VERSION = "1.13.2"
 
 import io
 import socket
@@ -40,19 +40,8 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = _auth.load_secret_key()
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB — prevents oversized request buffering
 
-# Restrict SocketIO CORS to localhost origins; override via env var if needed
-_raw_origins = os.environ.get("CRUCIBLE_ALLOWED_ORIGINS", "").strip()
-_cors_origins = (
-    [o.strip() for o in _raw_origins.split(",") if o.strip()]
-    if _raw_origins
-    else [
-        "http://localhost:5500",  "http://127.0.0.1:5500",
-        "https://localhost:5500", "https://127.0.0.1:5500",
-        "http://localhost:5000",  "http://127.0.0.1:5000",  # Nexus hub
-        "https://localhost:5000", "https://127.0.0.1:5000",
-    ]
-)
-socketio = SocketIO(app, cors_allowed_origins=_cors_origins, async_mode="threading", manage_session=False)
+# CORS — match Vantage/Gauntlet/Spectre pattern; _auth.py handles access control
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", manage_session=False)
 
 CRUCIBLE_DIR  = Path(__file__).parent.resolve()
 PROJECTS_FILE = CRUCIBLE_DIR / "projects.json"
