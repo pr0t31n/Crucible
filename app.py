@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.14.1"
+VERSION = "1.14.2"
 
 import io
 import socket
@@ -3562,8 +3562,10 @@ def api_checkpoint(project_id: str, tool: str):
 def api_file_content(project_id: str):
     """Return the text content of a finding output file.
 
-    The path query parameter must resolve to a file inside the project's
-    project_dir (enforced server-side to prevent directory traversal).
+    The path query parameter must resolve to a file inside one of the
+    project's output directories (enforced server-side to prevent directory
+    traversal).  Relative paths (e.g. from Fracture's _save_http_evidence)
+    are resolved against each known output dir.
     """
     proj = _get_project(project_id)
     if not proj:
@@ -3574,9 +3576,32 @@ def api_file_content(project_id: str):
         return jsonify({"error": "path required"}), 400
 
     try:
-        target = Path(raw_path).resolve()
-        project_dir = Path(proj["project_dir"]).resolve()
-        if not str(target).startswith(str(project_dir)):
+        # Collect every known output directory for this project.
+        _allowed = []
+        for _dk in ("project_dir", "fracture_output_dir",
+                     "siphon_output_dir", "auger_output_dir"):
+            _dv = proj.get(_dk, "")
+            if _dv:
+                _allowed.append(Path(_dv).resolve())
+
+        _raw = Path(raw_path)
+        if _raw.is_absolute():
+            target = _raw.resolve()
+        else:
+            # Relative path — resolve against each allowed dir and pick the
+            # first that actually contains the file.
+            target = None
+            for _ad in _allowed:
+                _cand = (_ad / _raw).resolve()
+                if str(_cand).startswith(str(_ad)) and _cand.is_file():
+                    target = _cand
+                    break
+            if target is None:
+                # Nothing found; fall back to project_dir join so the
+                # startswith check can still give a meaningful 403/404.
+                target = (_allowed[0] / _raw).resolve() if _allowed else _raw.resolve()
+
+        if not any(str(target).startswith(str(a)) for a in _allowed):
             return jsonify({"error": "access denied"}), 403
         if not target.exists() or not target.is_file():
             return jsonify({"error": "file not found"}), 404
@@ -3591,8 +3616,9 @@ def api_file_content(project_id: str):
 def api_file_serve(project_id: str):
     """Serve a binary evidence file (e.g. screenshot PNG) directly.
 
-    Validates that the requested path is within the project directory to
-    prevent directory-traversal attacks.
+    Validates that the requested path is within one of the project's output
+    directories to prevent directory-traversal attacks.  Relative paths are
+    resolved against each known output dir.
     """
     import mimetypes
     proj = _get_project(project_id)
@@ -3604,9 +3630,27 @@ def api_file_serve(project_id: str):
         return jsonify({"error": "path required"}), 400
 
     try:
-        target_path  = Path(raw_path).resolve()
-        project_dir  = Path(proj["project_dir"]).resolve()
-        if not str(target_path).startswith(str(project_dir)):
+        _allowed = []
+        for _dk in ("project_dir", "fracture_output_dir",
+                     "siphon_output_dir", "auger_output_dir"):
+            _dv = proj.get(_dk, "")
+            if _dv:
+                _allowed.append(Path(_dv).resolve())
+
+        _raw = Path(raw_path)
+        if _raw.is_absolute():
+            target_path = _raw.resolve()
+        else:
+            target_path = None
+            for _ad in _allowed:
+                _cand = (_ad / _raw).resolve()
+                if str(_cand).startswith(str(_ad)) and _cand.is_file():
+                    target_path = _cand
+                    break
+            if target_path is None:
+                target_path = (_allowed[0] / _raw).resolve() if _allowed else _raw.resolve()
+
+        if not any(str(target_path).startswith(str(a)) for a in _allowed):
             return jsonify({"error": "access denied"}), 403
         if not target_path.exists() or not target_path.is_file():
             return jsonify({"error": "file not found"}), 404
