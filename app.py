@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.14.3"
+VERSION = "1.14.4"
 
 import io
 import socket
@@ -3302,6 +3302,7 @@ def api_export_status_report_pdf(project_id: str):
             _add("CDN",             target_profile.get("cdn") or "")
             _add("WAF",             target_profile.get("waf") or "")
             _add("Edge Security",   ", ".join(target_profile.get("edge_security") or []))
+            _add("Load Balancers",  ", ".join(target_profile.get("load_balancers") or []))
             _add("Auth Method",     target_profile.get("auth_method") or "")
             _add("Auth Page",       target_profile.get("auth_page") or "")
             _add("MFA",             ", ".join(target_profile.get("mfa_providers") or []))
