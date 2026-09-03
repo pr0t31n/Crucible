@@ -1999,7 +1999,8 @@ async function testFrConnection() {
               + 'background:#238636;color:#fff;border:none;border-radius:4px;'
               + 'padding:2px 8px;cursor:pointer;font-size:.78rem\" '
               + 'onclick=\"_applyDiscoveredAuth(\'' + _esc(d.discovered_method) + '\',\''
-              + _esc(d.discovered_login_url) + '\')\">\u2714 Apply discovered endpoint</button>';
+              + _esc(d.discovered_login_url) + '\',\''
+              + _esc(d.discovered_content_type || '') + '\')\">\u2714 Apply discovered endpoint</button>';
       }
       res.innerHTML = _msg;
     } else {
@@ -2009,19 +2010,33 @@ async function testFrConnection() {
   finally { btn.disabled = false; btn.textContent = '⚡ Test Connection'; _updateFrTestBtn(); }
 }
 
-/** Apply discovered auth method + login_url from auto-detect. */
-function _applyDiscoveredAuth(method, loginUrl) {
+/** Apply discovered auth method + login_url + content-type from auto-detect. */
+function _applyDiscoveredAuth(method, loginUrl, contentType) {
   const sel = document.getElementById('frAuthMethod');
   if (sel) { sel.value = method; frAuthMethodChanged(); }
   const activeGrp = document.getElementById('frAuth-' + method);
   if (activeGrp) {
     const urlInput = activeGrp.querySelector('[name="fr_auth_login_url"]');
     if (urlInput) { urlInput.value = loginUrl; urlInput.dispatchEvent(new Event('input', {bubbles: true})); }
+    // Set content-type hidden input so it persists on save.
+    // The form_login group doesn't expose a CT selector, but Crucible reads
+    // fr_auth_login_ct on save \u2014 inject one if absent.
+    if (contentType) {
+      let ctInput = activeGrp.querySelector('[name="fr_auth_login_ct"]');
+      if (!ctInput) {
+        ctInput = document.createElement('input');
+        ctInput.type = 'hidden';
+        ctInput.name = 'fr_auth_login_ct';
+        activeGrp.appendChild(ctInput);
+      }
+      ctInput.value = contentType;
+    }
   }
   const res = document.getElementById('frAuthTestResult');
+  const ctNote = contentType ? ' (content-type: ' + _esc(contentType) + ')' : '';
   if (res) {
     res.innerHTML = '<span style="color:#3fb950">\u2714 Applied: '
-      + _esc(method) + ' \u2192 ' + _esc(loginUrl)
+      + _esc(method) + ' \u2192 ' + _esc(loginUrl) + ctNote
       + ' \u2014 <b>save the project</b> to persist</span>';
   }
 }
