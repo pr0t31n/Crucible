@@ -329,12 +329,12 @@
               <div class="form-group">
                 <label class="form-label">Username Field Name</label>
                 <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username"
-                       value="{{ _fa.get('login_username_field','username') if _frm == 'form_login' else 'username' }}">
+                       value="{{ _fa.get('login_username_field','username') if _frm == 'form_login' else 'username' }}" autocomplete="off">
               </div>
               <div class="form-group">
                 <label class="form-label">Password Field Name</label>
                 <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password"
-                       value="{{ _fa.get('login_password_field','password') if _frm == 'form_login' else 'password' }}">
+                       value="{{ _fa.get('login_password_field','password') if _frm == 'form_login' else 'password' }}" autocomplete="off">
               </div>
               <div class="form-group span2">
                 <span class="form-hint">Credentials (username / password) are sourced from the Credential Matrix below.</span>
@@ -373,12 +373,12 @@
               <div class="form-group">
                 <label class="form-label">Username Field Name</label>
                 <input type="text" name="fr_auth_login_ufield" class="form-control" placeholder="username"
-                       value="{{ _fa.get('login_username_field','username') if _frm == 'token_login' else 'username' }}">
+                       value="{{ _fa.get('login_username_field','username') if _frm == 'token_login' else 'username' }}" autocomplete="off">
               </div>
               <div class="form-group">
                 <label class="form-label">Password Field Name</label>
                 <input type="text" name="fr_auth_login_pfield" class="form-control" placeholder="password"
-                       value="{{ _fa.get('login_password_field','password') if _frm == 'token_login' else 'password' }}">
+                       value="{{ _fa.get('login_password_field','password') if _frm == 'token_login' else 'password' }}" autocomplete="off">
               </div>
               <div class="form-group span2">
                 <span class="form-hint">Credentials (username / password) are sourced from the Credential Matrix below.</span>
