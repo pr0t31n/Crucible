@@ -1777,11 +1777,39 @@ async function testFrConnection() {
       body: JSON.stringify({ url: urlVal, auth }),
     });
     const d = await r.json();
-    res.innerHTML = d.success
-      ? '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>'
-      : '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
+    if (d.success) {
+      let _msg = '<span style="color:#3fb950">\u2713 ' + _esc(d.message) + '</span>';
+      if (d.discovered_method && d.discovered_login_url) {
+        _msg += ' <button type=\"button\" class=\"btn btn-sm\" style=\"margin-left:.5rem;'
+              + 'background:#238636;color:#fff;border:none;border-radius:4px;'
+              + 'padding:2px 8px;cursor:pointer;font-size:.78rem\" '
+              + 'onclick=\"_applyDiscoveredAuth(\'' + _esc(d.discovered_method) + '\',\''
+              + _esc(d.discovered_login_url) + '\')\">\u2714 Apply discovered endpoint</button>';
+      }
+      res.innerHTML = _msg;
+    } else {
+      res.innerHTML = '<span style="color:#f85149">\u2717 ' + _esc(d.message) + '</span>';
+    }
   } catch { res.innerHTML = '<span style="color:#f85149">Network error</span>'; }
   finally { btn.disabled = false; btn.textContent = '⚡ Test Connection'; _updateFrTestBtn(); }
+}
+
+
+/** Apply discovered auth method + login_url from auto-detect. */
+function _applyDiscoveredAuth(method, loginUrl) {
+  const sel = document.getElementById('frAuthMethod');
+  if (sel) { sel.value = method; frAuthMethodChanged(); }
+  const activeGrp = document.getElementById('frAuth-' + method);
+  if (activeGrp) {
+    const urlInput = activeGrp.querySelector('[name="fr_auth_login_url"]');
+    if (urlInput) { urlInput.value = loginUrl; urlInput.dispatchEvent(new Event('input', {bubbles: true})); }
+  }
+  const res = document.getElementById('frAuthTestResult');
+  if (res) {
+    res.innerHTML = '<span style="color:#3fb950">\u2714 Applied: '
+      + _esc(method) + ' \u2192 ' + _esc(loginUrl)
+      + ' \u2014 <b>save the project</b> to persist</span>';
+  }
 }
 
 document.getElementById('frTargetUrls').addEventListener('input', _updateFrTestBtn);
