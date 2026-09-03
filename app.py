@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.14.2"
+VERSION = "1.14.3"
 
 import io
 import socket
@@ -147,8 +147,9 @@ _procs:        dict[str, dict[str, subprocess.Popen | None]] = {}
 _buffers:      dict[str, dict[str, list]] = {}   # console lines
 _tool_status:  dict[str, dict[str, str]]  = {}
 _all_findings: dict[str, list]            = {}
-_watchers:     dict[str, threading.Thread] = {}
-_watcher_flags: dict[str, bool]           = {}
+_watchers:       dict[str, threading.Thread] = {}
+_watcher_flags:  dict[str, bool]           = {}
+_watcher_gen:    dict[str, int]            = {}  # generation counter — prevents race on flag pop
 _sid_to_project: dict[str, str]           = {}
 
 # Interaction — answer queues keyed by "project_id:tool"
@@ -3855,13 +3856,13 @@ def on_join_project(data):
     emit("tool_status", _tool_status.get(project_id, {"fr": "idle", "si": "idle"}))
 
     # Console output (with disk fallback for post-restart joins)
-    for tool in ("fr", "si"):
+    for tool in ("fr", "si", "db"):
         lines = _buffers.get(project_id, {}).get(tool, [])
         if not lines:
             lines = _read_jsonl(proj_dir / f"crucible_console_{tool}.jsonl",
                                 limit=_MAX_CONSOLE)
             if lines:
-                _buffers.setdefault(project_id, {"fr": [], "si": []})[tool] = lines
+                _buffers.setdefault(project_id, {"fr": [], "si": [], "db": []})[tool] = lines
         for entry in lines:
             emit(f"{tool}_output", entry)
 
@@ -3902,7 +3903,8 @@ def on_join_project(data):
 
     # Restart watcher if a tool is currently running (handles reconnects mid-scan)
     _live_status = _tool_status.get(project_id, {})
-    if _live_status.get("fr") == "running" or _live_status.get("si") == "running":
+    if (_live_status.get("fr") == "running" or _live_status.get("si") == "running"
+            or _live_status.get("db") == "running"):
         _ensure_watcher(project_id, proj)
 
     # Phase status
@@ -4554,19 +4556,28 @@ def _kill_tool(project_id: str, tool: str) -> None:
 # Findings watcher — polls output dirs every 5 s
 # ---------------------------------------------------------------------------
 def _ensure_watcher(project_id: str, proj: dict) -> None:
-    _watcher_flags[project_id] = True  # revive flag even if watcher is mid-sleep
+    _watcher_flags[project_id] = True
+    # Bump generation — the new watcher owns this generation; an old watcher
+    # that exits will only pop the flag if ITS generation still matches.
+    gen = _watcher_gen.get(project_id, 0) + 1
+    _watcher_gen[project_id] = gen
     if project_id in _watchers and _watchers[project_id].is_alive():
         return
-    t = threading.Thread(target=_finding_watcher, args=(project_id, proj), daemon=True)
+    t = threading.Thread(target=_finding_watcher,
+                         args=(project_id, proj, gen), daemon=True)
     _watchers[project_id] = t
     t.start()
 
 
-def _finding_watcher(project_id: str, proj: dict) -> None:
+def _finding_watcher(project_id: str, proj: dict, gen: int) -> None:
     seen: set[tuple] = {_fkey(f) for f in _all_findings.get(project_id, [])}
 
     while _watcher_flags.get(project_id, False):
         time.sleep(5)
+        # If a newer watcher generation was requested, this thread should exit
+        # without popping the flag (the new generation owns it).
+        if _watcher_gen.get(project_id, 0) != gen:
+            return
         proj = _get_project(project_id) or proj
 
         fr_cfg_path = Path(proj.get("fr_settings_file", ""))
@@ -4590,16 +4601,22 @@ def _finding_watcher(project_id: str, proj: dict) -> None:
                 pass
 
         status = _tool_status.get(project_id, {})
-        if status.get("fr") != "running" and status.get("si") != "running":
+        if (status.get("fr") != "running"
+                and status.get("si") != "running"
+                and status.get("db") != "running"):
             time.sleep(60)
             _ingest_all_final(project_id, proj, seen)
             # Re-check: a new scan may have started during the 60 s cooldown
             _rechk = _tool_status.get(project_id, {})
-            if _rechk.get("fr") == "running" or _rechk.get("si") == "running":
+            if (_rechk.get("fr") == "running" or _rechk.get("si") == "running"
+                    or _rechk.get("db") == "running"):
                 continue
             break
 
-    _watcher_flags.pop(project_id, None)
+    # Only pop the flag if this generation still owns it — a newer _ensure_watcher
+    # call may have already set a new flag+gen for a fresh watcher thread.
+    if _watcher_gen.get(project_id, 0) == gen:
+        _watcher_flags.pop(project_id, None)
 
 
 def _ingest_all_final(project_id: str, proj: dict, seen: set) -> None:

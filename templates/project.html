@@ -1471,7 +1471,7 @@ socket.on('db_stopped', () => { setStatus('db','idle'); });
 socket.on('db_error',   d => showToast(`DB: ${d.error}`, 'err'));
 
 // ── db console output ─────────────────────────────────────
-socket.on('db_output', entry => appendConsole('db', entry));
+socket.on('db_output', entry => appendLine('db', entry));
 
 // ── Findings ──────────────────────────────────────────────
 socket.on('finding', data => addFinding(data.finding));
