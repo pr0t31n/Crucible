@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.14.9"
+VERSION = "1.16.1"
 
 import io
 import socket
@@ -1385,8 +1385,10 @@ def api_create_project():
     _save_projects(data)
     if auth_matrix:
         try:
-            _write_initial_access_matrix(fr_output_dir, auth_matrix)
-            _write_initial_access_matrix(si_output_dir, auth_matrix)
+            if include_fr:
+                _write_initial_access_matrix(fr_output_dir, auth_matrix)
+            if include_si:
+                _write_initial_access_matrix(si_output_dir, auth_matrix)
         except Exception:
             pass
     return jsonify({"success": True, "project_id": project_id})
@@ -1510,8 +1512,10 @@ def api_update_project(project_id: str):
         try:
             _upd_am = _parse_auth_matrix_from_body(body)
             if _upd_am:
-                _write_initial_access_matrix(Path(proj["fracture_output_dir"]), _upd_am)
-                _write_initial_access_matrix(Path(proj["siphon_output_dir"]), _upd_am)
+                if "fr" in tools:
+                    _write_initial_access_matrix(Path(proj["fracture_output_dir"]), _upd_am)
+                if "si" in tools:
+                    _write_initial_access_matrix(Path(proj["siphon_output_dir"]), _upd_am)
         except Exception:
             pass
     return jsonify({"success": True, "project_id": project_id})
@@ -2438,30 +2442,32 @@ def api_structure(project_id: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
 
+    _st_tools = proj.get("tools", ["fr", "si"])
     result: dict = {"fr_map": None, "si_map": None}
 
     # Fracture structure map
     fr_proj_dir = ""
-    try:
-        _sf = proj.get("fr_settings_file") or ""
-        if _sf and Path(_sf).is_file():
-            fr_cfg = json.loads(Path(_sf).read_text())
-            _fp = fr_cfg.get("scan", {}).get("project", "")
-            if _fp:
-                fr_proj_dir = _fp
-                sm = Path(_fp) / "structure_map.json"
-                if sm.exists():
-                    result["fr_map"] = json.loads(sm.read_text())
-        # Fallback: use fracture_output_dir directly (discovered projects)
-        if result["fr_map"] is None:
-            _fdir = proj.get("fracture_output_dir") or ""
-            if _fdir:
-                sm = Path(_fdir) / "structure_map.json"
-                if sm.exists():
-                    fr_proj_dir = _fdir
-                    result["fr_map"] = json.loads(sm.read_text())
-    except Exception:
-        pass
+    if "fr" in _st_tools:
+        try:
+            _sf = proj.get("fr_settings_file") or ""
+            if _sf and Path(_sf).is_file():
+                fr_cfg = json.loads(Path(_sf).read_text())
+                _fp = fr_cfg.get("scan", {}).get("project", "")
+                if _fp:
+                    fr_proj_dir = _fp
+                    sm = Path(_fp) / "structure_map.json"
+                    if sm.exists():
+                        result["fr_map"] = json.loads(sm.read_text())
+            # Fallback: use fracture_output_dir directly (discovered projects)
+            if result["fr_map"] is None:
+                _fdir = proj.get("fracture_output_dir") or ""
+                if _fdir:
+                    sm = Path(_fdir) / "structure_map.json"
+                    if sm.exists():
+                        fr_proj_dir = _fdir
+                        result["fr_map"] = json.loads(sm.read_text())
+        except Exception:
+            pass
 
     # Backfill structure_map path statuses from access_matrix unauthenticated codes
     if result["fr_map"] and fr_proj_dir:
@@ -2481,41 +2487,43 @@ def api_structure(project_id: str):
             pass
 
     # Siphon API map
-    try:
-        _sf = proj.get("si_settings_file") or ""
-        if _sf and Path(_sf).is_file():
-            si_cfg = json.loads(Path(_sf).read_text())
-            _sp = si_cfg.get("scan", {}).get("project", "")
-            if _sp:
-                am = Path(_sp) / "api_map.json"
-                if am.exists():
-                    result["si_map"] = json.loads(am.read_text())
-        if result["si_map"] is None:
-            _sdir = proj.get("siphon_output_dir") or ""
-            if _sdir:
-                am = Path(_sdir) / "api_map.json"
-                if am.exists():
-                    result["si_map"] = json.loads(am.read_text())
-    except Exception:
-        pass
+    if "si" in _st_tools:
+        try:
+            _sf = proj.get("si_settings_file") or ""
+            if _sf and Path(_sf).is_file():
+                si_cfg = json.loads(Path(_sf).read_text())
+                _sp = si_cfg.get("scan", {}).get("project", "")
+                if _sp:
+                    am = Path(_sp) / "api_map.json"
+                    if am.exists():
+                        result["si_map"] = json.loads(am.read_text())
+            if result["si_map"] is None:
+                _sdir = proj.get("siphon_output_dir") or ""
+                if _sdir:
+                    am = Path(_sdir) / "api_map.json"
+                    if am.exists():
+                        result["si_map"] = json.loads(am.read_text())
+        except Exception:
+            pass
 
     # Auger DB schema
-    try:
-        _db_sf = proj.get("db_settings_file") or ""
-        _db_schema_path = None
-        if _db_sf and Path(_db_sf).is_file():
-            db_cfg = json.loads(Path(_db_sf).read_text())
-            _dp = db_cfg.get("scan", {}).get("project", "")
-            if _dp:
-                _db_schema_path = Path(_dp) / "db_schema.json"
-        if _db_schema_path is None or not _db_schema_path.exists():
-            _ddir = proj.get("auger_output_dir") or ""
-            if _ddir:
-                _db_schema_path = Path(_ddir) / "db_schema.json"
-        if _db_schema_path and _db_schema_path.exists():
-            result["db_schema"] = json.loads(_db_schema_path.read_text())
-    except Exception:
-        pass
+    if "db" in _st_tools:
+        try:
+            _db_sf = proj.get("db_settings_file") or ""
+            _db_schema_path = None
+            if _db_sf and Path(_db_sf).is_file():
+                db_cfg = json.loads(Path(_db_sf).read_text())
+                _dp = db_cfg.get("scan", {}).get("project", "")
+                if _dp:
+                    _db_schema_path = Path(_dp) / "db_schema.json"
+            if _db_schema_path is None or not _db_schema_path.exists():
+                _ddir = proj.get("auger_output_dir") or ""
+                if _ddir:
+                    _db_schema_path = Path(_ddir) / "db_schema.json"
+            if _db_schema_path and _db_schema_path.exists():
+                result["db_schema"] = json.loads(_db_schema_path.read_text())
+        except Exception:
+            pass
 
     return jsonify(result)
 
@@ -2570,43 +2578,46 @@ def api_access_matrix(project_id: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
 
+    _tools = proj.get("tools", ["fr", "si"])
     result: dict = {"fr_matrix": None, "si_matrix": None}
 
-    try:
-        _sf = proj.get("fr_settings_file") or ""
-        _fr_proj = ""
-        if _sf and Path(_sf).is_file():
-            fr_cfg = json.loads(Path(_sf).read_text())
-            _fr_proj = fr_cfg.get("scan", {}).get("project", "")
-        if not _fr_proj:
-            _fr_proj = proj.get("fracture_output_dir") or ""
-        if _fr_proj:
-            am = Path(_fr_proj) / "access_matrix.json"
-            if am.exists():
-                matrix = json.loads(am.read_text())
-                _backfill_matrix_codes(matrix, Path(_fr_proj) / "structure_map.json")
-                _annotate_access_hints(matrix)
-                result["fr_matrix"] = matrix
-    except Exception:
-        pass
+    if "fr" in _tools:
+        try:
+            _sf = proj.get("fr_settings_file") or ""
+            _fr_proj = ""
+            if _sf and Path(_sf).is_file():
+                fr_cfg = json.loads(Path(_sf).read_text())
+                _fr_proj = fr_cfg.get("scan", {}).get("project", "")
+            if not _fr_proj:
+                _fr_proj = proj.get("fracture_output_dir") or ""
+            if _fr_proj:
+                am = Path(_fr_proj) / "access_matrix.json"
+                if am.exists():
+                    matrix = json.loads(am.read_text())
+                    _backfill_matrix_codes(matrix, Path(_fr_proj) / "structure_map.json")
+                    _annotate_access_hints(matrix)
+                    result["fr_matrix"] = matrix
+        except Exception:
+            pass
 
-    try:
-        _sf = proj.get("si_settings_file") or ""
-        _si_proj = ""
-        if _sf and Path(_sf).is_file():
-            si_cfg = json.loads(Path(_sf).read_text())
-            _si_proj = si_cfg.get("scan", {}).get("project", "")
-        if not _si_proj:
-            _si_proj = proj.get("siphon_output_dir") or ""
-        if _si_proj:
-            am = Path(_si_proj) / "access_matrix.json"
-            if am.exists():
-                matrix = json.loads(am.read_text())
-                _backfill_matrix_codes(matrix, Path(_si_proj) / "api_map.json")
-                _annotate_access_hints(matrix)
-                result["si_matrix"] = matrix
-    except Exception:
-        pass
+    if "si" in _tools:
+        try:
+            _sf = proj.get("si_settings_file") or ""
+            _si_proj = ""
+            if _sf and Path(_sf).is_file():
+                si_cfg = json.loads(Path(_sf).read_text())
+                _si_proj = si_cfg.get("scan", {}).get("project", "")
+            if not _si_proj:
+                _si_proj = proj.get("siphon_output_dir") or ""
+            if _si_proj:
+                am = Path(_si_proj) / "access_matrix.json"
+                if am.exists():
+                    matrix = json.loads(am.read_text())
+                    _backfill_matrix_codes(matrix, Path(_si_proj) / "api_map.json")
+                    _annotate_access_hints(matrix)
+                    result["si_matrix"] = matrix
+        except Exception:
+            pass
 
     return jsonify(result)
 
@@ -2618,37 +2629,40 @@ def api_auth_status(project_id: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
 
+    _auth_tools = proj.get("tools", ["fr", "si"])
     result: dict = {"fr_auth": None, "si_auth": None}
 
-    try:
-        _sf = proj.get("fr_settings_file") or ""
-        _fr_proj = ""
-        if _sf and Path(_sf).is_file():
-            fr_cfg = json.loads(Path(_sf).read_text())
-            _fr_proj = fr_cfg.get("scan", {}).get("project", "")
-        if not _fr_proj:
-            _fr_proj = proj.get("fracture_output_dir") or ""
-        if _fr_proj:
-            af = Path(_fr_proj) / "authentication_status.json"
-            if af.exists():
-                result["fr_auth"] = json.loads(af.read_text())
-    except Exception:
-        pass
+    if "fr" in _auth_tools:
+        try:
+            _sf = proj.get("fr_settings_file") or ""
+            _fr_proj = ""
+            if _sf and Path(_sf).is_file():
+                fr_cfg = json.loads(Path(_sf).read_text())
+                _fr_proj = fr_cfg.get("scan", {}).get("project", "")
+            if not _fr_proj:
+                _fr_proj = proj.get("fracture_output_dir") or ""
+            if _fr_proj:
+                af = Path(_fr_proj) / "authentication_status.json"
+                if af.exists():
+                    result["fr_auth"] = json.loads(af.read_text())
+        except Exception:
+            pass
 
-    try:
-        _sf = proj.get("si_settings_file") or ""
-        _si_proj = ""
-        if _sf and Path(_sf).is_file():
-            si_cfg = json.loads(Path(_sf).read_text())
-            _si_proj = si_cfg.get("scan", {}).get("project", "")
-        if not _si_proj:
-            _si_proj = proj.get("siphon_output_dir") or ""
-        if _si_proj:
-            af = Path(_si_proj) / "authentication_status.json"
-            if af.exists():
-                result["si_auth"] = json.loads(af.read_text())
-    except Exception:
-        pass
+    if "si" in _auth_tools:
+        try:
+            _sf = proj.get("si_settings_file") or ""
+            _si_proj = ""
+            if _sf and Path(_sf).is_file():
+                si_cfg = json.loads(Path(_sf).read_text())
+                _si_proj = si_cfg.get("scan", {}).get("project", "")
+            if not _si_proj:
+                _si_proj = proj.get("siphon_output_dir") or ""
+            if _si_proj:
+                af = Path(_si_proj) / "authentication_status.json"
+                if af.exists():
+                    result["si_auth"] = json.loads(af.read_text())
+        except Exception:
+            pass
 
     return jsonify(result)
 
@@ -2727,8 +2741,9 @@ def api_export_access_matrix_xlsx(project_id: str):
                     else:
                         cell.font = err_font
 
-    fr_matrix = _load_matrix("fr_settings_file")
-    si_matrix = _load_matrix("si_settings_file")
+    _am_tools = proj.get("tools", ["fr", "si"])
+    fr_matrix = _load_matrix("fr_settings_file") if "fr" in _am_tools else None
+    si_matrix = _load_matrix("si_settings_file") if "si" in _am_tools else None
 
     if fr_matrix:
         _add_sheet("FR - Web App", fr_matrix)
@@ -3939,6 +3954,36 @@ def on_join_project(data):
         if pending:
             emit("crucible_prompt", {"tool": tool, "payload": pending})
 
+    # Checkpoint status — tells the frontend whether a Resume button should
+    # be active for each tool.
+    _ck_info = {}
+    for _ck_tool, _ck_cfg_key, _ck_default in (
+        ("fr", "fr_settings_file", "fracture_output"),
+        ("si", "si_settings_file", "siphon_output"),
+    ):
+        try:
+            _ck_cfg_path = Path(proj.get(_ck_cfg_key, ""))
+            if _ck_cfg_path.exists():
+                _ck_cfg = json.loads(_ck_cfg_path.read_text())
+                _ck_proj_name = _ck_cfg.get("scan", {}).get("project", _ck_default)
+            else:
+                _ck_proj_name = _ck_default
+            _ck_file = proj_dir / _ck_proj_name / "checkpoint.json"
+            if _ck_file.exists():
+                _ck_data = json.loads(_ck_file.read_text())
+                _ck_info[_ck_tool] = {
+                    "has_checkpoint": True,
+                    "version":        _ck_data.get("version", 1),
+                    "resumable":      _ck_data.get("version", 1) >= 2,
+                    "checkpoint_ts":  _ck_data.get("checkpoint_ts", ""),
+                    "completed":      len(_ck_data.get("completed_phases", [])),
+                }
+            else:
+                _ck_info[_ck_tool] = {"has_checkpoint": False, "resumable": False}
+        except Exception:
+            _ck_info[_ck_tool] = {"has_checkpoint": False, "resumable": False}
+    emit("checkpoint_status", _ck_info)
+
 
 @socketio.on("leave_project")
 def on_leave_project(data):
@@ -4004,7 +4049,9 @@ def on_fr_start(data):
     cwd = proj["project_dir"]
     Path(cwd).mkdir(parents=True, exist_ok=True)
 
-    if not resume:
+    if resume:
+        cmd.append("--resume")
+    else:
         try:
             _cp = Path(cwd) / fr_proj_name / "checkpoint.json"
             if _cp.exists():
@@ -4099,7 +4146,9 @@ def on_si_start(data):
     cwd = proj["project_dir"]
     Path(cwd).mkdir(parents=True, exist_ok=True)
 
-    if not resume:
+    if resume:
+        cmd.append("--resume")
+    else:
         try:
             _cp = Path(cwd) / si_proj_name / "checkpoint.json"
             if _cp.exists():
@@ -4518,6 +4567,36 @@ def _wait_proc(project_id: str, tool: str, proc: subprocess.Popen) -> None:
         f"[Crucible] {label} exited — return code {rc}", "system")
     socketio.emit(f"{tool}_done",   {"returncode": rc}, room=_room(project_id))
     socketio.emit("tool_status",    _tool_status[project_id], room=_room(project_id))
+
+    # Notify frontend of checkpoint state after scan ends (resume button
+    # should become active if the scan left a checkpoint behind).
+    try:
+        _wp_proj = _get_project(project_id)
+        if _wp_proj and tool in ("fr", "si"):
+            _wp_cfg_key = "fr_settings_file" if tool == "fr" else "si_settings_file"
+            _wp_default = "fracture_output" if tool == "fr" else "siphon_output"
+            _wp_cfg_path = Path(_wp_proj.get(_wp_cfg_key, ""))
+            if _wp_cfg_path.exists():
+                _wp_cfg = json.loads(_wp_cfg_path.read_text())
+                _wp_proj_name = _wp_cfg.get("scan", {}).get("project", _wp_default)
+            else:
+                _wp_proj_name = _wp_default
+            _wp_ck = Path(_wp_proj["project_dir"]) / _wp_proj_name / "checkpoint.json"
+            if _wp_ck.exists():
+                _wp_data = json.loads(_wp_ck.read_text())
+                _wp_info = {
+                    "has_checkpoint": True,
+                    "version":        _wp_data.get("version", 1),
+                    "resumable":      _wp_data.get("version", 1) >= 2,
+                    "checkpoint_ts":  _wp_data.get("checkpoint_ts", ""),
+                    "completed":      len(_wp_data.get("completed_phases", [])),
+                }
+            else:
+                _wp_info = {"has_checkpoint": False, "resumable": False}
+            socketio.emit("checkpoint_status", {tool: _wp_info},
+                          room=_room(project_id))
+    except Exception:
+        pass
 
 
 def _kill_tool(project_id: str, tool: str) -> None:

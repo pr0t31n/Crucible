@@ -1159,6 +1159,7 @@ const FR_PHASE_ORDER = [
   {key:'shcheck',           label:'shcheck Header Check'},
   {key:'crawl',             label:'Crawl'},
   {key:'vulnscan',          label:'Vuln Scan'},
+  {key:'endpoint_tools',    label:'Endpoint Tools'},
   {key:'jwt',               label:'JWT Testing'},
   {key:'injection',         label:'Injection Testing'},
   {key:'traversal',         label:'Path Traversal'},
@@ -1253,8 +1254,14 @@ function setStatus(tool, status) {
   const start  = document.getElementById(`${tool}-start-btn`);
   const resume = document.getElementById(`${tool}-resume-btn`);
   const kill   = document.getElementById(`${tool}-kill-btn`);
-  if (start)  start.disabled  = (status === 'running');
-  if (resume) resume.disabled = (status === 'running');
+  if (status === 'running') {
+    if (start)  start.disabled  = true;
+    if (resume) resume.disabled = true;
+  } else {
+    if (start)  start.disabled  = false;
+    // Re-check checkpoint to restore correct button styles after run completes
+    _checkForCheckpoint(tool);
+  }
   if (kill)   kill.disabled   = (status !== 'running');
   const compTag = document.getElementById(`${tool}-comp-tag`);
   if (compTag) {
@@ -1545,6 +1552,13 @@ socket.on('db_error',   d => showToast(`DB: ${d.error}`, 'err'));
 // ── db console output ─────────────────────────────────────
 socket.on('db_output', entry => appendLine('db', entry));
 
+// ── Checkpoint status ────────────────────────────────────
+socket.on('checkpoint_status', info => {
+  for (const [tool, cp] of Object.entries(info || {})) {
+    _updateCheckpointButtons(tool, !!(cp && cp.has_checkpoint && cp.resumable));
+  }
+});
+
 // ── Findings ──────────────────────────────────────────────
 socket.on('finding', data => addFinding(data.finding));
 
@@ -1652,12 +1666,118 @@ function toggleScroll(tool) {
 }
 
 // ── Tool control ──────────────────────────────────────────
+const _hasCheckpoint = {fr: false, si: false, db: false};
+
+function _toolLabel(tool) {
+  return tool === 'fr' ? 'Fracture' : tool === 'si' ? 'Siphon' : 'Auger';
+}
+
+function _updateCheckpointButtons(tool, hasCP) {
+  _hasCheckpoint[tool] = hasCP;
+  const start  = document.getElementById(`${tool}-start-btn`);
+  const resume = document.getElementById(`${tool}-resume-btn`);
+  if (!start || !resume) return;
+  if (hasCP) {
+    // Checkpoint exists — Resume is primary, Start is secondary
+    start.className  = 'btn btn-sm btn-secondary';
+    resume.className = 'btn btn-sm btn-primary';
+    resume.disabled  = false;
+  } else {
+    // No checkpoint — Start is primary, Resume is secondary + disabled
+    start.className  = 'btn btn-sm btn-primary';
+    resume.className = 'btn btn-sm btn-secondary';
+    resume.disabled  = true;
+  }
+}
+
+function _checkForCheckpoint(tool) {
+  fetch(`/api/checkpoint/${PROJECT_ID}/${tool}`)
+    .then(r => r.json())
+    .then(cp => {
+      const hasCP = !!(cp && cp.version && (cp.completed_phases || []).length > 0);
+      _updateCheckpointButtons(tool, hasCP);
+    })
+    .catch(() => _updateCheckpointButtons(tool, false));
+}
+
 function startTool(tool, resume) {
   if (!socket.connected) {
     showToast('Not connected to server — try refreshing the page.', 'err');
     return;
   }
+  // If checkpoint exists and this is a fresh start (not resume), confirm first
+  if (!resume && _hasCheckpoint[tool]) {
+    _showStartConfirmDialog(tool);
+    return;
+  }
   socket.emit(`${tool}_start`, {project_id: PROJECT_ID, resume: !!resume});
+}
+
+function _showStartConfirmDialog(tool) {
+  const label = _toolLabel(tool);
+  // Remove any existing dialog
+  const old = document.getElementById('start-confirm-dialog');
+  if (old) old.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'start-confirm-dialog';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:var(--bg-primary);border:1px solid var(--border-mid);border-radius:8px;padding:24px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.4);">
+      <h3 style="margin:0 0 12px;color:var(--risk-critical);font-size:1.1rem;">⚠ Start ${label} from scratch?</h3>
+      <p style="margin:0 0 16px;color:var(--text-secondary);font-size:.9rem;line-height:1.5;">
+        A checkpoint exists from a previous run. Starting fresh will <strong>permanently delete</strong>
+        all findings, logs, errors, cache, checkpoints, and evidence for this project.
+      </p>
+      <p style="margin:0 0 20px;color:var(--text-secondary);font-size:.85rem;">
+        Use <strong>Resume</strong> instead to continue from where the last scan left off.
+      </p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('start-confirm-dialog').remove()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="resumeTool('${tool}');document.getElementById('start-confirm-dialog').remove();">&#x27A6; Resume Instead</button>
+        <button class="btn btn-sm btn-danger" onclick="_confirmFreshStart('${tool}')">&#9654; Wipe &amp; Start Fresh</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  // Close on background click
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function _confirmFreshStart(tool) {
+  const dialog = document.getElementById('start-confirm-dialog');
+  if (dialog) dialog.remove();
+  showToast(`Wiping project data and starting ${_toolLabel(tool)}…`, 'info');
+  fetch(`/api/clear_project/${PROJECT_ID}`, {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) {
+        showToast('Failed to clear project data.', 'err');
+        return;
+      }
+      // Reset checkpoint state
+      _hasCheckpoint[tool] = false;
+      _updateCheckpointButtons(tool, false);
+      // Clear in-memory UI state
+      allFindings = [];
+      renderFindings();
+      allLogs = [];
+      _logSeen.clear();
+      renderLogs();
+      // Refresh summary/status tabs
+      _loadSummarySettings();
+      _loadTargetProfile();
+      // Reload findings badge
+      const fb = document.getElementById('findingsBadge');
+      if (fb) fb.textContent = '0';
+      const lb = document.getElementById('logBadge');
+      if (lb) lb.textContent = '0';
+      const eb = document.getElementById('errorBadge');
+      if (eb) eb.textContent = '0';
+      // Now start fresh (no resume)
+      socket.emit(`${tool}_start`, {project_id: PROJECT_ID, resume: false});
+    })
+    .catch(err => {
+      showToast(`Error clearing project: ${err}`, 'err');
+    });
 }
 
 function resumeTool(tool) {
@@ -1665,7 +1785,7 @@ function resumeTool(tool) {
 }
 
 function killTool(tool) {
-  if (!confirm(`Kill ${tool === 'fr' ? 'Fracture' : 'Siphon'}?`)) return;
+  if (!confirm(`Kill ${_toolLabel(tool)}?`)) return;
   socket.emit(`${tool}_kill`, {project_id: PROJECT_ID});
 }
 
@@ -2961,6 +3081,9 @@ Promise.all([
 });
 _loadSummarySettings();
 _loadTargetProfile();
+
+// ── Check for checkpoints on load → swap Start/Resume button styles ──
+['fr', 'si'].forEach(tool => _checkForCheckpoint(tool));
 
 // ── Structure tab ──────────────────────────────────────────────────────────
 let _structureLoaded = false;
