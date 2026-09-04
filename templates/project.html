@@ -1140,7 +1140,7 @@ let _recoverPendingKey = null;
 // All phases shown from the start as "pending" (gray pill), then
 // updated to running/complete/error as crucible_status events arrive.
 const FR_PHASE_ORDER = [
-  {key:'auth',              label:'Authentication'},
+  // ── Per-role context phases (run for each credential) ──
   {key:'recon',             label:'HTTP Recon'},
   {key:'screenshot',        label:'Screenshot'},
   {key:'webfiles',          label:'Web Files'},
@@ -1151,19 +1151,30 @@ const FR_PHASE_ORDER = [
   {key:'shcheck',           label:'shcheck Header Check'},
   {key:'crawl',             label:'Crawl'},
   {key:'vulnscan',          label:'Vuln Scan'},
-  {key:'injection',         label:'Injection'},
+  {key:'jwt',               label:'JWT Testing'},
+  {key:'injection',         label:'Injection Testing'},
   {key:'traversal',         label:'Path Traversal'},
+  {key:'business_logic',    label:'Business Logic'},
   {key:'ssrf',              label:'SSRF'},
   {key:'auth_bypass',       label:'Auth Bypass'},
-  {key:'files',             label:'File Discovery'},
+  {key:'account_lockout',   label:'Account Lockout'},
+  {key:'files',             label:'Sensitive Files'},
   {key:'graphql',           label:'GraphQL'},
+  {key:'logging_monitoring',label:'Logging & Monitoring'},
   {key:'auth_recon',        label:'Auth Recon'},
+  {key:'session',           label:'Session Analysis'},
+  {key:'csrf',              label:'CSRF Testing'},
+  {key:'open_redirect',     label:'Open Redirect'},
+  {key:'deserialization',   label:'Deserialization'},
+  {key:'request_smuggling', label:'Request Smuggling'},
+  {key:'file_upload_info',  label:'File Upload Info'},
+  {key:'mass_assignment',   label:'Mass Assignment'},
+  {key:'bfla',              label:'BFLA Testing'},
+  // ── Global phases (run once after all roles) ──
   {key:'authorization',     label:'Authorization'},
-  {key:'session',           label:'Session'},
-  {key:'csrf',              label:'CSRF'},
-  {key:'cross_user',        label:'Cross-User'},
-  {key:'bfla',              label:'BFLA'},
+  {key:'cross_user',        label:'Cross-User Testing'},
   {key:'access_matrix',     label:'Access Matrix'},
+  {key:'logout',            label:'Logout Testing'},
 ];
 const SI_PHASE_ORDER = [
   {key:'auth',              label:'Authentication'},
