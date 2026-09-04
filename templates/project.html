@@ -19,8 +19,12 @@
     <button class="tab-btn"        data-tab="findings" onclick="switchTab('findings',this)">
       Findings <span class="tab-badge" id="findingsBadge">0</span>
     </button>
+    {% if 'fr' in project.get('tools', ['fr','si']) or 'si' in project.get('tools', ['fr','si']) %}
     <button class="tab-btn"        data-tab="structure"  onclick="switchTab('structure',this);loadStructure()">Structure</button>
+    {% endif %}
+    {% if 'fr' in project.get('tools', ['fr','si']) %}
     <button class="tab-btn"        data-tab="access-matrix" onclick="switchTab('access-matrix',this);loadAccessMatrix()">Access Matrix</button>
+    {% endif %}
     <button class="tab-btn"        data-tab="authentication" onclick="switchTab('authentication',this);loadAuthStatus()">Authentication</button>
     <button class="tab-btn"        data-tab="status"   onclick="switchTab('status',this)">Status</button>
     <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
@@ -254,12 +258,16 @@
       <div class="log-toolbar">
         <div class="log-filter-group">
           <button class="log-filter-btn active" data-filter-key="tool" data-filter-val="" onclick="setLogFilter(this,'tool','')">All</button>
+          {% if 'fr' in project.get('tools', ['fr','si']) %}
           <button class="log-filter-btn" data-filter-key="tool" data-filter-val="fr" onclick="setLogFilter(this,'tool','fr')">
             <span class="tool-badge tool-fr">FR</span>
           </button>
+          {% endif %}
+          {% if 'si' in project.get('tools', ['fr','si']) %}
           <button class="log-filter-btn" data-filter-key="tool" data-filter-val="si" onclick="setLogFilter(this,'tool','si')">
             <span class="tool-badge tool-si">SI</span>
           </button>
+          {% endif %}
           {% if 'db' in project.get('tools', []) %}
           <button class="log-filter-btn" data-filter-key="tool" data-filter-val="db" onclick="setLogFilter(this,'tool','db')">
             <span class="tool-badge tool-db">DB</span>

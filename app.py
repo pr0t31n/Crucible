@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.14.7"
+VERSION = "1.14.9"
 
 import io
 import socket
@@ -222,7 +222,7 @@ FR_DEFAULTS: dict = {
             "auth_token": "", "token_type": "Bearer",
             "session_cookie": "", "domain": "", "custom_headers": {},
         },
-        "sqlmap_timeout": 300, "nuclei_timeout": 600,
+        "sqlmap_timeout": 300, "nuclei_timeout": 1800,
         "crawl_depth": 3, "crawl_max_pages": 150,
         "gobuster_wordlist": "/usr/share/seclists/Discovery/Web-Content/raft-large-directories.txt",
         "wpscan_token": ""
