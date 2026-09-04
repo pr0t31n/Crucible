@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.14.4"
+VERSION = "1.14.5"
 
 import io
 import socket

@@ -10,33 +10,6 @@
 
   <div class="form-layout">
 
-  <!-- ── AuthProbe Panel ──────────────────────────────────────── -->
-  <div class="authprobe-panel">
-    <div class="form-section-title">&#x1F50D; AuthProbe</div>
-    <div class="form-group" style="margin-top:.5rem">
-      <label class="form-label">Target URL <span class="req">*</span></label>
-      <input type="url" id="apUrl" class="form-control"
-             placeholder="https://target.example.com">
-    </div>
-    <div class="form-group" style="margin-top:.5rem">
-      <label class="form-label">Username</label>
-      <input type="text" id="apUsername" class="form-control" placeholder="optional">
-    </div>
-    <div class="form-group" style="margin-top:.5rem">
-      <label class="form-label">Password</label>
-      <input type="password" id="apPassword" class="form-control" placeholder="optional">
-    </div>
-    <div style="margin-top:.75rem;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
-      <button type="button" class="btn btn-primary btn-sm" id="apIdentifyBtn"
-              onclick="runAuthProbe()">Identify</button>
-      <label class="form-label" style="margin:0;display:flex;gap:.3rem;align-items:center;cursor:pointer">
-        <input type="checkbox" id="apRendered"> Rendered
-      </label>
-    </div>
-    <div id="apStatus" style="margin-top:.4rem;font-size:.72rem;color:var(--text-muted)"></div>
-    <pre id="apConsole" class="authprobe-console" style="margin-top:.65rem;display:none"></pre>
-  </div>
-  <!-- ── End AuthProbe Panel ─────────────────────────────────── -->
 
   <form id="editEngagementForm" class="engagement-form" style="flex:1;min-width:0" onsubmit="submitForm(event)">
 
@@ -160,26 +133,6 @@
                       rows="3"
                       placeholder="https://app.example.com&#10;https://app2.example.com&#10;or comma-separated">{% if fr and fr.scan %}{% set _urls = fr.scan.target_urls if fr.scan.target_urls else ([fr.scan.target_url] if fr.scan.target_url else []) %}{{ _urls | join('\n') }}{% endif %}</textarea>
             <span class="form-hint">One URL per line or comma-separated. Each URL is scanned independently.</span>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Threads</label>
-            <input type="number" name="fr_threads" class="form-control"
-                   value="{{ fr.scan.threads if fr and fr.scan else 30 }}" min="1" max="100">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Timeout (s)</label>
-            <input type="number" name="fr_timeout" class="form-control"
-                   value="{{ fr.scan.timeout if fr and fr.scan else 10 }}" min="1" max="120">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Crawl Depth</label>
-            <input type="number" name="fr_crawl_depth" class="form-control"
-                   value="{{ fr.scan.crawl_depth if fr and fr.scan else 3 }}" min="1" max="10">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Max Crawl Pages</label>
-            <input type="number" name="fr_crawl_max_pages" class="form-control"
-                   value="{{ fr.scan.crawl_max_pages if fr and fr.scan else 150 }}" min="10" max="5000">
           </div>
           <div class="form-group">
             <label class="form-label">Proxy</label>
@@ -2131,39 +2084,6 @@ async function testSiConnection() {
 }
 
 function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-// ── AuthProbe ─────────────────────────────────────────────────────────────
-async function runAuthProbe() {
-  const url  = document.getElementById('apUrl').value.trim();
-  if (!url) { document.getElementById('apUrl').focus(); return; }
-  const btn    = document.getElementById('apIdentifyBtn');
-  const status = document.getElementById('apStatus');
-  const con    = document.getElementById('apConsole');
-  btn.disabled = true;
-  btn.textContent = 'Identifying…';
-  status.textContent = '';
-  con.style.display = 'block';
-  con.textContent = 'Running AuthProbe — this may take 10–30 s…\n';
-  try {
-    const resp = await fetch('/api/authprobe', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        url:      url,
-        username: document.getElementById('apUsername').value.trim(),
-        password: document.getElementById('apPassword').value.trim(),
-        rendered: document.getElementById('apRendered').checked,
-      })
-    });
-    const data = await resp.json();
-    con.textContent = data.output || data.error || 'No output returned.';
-  } catch(e) {
-    con.textContent = 'Network error: ' + e.message;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Identify';
-  }
-}
 
 // Initialise on load
 document.addEventListener('DOMContentLoaded', () => {
