@@ -1136,9 +1136,57 @@ let _fpPendingKey  = null;
 let _fpPendingData = null;
 let _recoverPendingKey = null;
 
-// Status / phase state
+// Status / phase state — canonical phase order for each tool.
+// All phases shown from the start as "pending" (gray pill), then
+// updated to running/complete/error as crucible_status events arrive.
+const FR_PHASE_ORDER = [
+  {key:'auth',              label:'Authentication'},
+  {key:'recon',             label:'HTTP Recon'},
+  {key:'screenshot',        label:'Screenshot'},
+  {key:'webfiles',          label:'Web Files'},
+  {key:'tls',               label:'TLS Analysis'},
+  {key:'subdomain_takeover',label:'Subdomain Takeover'},
+  {key:'ffuf',              label:'ffuf Fuzzing'},
+  {key:'headers',           label:'Security Headers'},
+  {key:'shcheck',           label:'shcheck Header Check'},
+  {key:'crawl',             label:'Crawl'},
+  {key:'vulnscan',          label:'Vuln Scan'},
+  {key:'injection',         label:'Injection'},
+  {key:'traversal',         label:'Path Traversal'},
+  {key:'ssrf',              label:'SSRF'},
+  {key:'auth_bypass',       label:'Auth Bypass'},
+  {key:'files',             label:'File Discovery'},
+  {key:'graphql',           label:'GraphQL'},
+  {key:'auth_recon',        label:'Auth Recon'},
+  {key:'authorization',     label:'Authorization'},
+  {key:'session',           label:'Session'},
+  {key:'csrf',              label:'CSRF'},
+  {key:'cross_user',        label:'Cross-User'},
+  {key:'bfla',              label:'BFLA'},
+  {key:'access_matrix',     label:'Access Matrix'},
+];
+const SI_PHASE_ORDER = [
+  {key:'auth',              label:'Authentication'},
+  {key:'discovery',         label:'API Discovery'},
+  {key:'recon',             label:'API Recon'},
+  {key:'fuzzing',           label:'Fuzzing'},
+  {key:'injection',         label:'Injection'},
+  {key:'auth_bypass',       label:'Auth Bypass'},
+  {key:'rate_limiting',     label:'Rate Limiting'},
+  {key:'mass_assignment',   label:'Mass Assignment'},
+  {key:'ssrf',              label:'SSRF'},
+  {key:'data_exposure',     label:'Data Exposure'},
+  {key:'graphql',           label:'GraphQL'},
+  {key:'bola',              label:'BOLA'},
+  {key:'bfla',              label:'BFLA'},
+];
 const frPhases = {};
 const siPhases = {};
+// Strip #role suffix to get base phase key
+function _basePhase(phaseKey) {
+  const idx = phaseKey.indexOf('#');
+  return idx >= 0 ? phaseKey.slice(0, idx) : phaseKey;
+}
 
 // Prompt state
 let _promptTool           = '';
@@ -1149,6 +1197,11 @@ let _currentPromptPayload = null;
 socket.on('connect', () => {
   socket.emit('join_project', {project_id: PROJECT_ID});
 });
+
+// Pre-render all phases as "pending" so the Status tab shows the full
+// phase list even before a scan has started.
+renderPhases('fr');
+renderPhases('si');
 
 socket.on('connect_error', err => {
   showToast(`Connection error: ${err.message || err}`, 'err');
@@ -1504,7 +1557,20 @@ socket.on('err_entry', data => {
 socket.on('crucible_status', d => {
   const tool = d.tool;
   const store = tool === 'fr' ? frPhases : siPhases;
-  if (d.phase) store[d.phase] = d;
+  if (d.phase) {
+    // Use base phase key (strip #role suffix) so all roles update
+    // the same row — the most recent status wins.
+    const base = _basePhase(d.phase);
+    // Preserve role label in detail for context
+    const roleSuffix = d.phase.includes('#') ? d.phase.split('#')[1] : '';
+    const existing = store[base];
+    store[base] = {
+      ...d,
+      phase: base,
+      label: d.label || (existing && existing.label) || base,
+      _role: roleSuffix,
+    };
+  }
   renderPhases(tool);
 });
 
@@ -2599,16 +2665,41 @@ function toggleSect(btn) {
 
 function renderPhases(tool) {
   const store = tool === 'fr' ? frPhases : siPhases;
+  const order = tool === 'fr' ? FR_PHASE_ORDER : SI_PHASE_ORDER;
   const container = document.getElementById(`st-rows-${tool}`);
   if (!container) return;
-  container.innerHTML = Object.entries(store).map(([phase, d]) => {
-    const st = d.status || 'pending';
+
+  // Render ALL canonical phases in order — phases without status data
+  // appear as "pending" (gray pill).  Phases received via crucible_status
+  // show their actual status (running/complete/error/skipped).
+  const rows = order.map(p => {
+    const d  = store[p.key];
+    const st = d ? (d.status || 'pending') : 'pending';
+    const label  = (d && d.label) ? d.label : p.label;
+    const detail = d && d.detail ? d.detail : '';
+    const role   = d && d._role ? ` <span class="st-phase-role">[${escHtml(d._role)}]</span>` : '';
     return `<div class="st-row">
-      <span class="st-phase-name">${escHtml(d.label || phase)}</span>
+      <span class="st-phase-name">${escHtml(label)}${role}</span>
       <span class="st-phase-status st-${st}">${st}</span>
-      ${d.detail ? `<span class="st-phase-detail">${escHtml(d.detail)}</span>` : ''}
+      ${detail ? `<span class="st-phase-detail">${escHtml(detail)}</span>` : ''}
     </div>`;
-  }).join('') || '<div style="color:var(--text-muted);padding:.5rem .75rem;font-size:.8rem">No phase data yet.</div>';
+  });
+
+  // Also render any phases NOT in the canonical list (dynamic/plugin phases)
+  const knownKeys = new Set(order.map(p => p.key));
+  Object.entries(store).forEach(([key, d]) => {
+    if (!knownKeys.has(key)) {
+      const st = d.status || 'pending';
+      const role = d._role ? ` <span class="st-phase-role">[${escHtml(d._role)}]</span>` : '';
+      rows.push(`<div class="st-row">
+        <span class="st-phase-name">${escHtml(d.label || key)}${role}</span>
+        <span class="st-phase-status st-${st}">${st}</span>
+        ${d.detail ? `<span class="st-phase-detail">${escHtml(d.detail)}</span>` : ''}
+      </div>`);
+    }
+  });
+
+  container.innerHTML = rows.join('');
 }
 
 // ── Settings ──────────────────────────────────────────────

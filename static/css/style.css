@@ -1911,6 +1911,7 @@ body {
 .st-skipped  { background: rgba(112,112,112,.2); color: var(--text-muted); }
 .st-error    { background: rgba(255,45,85,.2); color: var(--risk-critical); }
 .st-phase-detail { font-size: .72rem; color: var(--text-muted); font-family: var(--font-mono); }
+.st-phase-role { font-size: .68rem; color: var(--text-muted); font-weight: 400; }
 
 /* ── Log / Error tables ───────────────────────────────────── */
 .log-toolbar {
