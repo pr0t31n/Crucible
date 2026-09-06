@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.16.1"
+VERSION = "1.17.0"
 
 import io
 import socket
@@ -3233,19 +3233,23 @@ def api_export_status_report_pdf(project_id: str):
         rows = [[
             Paragraph("<b>Date</b>", s_base),
             Paragraph("<b>Risk</b>", s_base),
+            Paragraph("<b>CVSS</b>", s_base),
             Paragraph("<b>Description</b>", s_base),
             Paragraph("<b>Status</b>", s_base),
         ]]
         for _f in findings:
             _risk = (_f.get("risk") or "LOW").upper()
             _hx   = RISK_HEX.get(_risk, "6b7280")
+            _cvss = _f.get("cvss_score")
+            _cvss_str = f"{_cvss:.1f}" if _cvss is not None else "—"
             rows.append([
                 Paragraph((_f.get("datetime") or "")[:10], s_base),
                 Paragraph(f'<font color="#{_hx}">{_risk.capitalize()}</font>', s_base),
+                Paragraph(_cvss_str, s_base),
                 Paragraph(str(_f.get("title") or ""), s_base),
                 Paragraph(str(_f.get("status") or "Open"), s_base),
             ])
-        tbl = Table(rows, colWidths=[CW*0.12, CW*0.10, CW*0.61, CW*0.17])
+        tbl = Table(rows, colWidths=[CW*0.10, CW*0.08, CW*0.07, CW*0.58, CW*0.17])
         tbl.setStyle(TableStyle([
             ("BACKGROUND",    (0,0), (-1,0),  C_LIGHT),
             ("LINEBELOW",     (0,0), (-1,0),  0.5, C_BORDER),
@@ -3318,6 +3322,32 @@ def api_export_status_report_pdf(project_id: str):
             _add("WAF",             target_profile.get("waf") or "")
             _add("Edge Security",   ", ".join(target_profile.get("edge_security") or []))
             _add("Load Balancers",  ", ".join(target_profile.get("load_balancers") or []))
+            # Soft-404 detection
+            _s404 = target_profile.get("soft_404") or {}
+            if _s404.get("detected"):
+                _add("Soft 404", "Detected — server returns 200 for nonexistent paths")
+            # Session timeout
+            _st = target_profile.get("session_timeout") or {}
+            _st_sec = _st.get("detected_seconds")
+            if _st_sec:
+                _st_min = _st_sec // 60
+                _st_rem = _st_sec % 60
+                _st_val = f"~{_st_min}m {_st_rem}s ({_st_sec}s)" if _st_min else f"~{_st_sec}s"
+                _add("Session Timeout", _st_val)
+            # IIS/ASP.NET probe results
+            _iis = target_profile.get("iis_probe") or target_profile.get("aspnet_probe") or {}
+            if _iis:
+                _iis_parts = []
+                for _ik, _iv in _iis.items():
+                    _label = _ik.replace("_", " ").title()
+                    if _iv is True or _iv in ("found", "enabled", "present"):
+                        _iis_parts.append(f"⚠ {_label}")
+                    elif _iv is False or _iv in ("not found", "disabled", "absent"):
+                        _iis_parts.append(f"✓ {_label} N/A")
+                    elif _iv:
+                        _iis_parts.append(f"{_label}: {_iv}")
+                if _iis_parts:
+                    _add("IIS/ASP.NET Probes", "; ".join(_iis_parts))
             _add("Auth Method",     target_profile.get("auth_method") or "")
             _add("Auth Page",       target_profile.get("auth_page") or "")
             _add("MFA",             ", ".join(target_profile.get("mfa_providers") or []))

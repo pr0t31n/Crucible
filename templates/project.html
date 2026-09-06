@@ -142,6 +142,16 @@
       {% else %}
       <select id="filterTool" style="display:none" aria-hidden="true"><option value=""></option></select>
       {% endif %}
+      <select class="form-control select-sm" id="filterCategory" onchange="filterFindings()">
+        <option value="">All categories</option>
+        <option value="recon">Recon</option>
+        <option value="tls">TLS/SSL</option>
+        <option value="headers">Headers</option>
+        <option value="crawl">Crawl</option>
+        <option value="auth">Auth/Access</option>
+        <option value="vuln">Vulnerability</option>
+        <option value="config">Configuration</option>
+      </select>
       <span class="findings-count" id="findingsCount">0 findings</span>
       <button class="btn btn-sm btn-ghost fp-toggle-btn" id="showFPBtn" onclick="toggleShowFP()" title="Show / hide false positives">FP</button>
       <button class="btn btn-sm btn-ghost" onclick="reloadFindings()" title="Reload findings from server">&#x21BB;</button>
@@ -165,6 +175,7 @@
         <thead>
           <tr>
             <th class="col-risk">Risk</th>
+            <th class="col-cvss" style="width:3.2rem;text-align:center">CVSS</th>
             <th class="col-tool">Tool</th>
             <th class="col-title">Finding</th>
             <th class="col-host">Host / URL</th>
@@ -179,7 +190,7 @@
           </tr>
         </thead>
         <tbody id="findingsTbody">
-          <tr class="empty-row"><td colspan="12">No findings yet — start a tool to begin.</td></tr>
+          <tr class="empty-row"><td colspan="13">No findings yet — start a tool to begin.</td></tr>
         </tbody>
       </table>
     </div>
@@ -391,6 +402,20 @@
             <div class="kv-row" id="tp-row-protocols" style="display:none">
               <span class="kv-label">TLS protocols</span><span class="kv-value mono" id="tp-protocols"></span>
             </div>
+            <div class="kv-row" id="tp-row-session-timeout" style="display:none">
+              <span class="kv-label">Session timeout</span><span class="kv-value" id="tp-session-timeout"></span>
+            </div>
+            <div class="kv-row" id="tp-row-soft404" style="display:none">
+              <span class="kv-label">Soft 404</span><span class="kv-value" id="tp-soft404"></span>
+            </div>
+          </div>
+          <div id="tp-f5-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">F5 Backend Map</div>
+            <div id="tp-f5-backends" style="font-size:.78rem;font-family:var(--font-mono)"></div>
+          </div>
+          <div id="tp-iis-section" style="display:none;margin-top:.6rem">
+            <div class="tp-section-label">IIS/ASP.NET Probe Results</div>
+            <div id="tp-iis-probes" style="display:flex;flex-wrap:wrap;gap:.25rem"></div>
           </div>
           <div id="tp-tech-section" style="display:none;margin-top:.6rem">
             <div class="tp-section-label">Technologies</div>
@@ -610,6 +635,7 @@
             <div class="sf-row"><label class="sf-label">Wordlist</label><input class="sf-input" type="text" data-sf-path="scan.wordlist"></div>
             <div class="sf-row"><label class="sf-label">Gobuster Wordlist</label><input class="sf-input" type="text" data-sf-path="scan.gobuster_wordlist"></div>
             <div class="sf-row"><label class="sf-label">WPScan Token</label><input class="sf-input" type="text" data-sf-path="scan.wpscan_token" placeholder="WPVulnDB API token"></div>
+            <div class="sf-row sf-check-row"><label class="sf-label">Detect Session Timeout</label><input class="sf-check" type="checkbox" data-sf-path="scan.detect_session_timeout" title="Probe the server's session idle timeout (adds ~5 min to scan)"></div>
             <div class="sf-row sf-row-tall"><label class="sf-label">Extra Headers</label>
               <textarea class="sf-input sf-textarea" data-sf-path="scan.extra_headers" data-sf-type="headers" placeholder="Header-Name: value&#10;Another-Header: value"></textarea>
             </div>
@@ -930,6 +956,7 @@
     <div style="padding:1rem 0">
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Endpoint and file access results per credential role, generated during Phase 20.</span>
+        <div id="amSoft404Banner" style="display:none;width:100%;padding:.45rem .75rem;background:rgba(210,153,34,.12);border:1px solid rgba(210,153,34,.3);border-radius:4px;font-size:.82rem;color:#d29922;margin-top:.5rem">⚠ This target uses <strong>soft-404</strong> responses — HTTP 200 codes in the matrix may not indicate real access.</div>
         <button class="btn btn-sm btn-ghost" onclick="loadAccessMatrix(true)" title="Reload">&#x21bb; Refresh</button>
         <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-access-matrix-xlsx/{{ project_id }}',_dlName('{{ project.client_short }}','Matrix','xlsx'),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')" title="Export access matrix as XLSX">&#x2193; XLSX</button>
         <span style="color:#8b949e;font-size:.8rem;margin-left:.25rem">Filter:</span>
@@ -1021,6 +1048,12 @@
   <div class="modal-box evidence-modal-box">
     <div class="modal-title" id="evidenceModalTitle">Evidence</div>
     <div class="modal-body">
+      <div class="evidence-highlight-bar" id="evidenceHighlightBar" style="display:none;padding:.3rem .6rem;margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem;font-size:.78rem;background:var(--bg-tertiary,rgba(255,255,255,.03));border-radius:4px">
+        <button class="btn btn-xs btn-ghost" id="evHlPrev" onclick="_evHlNav(-1)" title="Previous highlight" style="padding:1px 6px">&#x25B2;</button>
+        <button class="btn btn-xs" id="evHlCount" onclick="_evHlNav(1)" title="Next highlight" style="min-width:5rem;text-align:center;background:rgba(58,90,138,.3);border:1px solid rgba(58,90,138,.5);color:#aac;font-weight:600;border-radius:3px;padding:2px 8px;cursor:pointer">0 highlights</button>
+        <button class="btn btn-xs btn-ghost" id="evHlNext" onclick="_evHlNav(1)" title="Next highlight" style="padding:1px 6px">&#x25BC;</button>
+        <span style="color:var(--text-muted);font-size:.72rem" id="evHlTerms"></span>
+      </div>
       <div class="evidence-file-tabs" id="evidenceFileTabs"></div>
       <div class="evidence-url-select-wrap hidden" id="evidenceUrlSelectWrap">
         <label class="evidence-url-label">Affected:</label>
@@ -1384,6 +1417,70 @@ function _loadTargetProfile() {
       _tpShow('tp-row-cert-expiry', 'tp-cert-expiry', d.cert_expiry);
       if ((d.protocols||[]).length) {
         _tpShow('tp-row-protocols', 'tp-protocols', d.protocols.join(', '));
+      }
+      // Session timeout
+      const _st = d.session_timeout || {};
+      if (_st.detected_seconds) {
+        const _stMin = Math.floor(_st.detected_seconds / 60);
+        const _stRem = _st.detected_seconds % 60;
+        const _stVal = _stMin ? `~${_stMin}m ${_stRem}s (${_st.detected_seconds}s)` : `~${_st.detected_seconds}s`;
+        const _stEl = document.getElementById('tp-session-timeout');
+        if (_stEl) {
+          _stEl.innerHTML = _st.detected_seconds < 120
+            ? `<span style="color:var(--risk-high);font-weight:600">⚠ ${_stVal}</span>`
+            : _stVal;
+        }
+        const _stRow = document.getElementById('tp-row-session-timeout');
+        if (_stRow) _stRow.style.display = '';
+      }
+      // Soft-404 detection
+      const _s404 = d.soft_404 || {};
+      if (_s404.detected) {
+        const _s404El = document.getElementById('tp-soft404');
+        if (_s404El) _s404El.innerHTML = '<span style="color:var(--risk-medium);font-weight:600">⚠ Detected</span> — server returns 200 for nonexistent paths';
+        const _s404Row = document.getElementById('tp-row-soft404');
+        if (_s404Row) _s404Row.style.display = '';
+      }
+      // F5 backend map — parse from load_balancers + f5_backends fields
+      const _f5b = d.f5_backends || {};
+      if (_f5b.backends && Object.keys(_f5b.backends).length) {
+        const f5Sec = document.getElementById('tp-f5-section');
+        const f5El  = document.getElementById('tp-f5-backends');
+        if (f5Sec && f5El) {
+          f5Sec.style.display = '';
+          let _f5html = '<table style="width:100%;font-size:.78rem;border-collapse:collapse">';
+          _f5html += '<tr style="border-bottom:1px solid var(--border-dim)"><th style="text-align:left;padding:2px 6px">Backend</th><th style="text-align:center;padding:2px 6px">Requests</th><th style="text-align:left;padding:2px 6px">Status</th></tr>';
+          for (const [be, cnt] of Object.entries(_f5b.backends).sort((a,b) => b[1]-a[1])) {
+            const ip = be.split(':')[0];
+            const isInternal = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(ip);
+            const ipTag = isInternal ? ` <span style="background:var(--risk-high);color:#fff;padding:0 4px;border-radius:3px;font-size:.65rem;font-weight:700">INTERNAL</span>` : '';
+            _f5html += `<tr style="border-bottom:1px solid var(--border-dim,#333)"><td style="padding:2px 6px">${_escHtml(be)}${ipTag}</td><td style="text-align:center;padding:2px 6px">${cnt}/${_f5b.total || '?'}</td><td style="padding:2px 6px">${_f5b.consistent ? '✓ Consistent' : '<span style="color:var(--risk-medium)">⚠ Inconsistent</span>'}</td></tr>`;
+          }
+          _f5html += '</table>';
+          f5El.innerHTML = _f5html;
+        }
+      }
+      // IIS/ASP.NET probe results
+      const _iisProbe = d.iis_probe || d.aspnet_probe || {};
+      if (Object.keys(_iisProbe).length) {
+        const iisSec = document.getElementById('tp-iis-section');
+        const iisEl  = document.getElementById('tp-iis-probes');
+        if (iisSec && iisEl) {
+          iisSec.style.display = '';
+          const pills = [];
+          const _ipill = (label, val) => {
+            if (val === true || val === 'found' || val === 'enabled' || val === 'present') return `<span style="background:rgba(248,81,73,.12);color:#f85149;padding:.15rem .4rem;border-radius:3px;font-size:.75rem;font-weight:600">⚠ ${label}</span>`;
+            if (val === false || val === 'not found' || val === 'disabled' || val === 'absent') return `<span style="background:rgba(63,185,80,.08);color:#3fb950;padding:.15rem .4rem;border-radius:3px;font-size:.75rem;font-weight:600">✓ ${label} N/A</span>`;
+            if (val) return `<span style="background:rgba(139,148,158,.1);color:#8b949e;padding:.15rem .4rem;border-radius:3px;font-size:.75rem">${label}: ${escHtml(String(val))}</span>`;
+            return '';
+          };
+          for (const [k, v] of Object.entries(_iisProbe)) {
+            const label = k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+            const p = _ipill(label, v);
+            if (p) pills.push(p);
+          }
+          iisEl.innerHTML = pills.join('');
+        }
       }
       if (d.last_updated) {
         const el = document.getElementById('tp-last-updated');
@@ -1880,14 +1977,31 @@ function _isSuppressed(f) {
   return _suppressedSet.has(_fkeyF(f));
 }
 
+const _CAT_MAP = {
+  recon:  /fracture-recon|osift|scattershot/i,
+  tls:    /tls|ssl|sslscan|testssl|cipher|certificate|cert/i,
+  headers:/header|shcheck|csp|hsts|x-frame/i,
+  crawl:  /crawl|spider|spa-route/i,
+  auth:   /auth|authorization|session|bfla|bola|idor|csrf|method.tamper|access.matrix/i,
+  vuln:   /nuclei|nikto|telerik|viewstate|cve-|sqli|xss|injection|deserialization/i,
+  config: /misconfig|configuration|default|exposed|directory.listing|f5|load.balancer/i,
+};
+function _matchCategory(f, cat) {
+  const rx = _CAT_MAP[cat];
+  if (!rx) return false;
+  const hay = (f.sources||'') + ' ' + (f.title||'') + ' ' + (f.owasp||'');
+  return rx.test(hay);
+}
 function _getFilteredFindings() {
   const q    = (document.getElementById('findingsSearch').value || '').toLowerCase();
   const risk = document.getElementById('filterRisk').value;
   const tool = document.getElementById('filterTool').value;
+  const cat  = document.getElementById('filterCategory').value;
   const src  = _showFP ? _fpFindings : allFindings.filter(x => !_suppressedSet.has(_fkeyF(x)));
   return src.filter(f => {
     if (risk && (f.risk || 'INFO').toUpperCase() !== risk) return false;
     if (tool && (f._tool || '') !== tool) return false;
+    if (cat && !_matchCategory(f, cat)) return false;
     if (q) {
       const hay = JSON.stringify(f).toLowerCase();
       if (!hay.includes(q)) return false;
@@ -1900,6 +2014,17 @@ const RISK_ORDER = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
 function _riskBadge(r) {
   const cls = `risk-badge risk-${(r||'INFO').toLowerCase()}`;
   return `<span class="${cls}">${r||'INFO'}</span>`;
+}
+function _cvssBadge(score) {
+  if (score === null || score === undefined || score === '') return '';
+  const n = Number(score);
+  if (isNaN(n)) return '';
+  let cls = 'risk-info';
+  if (n >= 9.0) cls = 'risk-critical';
+  else if (n >= 7.0) cls = 'risk-high';
+  else if (n >= 4.0) cls = 'risk-medium';
+  else if (n > 0) cls = 'risk-low';
+  return `<span class="risk-badge ${cls}" style="font-size:.65rem;padding:.1rem .3rem">${n.toFixed(1)}</span>`;
 }
 function _toolBadge(t) {
   if (t === 'fracture') return `<span class="tool-badge tool-fr">FR</span>`;
@@ -2011,7 +2136,7 @@ function renderFindings() {
     const emptyMsg = _showFP
       ? (_fpFindings.length ? 'No false positives match filters.' : 'No false positives marked.')
       : (allFindings.length ? 'No findings match filters.' : 'No findings yet &#8212; start a tool to begin.');
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">${emptyMsg}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">${emptyMsg}</td></tr>`;
     return;
   }
 
@@ -2021,12 +2146,15 @@ function renderFindings() {
     const fJson = escHtml(JSON.stringify(JSON.stringify(f)));
     const fKey  = escHtml(JSON.stringify(_fkeyF(f)));
     const _evParsed = _parseEvidenceFiles(f.output_file || '');
+    const _evHlObj = {title:f.title||'',cves:f.cves||'',cwe:f.cwe||[],owasp:f.owasp||'',risk:f.risk||'',description:(f.description||'').slice(0,200),output:(f.output||'').slice(0,200)};
     const evidenceBtn = _evParsed.count > 0
-      ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(_evParsed))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View</button>`
+      ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(_evParsed))},${escHtml(JSON.stringify(f.title||'Evidence'))},${escHtml(JSON.stringify(_evHlObj))})">View</button>`
       : '';
     const isFP = _showFP || _isSuppressed(f);
+    const _isMethodNF = /^HTTP Method Accepted But Not Functional:/i.test(f.title || '');
     const riskCell = isFP
       ? `<span class="risk-badge risk-fp">FP</span>`
+      : _isMethodNF ? `<span class="risk-badge risk-info" style="opacity:.55;font-size:.65rem" title="Accepted but not functional — low concern">ACCEPTED</span>`
       : _riskBadge(f.risk);
     const actionBtn = isFP
       ? `<button class="btn btn-xs btn-recover" onclick="event.stopPropagation();recoverFinding(${fKey})">Recover</button>`
@@ -2034,6 +2162,7 @@ function renderFindings() {
     const accounts = Array.isArray(f.accounts) ? f.accounts : [];
     return `<tr class="finding-row${isFP?' finding-row-fp':''}" onclick="showFindingDetails(${fJson})">
       <td>${riskCell}</td>
+      <td style="text-align:center">${_cvssBadge(f.cvss_score)}</td>
       <td>${_toolBadge(f._tool)}</td>
       <td class="col-title-cell">${escHtml(f.title || f.detail || '')}</td>
       <td class="mono-sm">${escHtml(host)}</td>
@@ -2055,14 +2184,72 @@ function renderFindings() {
 function showFindingDetails(jsonStr) {
   const f = JSON.parse(jsonStr);
   const _evParsedDet = _parseEvidenceFiles(f.output_file || '');
+  const _evHlObjDet = {title:f.title||'',cves:f.cves||'',cwe:f.cwe||[],owasp:f.owasp||'',risk:f.risk||'',description:(f.description||'').slice(0,200),output:(f.output||'').slice(0,200)};
   const evidenceHtml = _evParsedDet.count > 0
-    ? `<div class="det-row"><span class="det-label">Evidence</span><button class="btn btn-xs btn-ghost" onclick="viewEvidence(${escHtml(JSON.stringify(_evParsedDet))},${escHtml(JSON.stringify(f.title||'Evidence'))})">View Evidence (${_evParsedDet.count} location${_evParsedDet.count!==1?'s':''})</button></div>`
+    ? `<div class="det-row"><span class="det-label">Evidence</span><button class="btn btn-xs btn-ghost" onclick="viewEvidence(${escHtml(JSON.stringify(_evParsedDet))},${escHtml(JSON.stringify(f.title||'Evidence'))},${escHtml(JSON.stringify(_evHlObjDet))})">View Evidence (${_evParsedDet.count} location${_evParsedDet.count!==1?'s':''})</button></div>`
     : '';
   // Beautify inline text fields that may contain JSON/XML/HTTP content
   const _detPre = text => escHtml(_beautifyContent(text, '').display);
+
+  // Method tampering: structured validation steps
+  const _isMethodNFDet = /^HTTP Method Accepted But Not Functional:/i.test(f.title || '');
+  let descHtml = '';
+  if (_isMethodNFDet && f.description) {
+    // Parse validation steps from description
+    const lines = f.description.split('\n');
+    let stepHtml = '<div class="mt-validation"><div class="det-section-title">Validation Steps</div><ul class="mt-steps">';
+    let hasSteps = false;
+    lines.forEach(line => {
+      const stepMatch = line.match(/^\s*[-•✓✗→]\s*(.+)/);
+      if (stepMatch) {
+        const isPass = /✓|pass|matched|identical|same/i.test(line);
+        const isFail = /✗|fail|differ|not functional/i.test(line);
+        const icon = isPass ? '✓' : isFail ? '✗' : '→';
+        const cls = isPass ? 'mt-pass' : isFail ? 'mt-fail' : 'mt-neutral';
+        stepHtml += `<li class="${cls}"><span class="mt-icon">${icon}</span>${escHtml(stepMatch[1])}</li>`;
+        hasSteps = true;
+      }
+    });
+    stepHtml += '</ul></div>';
+    descHtml = `<div class="det-section"><div class="det-section-title">Description</div><pre class="det-pre">${escHtml(f.description)}</pre></div>` + (hasSteps ? stepHtml : '');
+  } else if (f.description || f.detail) {
+    descHtml = `<div class="det-section"><div class="det-section-title">Description</div><pre class="det-pre">${escHtml(f.description||f.detail)}</pre></div>`;
+  }
+
+  // CSP structured rendering
+  const _isCspFinding = /Content.Security.Policy|CSP/i.test(f.title || '');
+  let outputHtml = '';
+  if (_isCspFinding && f.output) {
+    const cspLines = f.output.split('\n');
+    let tableRows = '';
+    cspLines.forEach(line => {
+      const directiveMatch = line.match(/^\s*([\w-]+):\s*(.+)/);
+      if (directiveMatch) {
+        const directive = directiveMatch[1].trim();
+        const detail = directiveMatch[2].trim();
+        const isUnsafe = /unsafe|none|\*/i.test(detail);
+        const riskCls = isUnsafe ? 'csp-unsafe' : 'csp-safe';
+        tableRows += `<tr><td class="mono-sm" style="font-weight:600">${escHtml(directive)}</td><td class="${riskCls}">${escHtml(detail)}</td></tr>`;
+      }
+    });
+    if (tableRows) {
+      outputHtml = `<div class="det-section"><div class="det-section-title">CSP Directive Analysis</div>
+        <table class="csp-table"><thead><tr><th>Directive</th><th>Issue</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
+    } else {
+      outputHtml = `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${_detPre(f.output)}</pre></div>`;
+    }
+  } else if (f.output) {
+    outputHtml = `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${_detPre(f.output)}</pre></div>`;
+  }
+
+  // Risk badge: ACCEPTED pill for non-functional methods
+  const riskHtml = _isMethodNFDet
+    ? `<span class="risk-badge risk-info" style="opacity:.55;font-size:.7rem">ACCEPTED</span> <span style="font-size:.75rem;color:var(--text-muted)">— not functional</span>`
+    : `${_riskBadge(f.risk)} ${f.cvss_score ? _cvssBadge(f.cvss_score) : ''} ${f.cvss_vector ? '<span class="mono-sm" style="font-size:.65rem;color:var(--text-muted)">' + escHtml(f.cvss_vector) + '</span>' : ''}`;
+
   document.getElementById('detailsModalTitle').textContent = f.title || f.detail || 'Finding';
   document.getElementById('detailsModalBody').innerHTML = `
-    <div class="det-row"><span class="det-label">Risk</span>${_riskBadge(f.risk)}</div>
+    <div class="det-row"><span class="det-label">Risk</span>${riskHtml}</div>
     <div class="det-row"><span class="det-label">Tool</span>${_toolBadge(f._tool)}</div>
     ${f.hostname||f.url ? `<div class="det-row"><span class="det-label">Host/URL</span><span class="mono-sm">${escHtml(f.hostname||f.url)}</span></div>` : ''}
     ${f.ip ? `<div class="det-row"><span class="det-label">IP</span><span class="mono-sm">${escHtml(f.ip)}</span></div>` : ''}
@@ -2070,9 +2257,9 @@ function showFindingDetails(jsonStr) {
     ${f.cves ? `<div class="det-row"><span class="det-label">CVEs</span><span class="mono-sm">${escHtml(f.cves)}</span></div>` : ''}
     ${f.sources ? `<div class="det-row"><span class="det-label">Sources</span>${_srcPills(f.sources)}</div>` : ''}
     ${evidenceHtml}
-    ${f.description || f.detail ? `<div class="det-section"><div class="det-section-title">Description</div><pre class="det-pre">${escHtml(f.description||f.detail)}</pre></div>` : ''}
+    ${descHtml}
     ${f.remediation ? `<div class="det-section"><div class="det-section-title">Remediation</div><pre class="det-pre">${escHtml(f.remediation)}</pre></div>` : ''}
-    ${f.output ? `<div class="det-section"><div class="det-section-title">Output</div><pre class="det-pre">${_detPre(f.output)}</pre></div>` : ''}
+    ${outputHtml}
     ${f.affected ? `<div class="det-section"><div class="det-section-title">Affected</div><pre class="det-pre">${_detPre(f.affected)}</pre></div>` : ''}
     ${(window.renderV11Enrichment ? window.renderV11Enrichment(f) : '')}
   `;
@@ -2128,9 +2315,15 @@ function _parseEvidenceFiles(str) {
   return {type: 'plain', files, count: files.length};
 }
 
-function viewEvidence(parsed, title) {
+function viewEvidence(parsed, title, findingHlObj) {
   const ev = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
   document.getElementById('evidenceModalTitle').textContent = `Evidence — ${title || 'Finding'}`;
+  // Set up highlight terms from the finding
+  const hlObj = typeof findingHlObj === 'string' ? JSON.parse(findingHlObj) : (findingHlObj || null);
+  _evCurrentFinding = hlObj;
+  _evHlTerms = hlObj ? _buildHighlightTerms(hlObj) : [];
+  _evHlIndex = -1;
+  _evHlCount = 0;
 
   const contentEl = document.getElementById('evidenceContent');
   const splitEl   = document.getElementById('evidenceSplit');
@@ -2219,6 +2412,7 @@ function viewEvidence(parsed, title) {
 function _loadEvidenceEntry(idx) {
   const entry = _evidenceEntries[idx];
   if (!entry) return;
+  _evHlCount = 0; _evHlIndex = -1; // Reset before loading panes
   _loadEvidencePane(entry.req,  'evidenceReqPre');
   _loadEvidencePane(entry.resp, 'evidenceRespPre');
 }
@@ -2483,6 +2677,183 @@ function loadEvidenceFile(idx, btn) {
   }
 }
 
+/* ── Evidence highlighting (Burp-style) ───────────────── */
+let _evHlTerms = [];       // current highlight search terms
+let _evHlIndex = -1;       // current highlight position
+let _evHlCount = 0;        // total highlights in current view
+let _evCurrentFinding = null; // finding whose evidence is being viewed
+
+function _buildHighlightTerms(f) {
+  if (!f) return [];
+  const terms = new Set();
+  // CVEs
+  if (f.cves) f.cves.split(',').forEach(c => { c = c.trim(); if (c) terms.add(c); });
+  // Key phrases from title (strip generic prefixes)
+  const title = (f.title || '').replace(/^(Missing Security Header|Technology Identified|HTTP Method Tampering|HTTP Method Accepted But Not Functional):\s*/i, '');
+  if (title.length > 3 && title.length < 80) terms.add(title);
+  // CWE identifiers
+  if (Array.isArray(f.cwe)) f.cwe.forEach(c => { if (c) terms.add(String(c)); });
+  // OWASP category ID (e.g. A01, A05)
+  const owaspMatch = (f.owasp || '').match(/^(A\d{2})/);
+  if (owaspMatch) terms.add(owaspMatch[1]);
+  // Risk level
+  if (f.risk && f.risk !== 'INFO') terms.add(f.risk);
+  // Specific keywords from common finding patterns
+  const kwPatterns = [
+    /(?:CVE-\d{4}-\d+)/gi, /(?:CWE-\d+)/gi,
+    /(?:T\d{4}(?:\.\d+)?)/g,  // MITRE technique IDs
+  ];
+  const desc = (f.description || '') + ' ' + (f.output || '');
+  kwPatterns.forEach(rx => {
+    let m;
+    while ((m = rx.exec(desc)) !== null) terms.add(m[0]);
+  });
+  // ViewState-specific terms
+  if (/ViewState/i.test(f.title || '')) {
+    ['__VIEWSTATE', 'MAC', 'encryption', 'ViewState', 'EnableViewStateMac'].forEach(t => terms.add(t));
+  }
+  // Telerik-specific terms
+  if (/Telerik/i.test(f.title || '')) {
+    ['Telerik.Web.UI', 'DialogHandler', 'WebResource.axd', 'ScriptResource.axd', 'RadAsyncUpload'].forEach(t => terms.add(t));
+  }
+  // Filter out very short or generic terms
+  return Array.from(terms).filter(t => t.length >= 3).slice(0, 15);
+}
+
+function _applyHighlights(text, terms) {
+  if (!terms.length || !text) return { html: escHtml(text), count: 0 };
+  // Escape the text first, then apply highlights
+  let escaped = escHtml(text);
+  let count = 0;
+  // Sort terms longest-first to avoid partial matches
+  const sorted = terms.slice().sort((a, b) => b.length - a.length);
+  sorted.forEach(term => {
+    const escaped_term = escHtml(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp('(' + escaped_term + ')', 'gi');
+    escaped = escaped.replace(rx, (match) => {
+      count++;
+      return '<mark class="ev-hl" data-hl-idx="' + count + '">' + match + '</mark>';
+    });
+  });
+  return { html: escaped, count };
+}
+
+function _updateHighlightBar(count, terms) {
+  _evHlCount = count;
+  _evHlIndex = -1;
+  const bar = document.getElementById('evidenceHighlightBar');
+  const cntEl = document.getElementById('evHlCount');
+  const termsEl = document.getElementById('evHlTerms');
+  if (!bar) return;
+  if (count > 0) {
+    bar.style.display = 'flex';
+    cntEl.textContent = count + ' highlight' + (count !== 1 ? 's' : '');
+    termsEl.textContent = 'Terms: ' + terms.slice(0, 5).join(', ') + (terms.length > 5 ? ' …' : '');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function _evHlNav(dir) {
+  if (_evHlCount === 0) return;
+  // Remove current highlight focus
+  const prev = document.querySelector('.ev-hl-current');
+  if (prev) prev.classList.remove('ev-hl-current');
+  // Move index
+  _evHlIndex = (_evHlIndex + dir + _evHlCount) % _evHlCount;
+  // Find and focus the highlight
+  const marks = document.querySelectorAll('.ev-hl');
+  if (_evHlIndex < marks.length) {
+    const mark = marks[_evHlIndex];
+    mark.classList.add('ev-hl-current');
+    // Scroll into view, centered in the evidence pane
+    const pane = mark.closest('.evidence-pre') || mark.closest('.evidence-content');
+    if (pane) {
+      const paneRect = pane.getBoundingClientRect();
+      const markRect = mark.getBoundingClientRect();
+      const scrollTarget = pane.scrollTop + (markRect.top - paneRect.top) - (paneRect.height / 2) + (markRect.height / 2);
+      pane.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+    }
+  }
+  // Update counter
+  const cntEl = document.getElementById('evHlCount');
+  if (cntEl) cntEl.textContent = (_evHlIndex + 1) + ' / ' + _evHlCount;
+}
+
+// Wrap loadEvidenceFile to apply highlights
+const _origLoadEvidenceFile = loadEvidenceFile;
+function _loadEvidenceFileWithHighlights(idx, btn) {
+  document.querySelectorAll('.evidence-file-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const pre     = document.getElementById('evidencePre');
+  const imgWrap = document.getElementById('evidenceImgWrap');
+  const img     = document.getElementById('evidenceImg');
+  const filePath = _evidenceFiles[idx];
+  if (_isImageFile(filePath)) {
+    pre.classList.add('hidden');
+    imgWrap.classList.remove('hidden');
+    img.src = '';
+    img.alt = 'Loading…';
+    img.src = `/api/file_serve/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`;
+    img.onerror = () => { img.alt = '(failed to load image)'; };
+    img.onload  = () => { img.alt = filePath.split('/').pop(); };
+    _updateHighlightBar(0, []);
+  } else {
+    imgWrap.classList.add('hidden');
+    pre.classList.remove('hidden');
+    pre.textContent = 'Loading…';
+    fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`)
+      .then(r => r.json())
+      .then(d => {
+        const raw = d.content || d.error || '(empty)';
+        const { format, display } = _beautifyContent(raw, filePath);
+        pre.dataset.format = format;
+        if (_evHlTerms.length) {
+          const { html, count } = _applyHighlights(display, _evHlTerms);
+          pre.innerHTML = html;
+          _updateHighlightBar(count, _evHlTerms);
+        } else {
+          pre.textContent = display;
+          _updateHighlightBar(0, []);
+        }
+      })
+      .catch(() => { pre.textContent = '(failed to load)'; _updateHighlightBar(0, []); });
+  }
+}
+// Override
+loadEvidenceFile = _loadEvidenceFileWithHighlights;
+
+// Also apply highlights to split-pane evidence (req/resp)
+const _origLoadEvidencePane = _loadEvidencePane;
+function _loadEvidencePaneHL(filePath, preId) {
+  const pre = document.getElementById(preId);
+  pre.textContent = 'Loading…';
+  fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`)
+    .then(r => r.json())
+    .then(d => {
+      const raw = d.content || d.error || '(empty)';
+      const { display } = _beautifyContent(raw, filePath);
+      if (_evHlTerms.length) {
+        const { html, count } = _applyHighlights(display, _evHlTerms);
+        pre.innerHTML = html;
+        // Accumulate count across both panes
+        _evHlCount += count;
+        const cntEl = document.getElementById('evHlCount');
+        const bar = document.getElementById('evidenceHighlightBar');
+        if (_evHlCount > 0 && bar) {
+          bar.style.display = 'flex';
+          cntEl.textContent = _evHlCount + ' highlight' + (_evHlCount !== 1 ? 's' : '');
+          const termsEl = document.getElementById('evHlTerms');
+          if (termsEl) termsEl.textContent = 'Terms: ' + _evHlTerms.slice(0, 5).join(', ') + (_evHlTerms.length > 5 ? ' …' : '');
+        }
+      } else {
+        pre.textContent = display;
+      }
+    })
+    .catch(() => { pre.textContent = '(failed to load)'; });
+}
+_loadEvidencePane = _loadEvidencePaneHL;
+
 /* ── Export helpers ─────────────────────────────────────── */
 function _exportRelPath(absPath) {
   if (!absPath || !PROJECT_DIR) return absPath;
@@ -2537,25 +2908,68 @@ function _csvCell(val) {
   return s.length > 32700 ? s.slice(0, 32700) + '\u2026[truncated]' : s;
 }
 
+function _arrJoin(v) { return Array.isArray(v) ? v.join('; ') : (v || ''); }
+function _mitreFmt(v) { if (!Array.isArray(v) || !v.length) return ''; return v.map(m => `${m.technique||''} ${m.name||''} (${m.tactic||''})`).join('; '); }
+
 function exportFindingsCSV() {
   const filtered = _exportGetFiltered();
-  const rows = [['Risk','DateTime','Tool','Finding','Host','Port','HTTP Code','OWASP','CVEs','Sources','Description','Affected','Remediation','Evidence Files']];
+  const rows = [['Risk','CVSS Score','CVSS Vector','DateTime','Tool','Finding','Host','Port','Service','HTTP Code',
+    'OWASP','OWASP API','CVEs','CWE','Sources','Description','Impact','Affected','Remediation',
+    'Remediation Effort','Remediation Component','Remediation Category',
+    'MITRE ATT&CK','KEV','NIST CSF2','NIST 800-53','NIST 800-171','PCI DSS 4','ISO 27001','ISO 27002','SOC2','HITRUST','GDPR',
+    'Nessus Plugin ID','Nessus Plugin Name','Qualys QID',
+    'API Endpoint','API Method','API From Spec','Is Rogue Endpoint',
+    'Confidence','ExploitDB','Metasploit','Metasploit Modules','Searchsploit Terms',
+    'Evidence Files','Output']];
   filtered.forEach(f => {
     rows.push([
       f.risk || 'INFO',
+      f.cvss_score != null ? f.cvss_score : '',
+      f.cvss_vector || '',
       f.datetime || '',
       f._tool || '',
       f.title || f.detail || '',
       f.hostname || f.url || f.ip || '',
       f.port || '',
+      f.service || '',
       f.http_code || '',
       f.owasp || '',
+      f.owasp_api || '',
       f.cves || '',
+      _arrJoin(f.cwe),
       f.sources || '',
       f.description || f.detail || '',
+      f.impact || '',
       f.affected || '',
       f.remediation || '',
+      f.remediation_effort || '',
+      f.remediation_component || '',
+      f.remediation_category || '',
+      _mitreFmt(f.mitre_attack),
+      f.kev ? 'YES' : '',
+      _arrJoin(f.nist_csf2),
+      _arrJoin(f.nist_800_53),
+      _arrJoin(f.nist_800_171),
+      _arrJoin(f.pci_dss_4),
+      _arrJoin(f.iso_27001),
+      _arrJoin(f.iso_27002),
+      _arrJoin(f.soc2),
+      _arrJoin(f.hitrust),
+      _arrJoin(f.gdpr),
+      f.nessus_plugin_id || '',
+      f.nessus_plugin_name || '',
+      f.qualys_qid || '',
+      f.api_endpoint_path || '',
+      f.api_method || '',
+      f.api_from_spec != null ? (f.api_from_spec ? 'Yes' : 'No') : '',
+      f.is_rogue_endpoint != null ? (f.is_rogue_endpoint ? 'Yes' : 'No') : '',
+      f.confidence || '',
+      f.exploitdb ? 'Yes' : (f.exploitdb === false ? 'No' : ''),
+      f.metasploit ? 'Yes' : (f.metasploit === false ? 'No' : ''),
+      _arrJoin(f.metasploit_modules),
+      _arrJoin(f.searchsploit_terms),
       _exportEvidenceField(f.output_file),
+      f.output || '',
     ]);
   });
   const csv = rows.map(r => r.map(c => `"${_csvCell(c)}"`).join(',')).join('\r\n');
@@ -2567,28 +2981,95 @@ function exportFindingsCSV() {
 
 function exportFindingsJSON() {
   const filtered = _exportGetFiltered();
-  const output = filtered.map(f => ({
-    risk:        f.risk || 'INFO',
-    datetime:    f.datetime || '',
-    tool:        f._tool || '',
-    title:       f.title || f.detail || '',
-    host:        f.hostname || f.url || f.ip || '',
-    port:        f.port || '',
-    http_code:   f.http_code || '',
-    owasp:       f.owasp || '',
-    owasp_url:   f.owasp_url || '',
-    nist:        f.nist || '',
-    cves:        f.cves || '',
-    sources:     f.sources || '',
-    description: f.description || f.detail || '',
-    affected:    f.affected || '',
-    remediation: f.remediation || '',
-    evidence:    _exportEvidenceField(f.output_file),
-    output:      f.output || '',
-  }));
+  const output = filtered.map(f => {
+    const entry = {
+      id:          f.id || '',
+      risk:        f.risk || 'INFO',
+      datetime:    f.datetime || '',
+      tool:        f._tool || f.tool || '',
+      title:       f.title || f.detail || '',
+      ip:          f.ip || '',
+      hostname:    f.hostname || '',
+      port:        f.port || '',
+      service:     f.service || '',
+      http_code:   f.http_code || '',
+      command:     f.command || '',
+      description: f.description || f.detail || '',
+      impact:      f.impact || '',
+      output:      f.output || '',
+      affected:    f.affected || '',
+      remediation: f.remediation || '',
+      sources:     f.sources || '',
+      evidence:    _exportEvidenceField(f.output_file),
+      output_file: f.output_file || '',
+      // v1.0 standard fields
+      owasp:       f.owasp || '',
+      owasp_url:   f.owasp_url || '',
+      nist:        f.nist || '',
+      cves:        f.cves || '',
+      exploitdb:   f.exploitdb || false,
+      metasploit:  f.metasploit || false,
+      exploit_details: f.exploit_details || [],
+      // v1.1 enrichment — CVSS
+      cvss_score:  f.cvss_score != null ? f.cvss_score : null,
+      cvss_vector: f.cvss_vector || '',
+      // v1.1 — CWE
+      cwe:         f.cwe || [],
+      // v1.1 — Scanner IDs
+      nessus_plugin_id:   f.nessus_plugin_id || null,
+      nessus_plugin_name: f.nessus_plugin_name || '',
+      qualys_qid:         f.qualys_qid || null,
+      plugin_output:      f.plugin_output || '',
+      // v1.1 — Compliance
+      nist_csf2:    f.nist_csf2 || [],
+      nist_800_53:  f.nist_800_53 || [],
+      nist_800_171: f.nist_800_171 || [],
+      pci_dss_4:    f.pci_dss_4 || [],
+      iso_27001:    f.iso_27001 || [],
+      iso_27002:    f.iso_27002 || [],
+      soc2:         f.soc2 || [],
+      hitrust:      f.hitrust || [],
+      gdpr:         f.gdpr || [],
+      // v1.1 — Threat intel
+      mitre_attack:       f.mitre_attack || [],
+      kev:                f.kev || false,
+      searchsploit_terms: f.searchsploit_terms || [],
+      metasploit_modules: f.metasploit_modules || [],
+      // v1.1 — Granular remediation
+      remediation_effort:    f.remediation_effort || '',
+      remediation_component: f.remediation_component || '',
+      remediation_category:  f.remediation_category || '',
+      // v1.1 — OWASP API
+      owasp_api: f.owasp_api || '',
+      // v1.1 — API metadata
+      api_endpoint_path: f.api_endpoint_path || '',
+      api_method:        f.api_method || '',
+      api_from_spec:     f.api_from_spec || false,
+      is_rogue_endpoint: f.is_rogue_endpoint || false,
+      // v1.1 — Wireless
+      ssid:          f.ssid || '',
+      bssid:         f.bssid || '',
+      wireless_data: f.wireless_data || null,
+      // v1.1 — Device context
+      subdevice:      f.subdevice || '',
+      interface:      f.interface || '',
+      instance:       f.instance || '',
+      classification: f.classification || '',
+      // v1.1 — Workflow state
+      accepted:   f.accepted || false,
+      confidence: f.confidence || '',
+      // v1.1 — Catalogue lineage
+      catalogue_id: f.catalogue_id || '',
+      aliases:      f.aliases || [],
+      source_tools: f.source_tools || [],
+      cve_examples: f.cve_examples || [],
+    };
+    return entry;
+  });
   const json = JSON.stringify({
     project_id:     PROJECT_ID,
     exported_at:    new Date().toISOString(),
+    schema_version: '1.1',
     total_findings: output.length,
     findings:       output,
   }, null, 2);
@@ -3183,6 +3664,13 @@ async function loadAccessMatrix(force = false) {
     }
     _accessMatrixLoaded = true;
     _amData = d;
+    // Show soft-404 banner if detected in target profile
+    fetch(`/api/target_profile/${PROJECT_ID}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(tp => {
+        const banner = document.getElementById('amSoft404Banner');
+        if (banner && tp && tp.soft_404 && tp.soft_404.detected) banner.style.display = '';
+      }).catch(() => {});
     _redrawAccessMatrix();
   } catch(e) {
     el.innerHTML = '<span style="color:#f85149;font-size:.85rem">Failed to load access matrix.</span>';
@@ -3414,7 +3902,8 @@ function _renderAccessMatrixSection(badge, title, matrix, filter = null) {
   } else {
   visibleItems.forEach(item => {
     const path = item.path || item.endpoint || '';
-    html += `<tr><td style="font-family:monospace;font-size:.82rem;padding:.35rem .6rem">${_escHtml(path)}</td>`;
+    const _srcTag = (item.source === 'js-bundle') ? ' <span style="display:inline-block;padding:0 4px;border-radius:3px;font-size:.6rem;font-weight:700;background:#3a5a8a;color:#dde;vertical-align:middle;margin-left:4px" title="Discovered via JavaScript bundle analysis">JS</span>' : '';
+    html += `<tr><td style="font-family:monospace;font-size:.82rem;padding:.35rem .6rem">${_escHtml(path)}${_srcTag}</td>`;
     allRoles.forEach(role => {
       const access = (item.access || {})[role];
       const meta   = ((item.access_meta || {})[role]) || {};
@@ -3554,6 +4043,30 @@ function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;
 </script>
 
 <style>
+/* Method tampering validation steps */
+.mt-validation { margin-top:.5rem; }
+.mt-steps { list-style:none; padding:0; margin:0; }
+.mt-steps li { display:flex; align-items:center; gap:.5rem; padding:.25rem .5rem; border-radius:4px; font-size:.82rem; font-family:'Fira Code','Cascadia Code',monospace; }
+.mt-steps li + li { margin-top:.2rem; }
+.mt-icon { width:1.2rem; text-align:center; font-weight:700; }
+.mt-pass { background:rgba(63,185,80,.08); color:#3fb950; }
+.mt-fail { background:rgba(248,81,73,.08); color:#f85149; }
+.mt-neutral { background:rgba(139,148,158,.08); color:#8b949e; }
+
+/* CSP directive table */
+.csp-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.csp-table th { text-align:left; padding:.35rem .5rem; border-bottom:1px solid var(--border-mid,#30363d); font-weight:600; color:var(--text-muted,#8b949e); font-size:.75rem; text-transform:uppercase; letter-spacing:.03em; }
+.csp-table td { padding:.3rem .5rem; border-bottom:1px solid var(--border-light,#21262d); }
+.csp-unsafe { color:#f85149; }
+.csp-safe { color:#3fb950; }
+
+/* Evidence highlighting (Burp-style) */
+mark.ev-hl { background: rgba(255,200,0,.35); color: inherit; padding: 0 1px; border-radius: 2px; }
+mark.ev-hl-current { background: rgba(255,140,0,.7); outline: 2px solid rgba(255,140,0,.9); }
+.evidence-highlight-bar button { background: var(--bg-tertiary,#2a2a2a); color: var(--text-primary,#e6edf3); border: 1px solid var(--border-mid,#30363d); border-radius: 3px; padding: .15rem .4rem; font-size: .78rem; cursor: pointer; }
+.evidence-highlight-bar button:hover { background: var(--bg-hover,#333); }
+#evHlTerms { color: var(--text-muted,#8b949e); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
+
 .struct-tree { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size:.82rem; line-height:1.6; }
 .struct-row { display:flex; align-items:center; gap:.4rem; padding:.15rem .25rem; border-radius:4px; }
 .struct-row:hover { background: var(--bg-hover); }
