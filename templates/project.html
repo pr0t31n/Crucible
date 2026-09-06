@@ -2685,19 +2685,20 @@ let _evCurrentFinding = null; // finding whose evidence is being viewed
 
 function _buildHighlightTerms(f) {
   if (!f) return [];
+  // Prefer explicit highlights from the parser — the code that generated the
+  // finding knows exactly which text in the evidence proves it.
+  if (Array.isArray(f.highlights) && f.highlights.length > 0) {
+    return f.highlights.filter(t => typeof t === 'string' && t.length >= 2).slice(0, 20);
+  }
+  // Fallback: auto-derive terms when the finding has no explicit highlights
   const terms = new Set();
   // CVEs
   if (f.cves) f.cves.split(',').forEach(c => { c = c.trim(); if (c) terms.add(c); });
   // Key phrases from title (strip generic prefixes)
-  const title = (f.title || '').replace(/^(Missing Security Header|Technology Identified|HTTP Method Tampering|HTTP Method Accepted But Not Functional):\s*/i, '');
+  const title = (f.title || '').replace(/^(Missing Security Header|Header Data Leakage|Technology Identified|HTTP Method Tampering|HTTP Method Accepted But Not Functional|Software Version Disclosed|Load Balancer Detected|WAF \/ Edge Security Platform Active|SSL\/TLS Vulnerability|SSL\/TLS Vulnerability \(Potential\)|SSL\/TLS Certificate|SSL\/TLS Ciphers|SSL\/TLS Forward Secrecy|Deprecated Protocol Enabled|Single Page Application):\s*/i, '');
   if (title.length > 3 && title.length < 80) terms.add(title);
   // CWE identifiers
   if (Array.isArray(f.cwe)) f.cwe.forEach(c => { if (c) terms.add(String(c)); });
-  // OWASP category ID (e.g. A01, A05)
-  const owaspMatch = (f.owasp || '').match(/^(A\d{2})/);
-  if (owaspMatch) terms.add(owaspMatch[1]);
-  // Risk level
-  if (f.risk && f.risk !== 'INFO') terms.add(f.risk);
   // Specific keywords from common finding patterns
   const kwPatterns = [
     /(?:CVE-\d{4}-\d+)/gi, /(?:CWE-\d+)/gi,
@@ -2766,13 +2767,39 @@ function _evHlNav(dir) {
   if (_evHlIndex < marks.length) {
     const mark = marks[_evHlIndex];
     mark.classList.add('ev-hl-current');
-    // Scroll into view, centered in the evidence pane
-    const pane = mark.closest('.evidence-pre') || mark.closest('.evidence-content');
-    if (pane) {
-      const paneRect = pane.getBoundingClientRect();
+    // Walk up from the mark to find the nearest scrollable ancestor.
+    // In single-file view the pre has only overflow-x:auto — the
+    // evidence-content parent is the vertical scroll container.
+    // In split view each evidence-pane pre has overflow-y:auto.
+    let scrollable = mark.parentElement;
+    while (scrollable && scrollable !== document.body) {
+      const st = getComputedStyle(scrollable);
+      if ((st.overflowY === 'auto' || st.overflowY === 'scroll') &&
+          scrollable.scrollHeight > scrollable.clientHeight) break;
+      scrollable = scrollable.parentElement;
+    }
+    if (scrollable && scrollable !== document.body) {
+      const paneRect = scrollable.getBoundingClientRect();
       const markRect = mark.getBoundingClientRect();
-      const scrollTarget = pane.scrollTop + (markRect.top - paneRect.top) - (paneRect.height / 2) + (markRect.height / 2);
-      pane.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+      // Vertical centering
+      const scrollY = scrollable.scrollTop + (markRect.top - paneRect.top)
+                      - (paneRect.height / 2) + (markRect.height / 2);
+      scrollable.scrollTo({ top: Math.max(0, scrollY), behavior: 'smooth' });
+    }
+    // Horizontal centering — find nearest ancestor with overflow-x
+    let hScroll = mark.parentElement;
+    while (hScroll && hScroll !== document.body) {
+      const st = getComputedStyle(hScroll);
+      if ((st.overflowX === 'auto' || st.overflowX === 'scroll') &&
+          hScroll.scrollWidth > hScroll.clientWidth) break;
+      hScroll = hScroll.parentElement;
+    }
+    if (hScroll && hScroll !== document.body) {
+      const hRect = hScroll.getBoundingClientRect();
+      const mRect = mark.getBoundingClientRect();
+      const scrollX = hScroll.scrollLeft + (mRect.left - hRect.left)
+                      - (hRect.width / 2) + (mRect.width / 2);
+      hScroll.scrollTo({ left: Math.max(0, scrollX), behavior: 'smooth' });
     }
   }
   // Update counter
