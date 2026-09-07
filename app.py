@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.18.0"
+VERSION = "1.18.1"
 
 import io
 import socket
@@ -1798,16 +1798,24 @@ def api_findings(project_id: str):
                     result.append(f)
                     _mem_findings.append(f)
                 else:
-                    # Merge accounts from disk into the cached in-memory entry
-                    new_accts = f.get("accounts") or []
-                    if new_accts:
-                        for _ex in _mem_findings:
-                            if _fkey(_ex) == k:
-                                _ex_roles = {a.get("role", "") for a in (_ex.get("accounts") or [])}
-                                _added = [a for a in new_accts if a.get("role", "") not in _ex_roles]
-                                if _added:
-                                    _ex.setdefault("accounts", []).extend(_added)
-                                break
+                    # Refresh cached entry with disk version — findings evolve
+                    # during a running scan (evidence merged, descriptions
+                    # appended, accounts added) and the cache must reflect it.
+                    for _ex in _mem_findings:
+                        if _fkey(_ex) == k:
+                            # Preserve internal keys; overwrite everything else
+                            _internal = {ik: _ex[ik] for ik in ("_tool", "_scope") if ik in _ex}
+                            _ex.clear()
+                            _ex.update(f)
+                            _ex.update(_internal)
+                            break
+                    for _ex in result:
+                        if _fkey(_ex) == k:
+                            _internal = {ik: _ex[ik] for ik in ("_tool", "_scope") if ik in _ex}
+                            _ex.clear()
+                            _ex.update(f)
+                            _ex.update(_internal)
+                            break
         except Exception:
             pass
 
