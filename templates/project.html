@@ -2146,7 +2146,7 @@ function renderFindings() {
     const fJson = escHtml(JSON.stringify(JSON.stringify(f)));
     const fKey  = escHtml(JSON.stringify(_fkeyF(f)));
     const _evParsed = _parseEvidenceFiles(f.output_file || '');
-    const _evHlObj = {title:f.title||'',cves:f.cves||'',cwe:f.cwe||[],owasp:f.owasp||'',risk:f.risk||'',description:(f.description||'').slice(0,200),output:(f.output||'').slice(0,200)};
+    const _evHlObj = {title:f.title||'',cves:f.cves||'',cwe:f.cwe||[],owasp:f.owasp||'',risk:f.risk||'',description:(f.description||'').slice(0,200),output:(f.output||'').slice(0,200),highlights:f.highlights||[]};
     const evidenceBtn = _evParsed.count > 0
       ? `<button class="btn btn-xs btn-ghost" onclick="event.stopPropagation();viewEvidence(${escHtml(JSON.stringify(_evParsed))},${escHtml(JSON.stringify(f.title||'Evidence'))},${escHtml(JSON.stringify(_evHlObj))})">View</button>`
       : '';
@@ -2184,7 +2184,7 @@ function renderFindings() {
 function showFindingDetails(jsonStr) {
   const f = JSON.parse(jsonStr);
   const _evParsedDet = _parseEvidenceFiles(f.output_file || '');
-  const _evHlObjDet = {title:f.title||'',cves:f.cves||'',cwe:f.cwe||[],owasp:f.owasp||'',risk:f.risk||'',description:(f.description||'').slice(0,200),output:(f.output||'').slice(0,200)};
+  const _evHlObjDet = {title:f.title||'',cves:f.cves||'',cwe:f.cwe||[],owasp:f.owasp||'',risk:f.risk||'',description:(f.description||'').slice(0,200),output:(f.output||'').slice(0,200),highlights:f.highlights||[]};
   const evidenceHtml = _evParsedDet.count > 0
     ? `<div class="det-row"><span class="det-label">Evidence</span><button class="btn btn-xs btn-ghost" onclick="viewEvidence(${escHtml(JSON.stringify(_evParsedDet))},${escHtml(JSON.stringify(f.title||'Evidence'))},${escHtml(JSON.stringify(_evHlObjDet))})">View Evidence (${_evParsedDet.count} location${_evParsedDet.count!==1?'s':''})</button></div>`
     : '';
@@ -2690,13 +2690,30 @@ function _buildHighlightTerms(f) {
   if (Array.isArray(f.highlights) && f.highlights.length > 0) {
     return f.highlights.filter(t => typeof t === 'string' && t.length >= 2).slice(0, 20);
   }
-  // Fallback: auto-derive terms when the finding has no explicit highlights
+  // Fallback: auto-derive terms when the finding has no explicit highlights.
+  // Use the output field first — it contains the actual evidence text (e.g.
+  // "Server: Microsoft-IIS/10.0") which is far more precise than the
+  // stripped title suffix (e.g. just "Server").
   const terms = new Set();
   // CVEs
   if (f.cves) f.cves.split(',').forEach(c => { c = c.trim(); if (c) terms.add(c); });
-  // Key phrases from title (strip generic prefixes)
-  const title = (f.title || '').replace(/^(Missing Security Header|Header Data Leakage|Technology Identified|HTTP Method Tampering|HTTP Method Accepted But Not Functional|Software Version Disclosed|Load Balancer Detected|WAF \/ Edge Security Platform Active|SSL\/TLS Vulnerability|SSL\/TLS Vulnerability \(Potential\)|SSL\/TLS Certificate|SSL\/TLS Ciphers|SSL\/TLS Forward Secrecy|Deprecated Protocol Enabled|Single Page Application):\s*/i, '');
-  if (title.length > 3 && title.length < 80) terms.add(title);
+  // For header/technology findings, prefer output lines (precise matches)
+  const _rawTitle = f.title || '';
+  const _isHeaderLike = /^(Header Data Leakage|Technology Identified|Software Version Disclosed|HTTP Header Fingerprints|Unknown Header Identified|Endpoint-Specific Security Header Found|Missing Security Header):/i.test(_rawTitle);
+  if (_isHeaderLike && f.output) {
+    // Output lines like "Server: Microsoft-IIS/10.0" or "Header: x-aspnetmvc-version"
+    f.output.split('\n').forEach(line => {
+      line = line.trim();
+      // Skip generic prefixes that appear on every output
+      if (/^(HTTP Status:|Matched at:|Plugin:|Missing:)\s/i.test(line)) return;
+      if (line.length >= 5 && line.length < 120) terms.add(line);
+    });
+  }
+  // Key phrases from title (strip generic prefixes) — only when no output terms found
+  if (terms.size === 0) {
+    const title = _rawTitle.replace(/^(Missing Security Header|Header Data Leakage|Technology Identified|HTTP Method Tampering|HTTP Method Accepted But Not Functional|Software Version Disclosed|Load Balancer Detected|WAF \/ Edge Security Platform Active|SSL\/TLS Vulnerability|SSL\/TLS Vulnerability \(Potential\)|SSL\/TLS Certificate|SSL\/TLS Ciphers|SSL\/TLS Forward Secrecy|Deprecated Protocol Enabled|Single Page Application):\s*/i, '');
+    if (title.length > 3 && title.length < 80) terms.add(title);
+  }
   // CWE identifiers
   if (Array.isArray(f.cwe)) f.cwe.forEach(c => { if (c) terms.add(String(c)); });
   // Specific keywords from common finding patterns
@@ -2851,16 +2868,23 @@ function _loadEvidenceFileWithHighlights(idx, btn) {
 loadEvidenceFile = _loadEvidenceFileWithHighlights;
 
 // Also apply highlights to split-pane evidence (req/resp)
+// Request pane is only highlighted for injection-type findings where the
+// injected payload should be visible in both request and response.
+const _INJECTION_TITLE_RE = /injection|xss|sqli|sql.?injection|ssrf|rce|command.?injection|xxe|ssti|ldap.?injection|xpath|header.?injection|crlf|open.?redirect|lfi|rfi|traversal|deserialization|smuggling/i;
 const _origLoadEvidencePane = _loadEvidencePane;
 function _loadEvidencePaneHL(filePath, preId) {
   const pre = document.getElementById(preId);
   pre.textContent = 'Loading…';
+  // Skip highlighting on the request pane unless it's an injection finding
+  const isReqPane = (preId === 'evidenceReqPre');
+  const isInjection = _evCurrentFinding && _INJECTION_TITLE_RE.test(_evCurrentFinding.title || '');
+  const shouldHighlight = _evHlTerms.length > 0 && (!isReqPane || isInjection);
   fetch(`/api/file_content/${PROJECT_ID}?path=${encodeURIComponent(filePath)}`)
     .then(r => r.json())
     .then(d => {
       const raw = d.content || d.error || '(empty)';
       const { display } = _beautifyContent(raw, filePath);
-      if (_evHlTerms.length) {
+      if (shouldHighlight) {
         const { html, count } = _applyHighlights(display, _evHlTerms);
         pre.innerHTML = html;
         // Accumulate count across both panes
