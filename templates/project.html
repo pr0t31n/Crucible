@@ -2337,8 +2337,7 @@ function viewEvidence(parsed, title, findingHlObj) {
   const imageSidebar = document.getElementById('evidenceImageSidebar');
   // Reset image-mode state from any prior view
   modalBox.classList.remove('evidence-modal-image');
-  imageSidebar.classList.add('hidden');
-  imageSidebar.innerHTML = '';
+  if (imageSidebar) { imageSidebar.classList.add('hidden'); imageSidebar.innerHTML = ''; }
 
   if (ev.type === 'multi') {
     _evidenceEntries = ev.entries;
@@ -2406,7 +2405,7 @@ function viewEvidence(parsed, title, findingHlObj) {
       urlWrap.classList.add('hidden');
       modalBox.classList.remove('evidence-modal-wide');
       // Detect all-image evidence → screenshot layout (2/3 viewport, sidebar)
-      const _allImages = ev.files.every(f => _isImageFile(f));
+      const _allImages = imageSidebar && ev.files.every(f => _isImageFile(f));
       if (_allImages) {
         tabs.classList.add('hidden');
         modalBox.classList.add('evidence-modal-image');
