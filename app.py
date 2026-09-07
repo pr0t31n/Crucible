@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.18.3"
+VERSION = "1.18.4"
 
 import io
 import socket
@@ -4789,29 +4789,24 @@ def _ingest(project_id: str, fp: Path, tool: str, scope: str, seen: set) -> None
         f["_scope"] = scope or f.get("_scope", "")
         k = _fkey(f)
         if k in seen:
-            # Merge sources, cves, and accounts into existing entry
+            # Full refresh — findings evolve during a running scan
+            # (evidence merged, descriptions appended, accounts added,
+            # output_file paths accumulated).  Replace the cached entry
+            # with the disk version so every field is current.
             for existing in proj_findings:
                 if _fkey(existing) == k:
-                    changed = False
-                    ex_srcs = set(s.strip() for s in (existing.get("sources") or "").split(",") if s.strip())
-                    new_srcs = set(s.strip() for s in (f.get("sources") or "").split(",") if s.strip())
-                    if new_srcs - ex_srcs:
-                        existing["sources"] = ",".join(sorted(ex_srcs | new_srcs))
-                        changed = True
-                    ex_cves = set(c.strip() for c in (existing.get("cves") or "").split(",") if c.strip())
-                    new_cves = set(c.strip() for c in (f.get("cves") or "").split(",") if c.strip())
-                    if new_cves - ex_cves:
-                        existing["cves"] = ",".join(sorted(ex_cves | new_cves))
-                        changed = True
-                    ex_accts = existing.get("accounts") or []
-                    new_accts = f.get("accounts") or []
-                    if new_accts:
-                        ex_roles = {a.get("role", "") for a in ex_accts}
-                        added = [a for a in new_accts if a.get("role", "") not in ex_roles]
-                        if added:
-                            existing["accounts"] = ex_accts + added
-                            changed = True
-                    if changed:
+                    _internal = {ik: existing[ik]
+                                 for ik in ("_tool", "_scope") if ik in existing}
+                    _prev_snap = dict(existing)
+                    existing.clear()
+                    existing.update(f)
+                    existing.update(_internal)
+                    # Emit update only when something visibly changed
+                    if (existing.get("output_file") != _prev_snap.get("output_file")
+                            or existing.get("description") != _prev_snap.get("description")
+                            or existing.get("affected") != _prev_snap.get("affected")
+                            or existing.get("sources") != _prev_snap.get("sources")
+                            or existing.get("risk") != _prev_snap.get("risk")):
                         socketio.emit("finding",
                             {"tool": tool[:2], "finding": existing},
                             room=_room(project_id))

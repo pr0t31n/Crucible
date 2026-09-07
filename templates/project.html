@@ -1894,7 +1894,7 @@ function switchTab(name, btn) {
   const panel = document.getElementById(`tab-${name}`);
   if (panel) panel.classList.add('active');
   if (btn) btn.classList.add('active');
-  if (name === 'findings') { if (allFindings.length === 0) reloadFindings(); renderFindings(); }
+  if (name === 'findings') { reloadFindings(); renderFindings(); }
   if (name === 'settings') { loadSettings('fr'); loadSettings('si'); }
   if (name === 'summary')  { _loadSummarySettings(); _loadTargetProfile(); }
 }
