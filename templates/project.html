@@ -1900,8 +1900,55 @@ function switchTab(name, btn) {
 }
 
 // ── Findings ──────────────────────────────────────────────
+// Global merge prefixes — findings with these title prefixes are host-level
+// and must merge by (title, port, scope) only, ignoring ip/hostname.
+// Mirrors Fracture's _GLOBAL_MERGE_PREFIXES and Crucible's Python _fkey().
+const _GLOBAL_MERGE_PREFIXES = [
+  "missing security header:", "interesting endpoint discovered",
+  "authenticated interesting endpoint", "api endpoint identified",
+  "non-login form detected", "login page identified",
+  "missing secure cookie attribute:", "misconfigured secure cookie attribute:",
+  "broken function level authorization (bfla)",
+  "broken object level authorization (idor / bola)",
+  "web files downloaded", "web screenshot captured",
+  "session cookie missing", "directory listing enabled",
+  "http trace method enabled", "http methods",
+  "sensitive paths disclosed in robots.txt", "verbose error messages",
+  "cors misconfiguration", "cross-site request forgery (csrf)",
+  "admin panel exposed", "sensitive file exposed",
+  "sensitive path accessible:", "deprecated protocol enabled:",
+  "telerik ui", "cryptographic padding oracle",
+  "ssl/tls certificate:", "ssl/tls ciphers:", "ssl/tls forward secrecy:",
+  "ssl/tls vulnerability:", "ssl/tls vulnerability (potential):",
+  "ssl/tls: tlsv1.3", "header data leakage:",
+  "waf / edge security platform active:", "technology identified:",
+  "permissive security header:", "server misconfiguration:",
+  "load balancer detected:", "password reset endpoint exposed",
+  "http method tampering:", "non-standard cipher suites accepted",
+  "missing rate limiting", "iis short file/directory name disclosure",
+  "outdated copyright notice detected", "exposed cryptocurrency wallet address",
+  "unauthenticated access to protected path",
+  "asp.net viewstate", "viewstate contains",
+  "sensitive file exposed:", "asp.net trace handler",
+  "asp.net error log", "asp.net handler endpoints",
+  "asp.net app_data", "asp.net client scripts",
+  "frontpage", "f5 big-ip:", "f5 big-ip cookie",
+  "backend server configuration", "spa routes extracted",
+  "http method accepted but not functional:",
+  "ssl/tls obsolete", "ssl/tls signature", "ssl/tls ocsp",
+  "ssl/tls breach", "ssl/tls lucky13", "ssl/tls sweet32",
+  "ssl/tls dns:", "ssl/tls cert_", "ssl/tls cookie_",
+  "ssl/tls certificate information", "ssl/tls non-standard",
+  "ssl/tls session", "single page application",
+  "unknown header:", "missing secure cookie:", "timing attack on login",
+];
+function _isGlobalMerge(tl) {
+  return _GLOBAL_MERGE_PREFIXES.some(p => tl.startsWith(p));
+}
 function _fkeyF(f) {
-  return `${(f.title||'').trim().toLowerCase()}|${(f.ip||'').trim()}|${String(f.port||'')}|${(f._scope||'').toLowerCase()}|${(f.hostname||f.url||'').trim().toLowerCase()}`;
+  const tl = (f.title||'').trim().toLowerCase();
+  const g = _isGlobalMerge(tl);
+  return `${tl}|${g ? '' : (f.ip||'').trim()}|${String(f.port||'')}|${(f._scope||'').toLowerCase()}|${g ? '' : (f.hostname||f.url||'').trim().toLowerCase()}`;
 }
 
 function addFinding(f) {
@@ -1952,7 +1999,16 @@ function reloadFindings() {
   if (_showFP) { reloadFalsePositives(); return; }
   fetch(`/api/findings/${PROJECT_ID}`)
     .then(r => r.json())
-    .then(arr => { arr.forEach(addFinding); })
+    .then(arr => {
+      // Full rebuild — the server-side _fkey dedup is authoritative.
+      // Rebuild from scratch so stale entries from the old key format
+      // (or from socket events that arrived before the global-merge
+      // prefix dedup) are collapsed.
+      allFindings.length = 0;
+      _findingIdx.clear();
+      arr.forEach(addFinding);
+      renderFindings();
+    })
     .catch(() => {});
 }
 

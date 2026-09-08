@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.18.4"
+VERSION = "1.18.5"
 
 import io
 import socket
@@ -4758,13 +4758,103 @@ def _ingest_all_final(project_id: str, proj: dict, seen: set) -> None:
             pass
 
 
+# Findings whose title starts with one of these prefixes are host-level:
+# multiple URLs / IPs on the same port are the same finding.  Mirrors
+# Fracture's _GLOBAL_MERGE_PREFIXES so Crucible dedup agrees with on-disk
+# merge and doesn't re-split findings that Fracture already unified.
+_GLOBAL_MERGE_PREFIXES = (
+    "missing security header:",
+    "interesting endpoint discovered",
+    "authenticated interesting endpoint",
+    "api endpoint identified",
+    "non-login form detected",
+    "login page identified",
+    "missing secure cookie attribute:",
+    "misconfigured secure cookie attribute:",
+    "broken function level authorization (bfla)",
+    "broken object level authorization (idor / bola)",
+    "web files downloaded",
+    "web screenshot captured",
+    "session cookie missing",
+    "directory listing enabled",
+    "http trace method enabled",
+    "http methods",
+    "sensitive paths disclosed in robots.txt",
+    "verbose error messages",
+    "cors misconfiguration",
+    "cross-site request forgery (csrf)",
+    "admin panel exposed",
+    "sensitive file exposed",
+    "sensitive path accessible:",
+    "deprecated protocol enabled:",
+    "telerik ui",
+    "cryptographic padding oracle",
+    "ssl/tls certificate:",
+    "ssl/tls ciphers:",
+    "ssl/tls forward secrecy:",
+    "ssl/tls vulnerability:",
+    "ssl/tls vulnerability (potential):",
+    "ssl/tls: tlsv1.3",
+    "header data leakage:",
+    "waf / edge security platform active:",
+    "technology identified:",
+    "permissive security header:",
+    "server misconfiguration:",
+    "load balancer detected:",
+    "password reset endpoint exposed",
+    "http method tampering:",
+    "non-standard cipher suites accepted",
+    "missing rate limiting",
+    "iis short file/directory name disclosure",
+    "outdated copyright notice detected",
+    "exposed cryptocurrency wallet address",
+    "unauthenticated access to protected path",
+    "asp.net viewstate",
+    "viewstate contains",
+    "sensitive file exposed:",
+    "asp.net trace handler",
+    "asp.net error log",
+    "asp.net handler endpoints",
+    "asp.net app_data",
+    "asp.net client scripts",
+    "frontpage",
+    "f5 big-ip:",
+    "f5 big-ip cookie",
+    "backend server configuration",
+    "spa routes extracted",
+    "http method accepted but not functional:",
+    "ssl/tls obsolete",
+    "ssl/tls signature",
+    "ssl/tls ocsp",
+    "ssl/tls breach",
+    "ssl/tls lucky13",
+    "ssl/tls sweet32",
+    "ssl/tls dns:",
+    "ssl/tls cert_",
+    "ssl/tls cookie_",
+    "ssl/tls certificate information",
+    "ssl/tls non-standard",
+    "ssl/tls session",
+    "single page application",
+    "unknown header:",
+    "missing secure cookie:",
+    "timing attack on login",
+)
+
+
+def _is_global_merge(title_lower: str) -> bool:
+    return any(title_lower.startswith(p) for p in _GLOBAL_MERGE_PREFIXES)
+
+
 def _fkey(f: dict) -> tuple:
+    _tl = (f.get("title") or f.get("detail") or "").strip().lower()
+    _global = _is_global_merge(_tl)
     return (
-        (f.get("title") or f.get("detail") or "").strip().lower(),
-        (f.get("ip") or "").strip(),
+        _tl,
+        "" if _global else (f.get("ip") or "").strip(),
         str(f.get("port") or "0"),
         (f.get("_scope") or "").lower(),
-        (f.get("hostname") or f.get("url") or "").strip().lower(),
+        "" if _global else (f.get("hostname") or f.get("url") or "").strip().lower(),
     )
 
 
