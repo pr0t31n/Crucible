@@ -998,10 +998,10 @@
     </div>
 
     <div class="ai-launch-bar">
-      <button class="btn btn-sm btn-fr" id="btnLaunchFractureAI" onclick="launchCrucibleAI('fr')" disabled>
+      <button class="btn btn-sm btn-fr" id="btnLaunchFractureAI" onclick="openLaunchModal('fr')" disabled>
         🌐 Launch Fracture (<span id="frAICount">0</span> targets)
       </button>
-      <button class="btn btn-sm btn-si" id="btnLaunchSiphonAI" onclick="launchCrucibleAI('si')" disabled>
+      <button class="btn btn-sm btn-si" id="btnLaunchSiphonAI" onclick="openLaunchModal('si')" disabled>
         🔌 Launch Siphon (<span id="siAICount">0</span> targets)
       </button>
     </div>
@@ -1200,6 +1200,31 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary btn-sm" onclick="closeOwaspModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Action Items launch modal ───────────────────────── -->
+<div class="modal-overlay hidden" id="aiLaunchModal" role="dialog" aria-modal="true"
+     onclick="if(event.target===this) _aiModalClose()">
+  <div class="modal-box ai-launch-modal-box">
+    <div class="modal-title" id="aiLaunchTitle">Launch Tool</div>
+    <div class="modal-body">
+      <div class="ai-modal-health" id="aiHealthBar">
+        <span id="aiHealthIcon">⏳</span>
+        <span id="aiHealthText">Checking…</span>
+      </div>
+      <div class="ai-modal-controls">
+        <button class="btn btn-xs" onclick="_aiCheckAll()">☑ Check All</button>
+        <button class="btn btn-xs" onclick="_aiClearAll()">☐ Clear All</button>
+        <span class="ai-sel-count" id="aiSelCount">0 / 0</span>
+      </div>
+      <div class="ai-modal-checklist" id="aiChecklist"></div>
+    </div>
+    <div class="modal-footer">
+      <span id="aiLaunchStat" class="ai-launch-stat"></span>
+      <button class="btn btn-sm" onclick="_aiModalClose()">Cancel</button>
+      <button class="btn btn-sm btn-primary" id="aiLaunchBtn" onclick="_aiLaunch()" disabled>🚀 Launch</button>
     </div>
   </div>
 </div>
@@ -4324,35 +4349,161 @@ function loadActionItems() {
     .catch(() => {});
 }
 
-function launchCrucibleAI(tool) {
+// ── Launch modal state ────────────────────────────────────
+let _aiModalTool = '';
+let _aiModalItems = [];
+let _aiModalHealthy = false;
+
+function openLaunchModal(tool) {
+  _aiModalTool = tool;
+  _aiModalHealthy = false;
   const toolName = tool === 'fr' ? 'Fracture' : 'Siphon';
-  const targets = _actionItemsCR
-    .filter(i => (i.recommended_tool||'').toLowerCase() === toolName.toLowerCase())
-    .map(i => i.target);
-  if (!targets.length) { showToast('No targets for ' + toolName, 'warn'); return; }
-  const btn = tool === 'fr' ? document.getElementById('btnLaunchFractureAI') : document.getElementById('btnLaunchSiphonAI');
-  if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
-  fetch(`/api/launch-crucible-project/${PROJECT_ID}`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({tool: tool, targets: targets}),
-  })
-  .then(r => r.json())
-  .then(d => {
+  _aiModalItems = _actionItemsCR.filter(i =>
+    (i.recommended_tool || '').toLowerCase() === toolName.toLowerCase()
+  );
+  if (!_aiModalItems.length) {
+    showToast('No targets for ' + toolName, 'warn');
+    return;
+  }
+
+  document.getElementById('aiLaunchTitle').textContent =
+    `Launch ${toolName} — ${_aiModalItems.length} target${_aiModalItems.length === 1 ? '' : 's'}`;
+
+  // Build checklist
+  const container = document.getElementById('aiChecklist');
+  const priOrder = {CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4};
+  const sorted = _aiModalItems.slice().sort((a, b) => {
+    const ra = priOrder[(a.priority||'INFO').toUpperCase()] ?? 5;
+    const rb = priOrder[(b.priority||'INFO').toUpperCase()] ?? 5;
+    return ra - rb;
+  });
+  _aiModalItems = sorted;
+
+  container.innerHTML = _aiModalItems.map((item, idx) => {
+    const _p = (item.priority || '').toUpperCase();
+    const priCls = _p === 'CRITICAL' ? 'pill-critical' : _p === 'HIGH' ? 'pill-high' : _p === 'MEDIUM' ? 'pill-medium' : 'pill-low';
+    return `<label class="ai-chk-item">
+      <input type="checkbox" checked data-idx="${idx}" onchange="_aiUpdateCount()">
+      <span class="pill ${priCls}" style="font-size:9px;padding:1px 5px">${_escHtml(item.priority || 'INFO')}</span>
+      <span class="ai-chk-target">${_escHtml((item.target || '').substring(0, 60))}</span>
+      <span class="ai-chk-title">${_escHtml(item.title || '')}</span>
+    </label>`;
+  }).join('');
+
+  _aiUpdateCount();
+  const stat = document.getElementById('aiLaunchStat');
+  stat.textContent = '';
+  stat.style.color = '';
+  document.getElementById('aiLaunchBtn').disabled = true;
+  document.getElementById('aiLaunchBtn').textContent = '🚀 Launch';
+  document.getElementById('aiLaunchModal').classList.remove('hidden');
+
+  // Run health check
+  _aiHealthCheck(tool);
+}
+
+function _aiUpdateCount() {
+  const all = document.querySelectorAll('#aiChecklist input[type=checkbox]');
+  const checked = [...all].filter(c => c.checked).length;
+  document.getElementById('aiSelCount').textContent = `${checked} / ${all.length}`;
+  document.getElementById('aiLaunchBtn').disabled = !_aiModalHealthy || checked === 0;
+}
+
+function _aiCheckAll() {
+  document.querySelectorAll('#aiChecklist input[type=checkbox]').forEach(c => c.checked = true);
+  _aiUpdateCount();
+}
+
+function _aiClearAll() {
+  document.querySelectorAll('#aiChecklist input[type=checkbox]').forEach(c => c.checked = false);
+  _aiUpdateCount();
+}
+
+function _aiModalClose() {
+  document.getElementById('aiLaunchModal').classList.add('hidden');
+}
+
+async function _aiHealthCheck(tool) {
+  const icon = document.getElementById('aiHealthIcon');
+  const text = document.getElementById('aiHealthText');
+  const bar  = document.getElementById('aiHealthBar');
+  icon.textContent = '⏳';
+  text.textContent = 'Checking tool availability…';
+  bar.className = 'ai-modal-health ai-health-checking';
+
+  try {
+    const resp = await fetch(`/api/health-check/${tool}`);
+    const d = await resp.json();
+    if (d.healthy) {
+      icon.textContent = '✅';
+      text.textContent = d.message || 'Tool available';
+      bar.className = 'ai-modal-health ai-health-ok';
+      _aiModalHealthy = true;
+    } else {
+      icon.textContent = '❌';
+      text.textContent = d.message || 'Tool not available';
+      bar.className = 'ai-modal-health ai-health-fail';
+      _aiModalHealthy = false;
+    }
+  } catch (err) {
+    icon.textContent = '❌';
+    text.textContent = 'Health check failed: ' + err;
+    bar.className = 'ai-modal-health ai-health-fail';
+    _aiModalHealthy = false;
+  }
+  _aiUpdateCount();
+}
+
+async function _aiLaunch() {
+  const btn  = document.getElementById('aiLaunchBtn');
+  const stat = document.getElementById('aiLaunchStat');
+  btn.disabled = true;
+  btn.textContent = '⏳ Launching…';
+  stat.textContent = '';
+  stat.style.color = '';
+
+  const checks = document.querySelectorAll('#aiChecklist input[type=checkbox]');
+  const selected = [...checks].filter(c => c.checked).map(c => _aiModalItems[parseInt(c.dataset.idx)]);
+  const targets = selected.map(i => i.target).filter(Boolean);
+
+  if (!targets.length) {
+    stat.textContent = 'No targets selected';
+    btn.disabled = false;
+    btn.textContent = '🚀 Launch';
+    return;
+  }
+
+  const toolName = _aiModalTool === 'fr' ? 'Fracture' : 'Siphon';
+
+  try {
+    const resp = await fetch(`/api/launch-crucible-project/${PROJECT_ID}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tool: _aiModalTool, targets: targets}),
+    });
+    const d = await resp.json();
     if (d.success) {
+      stat.textContent = `✓ ${toolName} started — ${d.target_count} target(s)`;
+      stat.style.color = 'var(--risk-low, #2ecc71)';
       showToast(`${toolName} launched with ${d.target_count} target(s)`, 'ok');
-      _actionItemsCR.forEach(i => {
-        if ((i.recommended_tool||'').toLowerCase() === toolName.toLowerCase()) i.status = 'launched';
-      });
+      selected.forEach(i => { i.status = 'launched'; });
       _updateAiBadgeCR();
       renderActionItemsCR();
+      setTimeout(_aiModalClose, 1200);
     } else {
-      showToast(`Launch failed: ${d.error}`, 'err');
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || 'Launch'; }
+      stat.textContent = 'Failed: ' + (d.error || 'unknown error');
+      stat.style.color = 'var(--risk-high, #e74c3c)';
     }
-  })
-  .catch(e => { showToast('Launch error: ' + e, 'err'); if (btn) btn.disabled = false; });
+  } catch (e) {
+    stat.textContent = 'Error: ' + e;
+    stat.style.color = 'var(--risk-high, #e74c3c)';
+  }
+  btn.disabled = false;
+  btn.textContent = '🚀 Launch';
 }
+
+// Backward compat alias
+function launchCrucibleAI(tool) { openLaunchModal(tool); }
 
 // Load action items on page load
 document.addEventListener('DOMContentLoaded', () => { loadActionItems(); });

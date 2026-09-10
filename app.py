@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.19.2"
+VERSION = "1.20.0"
 
 import io
 import socket
@@ -2317,6 +2317,12 @@ def api_launch_crucible_project(project_id: str):
     tool = body.get("tool", "").lower()
     if tool not in ("fr", "si"):
         return jsonify({"success": False, "error": "tool must be 'fr' or 'si'"}), 400
+    # Verify tool script is installed
+    _tool_scripts = {"fr": Path("/opt/pr0t31n/Fracture/fracture.py"),
+                     "si": Path("/opt/pr0t31n/Siphon/siphon.py")}
+    if not _tool_scripts.get(tool, Path("/dev/null")).exists():
+        return jsonify({"success": False,
+                        "error": "Tool script not found on this server"}), 500
     targets = body.get("targets", [])
     if not targets:
         return jsonify({"success": False, "error": "no targets provided"}), 400
@@ -2325,6 +2331,30 @@ def api_launch_crucible_project(project_id: str):
         return jsonify({"success": True, "tool": tool, "target_count": len(targets)})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/health-check/<tool>")
+def api_health_check(tool: str):
+    """Pre-flight health check before launching from action items."""
+    tool = tool.lower()
+    if tool == "fr":
+        fr_script = Path("/opt/pr0t31n/Fracture/fracture.py")
+        if fr_script.exists():
+            return jsonify({"healthy": True, "tool": tool,
+                            "message": "Fracture is available"})
+        return jsonify({"healthy": False, "tool": tool,
+                        "message": "Fracture not installed at "
+                                   "/opt/pr0t31n/Fracture/"})
+    elif tool == "si":
+        si_script = Path("/opt/pr0t31n/Siphon/siphon.py")
+        if si_script.exists():
+            return jsonify({"healthy": True, "tool": tool,
+                            "message": "Siphon is available"})
+        return jsonify({"healthy": False, "tool": tool,
+                        "message": "Siphon not installed at "
+                                   "/opt/pr0t31n/Siphon/"})
+    return jsonify({"healthy": False, "tool": tool,
+                    "message": f"Unknown tool: {tool}"}), 400
 
 
 @app.route("/api/compare-scans", methods=["POST"])

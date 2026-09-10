@@ -2392,3 +2392,42 @@ body {
 #aiEmpty {
   text-align: center; padding: 2rem; color: #484f58; font-size: .9rem;
 }
+
+/* ══════════════════ ACTION ITEMS LAUNCH MODAL ══════════════════ */
+.ai-launch-modal-box { width: min(620px, 95vw); }
+.ai-modal-health {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 6px;
+  font-size: 12px; border: 1px solid var(--border-mid);
+}
+.ai-health-checking { background: rgba(241,196,15,.08); border-color: rgba(241,196,15,.3); }
+.ai-health-ok       { background: rgba(46,204,113,.08); border-color: rgba(46,204,113,.3); }
+.ai-health-fail     { background: rgba(231,76,60,.08);  border-color: rgba(231,76,60,.3); }
+.ai-modal-controls {
+  display: flex; align-items: center; gap: 8px;
+}
+.ai-sel-count {
+  margin-left: auto; font-size: 11px; opacity: .6;
+}
+.ai-modal-checklist {
+  max-height: 40vh; overflow-y: auto;
+  border: 1px solid var(--border-mid); border-radius: 6px;
+}
+.ai-chk-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; cursor: pointer;
+  border-bottom: 1px solid var(--border-mid);
+  font-size: 12px; transition: background .15s;
+}
+.ai-chk-item:last-child { border-bottom: none; }
+.ai-chk-item:hover { background: rgba(255,255,255,.03); }
+.ai-chk-target {
+  font-family: var(--font-mono, monospace); font-size: 11px;
+  min-width: 140px; max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-chk-title {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  opacity: .7;
+}
+.ai-launch-stat { font-size: 11px; margin-right: auto; }
