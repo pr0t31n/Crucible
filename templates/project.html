@@ -32,6 +32,9 @@
     <button class="tab-btn"        data-tab="log"      onclick="switchTab('log',this)">
       Log <span class="tab-badge tab-badge-muted" id="logBadge">0</span>
     </button>
+    <button class="tab-btn"        data-tab="actionItems" onclick="switchTab('actionItems',this);loadActionItems()">
+      Action Items <span class="tab-badge" id="actionItemsBadge" style="display:none">0</span>
+    </button>
   </nav>
 
   <!-- ════════════════ TAB: CONSOLE ════════════════ -->
@@ -983,6 +986,66 @@
     </div>
   </div><!-- /tab-authentication -->
 
+  <!-- ════════════════ TAB: ACTION ITEMS ════════════════ -->
+  <div class="tab-panel" id="tab-actionItems">
+    <div class="ai-summary-bar">
+      <div class="ai-card"><div class="ai-card-num" id="aiTotal">0</div><div class="ai-card-label">Total</div></div>
+      <div class="ai-card"><div class="ai-card-num" id="aiFracture">0</div><div class="ai-card-label">Fracture</div></div>
+      <div class="ai-card"><div class="ai-card-num" id="aiSiphon">0</div><div class="ai-card-label">Siphon</div></div>
+      <div class="ai-card"><div class="ai-card-num" id="aiExploit">0</div><div class="ai-card-label">Exploit</div></div>
+      <div class="ai-card"><div class="ai-card-num" id="aiManual">0</div><div class="ai-card-label">Manual</div></div>
+      <div class="ai-card"><div class="ai-card-num" id="aiPending">0</div><div class="ai-card-label">Pending</div></div>
+    </div>
+
+    <div class="ai-launch-bar">
+      <button class="btn btn-sm btn-fr" id="btnLaunchFractureAI" onclick="launchCrucibleAI('fr')" disabled>
+        🌐 Launch Fracture (<span id="frAICount">0</span> targets)
+      </button>
+      <button class="btn btn-sm btn-si" id="btnLaunchSiphonAI" onclick="launchCrucibleAI('si')" disabled>
+        🔌 Launch Siphon (<span id="siAICount">0</span> targets)
+      </button>
+    </div>
+
+    <div class="ai-filter-bar">
+      <select id="aiFilterTool" onchange="renderActionItemsCR()">
+        <option value="">All Tools</option>
+        <option value="Fracture">Fracture</option>
+        <option value="Siphon">Siphon</option>
+        <option value="ExploitDB">ExploitDB</option>
+        <option value="Metasploit">Metasploit</option>
+        <option value="Manual Verification">Manual Verification</option>
+      </select>
+      <select id="aiFilterPriority" onchange="renderActionItemsCR()">
+        <option value="">All Priorities</option>
+        <option value="CRITICAL">Critical</option>
+        <option value="HIGH">High</option>
+        <option value="MEDIUM">Medium</option>
+        <option value="LOW">Low</option>
+      </select>
+      <select id="aiFilterStatus" onchange="renderActionItemsCR()">
+        <option value="">All Statuses</option>
+        <option value="pending">Pending</option>
+        <option value="launched">Launched</option>
+      </select>
+    </div>
+
+    <div class="table-wrap">
+      <table class="data-table" id="aiTable">
+        <thead>
+          <tr>
+            <th>Priority</th><th>Type</th><th>Target</th>
+            <th>Tool</th><th>Title</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="aiBody"></tbody>
+      </table>
+      <div class="empty-state" id="aiEmpty" style="display:none">
+        No action items yet. Action items will appear as Fracture, Siphon, and Auger
+        identify cross-tool testing opportunities and exploitable vulnerabilities.
+      </div>
+    </div>
+  </div><!-- /tab-actionItems -->
+
 </div><!-- /project-layout -->
 
 
@@ -1657,6 +1720,13 @@ socket.on('checkpoint_status', info => {
   }
 });
 
+// ── Action Items ─────────────────────────────────────────
+socket.on('action_item', data => {
+  if (data.pid === PROJECT_ID) {
+    addActionItemCR(data.item);
+  }
+});
+
 // ── Findings ──────────────────────────────────────────────
 socket.on('finding', data => addFinding(data.finding));
 
@@ -1897,6 +1967,7 @@ function switchTab(name, btn) {
   if (name === 'findings') { reloadFindings(); renderFindings(); }
   if (name === 'settings') { loadSettings('fr'); loadSettings('si'); }
   if (name === 'summary')  { _loadSummarySettings(); _loadTargetProfile(); }
+  if (name === 'actionItems') { renderActionItemsCR(); }
 }
 
 // ── Findings ──────────────────────────────────────────────
@@ -4164,6 +4235,127 @@ function renderApiTree(apiMap) {
 }
 
 function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Action Items ─────────────────────────────────────────────────
+let _actionItemsCR = [];
+
+function addActionItemCR(item) {
+  const key = (item.recommended_tool||'').toLowerCase() + '|' + (item.target||'').toLowerCase() + '|' + (item.title||'').trim().toLowerCase();
+  if (_actionItemsCR.some(i => {
+    const ik = (i.recommended_tool||'').toLowerCase() + '|' + (i.target||'').toLowerCase() + '|' + (i.title||'').trim().toLowerCase();
+    return ik === key;
+  })) return;
+  _actionItemsCR.push(item);
+  _updateAiBadgeCR();
+  if (document.getElementById('tab-actionItems').classList.contains('active')) renderActionItemsCR();
+}
+
+function _updateAiBadgeCR() {
+  const badge = document.getElementById('actionItemsBadge');
+  const n = _actionItemsCR.length;
+  badge.textContent = n;
+  badge.style.display = n > 0 ? '' : 'none';
+  document.getElementById('aiTotal').textContent = n;
+  const fr = _actionItemsCR.filter(i => (i.recommended_tool||'').toLowerCase() === 'fracture').length;
+  const si = _actionItemsCR.filter(i => (i.recommended_tool||'').toLowerCase() === 'siphon').length;
+  const pending = _actionItemsCR.filter(i => (i.status||'pending') === 'pending').length;
+  const exploit = _actionItemsCR.filter(i => ['exploitdb','metasploit'].includes((i.recommended_tool||'').toLowerCase())).length;
+  const manual  = _actionItemsCR.filter(i => (i.recommended_tool||'').toLowerCase() === 'manual verification').length;
+  document.getElementById('aiFracture').textContent = fr;
+  document.getElementById('aiSiphon').textContent = si;
+  document.getElementById('aiExploit').textContent = exploit;
+  document.getElementById('aiManual').textContent = manual;
+  document.getElementById('aiPending').textContent = pending;
+  document.getElementById('frAICount').textContent = fr;
+  document.getElementById('siAICount').textContent = si;
+  // Enable launch buttons when tool is not running and items exist
+  const frBtn = document.getElementById('btnLaunchFractureAI');
+  const siBtn = document.getElementById('btnLaunchSiphonAI');
+  if (frBtn) frBtn.disabled = fr === 0 || _frRunning;
+  if (siBtn) siBtn.disabled = si === 0 || _siRunning;
+}
+
+function renderActionItemsCR() {
+  const toolF = document.getElementById('aiFilterTool').value;
+  const prioF = document.getElementById('aiFilterPriority').value;
+  const statF = document.getElementById('aiFilterStatus').value;
+  let items = _actionItemsCR;
+  if (toolF)  items = items.filter(i => (i.recommended_tool||'') === toolF);
+  if (prioF)  items = items.filter(i => (i.priority||'') === prioF);
+  if (statF)  items = items.filter(i => (i.status||'pending') === statF);
+  const tbody = document.getElementById('aiBody');
+  const empty = document.getElementById('aiEmpty');
+  if (!items.length) {
+    tbody.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  const priOrder = {high:0, medium:1, low:2};
+  items.sort((a,b) => (priOrder[a.priority]||9) - (priOrder[b.priority]||9));
+  let html = '';
+  for (const ai of items) {
+    const _p = (ai.priority||'').toUpperCase();
+    const priCls = _p === 'CRITICAL' ? 'pill-critical' : _p === 'HIGH' ? 'pill-high' : _p === 'MEDIUM' ? 'pill-medium' : 'pill-low';
+    const _rt = (ai.recommended_tool||'').toLowerCase();
+    const toolCls = _rt === 'fracture' ? 'tool-fr' : _rt === 'siphon' ? 'tool-si' :
+                    _rt === 'exploitdb' ? 'tool-exploit' : _rt === 'metasploit' ? 'tool-exploit' :
+                    _rt === 'manual verification' ? 'tool-manual' : 'tool-si';
+    html += `<tr>
+      <td><span class="pill ${priCls}">${_escHtml(ai.priority||'')}</span></td>
+      <td>${_escHtml(ai.type||'')}</td>
+      <td class="target-cell" title="${_escHtml(ai.target||'')}">${_escHtml((ai.target||'').substring(0,60))}</td>
+      <td><span class="tool-badge ${toolCls}">${_escHtml(ai.recommended_tool||'')}</span></td>
+      <td>${_escHtml(ai.title||'')}</td>
+      <td><span class="pill pill-status-${ai.status||'pending'}">${_escHtml(ai.status||'pending')}</span></td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+function loadActionItems() {
+  fetch(`/api/action-items/${PROJECT_ID}`)
+    .then(r => r.json())
+    .then(d => {
+      _actionItemsCR = d.action_items || [];
+      _updateAiBadgeCR();
+      renderActionItemsCR();
+    })
+    .catch(() => {});
+}
+
+function launchCrucibleAI(tool) {
+  const toolName = tool === 'fr' ? 'Fracture' : 'Siphon';
+  const targets = _actionItemsCR
+    .filter(i => (i.recommended_tool||'').toLowerCase() === toolName.toLowerCase())
+    .map(i => i.target);
+  if (!targets.length) { showToast('No targets for ' + toolName, 'warn'); return; }
+  const btn = tool === 'fr' ? document.getElementById('btnLaunchFractureAI') : document.getElementById('btnLaunchSiphonAI');
+  if (btn) { btn.disabled = true; btn.textContent = 'Launching…'; }
+  fetch(`/api/launch-crucible-project/${PROJECT_ID}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tool: tool, targets: targets}),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      showToast(`${toolName} launched with ${d.target_count} target(s)`, 'ok');
+      _actionItemsCR.forEach(i => {
+        if ((i.recommended_tool||'').toLowerCase() === toolName.toLowerCase()) i.status = 'launched';
+      });
+      _updateAiBadgeCR();
+      renderActionItemsCR();
+    } else {
+      showToast(`Launch failed: ${d.error}`, 'err');
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.origText || 'Launch'; }
+    }
+  })
+  .catch(e => { showToast('Launch error: ' + e, 'err'); if (btn) btn.disabled = false; });
+}
+
+// Load action items on page load
+document.addEventListener('DOMContentLoaded', () => { loadActionItems(); });
 </script>
 
 <style>
