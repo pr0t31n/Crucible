@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.20.0"
+VERSION = "1.21.0"
 
 import io
 import socket
@@ -1311,7 +1311,7 @@ def api_create_project():
     si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
     si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
     si["scan"]["api_spec_url"]  = body.get("si_api_spec_url", "")
-    si["scan"]["environment"]   = body.get("si_environment", "")
+    si["scan"]["environment"]   = body.get("si_environment", "") or "non-production"
 
     # Move staged spec files into the siphon output directory
     spec_dir = si_output_dir / "spec_files"
@@ -3835,8 +3835,54 @@ def api_target_profile(project_id: str):
 @app.route("/api/delete_project/<project_id>", methods=["DELETE"])
 def api_delete_project(project_id: str):
     data = _load_projects()
+    proj = data["projects"].get(project_id)
+    if not proj:
+        return jsonify({"error": "not found"}), 404
+
+    # Refuse to delete while a scan is running
+    live = _tool_status.get(project_id, {})
+    running = any(v == "running" for v in live.values())
+    if not running:
+        procs = _procs.get(project_id, {})
+        running = any(p is not None and p.poll() is None
+                      for p in procs.values() if p)
+    if running:
+        return jsonify({"error": "Cannot delete a project while a scan is running."}), 409
+
+    delete_files = (request.json or {}).get("delete_files", False)
+    if delete_files:
+        for dir_key in ("project_dir", "fracture_output_dir",
+                        "siphon_output_dir", "auger_output_dir"):
+            d = proj.get(dir_key, "")
+            if d and Path(d).is_dir():
+                try:
+                    shutil.rmtree(d, ignore_errors=True)
+                except Exception:
+                    pass
+
+    # Remove from registry
     data["projects"].pop(project_id, None)
     _save_projects(data)
+
+    # Clean up project config directory
+    cfg_dir = PROJECTS_DIR / project_id
+    if cfg_dir.is_dir():
+        try:
+            shutil.rmtree(cfg_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    # Purge in-memory state
+    for cache in (_all_findings, _all_action_items, _buffers, _log_buffers,
+                  _err_buffers, _status_cache, _tool_status, _procs,
+                  _watcher_flags, _watcher_gen, _answer_queues,
+                  _pending_prompts):
+        cache.pop(project_id, None)
+    # Stop any watcher thread
+    w = _watchers.pop(project_id, None)
+    if w and w.is_alive():
+        _watcher_flags[project_id] = False  # signal it to stop
+
     return jsonify({"success": True})
 
 
@@ -5226,7 +5272,7 @@ def api_execute_project():
     si["scan"]["api_base_url"]  = si_url_list[0] if si_url_list else ""
     si["scan"]["api_base_urls"] = si_url_list[1:] if len(si_url_list) > 1 else []
     si["scan"]["api_spec_url"]  = body.get("si_api_spec_url", "")
-    si["scan"]["environment"]   = body.get("si_environment", "")
+    si["scan"]["environment"]   = body.get("si_environment", "") or "non-production"
     si["scan"]["auth"] = _build_si_auth_from_body(body)
 
     fr_path = fr_output_dir / "fr_settings.json"

@@ -40,6 +40,7 @@
               <a href="/api/download-project/{{ pid }}" class="proj-card-dl-btn" title="Download project zip" onclick="event.stopPropagation()">&#x2B07;</a>
               <a href="/edit_project/{{ pid }}" class="proj-card-edit-btn" title="Edit engagement">&#x270E;</a>
               <button class="proj-card-clear-btn" title="Clear scan data" onclick="clearProject(event,'{{ pid }}','{{ proj.name|replace("'","\\'") }}')">&#x21BA;</button>
+              <button class="proj-card-del-btn" title="Delete engagement" onclick="deleteProject(event,'{{ pid }}','{{ proj.name|replace("'","\\'") }}')">&#x1F5D1;</button>
             </div>
             {% endfor %}
           </div>
@@ -118,9 +119,41 @@
   </div>
 </div>
 
+<!-- Delete confirmation modal -->
+<div class="modal-overlay hidden" id="deleteModal" role="dialog" aria-modal="true"
+     onclick="if(event.target===this) closeDeleteModal()">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-title" style="color:var(--danger,#f38ba8)">Delete Engagement</div>
+    <div class="modal-body">
+      <p id="deleteModalText" style="margin:0 0 16px"></p>
+      <label class="delete-files-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.9em;opacity:.85">
+        <input type="checkbox" id="deleteFilesCheck">
+        Also delete project files from disk
+      </label>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-sm" id="deleteConfirmBtn"
+        style="background:var(--danger,#f38ba8);color:#111;border:none">Delete</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
+<style>
+.proj-card-del-btn {
+  background: none; border: 1px solid transparent; color: var(--text-muted, #888);
+  cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 14px;
+  transition: all .15s;
+}
+.proj-card-del-btn:hover {
+  background: rgba(243,139,168,.15);
+  border-color: var(--danger, #f38ba8);
+  color: var(--danger, #f38ba8);
+}
+</style>
 <script>
 function clearProject(evt, pid, name) {
   evt.preventDefault();
@@ -191,8 +224,50 @@ function closeProjInfoModal() {
   document.getElementById('projInfoModal').classList.add('hidden');
 }
 
+/* ── Delete project ────────────────────────────────────────────── */
+let _deletePid = null;
+function deleteProject(evt, pid, name) {
+  evt.preventDefault();
+  evt.stopPropagation();
+  _deletePid = pid;
+  document.getElementById('deleteModalText').textContent =
+    'Permanently delete "' + name + '"?\nThis cannot be undone.';
+  document.getElementById('deleteFilesCheck').checked = false;
+  document.getElementById('deleteModal').classList.remove('hidden');
+  // Wire confirm button
+  document.getElementById('deleteConfirmBtn').onclick = function() {
+    const delFiles = document.getElementById('deleteFilesCheck').checked;
+    fetch('/api/delete_project/' + _deletePid, {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({delete_files: delFiles}),
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { alert(d.error); return; }
+      // Remove the card row from the DOM
+      evt.target.closest('.proj-card-row').remove();
+      // If no projects left, show empty state
+      if (!document.querySelector('.proj-card-row')) {
+        document.querySelector('.proj-list').innerHTML =
+          '<div class="empty-state">' +
+          '<div class="empty-icon">&#9674;</div>' +
+          '<div class="empty-text">No engagements yet</div>' +
+          '<a href="/new_project" class="btn btn-primary mt-12">Create first engagement</a>' +
+          '</div>';
+      }
+      closeDeleteModal();
+    })
+    .catch(e => alert('Delete failed: ' + e));
+  };
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.add('hidden');
+  _deletePid = null;
+}
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeProjInfoModal();
+  if (e.key === 'Escape') { closeProjInfoModal(); closeDeleteModal(); }
 });
 </script>
 {% endblock %}
