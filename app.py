@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.21.2"
+VERSION = "1.21.3"
 
 import io
 import socket
@@ -876,7 +876,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-        import time as _t
+    import time as _t
     return redirect(url_for("login", _t=int(_t.time())))
 
 @app.route("/auth/change-password", methods=["GET", "POST"])
