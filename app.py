@@ -876,8 +876,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-        import time as _t
-    return redirect(url_for("login", _t=int(_t.time())))
+    return redirect(url_for("login"))
 
 @app.route("/auth/change-password", methods=["GET", "POST"])
 def change_password():
