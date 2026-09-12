@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.21.3"
+VERSION = "1.21.4"
 
 import io
 import socket
@@ -855,8 +855,10 @@ def after_request(response):
 def login():
     if request.method == "POST":
         if not _auth.validate_csrf(request.form.get("csrf_token")):
+            _uname = request.form.get("username", "").strip()
             return render_template("login.html",
-                                   error="Invalid request. Please try again.",
+                                   error="Session expired \u2014 please log in again.",
+                                   username=_uname,
                                    csrf_token=_auth.generate_csrf())
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
@@ -885,7 +887,7 @@ def change_password():
     if request.method == "POST":
         if not _auth.validate_csrf(request.form.get("csrf_token")):
             return render_template("change_password.html",
-                                   error="Invalid request.",
+                                   error="Session expired \u2014 please try again.",
                                    force=force,
                                    csrf_token=_auth.generate_csrf())
         new_password    = request.form.get("new_password", "")
