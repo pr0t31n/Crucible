@@ -334,6 +334,8 @@ WorkingDirectory={APP_DIR}
 ExecStart={sys.executable} {APP_FILE}
 Restart=on-failure
 RestartSec=5
+MemoryHigh=4G
+MemoryMax=5G
 Environment=FLASK_ENV=production
 Environment=PORT={PORT}
 
