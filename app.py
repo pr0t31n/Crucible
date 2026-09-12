@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.21.0"
+VERSION = "1.21.1"
 
 import io
 import socket
@@ -5114,10 +5114,20 @@ def _save_execute_queue() -> None:
 
 
 def _is_any_running() -> bool:
+    """Check if any tool is actively running across all projects."""
     for procs in _procs.values():
-        if procs and (procs.get("fr") or procs.get("si") or procs.get("db")):
-            return True
+        if not procs:
+            continue
+        for p in procs.values():
+            if p is not None and p.poll() is None:  # actually running
+                return True
     return False
+
+
+def _is_tool_running(project_id: str, tool: str) -> bool:
+    """Check if a specific tool is running for a specific project."""
+    p = (_procs.get(project_id) or {}).get(tool)
+    return p is not None and p.poll() is None
 
 
 def _launch_tool_bg(project_id: str, tool: str) -> None:
@@ -5193,11 +5203,18 @@ def _execute_queued_job(job: dict) -> None:
 
 def _dequeue_next() -> None:
     with _queue_lock:
-        if not _job_queue or _is_any_running():
+        if not _job_queue:
             return
-        job = _job_queue.pop(0)
-        _save_execute_queue()
-    threading.Thread(target=_execute_queued_job, args=(job,), daemon=True).start()
+        # Find the first queued job whose tools are not currently running
+        for i, job in enumerate(_job_queue):
+            pid = job.get("project_id", "")
+            tools = job.get("tools", [])
+            if not any(_is_tool_running(pid, t) for t in tools):
+                _job_queue.pop(i)
+                _save_execute_queue()
+                threading.Thread(target=_execute_queued_job, args=(job,),
+                                 daemon=True).start()
+                return
 
 
 # ---------------------------------------------------------------------------
@@ -5313,8 +5330,12 @@ def api_execute_project():
         return jsonify({"ok": True, "project_id": project_id, "queued": False, "started": False})
 
     job = {"project_id": project_id, "tools": tools}
+    # Only queue if the SAME tools on the SAME project are already running.
+    # Different projects (or different tools on the same project) can run
+    # concurrently — _launch_tool_bg already guards against per-tool dupes.
     with _queue_lock:
-        if _is_any_running():
+        _blocked = [t for t in tools if _is_tool_running(project_id, t)]
+        if _blocked:
             position = len(_job_queue) + 1
             _job_queue.append(job)
             _save_execute_queue()
