@@ -29,8 +29,9 @@
     <button class="tab-btn"        data-tab="status"   onclick="switchTab('status',this)">Status</button>
     <button class="tab-btn"        data-tab="settings" onclick="switchTab('settings',this)">Settings</button>
     <button class="tab-btn"        data-tab="summary"  onclick="switchTab('summary',this)">Summary</button>
-    <button class="tab-btn"        data-tab="log"      onclick="switchTab('log',this)">
-      Log <span class="tab-badge tab-badge-muted" id="logBadge">0</span>
+    <button class="tab-btn"        data-tab="log"      onclick="switchTab('log',this)">Log</button>
+    <button class="tab-btn"        data-tab="errors"   onclick="switchTab('errors',this)">
+      Errors <span class="tab-badge tab-badge-err" id="errorsBadge">0</span>
     </button>
     <button class="tab-btn"        data-tab="actionItems" onclick="switchTab('actionItems',this);loadActionItems()">
       Action Items <span class="tab-badge" id="actionItemsBadge" style="display:none">0</span>
@@ -322,8 +323,63 @@
     </div>
   </div><!-- /tab-log -->
 
-
-
+  <!-- ════════════════ TAB: ERRORS ════════════════ -->
+  <div class="tab-panel" id="tab-errors">
+    <div class="panel">
+      <div class="log-toolbar" style="border-bottom:1px solid var(--border, #2a2a2a); padding-bottom:6px; margin-bottom:6px;">
+        <label style="font-size:0.85em; opacity:0.8;">From:
+          <input type="datetime-local" id="errFromDT" step="1" oninput="renderErrors()">
+        </label>
+        <label style="font-size:0.85em; opacity:0.8;">To:
+          <input type="datetime-local" id="errToDT"   step="1" oninput="renderErrors()">
+        </label>
+        <button class="btn btn-sm btn-ghost" onclick="clearErrTimeRange()">Clear range</button>
+      </div>
+      <div class="log-toolbar">
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-filter-key="etool" data-filter-val="" onclick="setErrFilter(this,'tool','')">All</button>
+          {% if 'fr' in project.get('tools', ['fr','si']) %}
+          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="fr" onclick="setErrFilter(this,'tool','fr')">
+            <span class="tool-badge tool-fr">FR</span>
+          </button>
+          {% endif %}
+          {% if 'si' in project.get('tools', ['fr','si']) %}
+          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="si" onclick="setErrFilter(this,'tool','si')">
+            <span class="tool-badge tool-si">SI</span>
+          </button>
+          {% endif %}
+          {% if 'db' in project.get('tools', []) %}
+          <button class="log-filter-btn" data-filter-key="etool" data-filter-val="db" onclick="setErrFilter(this,'tool','db')">
+            <span class="tool-badge tool-db">DB</span>
+          </button>
+          {% endif %}
+        </div>
+        <div class="log-filter-group">
+          <button class="log-filter-btn active" data-filter-key="ecat" data-filter-val="" onclick="setErrFilter(this,'category','')">All categories</button>
+          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Network" onclick="setErrFilter(this,'category','Network')">Network</button>
+          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Tool" onclick="setErrFilter(this,'category','Tool')">Tool</button>
+          <button class="log-filter-btn" data-filter-key="ecat" data-filter-val="Scan" onclick="setErrFilter(this,'category','Scan')">Scan</button>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="clearErrors()">Clear</button>
+      </div>
+      <div class="log-table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th class="col-ts">Time</th>
+              <th class="col-level">Level</th>
+              <th class="col-tool-sm">Tool</th>
+              <th class="col-category">Category</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="errorsTbody">
+            <tr class="empty-row"><td colspan="5">No errors.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-errors -->
 
   <!-- ════════════════ TAB: SUMMARY ════════════════ -->
   <div class="tab-panel" id="tab-summary">
@@ -1247,12 +1303,17 @@ let siAutoScroll = true;
 let allFindings  = [];
 const _findingIdx = new Map();
 
-// Log state (errors are merged in as level=ERROR)
+// Log state
 let allLogs    = [];
 const _logSeen = new Set();
 let logPage    = 0;
 const LOG_PER_PAGE = 20;
 let logFilter  = { tool: '', level: '' };
+
+// Error state (separate tab, matches Vantage)
+let allErrors  = [];
+const _errSeen = new Set();
+let errFilter  = { tool: '', category: '' };
 
 // Findings pagination
 let _findPage = 0;
@@ -1766,17 +1827,28 @@ socket.on('log_entry', data => {
   renderLogs();
 });
 
-// ── Error entries — merged into Log tab as ERROR level ────
+// ── Error entries — separate Errors tab + merged into Log as ERROR ────
 socket.on('err_entry', data => {
   const raw = data.entry || data;
   const msg = raw.category ? `[${raw.category}] ${raw.message || ''}` : (raw.message || '');
-  const e   = { ts: raw.ts, tool: raw.tool, level: 'ERROR', message: msg };
-  const key = `${e.ts}|${e.tool}|${e.message}`;
-  if (_logSeen.has(key)) return;
-  _logSeen.add(key);
-  allLogs.push(e);
-  if (typeof _updateLogPill === 'function') _updateLogPill(); else document.getElementById('logBadge').textContent = allLogs.length;
-  renderLogs();
+  // Add to Errors tab
+  const errE = { ts: raw.ts, tool: raw.tool, level: raw.level || 'ERROR',
+                 category: raw.category || 'Scan', message: raw.message || '' };
+  const ek = `${errE.ts}|${errE.tool}|${errE.message}`;
+  if (!_errSeen.has(ek)) {
+    _errSeen.add(ek);
+    allErrors.push(errE);
+    if (typeof _updateErrPill === 'function') _updateErrPill();
+    renderErrors();
+  }
+  // Also inject into Log tab as ERROR level
+  const logE = { ts: raw.ts, tool: raw.tool, level: 'ERROR', message: msg };
+  const lk = `${logE.ts}|${logE.tool}|${logE.message}`;
+  if (!_logSeen.has(lk)) {
+    _logSeen.add(lk);
+    allLogs.push(logE);
+    renderLogs();
+  }
 });
 
 // ── Phase status ──────────────────────────────────────────
@@ -1955,6 +2027,9 @@ function _confirmFreshStart(tool) {
       allLogs = [];
       _logSeen.clear();
       renderLogs();
+      allErrors = [];
+      _errSeen.clear();
+      clearErrors();
       // Refresh summary/status tabs
       _loadSummarySettings();
       _loadTargetProfile();
@@ -3410,7 +3485,7 @@ function setLogFilter(btn, key, val) {
   renderLogs();
 }
 
-function clearLogs() { allLogs = []; _logSeen.clear(); renderLogs(); document.getElementById('logBadge').textContent = '0'; }
+function clearLogs() { allLogs = []; _logSeen.clear(); renderLogs(); }
 
 function logsPage(dir) {
   const filtered = _getFilteredLogs();
@@ -3447,10 +3522,14 @@ function _filterByRange(arr, fromId, toId) {
     return true;
   });
 }
-// Pill reflects ERROR count only — per CLAUDE.md §14.
-function _updateLogPill() {
-  const b = document.getElementById('logBadge');
-  if (b) b.textContent = allLogs.filter(_isErrEntry).length;
+// Log tab: no pill (matches Vantage).  Errors pill: error count only (§14g).
+function _updateLogPill() { /* no pill on Log tab — matches Vantage */ }
+function _updateErrPill() {
+  const b = document.getElementById('errorsBadge');
+  if (b) b.textContent = allErrors.filter(e => {
+    const lv = (e.level || e.severity || e.risk || '').toString().toUpperCase();
+    return !lv || _ERR_LEVELS.has(lv);
+  }).length;
 }
 function clearLogTimeRange() {
   ['logFromDT','logToDT'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -3493,6 +3572,55 @@ function renderLogs() {
   }).join('');
 }
 
+// ── Errors tab (matches Vantage) ─────────────────────────
+function setErrFilter(btn, key, val) {
+  errFilter[key] = val;
+  const grp = key === 'tool' ? 'etool' : 'ecat';
+  document.querySelectorAll(`.log-filter-btn[data-filter-key="${grp}"]`).forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderErrors();
+}
+
+function clearErrors() {
+  allErrors = []; _errSeen.clear();
+  const b = document.getElementById('errorsBadge');
+  if (b) b.textContent = '0';
+  renderErrors();
+}
+
+function clearErrTimeRange() {
+  ['errFromDT','errToDT'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  renderErrors();
+}
+
+function renderErrors() {
+  _updateErrPill();
+  const inRange = _filterByRange(allErrors, 'errFromDT', 'errToDT');
+  const filtered = inRange.filter(e => {
+    if (errFilter.tool && e.tool !== errFilter.tool) return false;
+    if (errFilter.category && (e.category || '') !== errFilter.category) return false;
+    return true;
+  });
+  const tbody = document.getElementById('errorsTbody');
+  if (!tbody) return;
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No errors.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(e => {
+    const lvl = (e.level || 'ERROR').toUpperCase();
+    const toolBadge = e.tool === 'fr' ? '<span class="tool-badge tool-fr">FR</span>' :
+                      e.tool === 'si' ? '<span class="tool-badge tool-si">SI</span>' :
+                      e.tool === 'db' ? '<span class="tool-badge tool-db">DB</span>' : '';
+    const cat = e.category || 'Scan';
+    const catCls = cat === 'Network' ? 'log-warning' : cat === 'Tool' ? 'log-error' : 'log-error';
+    return `<tr><td class="mono-sm">${e.ts||''}</td>
+      <td><span class="log-level log-${lvl.toLowerCase()}">${lvl}</span></td>
+      <td>${toolBadge}</td>
+      <td><span class="log-level ${catCls}">${escHtml(cat)}</span></td>
+      <td>${escHtml(e.message||'')}</td></tr>`;
+  }).join('');
+}
 
 // ── Phase status ──────────────────────────────────────────
 function toggleSect(btn) {
@@ -3771,14 +3899,21 @@ Promise.all([
     const key = `${e.ts}|${e.tool}|${e.message}`;
     if (!_logSeen.has(key)) { _logSeen.add(key); allLogs.push(e); }
   });
+  // Populate Errors tab + also inject into Log tab as ERROR
   errors.forEach(raw => {
+    const errE = { ts: raw.ts, tool: raw.tool, level: raw.level || 'ERROR',
+                   category: raw.category || 'Scan', message: raw.message || '' };
+    const ek = `${errE.ts}|${errE.tool}|${errE.message}`;
+    if (!_errSeen.has(ek)) { _errSeen.add(ek); allErrors.push(errE); }
+    // Also inject into Log tab
     const msg = raw.category ? `[${raw.category}] ${raw.message || ''}` : (raw.message || '');
-    const e   = { ts: raw.ts, tool: raw.tool, level: 'ERROR', message: msg };
-    const key = `${e.ts}|${e.tool}|${e.message}`;
-    if (!_logSeen.has(key)) { _logSeen.add(key); allLogs.push(e); }
+    const logE = { ts: raw.ts, tool: raw.tool, level: 'ERROR', message: msg };
+    const lk = `${logE.ts}|${logE.tool}|${logE.message}`;
+    if (!_logSeen.has(lk)) { _logSeen.add(lk); allLogs.push(logE); }
   });
-  if (typeof _updateLogPill === 'function') _updateLogPill(); else document.getElementById('logBadge').textContent = allLogs.length;
+  if (typeof _updateErrPill === 'function') _updateErrPill();
   renderLogs();
+  renderErrors();
 });
 _loadSummarySettings();
 _loadTargetProfile();
