@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.21.12"
+VERSION = "1.22.0"
 
 import io
 import socket
@@ -1903,6 +1903,20 @@ def _tool_run_dir(proj: dict, tool_name: str) -> "Path | None":
         return None
 
 
+def _list_target_subdirs(run_dir: "Path | None", filenames: "list[str]") -> "list[str]":
+    """Return sorted list of target subdirectory names that contain any of *filenames*."""
+    if not run_dir or not run_dir.is_dir():
+        return []
+    targets = []
+    try:
+        for child in sorted(run_dir.iterdir()):
+            if child.is_dir() and any((child / fn).exists() for fn in filenames):
+                targets.append(child.name)
+    except Exception:
+        pass
+    return targets
+
+
 def _tool_findings_json_all(proj: dict, tool_name: str) -> "list[Path]":
     """Return all findings.json paths for a tool — root + per-target subdirs.
 
@@ -2556,13 +2570,16 @@ def api_structure(project_id: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
 
+    _target = request.args.get("target", "")
     _st_tools = proj.get("tools", ["fr", "si"])
-    result: dict = {"fr_map": None, "si_map": None}
+    result: dict = {"fr_map": None, "si_map": None, "_targets": []}
 
     # Fracture structure map (root + per-target subdirs for multi-target mode)
     _fr_run = _tool_run_dir(proj, "fracture")
     _fr_sm_dirs: list[Path] = []  # dirs that had structure_map, for backfill
     if "fr" in _st_tools and _fr_run and _fr_run.is_dir():
+        # Collect available targets
+        result["_targets"] = _list_target_subdirs(_fr_run, ["structure_map.json", "access_matrix.json", "authentication_status.json", "target_profile.json"])
         def _merge_sm(sm_path: Path) -> None:
             if not sm_path.exists():
                 return
@@ -2576,14 +2593,18 @@ def api_structure(project_id: str):
                     if p not in existing:
                         existing[p] = data
         try:
-            _merge_sm(_fr_run / "structure_map.json")
-            for _child in sorted(_fr_run.iterdir()):
-                if _child.is_dir():
-                    _merge_sm(_child / "structure_map.json")
+            if _target:
+                # Single-target mode: only load from that subdir
+                _merge_sm(_fr_run / _target / "structure_map.json")
+            else:
+                _merge_sm(_fr_run / "structure_map.json")
+                for _child in sorted(_fr_run.iterdir()):
+                    if _child.is_dir():
+                        _merge_sm(_child / "structure_map.json")
         except Exception:
             pass
         # Fallback: fracture_output_dir directly (discovered projects)
-        if result["fr_map"] is None:
+        if result["fr_map"] is None and not _target:
             _fdir = proj.get("fracture_output_dir") or ""
             if _fdir:
                 try:
@@ -2612,6 +2633,12 @@ def api_structure(project_id: str):
     # Siphon API map (root + per-target subdirs)
     _si_run = _tool_run_dir(proj, "siphon")
     if "si" in _st_tools and _si_run and _si_run.is_dir():
+        # Merge siphon targets into the list
+        _si_targets = _list_target_subdirs(_si_run, ["api_map.json", "access_matrix.json", "authentication_status.json"])
+        for _st in _si_targets:
+            if _st not in result["_targets"]:
+                result["_targets"].append(_st)
+        result["_targets"].sort()
         def _merge_si_map(mp: Path) -> None:
             if not mp.exists():
                 return
@@ -2627,13 +2654,16 @@ def api_structure(project_id: str):
                         existing.append(ep)
                         existing_keys.add(k)
         try:
-            _merge_si_map(_si_run / "api_map.json")
-            for _child in sorted(_si_run.iterdir()):
-                if _child.is_dir():
-                    _merge_si_map(_child / "api_map.json")
+            if _target:
+                _merge_si_map(_si_run / _target / "api_map.json")
+            else:
+                _merge_si_map(_si_run / "api_map.json")
+                for _child in sorted(_si_run.iterdir()):
+                    if _child.is_dir():
+                        _merge_si_map(_child / "api_map.json")
         except Exception:
             pass
-        if result["si_map"] is None:
+        if result["si_map"] is None and not _target:
             _sdir = proj.get("siphon_output_dir") or ""
             if _sdir:
                 try:
@@ -2713,12 +2743,15 @@ def api_access_matrix(project_id: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
 
+    _target = request.args.get("target", "")
     _tools = proj.get("tools", ["fr", "si"])
-    result: dict = {"fr_matrix": None, "si_matrix": None}
+    result: dict = {"fr_matrix": None, "si_matrix": None, "_targets": []}
 
     # Fracture access matrix (root + per-target subdirs for multi-target mode)
     _fr_am_run = _tool_run_dir(proj, "fracture")
     if "fr" in _tools:
+        if _fr_am_run:
+            result["_targets"] = _list_target_subdirs(_fr_am_run, ["access_matrix.json", "structure_map.json", "authentication_status.json", "target_profile.json"])
         def _merge_fr_am(am_path: Path) -> None:
             if not am_path.exists():
                 return
@@ -2742,11 +2775,14 @@ def api_access_matrix(project_id: str):
                         existing_roles.add(r["label"])
         try:
             if _fr_am_run and _fr_am_run.is_dir():
-                _merge_fr_am(_fr_am_run / "access_matrix.json")
-                for _child in sorted(_fr_am_run.iterdir()):
-                    if _child.is_dir():
-                        _merge_fr_am(_child / "access_matrix.json")
-            if result["fr_matrix"] is None:
+                if _target:
+                    _merge_fr_am(_fr_am_run / _target / "access_matrix.json")
+                else:
+                    _merge_fr_am(_fr_am_run / "access_matrix.json")
+                    for _child in sorted(_fr_am_run.iterdir()):
+                        if _child.is_dir():
+                            _merge_fr_am(_child / "access_matrix.json")
+            if result["fr_matrix"] is None and not _target:
                 _fdir = proj.get("fracture_output_dir") or ""
                 if _fdir:
                     _merge_fr_am(Path(_fdir) / "access_matrix.json")
@@ -2756,6 +2792,12 @@ def api_access_matrix(project_id: str):
     # Siphon access matrix (root + per-target subdirs)
     _si_am_run = _tool_run_dir(proj, "siphon")
     if "si" in _tools:
+        if _si_am_run:
+            _si_targets = _list_target_subdirs(_si_am_run, ["access_matrix.json", "api_map.json", "authentication_status.json"])
+            for _st in _si_targets:
+                if _st not in result["_targets"]:
+                    result["_targets"].append(_st)
+            result["_targets"].sort()
         def _merge_si_am(am_path: Path) -> None:
             if not am_path.exists():
                 return
@@ -2778,11 +2820,14 @@ def api_access_matrix(project_id: str):
                         existing_roles.add(r["label"])
         try:
             if _si_am_run and _si_am_run.is_dir():
-                _merge_si_am(_si_am_run / "access_matrix.json")
-                for _child in sorted(_si_am_run.iterdir()):
-                    if _child.is_dir():
-                        _merge_si_am(_child / "access_matrix.json")
-            if result["si_matrix"] is None:
+                if _target:
+                    _merge_si_am(_si_am_run / _target / "access_matrix.json")
+                else:
+                    _merge_si_am(_si_am_run / "access_matrix.json")
+                    for _child in sorted(_si_am_run.iterdir()):
+                        if _child.is_dir():
+                            _merge_si_am(_child / "access_matrix.json")
+            if result["si_matrix"] is None and not _target:
                 _sdir = proj.get("siphon_output_dir") or ""
                 if _sdir:
                     _merge_si_am(Path(_sdir) / "access_matrix.json")
@@ -2799,13 +2844,19 @@ def api_auth_status(project_id: str):
     if not proj:
         return jsonify({"error": "not found"}), 404
 
+    _target = request.args.get("target", "")
     _auth_tools = proj.get("tools", ["fr", "si"])
-    result: dict = {"fr_auth": None, "si_auth": None}
+    result: dict = {"fr_auth": None, "si_auth": None, "_targets": []}
 
     for _as_tool, _as_key in (("fracture", "fr_auth"), ("siphon", "si_auth")):
         _as_run = _tool_run_dir(proj, _as_tool)
         if (_as_tool[:2] not in _auth_tools) or not _as_run or not _as_run.is_dir():
             continue
+        # Collect targets
+        _t_list = _list_target_subdirs(_as_run, ["authentication_status.json", "structure_map.json", "access_matrix.json", "target_profile.json"])
+        for _t in _t_list:
+            if _t not in result["_targets"]:
+                result["_targets"].append(_t)
         def _merge_auth(af_path: Path, _k=_as_key) -> None:
             if not af_path.exists():
                 return
@@ -2818,13 +2869,16 @@ def api_auth_status(project_id: str):
                     if rk not in result[_k]:
                         result[_k][rk] = rv
         try:
-            _merge_auth(_as_run / "authentication_status.json")
-            for _child in sorted(_as_run.iterdir()):
-                if _child.is_dir():
-                    _merge_auth(_child / "authentication_status.json")
+            if _target:
+                _merge_auth(_as_run / _target / "authentication_status.json")
+            else:
+                _merge_auth(_as_run / "authentication_status.json")
+                for _child in sorted(_as_run.iterdir()):
+                    if _child.is_dir():
+                        _merge_auth(_child / "authentication_status.json")
         except Exception:
             pass
-        if result[_as_key] is None:
+        if result[_as_key] is None and not _target:
             _fdir = proj.get(f"{_as_tool}_output_dir") or ""
             if _fdir:
                 try:
@@ -2832,6 +2886,7 @@ def api_auth_status(project_id: str):
                 except Exception:
                     pass
 
+    result["_targets"].sort()
     return jsonify(result)
 
 
@@ -3907,14 +3962,26 @@ def api_target_profile(project_id: str):
     proj = _get_project(project_id)
     if not proj:
         return jsonify({}), 404
+    _target = request.args.get("target", "")
     _fr_run = _tool_run_dir(proj, "fracture")
     _pdir   = Path(proj["project_dir"]) if proj.get("project_dir") else None
+    _targets = _list_target_subdirs(_fr_run, ["target_profile.json", "structure_map.json", "access_matrix.json", "authentication_status.json"]) if _fr_run else []
     try:
         if _fr_run and _fr_run.is_dir():
+            if _target:
+                # Single-target mode
+                tp = _fr_run / _target / "target_profile.json"
+                if tp.exists():
+                    data = json.loads(tp.read_text())
+                    data["_targets"] = _targets
+                    return jsonify(data)
+                return jsonify({"_targets": _targets}), 200
             # Root-level
             tp = _fr_run / "target_profile.json"
             if tp.exists():
-                return jsonify(json.loads(tp.read_text()))
+                data = json.loads(tp.read_text())
+                data["_targets"] = _targets
+                return jsonify(data)
             # Per-target subdirs — merge profiles
             merged: dict = {}
             for _child in sorted(_fr_run.iterdir()):
@@ -3931,15 +3998,18 @@ def api_target_profile(project_id: str):
                                 elif isinstance(v, list) and isinstance(merged[k], list):
                                     merged[k].extend(v)
             if merged:
+                merged["_targets"] = _targets
                 return jsonify(merged)
         # Fallback: target_profile.json directly in project_dir (discovered projects)
-        if _pdir:
+        if _pdir and not _target:
             tp_path = _pdir / "target_profile.json"
             if tp_path.exists():
-                return jsonify(json.loads(tp_path.read_text()))
+                data = json.loads(tp_path.read_text())
+                data["_targets"] = _targets
+                return jsonify(data)
     except Exception:
         pass
-    return jsonify({}), 200
+    return jsonify({"_targets": _targets}), 200
 
 
 @app.route("/api/delete_project/<project_id>", methods=["DELETE"])

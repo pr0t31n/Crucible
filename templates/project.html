@@ -12,6 +12,12 @@
 
 {% block head %}
 <style>
+.target-selector {
+  font-size:.82rem; padding:2px 6px; border-radius:4px;
+  background:var(--input-bg, #161b22); color:var(--text, #e6edf3);
+  border:1px solid var(--border, #30363d); cursor:pointer;
+}
+.target-selector:focus { outline:1px solid var(--accent, #58a6ff); }
 .summary-layout > .panel,
 .summary-layout > .summary-top-row { flex-shrink: 0; }
 .summary-top-row {
@@ -378,6 +384,11 @@
         </div>
         <button class="btn btn-sm btn-ghost" onclick="clearErrors()">Clear</button>
       </div>
+      <div class="log-pager">
+        <button class="btn btn-sm btn-ghost" id="errBtnPrev" onclick="errorsPage(-1)" disabled>&#x2039; Prev</button>
+        <span id="errPageLabel">&#8212;</span>
+        <button class="btn btn-sm btn-ghost" id="errBtnNext" onclick="errorsPage(1)" disabled>Next &#x203A;</button>
+      </div>
       <div class="log-table-wrap">
         <table class="log-table">
           <thead>
@@ -449,9 +460,12 @@
 
       {% if 'fr' in project.get('tools', ['fr','si']) %}
       <div class="panel" id="tp-card" style="display:none">
-        <div class="panel-header">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
           <span class="panel-title">TARGET PROFILE</span>
-          <span id="tp-last-updated" style="font-size:.68rem;color:var(--text-muted);font-family:var(--font-mono)"></span>
+          <select class="target-selector" id="tpTargetSel" onchange="_onTargetChange(this.value)" style="display:none" title="Filter by target">
+            <option value="">All targets (merged)</option>
+          </select>
+          <span id="tp-last-updated" style="font-size:.68rem;color:var(--text-muted);font-family:var(--font-mono);margin-left:auto"></span>
         </div>
         <div class="panel-body">
           <div class="tp-grid">
@@ -994,6 +1008,9 @@
     <div style="padding:1rem 0">
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Visual map of discovered paths and endpoints generated during the scan.</span>
+        <select class="target-selector" id="structureTargetSel" onchange="_onTargetChange(this.value)" style="display:none" title="Filter by target">
+          <option value="">All targets (merged)</option>
+        </select>
         <button class="btn btn-sm btn-ghost" onclick="loadStructure(true)" title="Reload structure maps">&#x21bb; Refresh</button>
         <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-structure-pdf/{{ project_id }}',_dlName('{{ project.client_short }}','Structure','pdf'),'application/pdf')" title="Export structure as PDF">&#x2193; PDF</button>
         <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-structure-html/{{ project_id }}',_dlName('{{ project.client_short }}','Structure','html'),'text/html')" title="Export structure as HTML">&#x2193; HTML</button>
@@ -1042,6 +1059,9 @@
     <div style="padding:1rem 0">
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Endpoint and file access results per credential role, generated during Phase 20.</span>
+        <select class="target-selector" id="matrixTargetSel" onchange="_onTargetChange(this.value)" style="display:none" title="Filter by target">
+          <option value="">All targets (merged)</option>
+        </select>
         <div id="amSoft404Banner" style="display:none;width:100%;padding:.45rem .75rem;background:rgba(210,153,34,.12);border:1px solid rgba(210,153,34,.3);border-radius:4px;font-size:.82rem;color:#d29922;margin-top:.5rem">⚠ This target uses <strong>soft-404</strong> responses — HTTP 200 codes in the matrix may not indicate real access.</div>
         <button class="btn btn-sm btn-ghost" onclick="loadAccessMatrix(true)" title="Reload">&#x21bb; Refresh</button>
         <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-access-matrix-xlsx/{{ project_id }}',_dlName('{{ project.client_short }}','Matrix','xlsx'),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')" title="Export access matrix as XLSX">&#x2193; XLSX</button>
@@ -1061,6 +1081,9 @@
     <div style="padding:1rem 0">
       <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
         <span style="font-size:.9rem;color:#8b949e">Session authentication status per credential role, written after each scan.</span>
+        <select class="target-selector" id="authTargetSel" onchange="_onTargetChange(this.value)" style="display:none" title="Filter by target">
+          <option value="">All targets (merged)</option>
+        </select>
         <button class="btn btn-sm btn-ghost" onclick="loadAuthStatus(true)" title="Reload">&#x21bb; Refresh</button>
       </div>
       <div id="authStatusContent">
@@ -1341,6 +1364,8 @@ let logFilter  = { tool: '', level: '' };
 let allErrors  = [];
 const _errSeen = new Set();
 let errFilter  = { tool: '', category: '' };
+let errPage    = 0;
+const ERR_PER_PAGE = 20;
 
 // Findings pagination
 let _findPage = 0;
@@ -1573,10 +1598,14 @@ function _tpShow(rowId, valId, val) {
   if (el)  el.textContent = val;
 }
 function _loadTargetProfile() {
-  fetch(`/api/target_profile/${PROJECT_ID}`)
+  fetch(`/api/target_profile/${PROJECT_ID}${_targetQS()}`)
     .then(r => r.ok ? r.json() : null)
     .then(d => {
-      if (!d || !Object.keys(d).length) return;
+      if (!d) return;
+      if (d._targets && d._targets.length) _updateTargetSelectors(d._targets);
+      // Check if profile has real data (beyond just _targets)
+      const realKeys = Object.keys(d).filter(k => k !== '_targets');
+      if (!realKeys.length) return;
       const card = document.getElementById('tp-card');
       if (card) card.style.display = '';
       _tpShow('tp-row-server',         'tp-server',       d.server);
@@ -3605,11 +3634,12 @@ function setErrFilter(btn, key, val) {
   const grp = key === 'tool' ? 'etool' : 'ecat';
   document.querySelectorAll(`.log-filter-btn[data-filter-key="${grp}"]`).forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  errPage = 0;
   renderErrors();
 }
 
 function clearErrors() {
-  allErrors = []; _errSeen.clear();
+  allErrors = []; _errSeen.clear(); errPage = 0;
   const b = document.getElementById('errorsBadge');
   if (b) b.textContent = '0';
   renderErrors();
@@ -3617,6 +3647,19 @@ function clearErrors() {
 
 function clearErrTimeRange() {
   ['errFromDT','errToDT'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  errPage = 0;
+  renderErrors();
+}
+
+function errorsPage(dir) {
+  const inRange = _filterByRange(allErrors, 'errFromDT', 'errToDT');
+  const filtered = inRange.filter(e => {
+    if (errFilter.tool && e.tool !== errFilter.tool) return false;
+    if (errFilter.category && (e.category || '') !== errFilter.category) return false;
+    return true;
+  });
+  const pages = Math.max(1, Math.ceil(filtered.length / ERR_PER_PAGE));
+  errPage = Math.max(0, Math.min(errPage + dir, pages - 1));
   renderErrors();
 }
 
@@ -3628,13 +3671,19 @@ function renderErrors() {
     if (errFilter.category && (e.category || '') !== errFilter.category) return false;
     return true;
   });
+  const pages = Math.max(1, Math.ceil(filtered.length / ERR_PER_PAGE));
+  errPage = Math.min(errPage, pages - 1);
+  const slice = filtered.slice(errPage * ERR_PER_PAGE, (errPage + 1) * ERR_PER_PAGE);
+  document.getElementById('errPageLabel').textContent = `Page ${errPage+1} / ${pages}`;
+  document.getElementById('errBtnPrev').disabled = errPage === 0;
+  document.getElementById('errBtnNext').disabled = errPage >= pages - 1;
   const tbody = document.getElementById('errorsTbody');
   if (!tbody) return;
-  if (!filtered.length) {
+  if (!slice.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No errors.</td></tr>';
     return;
   }
-  tbody.innerHTML = filtered.map(e => {
+  tbody.innerHTML = slice.map(e => {
     const lvl = (e.level || 'ERROR').toUpperCase();
     const toolBadge = e.tool === 'fr' ? '<span class="tool-badge tool-fr">FR</span>' :
                       e.tool === 'si' ? '<span class="tool-badge tool-si">SI</span>' :
@@ -3948,6 +3997,43 @@ _loadTargetProfile();
 // ── Check for checkpoints on load → swap Start/Resume button styles ──
 ['fr', 'si'].forEach(tool => _checkForCheckpoint(tool));
 
+// ── Multi-target selector ─────────────────────────────────────────────────
+let _selectedTarget = '';
+const _TARGET_SEL_IDS = ['structureTargetSel','matrixTargetSel','authTargetSel','tpTargetSel'];
+
+function _updateTargetSelectors(targets) {
+  if (!targets || !targets.length) return;
+  _TARGET_SEL_IDS.forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">All targets (merged)</option>' +
+      targets.map(t => `<option value="${t}"${t === _selectedTarget ? ' selected' : ''}>${t}</option>`).join('');
+    sel.style.display = '';
+  });
+}
+
+function _onTargetChange(val) {
+  _selectedTarget = val;
+  // Sync all selectors
+  _TARGET_SEL_IDS.forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel) sel.value = val;
+  });
+  // Re-fetch all target-dependent views
+  _structureLoaded = false;
+  _accessMatrixLoaded = false;
+  _authStatusLoaded = false;
+  _fetchStructure();
+  loadAccessMatrix(true);
+  loadAuthStatus(true);
+  _loadTargetProfile();
+}
+
+function _targetQS() {
+  return _selectedTarget ? `?target=${encodeURIComponent(_selectedTarget)}` : '';
+}
+
 // ── Structure tab ──────────────────────────────────────────────────────────
 let _structureLoaded = false;
 
@@ -3956,8 +4042,9 @@ async function _fetchStructure() {
   const siEl = document.getElementById('siStructureContainer');
   const dbEl = document.getElementById('dbStructureContainer');
   try {
-    const r = await fetch(`/api/structure/${PROJECT_ID}`);
+    const r = await fetch(`/api/structure/${PROJECT_ID}${_targetQS()}`);
     const d = await r.json();
+    if (d._targets && d._targets.length) _updateTargetSelectors(d._targets);
     if (frEl) frEl.innerHTML = d.fr_map ? renderFrTree(d.fr_map) : '<span style="color:#8b949e;font-size:.85rem">No structure map yet — run Fracture to generate one.</span>';
     if (siEl) siEl.innerHTML = d.si_map ? renderApiTree(d.si_map) : '<span style="color:#8b949e;font-size:.85rem">No API map yet — run Siphon to generate one.</span>';
     if (dbEl) dbEl.innerHTML = d.db_schema ? renderDbSchemaTree(d.db_schema) : '<span style="color:#8b949e;font-size:.85rem">No schema yet — run Auger to enumerate the database schema.</span>';
@@ -4031,8 +4118,9 @@ async function loadAccessMatrix(force = false) {
   const el = document.getElementById('accessMatrixContent');
   if (!el) return;
   try {
-    const r = await fetch(`/api/access-matrix/${PROJECT_ID}`);
+    const r = await fetch(`/api/access-matrix/${PROJECT_ID}${_targetQS()}`);
     const d = await r.json();
+    if (d._targets && d._targets.length) _updateTargetSelectors(d._targets);
     if (!d.fr_matrix && !d.si_matrix) {
       // Don't mark as loaded — allow the poller to retry while scan is running
       if (!_frRunning && !_siRunning) {
@@ -4047,7 +4135,7 @@ async function loadAccessMatrix(force = false) {
     _accessMatrixLoaded = true;
     _amData = d;
     // Show soft-404 banner if detected in target profile
-    fetch(`/api/target_profile/${PROJECT_ID}`)
+    fetch(`/api/target_profile/${PROJECT_ID}${_targetQS()}`)
       .then(r => r.ok ? r.json() : null)
       .then(tp => {
         const banner = document.getElementById('amSoft404Banner');
@@ -4069,8 +4157,9 @@ async function loadAuthStatus(force = false) {
   const el = document.getElementById('authStatusContent');
   if (!el) return;
   try {
-    const r = await fetch(`/api/auth-status/${PROJECT_ID}`);
+    const r = await fetch(`/api/auth-status/${PROJECT_ID}${_targetQS()}`);
     const d = await r.json();
+    if (d._targets && d._targets.length) _updateTargetSelectors(d._targets);
     if (!d.fr_auth && !d.si_auth) {
       if (!_frRunning && !_siRunning) {
         _authStatusLoaded = true;
