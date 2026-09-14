@@ -1379,6 +1379,10 @@ let _fpPendingKey  = null;
 let _fpPendingData = null;
 let _recoverPendingKey = null;
 
+// Multi-target selector state (must be before init block that calls _targetQS)
+let _selectedTarget = '';
+const _TARGET_SEL_IDS = ['structureTargetSel','matrixTargetSel','authTargetSel','tpTargetSel'];
+
 // Status / phase state — canonical phase order for each tool.
 // All phases shown from the start as "pending" (gray pill), then
 // updated to running/complete/error as crucible_status events arrive.
@@ -3998,8 +4002,7 @@ _loadTargetProfile();
 ['fr', 'si'].forEach(tool => _checkForCheckpoint(tool));
 
 // ── Multi-target selector ─────────────────────────────────────────────────
-let _selectedTarget = '';
-const _TARGET_SEL_IDS = ['structureTargetSel','matrixTargetSel','authTargetSel','tpTargetSel'];
+// _selectedTarget and _TARGET_SEL_IDS declared above with other state vars
 
 function _updateTargetSelectors(targets) {
   if (!targets || !targets.length) return;

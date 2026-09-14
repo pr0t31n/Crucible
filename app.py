@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.22.1"
+VERSION = "1.22.2"
 
 import io
 import socket
@@ -470,6 +470,55 @@ def _checkpoint_status(proj: dict, tool: str) -> str:
     return "idle"
 
 
+def _read_checkpoint_data(proj: dict, tool: str) -> dict | None:
+    """Read and return the raw checkpoint.json for a tool, or None."""
+    try:
+        _key_map = {"fr": "fr_settings_file", "si": "si_settings_file", "db": "db_settings_file"}
+        _def_map = {"fr": "fracture_output",  "si": "siphon_output",    "db": "auger_output"}
+        settings_file = proj.get(_key_map.get(tool, "si_settings_file"), "")
+        cfg = json.loads(Path(settings_file).read_text())
+        proj_name = cfg.get("scan", {}).get("project", _def_map.get(tool, f"{tool}_output"))
+        cp = Path(proj["project_dir"]) / proj_name / "checkpoint.json"
+        if cp.exists():
+            return json.loads(cp.read_text())
+    except Exception:
+        pass
+    return None
+
+
+def _hydrate_status_from_checkpoint(project_id: str, proj: dict, tool: str) -> None:
+    """Populate _status_cache for a tool from its checkpoint.json phase_status.
+
+    Called during _init_project_state for completed/done tools so the Status
+    tab shows actual phase results instead of all-pending.
+    """
+    cp_data = _read_checkpoint_data(proj, tool)
+    if not cp_data:
+        return
+    phase_status = cp_data.get("phase_status", {})
+    completed    = set(cp_data.get("completed_phases", []))
+    sc = _status_cache.setdefault(project_id, {"fr": {}, "si": {}, "db": {}})
+    tool_phases = sc.setdefault(tool, {})
+    for phase_key, pinfo in phase_status.items():
+        tool_phases[phase_key] = {
+            "phase":  phase_key,
+            "status": pinfo.get("status", "complete"),
+            "label":  pinfo.get("label", phase_key),
+            "detail": pinfo.get("detail", ""),
+            "tool":   tool,
+        }
+    # Any phase in completed_phases but missing from phase_status
+    for phase_key in completed:
+        if phase_key not in tool_phases:
+            tool_phases[phase_key] = {
+                "phase":  phase_key,
+                "status": "complete",
+                "label":  phase_key,
+                "detail": "",
+                "tool":   tool,
+            }
+
+
 def _init_project_state(project_id: str) -> None:
     _procs.setdefault(project_id,    {"fr": None, "si": None, "db": None})
     _buffers.setdefault(project_id,  {"fr": [],   "si": [],   "db": []})
@@ -490,6 +539,9 @@ def _init_project_state(project_id: str) -> None:
                         si_s = raw
                     else:
                         db_s = raw
+                    # Hydrate phase status from checkpoint so Status tab
+                    # shows completed phases instead of all-pending
+                    _hydrate_status_from_checkpoint(project_id, proj_data, _tool)
                 elif raw == "running":
                     # Process was killed / server restarted — derive real status from checkpoint
                     derived = _checkpoint_status(proj_data, _tool)
@@ -500,6 +552,9 @@ def _init_project_state(project_id: str) -> None:
                     else:
                         db_s = derived
                     _update_project_field(project_id, **{_var: derived})
+                    # Also hydrate phases if checkpoint indicates completion
+                    if derived in ("complete", "done"):
+                        _hydrate_status_from_checkpoint(project_id, proj_data, _tool)
         _tool_status[project_id] = {"fr": fr_s, "si": si_s, "db": db_s}
 
 # ---------------------------------------------------------------------------
@@ -3817,7 +3872,7 @@ def api_errors(project_id: str):
 
 @app.route("/api/status/<project_id>")
 def api_status(project_id: str):
-    return jsonify(_status_cache.get(project_id, {"fr": {}, "si": {}}))
+    return jsonify(_status_cache.get(project_id, {"fr": {}, "si": {}, "db": {}}))
 
 
 @app.route("/api/checkpoint/<project_id>/<tool>")
