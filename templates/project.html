@@ -10,6 +10,22 @@
   <a href="/" class="btn-back-mobile icon-btn" title="Back to engagements">&#8592;</a>
 {% endblock %}
 
+{% block head %}
+<style>
+.summary-layout > .panel,
+.summary-layout > .summary-top-row { flex-shrink: 0; }
+.summary-top-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .summary-top-row { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="project-layout">
 
@@ -384,48 +400,49 @@
   <!-- ════════════════ TAB: SUMMARY ════════════════ -->
   <div class="tab-panel" id="tab-summary">
     <div class="summary-layout">
-      <div class="panel">
-        <div class="panel-header">
-          <span class="panel-title">ENGAGEMENT</span>
-          <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-status-report-pdf/{{ project_id }}',_dlName('{{ project.client_short }}','StatusReport','pdf'),'application/pdf')" title="Export Status Report as PDF">&#x2193; Status Report</button>
-        </div>
-        <div class="panel-body">
-          <div class="summary-kv">
-            <div class="kv-row"><span class="kv-label">Name</span><span class="kv-value">{{ project.name }}</span></div>
-            <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '&#8212;' }}</span></div>
-            <div class="kv-row"><span class="kv-label">Type</span><span class="kv-value">
-              {% set _t = project.get('tools', ['fr','si']) %}
-              {% if 'fr' in _t and 'si' in _t and 'db' in _t %}Web Application, API &amp; Database
-              {% elif 'fr' in _t and 'si' in _t %}Web Application &amp; API
-              {% elif 'fr' in _t and 'db' in _t %}Web Application &amp; Database
-              {% elif 'si' in _t and 'db' in _t %}API &amp; Database
-              {% elif 'fr' in _t %}Web Application
-              {% elif 'si' in _t %}API
-              {% elif 'db' in _t %}Database
-              {% else %}&#8212;{% endif %}
-            </span></div>
-            <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '&#8212;' }}</span></div>
-            <div class="kv-row"><span class="kv-label">Created</span><span class="kv-value">{{ project.created }}</span></div>
-            <div class="kv-row"><span class="kv-label">Project dir</span><span class="kv-value mono">{{ project.project_dir }}</span></div>
-            {% if project.get('fracture_output_dir') and 'fr' in project.get('tools', ['fr','si']) %}
-            <div class="kv-row"><span class="kv-label">Fracture output</span><span class="kv-value mono">{{ project.fracture_output_dir }}</span></div>
-            {% endif %}
-            {% if project.get('siphon_output_dir') and 'si' in project.get('tools', ['fr','si']) %}
-            <div class="kv-row"><span class="kv-label">Siphon output</span><span class="kv-value mono">{{ project.siphon_output_dir }}</span></div>
-            {% endif %}
-            {% if project.get('auger_output_dir') and 'db' in project.get('tools', []) %}
-            <div class="kv-row"><span class="kv-label">Auger output</span><span class="kv-value mono">{{ project.auger_output_dir }}</span></div>
-            {% endif %}
+      <!-- Engagement + Testing Host — side by side -->
+      <div class="summary-top-row">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">ENGAGEMENT</span>
+            <button class="btn btn-sm btn-ghost" onclick="downloadFile('/api/export-status-report-pdf/{{ project_id }}',_dlName('{{ project.client_short }}','StatusReport','pdf'),'application/pdf')" title="Export Status Report as PDF">&#x2193; Status Report</button>
+          </div>
+          <div class="panel-body">
+            <div class="summary-kv">
+              <div class="kv-row"><span class="kv-label">Name</span><span class="kv-value">{{ project.name }}</span></div>
+              <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Type</span><span class="kv-value">
+                {% set _t = project.get('tools', ['fr','si']) %}
+                {% if 'fr' in _t and 'si' in _t and 'db' in _t %}Web Application, API &amp; Database
+                {% elif 'fr' in _t and 'si' in _t %}Web Application &amp; API
+                {% elif 'fr' in _t and 'db' in _t %}Web Application &amp; Database
+                {% elif 'si' in _t and 'db' in _t %}API &amp; Database
+                {% elif 'fr' in _t %}Web Application
+                {% elif 'si' in _t %}API
+                {% elif 'db' in _t %}Database
+                {% else %}&#8212;{% endif %}
+              </span></div>
+              <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Created</span><span class="kv-value">{{ project.created }}</span></div>
+              <div class="kv-row"><span class="kv-label">Project dir</span><span class="kv-value mono">{{ project.project_dir }}</span></div>
+              {% if project.get('fracture_output_dir') and 'fr' in project.get('tools', ['fr','si']) %}
+              <div class="kv-row"><span class="kv-label">Fracture output</span><span class="kv-value mono">{{ project.fracture_output_dir }}</span></div>
+              {% endif %}
+              {% if project.get('siphon_output_dir') and 'si' in project.get('tools', ['fr','si']) %}
+              <div class="kv-row"><span class="kv-label">Siphon output</span><span class="kv-value mono">{{ project.siphon_output_dir }}</span></div>
+              {% endif %}
+              {% if project.get('auger_output_dir') and 'db' in project.get('tools', []) %}
+              <div class="kv-row"><span class="kv-label">Auger output</span><span class="kv-value mono">{{ project.auger_output_dir }}</span></div>
+              {% endif %}
+            </div>
           </div>
         </div>
-      </div>
-
-      <!-- Testing Host panel -->
-      <div class="panel" id="testing-host-card">
-        <div class="panel-header"><span class="panel-title">TESTING HOST</span></div>
-        <div class="panel-body">
-          <div class="summary-kv" id="testing-host-kv">
-            <div class="kv-row"><span class="kv-label">Loading…</span></div>
+        <div class="panel" id="testing-host-card">
+          <div class="panel-header"><span class="panel-title">TESTING HOST</span></div>
+          <div class="panel-body">
+            <div class="summary-kv" id="testing-host-kv">
+              <div class="kv-row"><span class="kv-label">Loading…</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -4669,9 +4686,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const os = info.os || {};
       let netDetail = `${e(iface.ip)}/${e(iface.subnet_cidr)}`;
       if (iface.type) netDetail += ` (${e(iface.type)})`;
+      const pub = info.public_ip || {};
       let rows = `
         <div class="kv-row"><span class="kv-label">Hostname</span><span class="kv-value">${e(info.hostname)}</span></div>
-        <div class="kv-row"><span class="kv-label">IP Address</span><span class="kv-value mono">${e(iface.ip)}</span></div>
+        <div class="kv-row"><span class="kv-label">IP Address</span><span class="kv-value mono">${e(iface.ip)}</span></div>`;
+      if (pub.ip)
+        rows += `<div class="kv-row"><span class="kv-label">Public IP</span><span class="kv-value mono">${e(pub.ip)}</span></div>`;
+      rows += `
         <div class="kv-row"><span class="kv-label">Interface</span><span class="kv-value mono">${e(iface.name)} (${e(iface.mac)})</span></div>
         <div class="kv-row"><span class="kv-label">Network</span><span class="kv-value mono">${netDetail}</span></div>`;
       if (iface.gateway)
