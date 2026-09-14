@@ -410,7 +410,7 @@
           <div class="panel-body">
             <div class="summary-kv">
               <div class="kv-row"><span class="kv-label">Name</span><span class="kv-value">{{ project.name }}</span></div>
-              <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Client</span><span class="kv-value">{{ project.client_name or '—' }}</span></div>
               <div class="kv-row"><span class="kv-label">Type</span><span class="kv-value">
                 {% set _t = project.get('tools', ['fr','si']) %}
                 {% if 'fr' in _t and 'si' in _t and 'db' in _t %}Web Application, API &amp; Database
@@ -422,7 +422,7 @@
                 {% elif 'db' in _t %}Database
                 {% else %}&#8212;{% endif %}
               </span></div>
-              <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '&#8212;' }}</span></div>
+              <div class="kv-row"><span class="kv-label">Scope</span><span class="kv-value">{{ project.scope or '—' }}</span></div>
               <div class="kv-row"><span class="kv-label">Created</span><span class="kv-value">{{ project.created }}</span></div>
               <div class="kv-row"><span class="kv-label">Project dir</span><span class="kv-value mono">{{ project.project_dir }}</span></div>
               {% if project.get('fracture_output_dir') and 'fr' in project.get('tools', ['fr','si']) %}
@@ -547,7 +547,7 @@
               <div class="kv-row"><span class="kv-label">Auth</span>
                 <span class="kv-value" id="fr-summary-auth">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Started</span>
-                <span class="kv-value" id="fr-start-time" data-iso="{{ project.fr_last_run or '' }}">{{ project.fr_last_run or '&#8212;' }}</span></div>
+                <span class="kv-value" id="fr-start-time" data-iso="{{ project.fr_last_run or '' }}">{{ project.fr_last_run or '—' }}</span></div>
               <div class="kv-row"><span class="kv-label">Completed</span>
                 <span class="kv-value" id="fr-end-time">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Exit code</span>
@@ -586,7 +586,7 @@
               <div class="kv-row"><span class="kv-label">API Spec</span>
                 <span class="kv-value mono" id="si-summary-spec">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Started</span>
-                <span class="kv-value" id="si-start-time" data-iso="{{ project.si_last_run or '' }}">{{ project.si_last_run or '&#8212;' }}</span></div>
+                <span class="kv-value" id="si-start-time" data-iso="{{ project.si_last_run or '' }}">{{ project.si_last_run or '—' }}</span></div>
               <div class="kv-row"><span class="kv-label">Completed</span>
                 <span class="kv-value" id="si-end-time">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Exit code</span>
@@ -627,13 +627,13 @@
               <div class="kv-row"><span class="kv-label">Auth Type</span>
                 <span class="kv-value" id="db-summary-auth">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Started</span>
-                <span class="kv-value" id="db-start-time" data-iso="{{ project.db_last_run or '' }}">{{ project.db_last_run or '&#8212;' }}</span></div>
+                <span class="kv-value" id="db-start-time" data-iso="{{ project.db_last_run or '' }}">{{ project.db_last_run or '—' }}</span></div>
               <div class="kv-row"><span class="kv-label">Completed</span>
                 <span class="kv-value" id="db-end-time">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Exit code</span>
                 <span class="kv-value mono" id="db-exit-code">&#8212;</span></div>
               <div class="kv-row"><span class="kv-label">Output dir</span>
-                <span class="kv-value mono" id="db-summary-outdir">{{ project.auger_output_dir or '&#8212;' }}</span></div>
+                <span class="kv-value mono" id="db-summary-outdir">{{ project.auger_output_dir or '—' }}</span></div>
               <div class="kv-row"><span class="kv-label">Findings</span>
                 <span class="kv-value" id="db-finding-count">0</span></div>
               <div class="kv-row"><span class="kv-label">By risk</span>
