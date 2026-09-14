@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.21.6"
+VERSION = "1.21.7"
 
 import io
 import socket
@@ -1030,16 +1030,12 @@ def api_arbiter_projects():
             proj_status = "running"
         else:
             proj_status = "idle"
-        # Count findings on disk
+        # Count findings on disk (root + per-target subdirs)
         finding_count = 0
-        for _tool_name, _dir_key in (("fracture", "fracture_output_dir"), ("siphon", "siphon_output_dir")):
-            d = proj.get(_dir_key, "")
-            if d:
-                fp = Path(d) / "findings.json"
-                if not fp.exists():
-                    fp = Path(proj.get("project_dir", "")) / _dir_key / "findings.json"
+        for _tool_name in ("fracture", "siphon"):
+            for _fc_fp in _tool_findings_json_all(proj, _tool_name):
                 try:
-                    finding_count += len(json.loads(fp.read_text())) if fp.exists() else 0
+                    finding_count += len(json.loads(_fc_fp.read_text()))
                 except Exception:
                     pass
         # Read engagement metadata from settings files
@@ -1777,52 +1773,37 @@ def api_findings(project_id: str):
     result: list[dict] = list(_all_findings.get(project_id, []))
     seen: set[tuple]   = {_fkey(f) for f in result}
 
-    for _tool_name, _tool_key, _default in (
-        ("fracture", "fr_settings_file", "fracture_output"),
-        ("siphon",   "si_settings_file", "siphon_output"),
-        ("auger",    "db_settings_file", "auger_output"),
-    ):
-        _cfg_path = Path(proj.get(_tool_key, ""))
-        if not _cfg_path.exists():
-            continue
-        try:
-            _cfg      = json.loads(_cfg_path.read_text())
-            _proj_dir = _cfg.get("scan", {}).get("project", _default)
-            _fp       = Path(proj["project_dir"]) / _proj_dir / "findings.json"
-            if not _fp.exists():
-                continue
-            _scope = "webapp" if _tool_name == "fracture" else ("database" if _tool_name == "auger" else "api")
-            _mem_findings = _all_findings.setdefault(project_id, [])
-            for raw in json.loads(_fp.read_text()):
-                f = dict(raw)
-                f["_tool"]  = _tool_name
-                f["_scope"] = f.get("_scope") or _scope
-                k = _fkey(f)
-                if k not in seen:
-                    seen.add(k)
-                    result.append(f)
-                    _mem_findings.append(f)
-                else:
-                    # Refresh cached entry with disk version — findings evolve
-                    # during a running scan (evidence merged, descriptions
-                    # appended, accounts added) and the cache must reflect it.
-                    for _ex in _mem_findings:
-                        if _fkey(_ex) == k:
-                            # Preserve internal keys; overwrite everything else
-                            _internal = {ik: _ex[ik] for ik in ("_tool", "_scope") if ik in _ex}
-                            _ex.clear()
-                            _ex.update(f)
-                            _ex.update(_internal)
-                            break
-                    for _ex in result:
-                        if _fkey(_ex) == k:
-                            _internal = {ik: _ex[ik] for ik in ("_tool", "_scope") if ik in _ex}
-                            _ex.clear()
-                            _ex.update(f)
-                            _ex.update(_internal)
-                            break
-        except Exception:
-            pass
+    for _tool_name in ("fracture", "siphon", "auger"):
+        _scope = "webapp" if _tool_name == "fracture" else ("database" if _tool_name == "auger" else "api")
+        _mem_findings = _all_findings.setdefault(project_id, [])
+        for _fp in _tool_findings_json_all(proj, _tool_name):
+            try:
+                for raw in json.loads(_fp.read_text()):
+                    f = dict(raw)
+                    f["_tool"]  = _tool_name
+                    f["_scope"] = f.get("_scope") or _scope
+                    k = _fkey(f)
+                    if k not in seen:
+                        seen.add(k)
+                        result.append(f)
+                        _mem_findings.append(f)
+                    else:
+                        for _ex in _mem_findings:
+                            if _fkey(_ex) == k:
+                                _internal = {ik: _ex[ik] for ik in ("_tool", "_scope") if ik in _ex}
+                                _ex.clear()
+                                _ex.update(f)
+                                _ex.update(_internal)
+                                break
+                        for _ex in result:
+                            if _fkey(_ex) == k:
+                                _internal = {ik: _ex[ik] for ik in ("_tool", "_scope") if ik in _ex}
+                                _ex.clear()
+                                _ex.update(f)
+                                _ex.update(_internal)
+                                break
+            except Exception:
+                pass
 
     suppressions = _load_suppressions(project_id)
     if suppressions:
@@ -1879,6 +1860,46 @@ def _tool_findings_path(proj: dict, tool_name: str) -> "Path | None":
         return None
 
 
+def _tool_run_dir(proj: dict, tool_name: str) -> "Path | None":
+    """Return the resolved run directory for a tool (e.g. fracture project dir)."""
+    key     = "fr_settings_file" if tool_name == "fracture" else ("si_settings_file" if tool_name == "siphon" else "db_settings_file")
+    default = {"fracture": "fracture_output", "siphon": "siphon_output",
+               "auger": "auger_output"}.get(tool_name, f"{tool_name}_output")
+    cfg_path = Path(proj.get(key, ""))
+    if not cfg_path.exists():
+        return None
+    try:
+        cfg      = json.loads(cfg_path.read_text())
+        proj_dir = cfg.get("scan", {}).get("project", default)
+        return Path(proj["project_dir"]) / proj_dir
+    except Exception:
+        return None
+
+
+def _tool_findings_json_all(proj: dict, tool_name: str) -> "list[Path]":
+    """Return all findings.json paths for a tool — root + per-target subdirs.
+
+    In multi-target mode Fracture/Siphon write findings.json into per-target
+    subdirectories (e.g. ``<proj>/198.178.194.56/findings.json``) and never
+    create a root-level findings.json.  This helper collects both so that
+    Crucible ingests findings regardless of single- vs multi-target layout.
+    """
+    run = _tool_run_dir(proj, tool_name)
+    if not run or not run.is_dir():
+        return []
+    out: list[Path] = []
+    root_fp = run / "findings.json"
+    if root_fp.exists():
+        out.append(root_fp)
+    # Per-target subdirectories (one level deep only)
+    for child in sorted(run.iterdir()):
+        if child.is_dir():
+            fp = child / "findings.json"
+            if fp.exists():
+                out.append(fp)
+    return out
+
+
 def _tool_findings_paths_all(proj: dict, tool_name: str) -> "list[Path]":
     """Return every findings.json that Crucible should keep in sync for *tool_name*.
 
@@ -1888,8 +1909,13 @@ def _tool_findings_paths_all(proj: dict, tool_name: str) -> "list[Path]":
     findings.json the suppression flow will pick them up automatically with no
     further changes here."""
     out: "list[Path]" = []
+    # Root + per-target subdirectory findings.json (multi-target mode)
+    for _p in _tool_findings_json_all(proj, tool_name):
+        if _p not in out:
+            out.append(_p)
+    # Legacy single-path fallback (if _tool_findings_json_all missed it)
     legacy = _tool_findings_path(proj, tool_name)
-    if legacy:
+    if legacy and legacy not in out:
         out.append(legacy)
     try:
         import sys as _s
@@ -2390,18 +2416,9 @@ def api_compare_scans():
             return []
         items: list = []
         seen: set   = set()
-        for tool, cfg_key, scan_key, default_dir in [
-            ("fracture", "fr_settings_file", "project", "fracture_output"),
-            ("siphon",   "si_settings_file", "project", "siphon_output"),
-        ]:
-            cp = Path(proj.get(cfg_key, ""))
-            if not cp.exists():
-                continue
-            try:
-                cfg  = json.loads(cp.read_text())
-                pdir = cfg.get("scan", {}).get(scan_key, default_dir)
-                fp   = Path(proj["project_dir"]) / pdir / "findings.json"
-                if fp.exists():
+        for tool in ("fracture", "siphon"):
+            for fp in _tool_findings_json_all(proj, tool):
+                try:
                     for raw in json.loads(fp.read_text()):
                         f = dict(raw)
                         f["_tool"] = tool
@@ -2409,8 +2426,8 @@ def api_compare_scans():
                         if k not in seen:
                             seen.add(k)
                             items.append(f)
-            except Exception:
-                pass
+                except Exception:
+                    pass
         return items
 
     fa = _load_findings(pid_a)
@@ -2515,66 +2532,87 @@ def api_structure(project_id: str):
     _st_tools = proj.get("tools", ["fr", "si"])
     result: dict = {"fr_map": None, "si_map": None}
 
-    # Fracture structure map
-    fr_proj_dir = ""
-    if "fr" in _st_tools:
-        try:
-            _sf = proj.get("fr_settings_file") or ""
-            if _sf and Path(_sf).is_file():
-                fr_cfg = json.loads(Path(_sf).read_text())
-                _fp = fr_cfg.get("scan", {}).get("project", "")
-                if _fp:
-                    fr_proj_dir = _fp
-                    sm = Path(_fp) / "structure_map.json"
-                    if sm.exists():
-                        result["fr_map"] = json.loads(sm.read_text())
-            # Fallback: use fracture_output_dir directly (discovered projects)
+    # Fracture structure map (root + per-target subdirs for multi-target mode)
+    _fr_run = _tool_run_dir(proj, "fracture")
+    _fr_sm_dirs: list[Path] = []  # dirs that had structure_map, for backfill
+    if "fr" in _st_tools and _fr_run and _fr_run.is_dir():
+        def _merge_sm(sm_path: Path) -> None:
+            if not sm_path.exists():
+                return
+            sub = json.loads(sm_path.read_text())
+            _fr_sm_dirs.append(sm_path.parent)
             if result["fr_map"] is None:
-                _fdir = proj.get("fracture_output_dir") or ""
-                if _fdir:
-                    sm = Path(_fdir) / "structure_map.json"
-                    if sm.exists():
-                        fr_proj_dir = _fdir
-                        result["fr_map"] = json.loads(sm.read_text())
+                result["fr_map"] = sub
+            else:
+                existing = result["fr_map"].setdefault("paths", {})
+                for p, data in (sub.get("paths") or {}).items():
+                    if p not in existing:
+                        existing[p] = data
+        try:
+            _merge_sm(_fr_run / "structure_map.json")
+            for _child in sorted(_fr_run.iterdir()):
+                if _child.is_dir():
+                    _merge_sm(_child / "structure_map.json")
         except Exception:
             pass
+        # Fallback: fracture_output_dir directly (discovered projects)
+        if result["fr_map"] is None:
+            _fdir = proj.get("fracture_output_dir") or ""
+            if _fdir:
+                try:
+                    _merge_sm(Path(_fdir) / "structure_map.json")
+                except Exception:
+                    pass
 
     # Backfill structure_map path statuses from access_matrix unauthenticated codes
-    if result["fr_map"] and fr_proj_dir:
+    if result["fr_map"] and _fr_sm_dirs:
         try:
-            am_file = Path(fr_proj_dir) / "access_matrix.json"
-            if am_file.exists():
-                am_data = json.loads(am_file.read_text())
-                unauth = {
-                    ep["path"]: ep["access"].get("unauthenticated")
-                    for ep in am_data.get("paths", [])
-                    if isinstance(ep.get("access", {}).get("unauthenticated"), int)
-                }
-                for p, data in (result["fr_map"].get("paths") or {}).items():
-                    if isinstance(data, dict) and data.get("status") is None and p in unauth:
-                        data["status"] = unauth[p]
+            unauth: dict = {}
+            for _bfd in _fr_sm_dirs:
+                am_file = _bfd / "access_matrix.json"
+                if am_file.exists():
+                    am_data = json.loads(am_file.read_text())
+                    for ep in am_data.get("paths", []):
+                        _uv = ep.get("access", {}).get("unauthenticated")
+                        if isinstance(_uv, int):
+                            unauth[ep["path"]] = _uv
+            for p, data in (result["fr_map"].get("paths") or {}).items():
+                if isinstance(data, dict) and data.get("status") is None and p in unauth:
+                    data["status"] = unauth[p]
         except Exception:
             pass
 
-    # Siphon API map
-    if "si" in _st_tools:
-        try:
-            _sf = proj.get("si_settings_file") or ""
-            if _sf and Path(_sf).is_file():
-                si_cfg = json.loads(Path(_sf).read_text())
-                _sp = si_cfg.get("scan", {}).get("project", "")
-                if _sp:
-                    am = Path(_sp) / "api_map.json"
-                    if am.exists():
-                        result["si_map"] = json.loads(am.read_text())
+    # Siphon API map (root + per-target subdirs)
+    _si_run = _tool_run_dir(proj, "siphon")
+    if "si" in _st_tools and _si_run and _si_run.is_dir():
+        def _merge_si_map(mp: Path) -> None:
+            if not mp.exists():
+                return
+            sub = json.loads(mp.read_text())
             if result["si_map"] is None:
-                _sdir = proj.get("siphon_output_dir") or ""
-                if _sdir:
-                    am = Path(_sdir) / "api_map.json"
-                    if am.exists():
-                        result["si_map"] = json.loads(am.read_text())
+                result["si_map"] = sub
+            else:
+                existing = result["si_map"].setdefault("endpoints", [])
+                existing_keys = {(e.get("method", ""), e.get("path", "")) for e in existing}
+                for ep in sub.get("endpoints", []):
+                    k = (ep.get("method", ""), ep.get("path", ""))
+                    if k not in existing_keys:
+                        existing.append(ep)
+                        existing_keys.add(k)
+        try:
+            _merge_si_map(_si_run / "api_map.json")
+            for _child in sorted(_si_run.iterdir()):
+                if _child.is_dir():
+                    _merge_si_map(_child / "api_map.json")
         except Exception:
             pass
+        if result["si_map"] is None:
+            _sdir = proj.get("siphon_output_dir") or ""
+            if _sdir:
+                try:
+                    _merge_si_map(Path(_sdir) / "api_map.json")
+                except Exception:
+                    pass
 
     # Auger DB schema
     if "db" in _st_tools:
@@ -2651,41 +2689,76 @@ def api_access_matrix(project_id: str):
     _tools = proj.get("tools", ["fr", "si"])
     result: dict = {"fr_matrix": None, "si_matrix": None}
 
+    # Fracture access matrix (root + per-target subdirs for multi-target mode)
+    _fr_am_run = _tool_run_dir(proj, "fracture")
     if "fr" in _tools:
+        def _merge_fr_am(am_path: Path) -> None:
+            if not am_path.exists():
+                return
+            matrix = json.loads(am_path.read_text())
+            sm_path = am_path.parent / "structure_map.json"
+            _backfill_matrix_codes(matrix, sm_path)
+            _annotate_access_hints(matrix)
+            if result["fr_matrix"] is None:
+                result["fr_matrix"] = matrix
+            else:
+                existing_paths = {ep.get("path", "") for ep in result["fr_matrix"].get("paths", [])}
+                for ep in matrix.get("paths", []):
+                    if ep.get("path", "") not in existing_paths:
+                        result["fr_matrix"].setdefault("paths", []).append(ep)
+                        existing_paths.add(ep["path"])
+                # Merge roles
+                existing_roles = {r.get("label", "") for r in result["fr_matrix"].get("roles", [])}
+                for r in matrix.get("roles", []):
+                    if r.get("label", "") not in existing_roles:
+                        result["fr_matrix"].setdefault("roles", []).append(r)
+                        existing_roles.add(r["label"])
         try:
-            _sf = proj.get("fr_settings_file") or ""
-            _fr_proj = ""
-            if _sf and Path(_sf).is_file():
-                fr_cfg = json.loads(Path(_sf).read_text())
-                _fr_proj = fr_cfg.get("scan", {}).get("project", "")
-            if not _fr_proj:
-                _fr_proj = proj.get("fracture_output_dir") or ""
-            if _fr_proj:
-                am = Path(_fr_proj) / "access_matrix.json"
-                if am.exists():
-                    matrix = json.loads(am.read_text())
-                    _backfill_matrix_codes(matrix, Path(_fr_proj) / "structure_map.json")
-                    _annotate_access_hints(matrix)
-                    result["fr_matrix"] = matrix
+            if _fr_am_run and _fr_am_run.is_dir():
+                _merge_fr_am(_fr_am_run / "access_matrix.json")
+                for _child in sorted(_fr_am_run.iterdir()):
+                    if _child.is_dir():
+                        _merge_fr_am(_child / "access_matrix.json")
+            if result["fr_matrix"] is None:
+                _fdir = proj.get("fracture_output_dir") or ""
+                if _fdir:
+                    _merge_fr_am(Path(_fdir) / "access_matrix.json")
         except Exception:
             pass
 
+    # Siphon access matrix (root + per-target subdirs)
+    _si_am_run = _tool_run_dir(proj, "siphon")
     if "si" in _tools:
+        def _merge_si_am(am_path: Path) -> None:
+            if not am_path.exists():
+                return
+            matrix = json.loads(am_path.read_text())
+            map_path = am_path.parent / "api_map.json"
+            _backfill_matrix_codes(matrix, map_path)
+            _annotate_access_hints(matrix)
+            if result["si_matrix"] is None:
+                result["si_matrix"] = matrix
+            else:
+                existing_paths = {ep.get("path", "") for ep in result["si_matrix"].get("paths", [])}
+                for ep in matrix.get("paths", []):
+                    if ep.get("path", "") not in existing_paths:
+                        result["si_matrix"].setdefault("paths", []).append(ep)
+                        existing_paths.add(ep["path"])
+                existing_roles = {r.get("label", "") for r in result["si_matrix"].get("roles", [])}
+                for r in matrix.get("roles", []):
+                    if r.get("label", "") not in existing_roles:
+                        result["si_matrix"].setdefault("roles", []).append(r)
+                        existing_roles.add(r["label"])
         try:
-            _sf = proj.get("si_settings_file") or ""
-            _si_proj = ""
-            if _sf and Path(_sf).is_file():
-                si_cfg = json.loads(Path(_sf).read_text())
-                _si_proj = si_cfg.get("scan", {}).get("project", "")
-            if not _si_proj:
-                _si_proj = proj.get("siphon_output_dir") or ""
-            if _si_proj:
-                am = Path(_si_proj) / "access_matrix.json"
-                if am.exists():
-                    matrix = json.loads(am.read_text())
-                    _backfill_matrix_codes(matrix, Path(_si_proj) / "api_map.json")
-                    _annotate_access_hints(matrix)
-                    result["si_matrix"] = matrix
+            if _si_am_run and _si_am_run.is_dir():
+                _merge_si_am(_si_am_run / "access_matrix.json")
+                for _child in sorted(_si_am_run.iterdir()):
+                    if _child.is_dir():
+                        _merge_si_am(_child / "access_matrix.json")
+            if result["si_matrix"] is None:
+                _sdir = proj.get("siphon_output_dir") or ""
+                if _sdir:
+                    _merge_si_am(Path(_sdir) / "access_matrix.json")
         except Exception:
             pass
 
@@ -2702,37 +2775,35 @@ def api_auth_status(project_id: str):
     _auth_tools = proj.get("tools", ["fr", "si"])
     result: dict = {"fr_auth": None, "si_auth": None}
 
-    if "fr" in _auth_tools:
+    for _as_tool, _as_key in (("fracture", "fr_auth"), ("siphon", "si_auth")):
+        _as_run = _tool_run_dir(proj, _as_tool)
+        if (_as_tool[:2] not in _auth_tools) or not _as_run or not _as_run.is_dir():
+            continue
+        def _merge_auth(af_path: Path, _k=_as_key) -> None:
+            if not af_path.exists():
+                return
+            sub = json.loads(af_path.read_text())
+            if result[_k] is None:
+                result[_k] = sub
+            elif isinstance(sub, dict) and isinstance(result[_k], dict):
+                # Merge per-role keys
+                for rk, rv in sub.items():
+                    if rk not in result[_k]:
+                        result[_k][rk] = rv
         try:
-            _sf = proj.get("fr_settings_file") or ""
-            _fr_proj = ""
-            if _sf and Path(_sf).is_file():
-                fr_cfg = json.loads(Path(_sf).read_text())
-                _fr_proj = fr_cfg.get("scan", {}).get("project", "")
-            if not _fr_proj:
-                _fr_proj = proj.get("fracture_output_dir") or ""
-            if _fr_proj:
-                af = Path(_fr_proj) / "authentication_status.json"
-                if af.exists():
-                    result["fr_auth"] = json.loads(af.read_text())
+            _merge_auth(_as_run / "authentication_status.json")
+            for _child in sorted(_as_run.iterdir()):
+                if _child.is_dir():
+                    _merge_auth(_child / "authentication_status.json")
         except Exception:
             pass
-
-    if "si" in _auth_tools:
-        try:
-            _sf = proj.get("si_settings_file") or ""
-            _si_proj = ""
-            if _sf and Path(_sf).is_file():
-                si_cfg = json.loads(Path(_sf).read_text())
-                _si_proj = si_cfg.get("scan", {}).get("project", "")
-            if not _si_proj:
-                _si_proj = proj.get("siphon_output_dir") or ""
-            if _si_proj:
-                af = Path(_si_proj) / "authentication_status.json"
-                if af.exists():
-                    result["si_auth"] = json.loads(af.read_text())
-        except Exception:
-            pass
+        if result[_as_key] is None:
+            _fdir = proj.get(f"{_as_tool}_output_dir") or ""
+            if _fdir:
+                try:
+                    _merge_auth(Path(_fdir) / "authentication_status.json")
+                except Exception:
+                    pass
 
     return jsonify(result)
 
@@ -3203,14 +3274,8 @@ def api_export_status_report_pdf(project_id: str):
     _suppressions = _load_suppressions(project_id)
 
     all_findings: list[dict] = []
-    for _tool_name, _subdir, _scope_lbl in [
-        ("fracture", fr_proj_dir, "webapp"),
-        ("siphon",   si_proj_dir, "api"),
-    ]:
-        if not _subdir:
-            continue
-        _fp = Path(proj["project_dir"]) / _subdir / "findings.json"
-        if _fp.exists():
+    for _tool_name, _scope_lbl in [("fracture", "webapp"), ("siphon", "api")]:
+        for _fp in _tool_findings_json_all(proj, _tool_name):
             try:
                 for _f in json.loads(_fp.read_text()):
                     _f = dict(_f)
@@ -3815,16 +3880,31 @@ def api_target_profile(project_id: str):
     proj = _get_project(project_id)
     if not proj:
         return jsonify({}), 404
-    _sf   = proj.get("fr_settings_file") or ""
-    _pdir = Path(proj["project_dir"]) if proj.get("project_dir") else None
+    _fr_run = _tool_run_dir(proj, "fracture")
+    _pdir   = Path(proj["project_dir"]) if proj.get("project_dir") else None
     try:
-        if _sf and Path(_sf).is_file():
-            fr_cfg  = json.loads(Path(_sf).read_text())
-            fr_proj = fr_cfg.get("scan", {}).get("project", "")
-            if fr_proj and _pdir:
-                tp_path = _pdir / fr_proj / "target_profile.json"
-                if tp_path.exists():
-                    return jsonify(json.loads(tp_path.read_text()))
+        if _fr_run and _fr_run.is_dir():
+            # Root-level
+            tp = _fr_run / "target_profile.json"
+            if tp.exists():
+                return jsonify(json.loads(tp.read_text()))
+            # Per-target subdirs — merge profiles
+            merged: dict = {}
+            for _child in sorted(_fr_run.iterdir()):
+                if _child.is_dir():
+                    tp = _child / "target_profile.json"
+                    if tp.exists():
+                        sub = json.loads(tp.read_text())
+                        if not merged:
+                            merged = sub
+                        elif isinstance(sub, dict):
+                            for k, v in sub.items():
+                                if k not in merged:
+                                    merged[k] = v
+                                elif isinstance(v, list) and isinstance(merged[k], list):
+                                    merged[k].extend(v)
+            if merged:
+                return jsonify(merged)
         # Fallback: target_profile.json directly in project_dir (discovered projects)
         if _pdir:
             tp_path = _pdir / "target_profile.json"
@@ -4034,29 +4114,18 @@ def on_join_project(data):
     if not proj_findings:
         _pf = _all_findings.setdefault(project_id, [])
         _loaded_keys: set = set()
-        for _tool_key, _tool_name, _scope_name in (
-            ("fr_settings_file", "fracture", "webapp"),
-            ("si_settings_file", "siphon", "api"),
-        ):
-            _cfg_path = Path(proj.get(_tool_key, ""))
-            if _cfg_path.exists():
+        for _tool_name, _scope_name in (("fracture", "webapp"), ("siphon", "api")):
+            for _fp in _tool_findings_json_all(proj, _tool_name):
                 try:
-                    _cfg_data = json.loads(_cfg_path.read_text())
-                    _proj_name = _cfg_data.get("scan", {}).get(
-                        "project",
-                        "fracture_output" if _tool_name == "fracture" else "siphon_output",
-                    )
-                    _fp = Path(proj["project_dir"]) / _proj_name / "findings.json"
-                    if _fp.exists():
-                        _existing = {_fkey(f) for f in _pf}
-                        for _raw in json.loads(_fp.read_text()):
-                            _f = dict(_raw)
-                            _f["_tool"]  = _tool_name
-                            _f["_scope"] = _scope_name
-                            _k = _fkey(_f)
-                            if _k not in _existing and _k not in _loaded_keys:
-                                _loaded_keys.add(_k)
-                                _pf.append(_f)
+                    _existing = {_fkey(f) for f in _pf}
+                    for _raw in json.loads(_fp.read_text()):
+                        _f = dict(_raw)
+                        _f["_tool"]  = _tool_name
+                        _f["_scope"] = _scope_name
+                        _k = _fkey(_f)
+                        if _k not in _existing and _k not in _loaded_keys:
+                            _loaded_keys.add(_k)
+                            _pf.append(_f)
                 except Exception:
                     pass
         proj_findings = _all_findings.get(project_id, [])
@@ -4816,42 +4885,28 @@ def _finding_watcher(project_id: str, proj: dict, gen: int) -> None:
             return
         proj = _get_project(project_id) or proj
 
-        fr_cfg_path = Path(proj.get("fr_settings_file", ""))
-        if fr_cfg_path.exists():
-            try:
-                fr_cfg      = json.loads(fr_cfg_path.read_text())
-                fr_proj_name = fr_cfg.get("scan", {}).get("project", "fracture_output")
-                fp = Path(proj["project_dir"]) / fr_proj_name / "findings.json"
-                _ingest(project_id, fp, "fracture", "webapp", seen)
-            except Exception:
-                pass
-
-        si_cfg_path = Path(proj.get("si_settings_file", ""))
-        if si_cfg_path.exists():
-            try:
-                si_cfg      = json.loads(si_cfg_path.read_text())
-                si_proj_name = si_cfg.get("scan", {}).get("project", "siphon_output")
-                fp = Path(proj["project_dir"]) / si_proj_name / "findings.json"
-                _ingest(project_id, fp, "siphon", "api", seen)
-            except Exception:
-                pass
+        for _wt_tool, _wt_scope in (("fracture", "webapp"), ("siphon", "api")):
+            for _wt_fp in _tool_findings_json_all(proj, _wt_tool):
+                _ingest(project_id, _wt_fp, _wt_tool, _wt_scope, seen)
 
         # ── Poll action_items.json from Fracture, Siphon and Auger ─────
-        for _ai_tool, _ai_cfg_key in (("fr", "fr_settings_file"),
-                                       ("si", "si_settings_file"),
-                                       ("db", "db_settings_file")):
-            _ai_cfg_p = Path(proj.get(_ai_cfg_key, ""))
-            if _ai_cfg_p.exists():
-                try:
-                    _ai_cfg = json.loads(_ai_cfg_p.read_text())
-                    _ai_def = {"fr": "fracture_output", "si": "siphon_output",
-                               "db": "auger_output"}.get(_ai_tool, f"{_ai_tool}_output")
-                    _ai_proj = _ai_cfg.get("scan", {}).get("project", _ai_def)
-                    _ai_path = Path(proj["project_dir"]) / _ai_proj / "action_items.json"
-                    if _ai_path.is_file():
-                        _ingest_action_items_file(project_id, _ai_path)
-                except Exception:
-                    pass
+        for _ai_tool_name in ("fracture", "siphon", "auger"):
+            _ai_run = _tool_run_dir(proj, _ai_tool_name)
+            if not _ai_run or not _ai_run.is_dir():
+                continue
+            try:
+                # Root-level
+                _ai_root = _ai_run / "action_items.json"
+                if _ai_root.is_file():
+                    _ingest_action_items_file(project_id, _ai_root)
+                # Per-target subdirs
+                for _ai_child in sorted(_ai_run.iterdir()):
+                    if _ai_child.is_dir():
+                        _ai_sub = _ai_child / "action_items.json"
+                        if _ai_sub.is_file():
+                            _ingest_action_items_file(project_id, _ai_sub)
+            except Exception:
+                pass
 
         status = _tool_status.get(project_id, {})
         if (status.get("fr") != "running"
@@ -4873,24 +4928,9 @@ def _finding_watcher(project_id: str, proj: dict, gen: int) -> None:
 
 
 def _ingest_all_final(project_id: str, proj: dict, seen: set) -> None:
-    fr_cfg_path = Path(proj.get("fr_settings_file", ""))
-    if fr_cfg_path.exists():
-        try:
-            fr_cfg       = json.loads(fr_cfg_path.read_text())
-            fr_proj_name = fr_cfg.get("scan", {}).get("project", "fracture_output")
-            fp = Path(proj["project_dir"]) / fr_proj_name / "findings.json"
-            _ingest(project_id, fp, "fracture", "webapp", seen)
-        except Exception:
-            pass
-    si_cfg_path = Path(proj.get("si_settings_file", ""))
-    if si_cfg_path.exists():
-        try:
-            si_cfg       = json.loads(si_cfg_path.read_text())
-            si_proj_name = si_cfg.get("scan", {}).get("project", "siphon_output")
-            fp = Path(proj["project_dir"]) / si_proj_name / "findings.json"
-            _ingest(project_id, fp, "siphon", "api", seen)
-        except Exception:
-            pass
+    for _fi_tool, _fi_scope in (("fracture", "webapp"), ("siphon", "api")):
+        for _fi_fp in _tool_findings_json_all(proj, _fi_tool):
+            _ingest(project_id, _fi_fp, _fi_tool, _fi_scope, seen)
 
 
 # ---------------------------------------------------------------------------
