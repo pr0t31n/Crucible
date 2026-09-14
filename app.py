@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.22.0"
+VERSION = "1.22.1"
 
 import io
 import socket
@@ -4086,11 +4086,14 @@ def api_download_project(project_id: str):
     buf.seek(0)
     client_short = re.sub(r"[^\w\-]", "_", proj.get("client_short", "") or proj.get("name", project_id))
     dt_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    _dl_tools = proj.get("tools", ["fr", "si"])
+    _TOOL_LABELS = {"fr": "Fracture", "si": "Siphon", "db": "Auger"}
+    _dl_tool_name = "+".join(_TOOL_LABELS.get(t, t.upper()) for t in _dl_tools) if _dl_tools else "Crucible"
     is_complete = (proj.get("fr_status") == "complete" or proj.get("si_status") == "complete")
     if is_complete:
-        dl_name = f"{client_short}_Fracture_AllFiles_{dt_stamp}.zip"
+        dl_name = f"{client_short}_{_dl_tool_name}_AllFiles_{dt_stamp}.zip"
     else:
-        dl_name = f"{client_short}_Fracture_AllFiles_Incomplete_{dt_stamp}.zip"
+        dl_name = f"{client_short}_{_dl_tool_name}_AllFiles_Incomplete_{dt_stamp}.zip"
     return send_file(
         buf,
         mimetype="application/zip",
