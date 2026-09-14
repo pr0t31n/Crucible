@@ -2013,22 +2013,22 @@ def _remove_finding_from_csv(csv_path: Path, key_tuple: tuple) -> bool:
             return False
         fieldnames = list(rows[0].keys())
         kept, removed_any = [], False
-        kt = (
-            (key_tuple[0] or ""),
+        # Scope-agnostic comparison: CSV rows from disk never carry _scope,
+        # so compare only (title, ip, port, hostname) — skip index 3.
+        kt_noscope = (
+            (key_tuple[0] or "").strip().lower(),
             (key_tuple[1] or ""),
             str(key_tuple[2] or ""),
-            (key_tuple[3] or ""),
-            (key_tuple[4] or ""),
+            (key_tuple[4] or "").strip().lower(),
         )
         for r in rows:
             r_key = (
-                (r.get("title") or ""),
+                (r.get("title") or "").strip().lower(),
                 (r.get("ip") or ""),
                 str(r.get("port") or ""),
-                (r.get("_scope") or r.get("scope") or ""),
-                (r.get("hostname") or ""),
+                (r.get("hostname") or "").strip().lower(),
             )
-            if r_key == kt:
+            if r_key == kt_noscope:
                 removed_any = True
             else:
                 kept.append(r)
@@ -2106,18 +2106,36 @@ def api_suppress_finding(project_id: str):
 
     if finding:
         key_tuple = _fkey(finding)
+        # Scope-agnostic key for on-disk removal: raw findings.json files
+        # from Fracture/Siphon do NOT carry the _scope field that Crucible
+        # adds at load time, so _fkey() produces a different tuple.  Strip
+        # _scope (index 3) so the comparison matches regardless.
+        _key_noscope = (key_tuple[0], key_tuple[1], key_tuple[2], key_tuple[4])
+
+        def _match(f):
+            fk = _fkey(f)
+            return (fk[0], fk[1], fk[2], fk[4]) == _key_noscope
 
         # Remove from EVERY findings.json (legacy + any universal-schema
         # run-dirs that may exist) and from each sibling findings.csv.
         # Capture the CSV fieldnames from the first tool findings.csv we see
         # so the FP CSV mirror uses the same column order.
         tool_csv_fields: "list[str] | None" = None
-        for jp in _tool_findings_paths_all(proj, finding.get("_tool", "")):
+        _tool_hint = finding.get("_tool", "")
+        _tools_to_try = [_tool_hint] if _tool_hint else [t for t in proj.get("tools", ["fr", "si"]) if t]
+        _tool_map = {"fr": "fracture", "si": "siphon", "db": "auger"}
+        _resolved_tools = [_tool_map.get(t, t) for t in _tools_to_try]
+        _all_fps: list[Path] = []
+        for _rt in _resolved_tools:
+            for _p in _tool_findings_paths_all(proj, _rt):
+                if _p not in _all_fps:
+                    _all_fps.append(_p)
+        for jp in _all_fps:
             try:
                 existing = json.loads(jp.read_text())
                 if isinstance(existing, list):
                     jp.write_text(
-                        json.dumps([f for f in existing if _fkey(f) != key_tuple], indent=2)
+                        json.dumps([f for f in existing if not _match(f)], indent=2)
                     )
             except Exception:
                 pass
