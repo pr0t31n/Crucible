@@ -38,6 +38,7 @@ import _auth
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = _auth.load_secret_key()
+app.config["SESSION_COOKIE_NAME"] = "crucible_session"
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB — prevents oversized request buffering
 
 # CORS — match Vantage/Gauntlet/Spectre pattern; _auth.py handles access control
