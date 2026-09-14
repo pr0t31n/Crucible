@@ -1006,10 +1006,19 @@ def nexus_status():
 def api_system_info():
     """Return testing host/device information for the Summary page."""
     try:
-        import sys as _s
-        if "/opt/pr0t31n/shared" not in _s.path:
-            _s.path.insert(0, "/opt/pr0t31n/shared")
-        import pr0t31n_system_info as _si
+        try:
+            from importlib.util import spec_from_file_location, module_from_spec
+            _spec = spec_from_file_location(
+                "pr0t31n_system_info",
+                os.path.join(os.path.dirname(__file__), "pr0t31n_system_info.py"),
+            )
+            _si = module_from_spec(_spec)
+            _spec.loader.exec_module(_si)
+        except Exception:
+            import sys as _s
+            if "/opt/pr0t31n/shared" not in _s.path:
+                _s.path.insert(0, "/opt/pr0t31n/shared")
+            import pr0t31n_system_info as _si
         return jsonify(_si.collect())
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500

@@ -4658,8 +4658,8 @@ document.addEventListener('DOMContentLoaded', () => {
   fetch('/api/system_info')
     .then(r => r.json())
     .then(info => {
-      if (info.error) return;
       const kv = document.getElementById('testing-host-kv');
+      if (info.error) { if (kv) kv.innerHTML = '<div class="kv-row"><span class="kv-label" style="color:var(--text-muted)">Unavailable</span></div>'; return; }
       if (!kv) return;
       const e = s => _escHtml(s || '—');
       const iface = info.interface || {};
