@@ -420,6 +420,16 @@
         </div>
       </div>
 
+      <!-- Testing Host panel -->
+      <div class="panel" id="testing-host-card">
+        <div class="panel-header"><span class="panel-title">TESTING HOST</span></div>
+        <div class="panel-body">
+          <div class="summary-kv" id="testing-host-kv">
+            <div class="kv-row"><span class="kv-label">Loading…</span></div>
+          </div>
+        </div>
+      </div>
+
       {% if 'fr' in project.get('tools', ['fr','si']) %}
       <div class="panel" id="tp-card" style="display:none">
         <div class="panel-header">
@@ -4641,7 +4651,55 @@ async function _aiLaunch() {
 function launchCrucibleAI(tool) { openLaunchModal(tool); }
 
 // Load action items on page load
-document.addEventListener('DOMContentLoaded', () => { loadActionItems(); });
+document.addEventListener('DOMContentLoaded', () => {
+  loadActionItems();
+
+  // Fetch testing host info for Summary panel
+  fetch('/api/system_info')
+    .then(r => r.json())
+    .then(info => {
+      if (info.error) return;
+      const kv = document.getElementById('testing-host-kv');
+      if (!kv) return;
+      const e = s => _escHtml(s || '—');
+      const iface = info.interface || {};
+      const hw = info.hardware || {};
+      const cpu = info.cpu || {};
+      const ram = info.ram || {};
+      const os = info.os || {};
+      let netDetail = `${e(iface.ip)}/${e(iface.subnet_cidr)}`;
+      if (iface.type) netDetail += ` (${e(iface.type)})`;
+      let rows = `
+        <div class="kv-row"><span class="kv-label">Hostname</span><span class="kv-value">${e(info.hostname)}</span></div>
+        <div class="kv-row"><span class="kv-label">IP Address</span><span class="kv-value mono">${e(iface.ip)}</span></div>
+        <div class="kv-row"><span class="kv-label">Interface</span><span class="kv-value mono">${e(iface.name)} (${e(iface.mac)})</span></div>
+        <div class="kv-row"><span class="kv-label">Network</span><span class="kv-value mono">${netDetail}</span></div>`;
+      if (iface.gateway)
+        rows += `<div class="kv-row"><span class="kv-label">Gateway</span><span class="kv-value mono">${e(iface.gateway)}</span></div>`;
+      if (iface.netmask)
+        rows += `<div class="kv-row"><span class="kv-label">Subnet Mask</span><span class="kv-value mono">${e(iface.netmask)}</span></div>`;
+      rows += `
+        <div class="kv-row"><span class="kv-label">Operating System</span><span class="kv-value">${e(os.os_name)}</span></div>
+        <div class="kv-row"><span class="kv-label">Architecture</span><span class="kv-value">${e(os.machine)}</span></div>`;
+      if (hw.form_factor)
+        rows += `<div class="kv-row"><span class="kv-label">Form Factor</span><span class="kv-value">${e(hw.form_factor)}</span></div>`;
+      if (hw.board)
+        rows += `<div class="kv-row"><span class="kv-label">Board / Model</span><span class="kv-value">${e(hw.board)}</span></div>`;
+      if (hw.serial)
+        rows += `<div class="kv-row"><span class="kv-label">Serial</span><span class="kv-value mono">${e(hw.serial)}</span></div>`;
+      if (cpu.model)
+        rows += `<div class="kv-row"><span class="kv-label">CPU</span><span class="kv-value">${e(cpu.model)}</span></div>`;
+      if (cpu.cores)
+        rows += `<div class="kv-row"><span class="kv-label">Cores / Threads</span><span class="kv-value">${cpu.cores}C / ${cpu.threads}T</span></div>`;
+      if (ram.total_human)
+        rows += `<div class="kv-row"><span class="kv-label">RAM</span><span class="kv-value">${e(ram.total_human)}</span></div>`;
+      kv.innerHTML = rows;
+    })
+    .catch(() => {
+      const kv = document.getElementById('testing-host-kv');
+      if (kv) kv.innerHTML = '<div class="kv-row"><span class="kv-label" style="color:var(--text-muted)">Unavailable</span></div>';
+    });
+});
 </script>
 
 <style>

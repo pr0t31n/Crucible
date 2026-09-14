@@ -6,7 +6,7 @@ and Siphon (API pentest).
 """
 from __future__ import annotations
 
-VERSION = "1.21.7"
+VERSION = "1.21.8"
 
 import io
 import socket
@@ -997,6 +997,19 @@ def nexus_status():
         for p in procs.values()
     )
     return jsonify({"app": "crucible", "tool": "crucible", "hostname": socket.gethostname(), "scanning": active, "version": VERSION})
+
+@app.route("/api/system_info")
+def api_system_info():
+    """Return testing host/device information for the Summary page."""
+    try:
+        import sys as _s
+        if "/opt/pr0t31n/shared" not in _s.path:
+            _s.path.insert(0, "/opt/pr0t31n/shared")
+        import pr0t31n_system_info as _si
+        return jsonify(_si.collect())
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
 
 # ---------------------------------------------------------------------------
 # Arbiter integration — project list endpoint
