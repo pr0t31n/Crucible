@@ -25,6 +25,7 @@
     })();
   </script>
   {% block head %}{% endblock %}
+  <style>.nav-version{font-size:.65rem;font-weight:600;letter-spacing:.04em;color:var(--text-muted,#888);opacity:.7;margin-left:.35rem;vertical-align:middle}</style>
 </head>
 <body>
 
@@ -33,6 +34,7 @@
     <a href="/" class="nav-brand">
       <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" class="nav-logo">
       <span class="nav-title">CRUCIBLE</span>
+      <span class="nav-version">v{{ app_version }}</span>
     </a>
 
     <div class="nav-center">{% block nav_center %}{% endblock %}</div>

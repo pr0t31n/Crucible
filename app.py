@@ -838,6 +838,10 @@ def _discover_client_projects(tools: list) -> list:
 # ---------------------------------------------------------------------------
 _auth.init_auth()
 
+@app.context_processor
+def _inject_version():
+    return {"app_version": VERSION}
+
 @app.before_request
 def before_request():
     gate = _auth.auth_gate()
