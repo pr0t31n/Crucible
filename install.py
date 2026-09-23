@@ -21,6 +21,19 @@ import urllib.request
 # ---------------------------------------------------------------------------
 # ANSI colours
 # ---------------------------------------------------------------------------
+def _pip_installed(pkg_spec):
+    """Return True if a pip package is already importable."""
+    import importlib.util
+    name = pkg_spec.split(">=")[0].split("==")[0].split("[")[0].split("<")[0].strip()
+    _IMPORT_MAP = {
+        "flask-socketio": "flask_socketio", "Pillow": "PIL",
+        "pyyaml": "yaml", "python-engineio": "engineio",
+        "python-socketio": "socketio",
+    }
+    mod = _IMPORT_MAP.get(name, name.replace("-", "_"))
+    return importlib.util.find_spec(mod) is not None
+
+
 R  = "\033[1;31m"
 G  = "\033[1;32m"
 Y  = "\033[1;33m"
@@ -152,8 +165,23 @@ def install_system():
     elif OS == "zypper":
         zypper_install(ZYPPER_PACKAGES)
     elif OS == "macos":
-        for pkg in BREW_PACKAGES:
-            brew_install(pkg)
+        try:
+            _brew_path = shutil.which("brew") or "/opt/homebrew/bin/brew"
+            _installed = set(subprocess.run(
+                [_brew_path, "list", "--formula", "-1"],
+                capture_output=True, text=True, check=True).stdout.strip().splitlines())
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            _installed = set()
+        _missing = [p for p in BREW_PACKAGES if p not in _installed]
+        for p in BREW_PACKAGES:
+            if p in _installed:
+                info(f"✓ {p} already installed")
+        if _missing:
+            info(f"Installing brew packages: {' '.join(_missing)}")
+            for pkg in _missing:
+                brew_install(pkg)
+        else:
+            info("All brew packages already installed.")
     elif OS == "windows":
         warn("Windows: system package installation not supported. Install tools manually.")
     else:
@@ -302,7 +330,16 @@ def _install_from_bundle(pkg_name: str, url: str) -> bool:
 def install_pip():
     banner("Phase: pip packages")
     info("Installing Crucible Python dependencies ...")
+    _to_install = []
     for _pkg in PIP_PACKAGES:
+        if _pip_installed(_pkg):
+            info(f"✓ {_pkg} already installed")
+        else:
+            _to_install.append(_pkg)
+    if not _to_install:
+        info("All pip packages already installed.")
+        return
+    for _pkg in _to_install:
         _r = subprocess.run(
             [sys.executable, "-m", "pip", "install", "--break-system-packages", _pkg],
             check=False,
