@@ -44,6 +44,7 @@ W  = "\033[0m"
 def banner(msg):  print(f"\n{B}{'='*60}{W}\n{C}  {msg}{W}\n{B}{'='*60}{W}")
 def info(msg):    print(f"{G}[+]{W} {msg}")
 def warn(msg):    print(f"{Y}[!]{W} {msg}")
+def note(msg):    print(f"{Y}[i]{W} {msg}")
 def error(msg):   print(f"{R}[x]{W} {msg}")
 def step(msg):    print(f"{B}[>]{W} {msg}")
 
@@ -102,14 +103,14 @@ def brew_install(pkg):
                 brew_path = p
                 break
     if not brew_path:
-        warn(f"brew not found — skipping {pkg}")
+        note(f"brew not found — skipping {pkg}")
         return
 
     cmd = [brew_path, "install", pkg]
     if is_root():
         sudo_user = get_sudo_user()
         if not sudo_user:
-            warn(f"Running as root with no SUDO_USER — cannot run brew safely. Skipping {pkg}.")
+            note(f"Running as root with no SUDO_USER — cannot run brew safely. Skipping {pkg}.")
             return
         cmd = ["sudo", "-u", sudo_user] + cmd
     run(cmd, check=False)
@@ -183,9 +184,9 @@ def install_system():
         else:
             info("All brew packages already installed.")
     elif OS == "windows":
-        warn("Windows: system package installation not supported. Install tools manually.")
+        note("Windows: system package installation not supported. Install tools manually.")
     else:
-        warn(f"Unknown OS '{OS}' — skipping system packages.")
+        note(f"Unknown OS '{OS}' — skipping system packages.")
 
 # ---------------------------------------------------------------------------
 # pip packages
@@ -426,7 +427,7 @@ def install_service():
             run(["systemctl", "start", SVC_NAME])
             info(f"Service {SVC_NAME} started.")
         except PermissionError:
-            warn("Not root — cannot write systemd unit. Run as root to install service.")
+            note("Not root — cannot write systemd unit. Run as root to install service.")
         except subprocess.CalledProcessError as e:
             warn(f"systemctl command failed (exit {e.returncode}): {' '.join(e.cmd)}")
             if e.stderr:
@@ -442,9 +443,9 @@ def install_service():
             info("LaunchDaemon loaded.")
             info("Start with: launchctl start com.pr0t31n.crucible")
         except PermissionError:
-            warn("Not root — cannot write LaunchDaemon plist. Run as root to install service.")
+            note("Not root — cannot write LaunchDaemon plist. Run as root to install service.")
     else:
-        warn("Service installation not supported on this OS.")
+        note("Service installation not supported on this OS.")
 
 # ---------------------------------------------------------------------------
 # Subprocess dependency warning
@@ -554,17 +555,17 @@ def main():
     if not args.skip_system:
         install_system()
     else:
-        skips.add("system"); warn("Skipping system packages.")
+        skips.add("system"); note("Skipping system packages.")
 
     if not args.skip_pip:
         install_pip()
     else:
-        skips.add("pip"); warn("Skipping pip packages.")
+        skips.add("pip"); note("Skipping pip packages.")
 
     if not args.skip_service:
         install_service()
     else:
-        skips.add("service"); warn("Skipping service installation.")
+        skips.add("service"); note("Skipping service installation.")
 
     run_check()
     print_summary(skips)
