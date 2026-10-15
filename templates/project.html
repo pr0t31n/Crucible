@@ -1,0 +1,1866 @@
+{% extends "base.html" %}
+
+{% block nav_center %}
+<span class="nav-project-full" style="font-size:0.82rem;font-weight:600">{{ project.name }}</span>
+<span class="nav-project-short" style="font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;display:none">{{ project.client_short or project.name }}</span>
+{% endblock %}
+
+{% block nav_home %}
+<a href="/" class="nav-btn" title="Home" style="margin-right:4px;">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="project-layout">
+
+  <!-- ══════════════════════════════════════════════════════════
+       TAB BAR
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-nav" id="tabNav">
+    <button type="button" class="tab-btn active" data-tab="summary">Summary</button>
+    <button type="button" class="tab-btn" data-tab="console">Console</button>
+    <button type="button" class="tab-btn" data-tab="findings">Findings <span class="tab-pill" id="findingsPill"></span></button>
+    <button type="button" class="tab-btn" data-tab="action-items">Action Items <span class="tab-pill" id="actionPill"></span></button>
+    <button type="button" class="tab-btn" data-tab="intelligence">Intelligence</button>
+    <button type="button" class="tab-btn" data-tab="import">Import</button>
+    <button type="button" class="tab-btn" data-tab="settings">Settings</button>
+    <button type="button" class="tab-btn" data-tab="logs">Logs</button>
+    <button type="button" class="tab-btn" data-tab="errors">Errors <span class="tab-pill error" id="errorsPill"></span></button>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       SUMMARY TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content active" data-tab="summary">
+    <div class="p-20">
+
+      <!-- ── Engagement info card ─────────────────────────── -->
+      <div class="panel mb-16">
+        <div class="panel-header">
+          <span class="panel-title">Engagement Details</span>
+          <div class="flex gap-4">
+            <button type="button" class="btn btn-xs btn-primary" onclick="requestReport('{{ project_id }}')">Generate Report</button>
+            <a href="/edit_project/{{ project_id }}" class="btn btn-xs btn-secondary">Edit</a>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <span class="form-label">Project Name</span>
+              <span class="text-primary font-medium">{{ project.name }}</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Client</span>
+              <span class="text-primary">{{ project.client_name|default('--', true) }}</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Scope</span>
+              <span class="text-primary">{{ project.scope|default('--', true) }}</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Start Date</span>
+              <span class="text-primary">{{ project.start_date|default('--', true) }}</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">End Date</span>
+              <span class="text-primary">{{ project.end_date|default('--', true) }}</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Consultant</span>
+              {% if project.consultant is mapping %}
+              <span class="text-primary">{{ project.consultant.name|default('--', true) }}</span>
+              {% if project.consultant.title %}<span class="text-muted" style="font-size:0.82rem;">{{ project.consultant.title }}</span>{% endif %}
+              {% if project.consultant.email %}<span class="text-muted" style="font-size:0.82rem;">{{ project.consultant.email }}</span>{% endif %}
+              {% else %}
+              <span class="text-primary">{{ project.consultant|default('--', true) }}</span>
+              {% endif %}
+            </div>
+            <div class="form-group">
+              <span class="form-label">Point of Contact</span>
+              {% if project.client_poc is mapping and project.client_poc.name %}
+              <span class="text-primary">{{ project.client_poc.name }}</span>
+              {% if project.client_poc.title %}<span class="text-muted" style="font-size:0.82rem;">{{ project.client_poc.title }}</span>{% endif %}
+              {% if project.client_poc.phone %}<span class="text-muted" style="font-size:0.82rem;">{{ project.client_poc.phone }}</span>{% endif %}
+              {% if project.client_poc.email %}<span class="text-muted" style="font-size:0.82rem;">{{ project.client_poc.email }}</span>{% endif %}
+              {% else %}
+              <span class="text-primary">{{ project.client_poc|default('--', true) }}</span>
+              {% endif %}
+            </div>
+            <div class="form-group">
+              <span class="form-label">Testing Start</span>
+              <span class="text-primary" id="engagementStartTime">--</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Testing End</span>
+              <span class="text-primary" id="engagementEndTime">--</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Engagement Directory</span>
+              <span class="text-primary" style="font-size:0.82rem;word-break:break-all;">{{ project.engagement_dir|default(project.project_dir)|default('--', true) }}</span>
+            </div>
+          </div>
+          <div class="mt-8">
+            <span class="form-label">Tools</span>
+            <div class="flex flex-wrap gap-4 mt-4">
+              {% for t in project.tools|default([]) %}
+              <span class="tool-badge tool-{{ tools_config[t].key|lower if t in tools_config else t }}">{{ tools_config[t].key if t in tools_config else t|upper }}</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Risk overview bar ────────────────────────────── -->
+      <div class="panel mb-16" id="riskOverviewPanel">
+        <div class="panel-header">
+          <span class="panel-title">Risk Overview</span>
+          <span class="text-xs text-muted" id="riskTotal">0 findings</span>
+        </div>
+        <div class="panel-body">
+          <div class="flex gap-12 flex-wrap" id="riskBadges">
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-critical">CRITICAL</span><span class="font-mono font-bold" id="riskCritical">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-high">HIGH</span><span class="font-mono font-bold" id="riskHigh">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-medium">MEDIUM</span><span class="font-mono font-bold" id="riskMedium">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-low">LOW</span><span class="font-mono font-bold" id="riskLow">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-info">INFO</span><span class="font-mono font-bold" id="riskInfo">0</span></div>
+          </div>
+          <div class="progress mt-8" id="riskBar" style="height:8px">
+            <div class="flex" style="height:100%;width:100%" id="riskBarInner"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Testing host card ────────────────────────────── -->
+      <div class="panel mb-16" id="systemInfoPanel">
+        <div class="panel-header">
+          <span class="panel-title">Testing Host</span>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="loadSystemInfo()">Refresh</button>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid" id="systemInfoGrid">
+            <div class="form-group"><span class="form-label">Loading...</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Per-tool status cards ────────────────────────── -->
+      <div class="panel mb-16">
+        <div class="panel-header">
+          <span class="panel-title">Tool Status</span>
+        </div>
+        <div class="panel-body">
+          <div class="activity-feed" id="summaryToolFeed">
+            <!-- populated by JS -->
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       CONSOLE TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="console">
+    <div class="console-split">
+
+      <!-- ── Activity sidebar ─────────────────────────────── -->
+      <aside class="console-sidebar">
+        <div class="console-sidebar-header" style="display:flex;justify-content:space-between;align-items:center">
+          <span class="text-xs font-bold" style="text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">Tools</span>
+          <button type="button" class="btn btn-xs btn-warning" id="btnPauseAll" title="Pause all running tools" onclick="_pauseAll()">⏸ Pause All</button>
+          <button type="button" class="btn btn-xs btn-success" id="btnResumeAll" title="Resume all paused tools" onclick="_resumeAll()" style="display:none">▶ Resume All</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="btnConsoleSaveAll" title="Save all console output"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Save All</button>
+        </div>
+        <div class="activity-feed" id="consoleToolFeed">
+          <!-- populated by JS -->
+        </div>
+      </aside>
+
+      <!-- ── Console pane ─────────────────────────────────── -->
+      <div class="console-pane">
+        <div class="console-toolbar">
+          <div class="console-toolbar-left">
+            <span id="consoleTitleBadge"></span>
+            <span id="consoleTitle" class="font-medium">Select a tool</span>
+            <span id="consoleStatusBadge"></span>
+          </div>
+          <div class="console-toolbar-right">
+            <button type="button" class="btn btn-xs btn-primary" id="btnToolStart" disabled>Start</button>
+            <button type="button" class="btn btn-xs btn-danger" id="btnToolKill" disabled>Kill</button>
+            <button type="button" class="btn btn-xs btn-warning" id="btnToolPause" disabled>Pause</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="btnToolResume" disabled>Resume</button>
+            <button type="button" class="btn btn-xs btn-ghost" id="btnConsoleSave" disabled title="Save console output"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+            <button type="button" class="btn btn-xs btn-ghost" id="btnConsoleCopy" disabled title="Copy console to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
+            <button type="button" class="btn btn-xs btn-ghost" id="btnConsoleClear" disabled>Clear</button>
+            <label class="console-auto-scroll">
+              <input type="checkbox" id="autoScrollToggle" checked>
+              Auto-scroll
+            </label>
+          </div>
+        </div>
+        <div class="console-body" id="consoleBody">
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            </div>
+            <div class="empty-state-title">No tool selected</div>
+            <div class="empty-state-text">Click a tool on the left to view its console output.</div>
+          </div>
+        </div>
+        <!-- stdin input -->
+        <div class="console-input-bar" id="consoleInputBar" hidden>
+          <label class="text-xs text-muted" for="stdinInput">stdin:</label>
+          <input type="text" class="form-control" id="stdinInput" placeholder="Type input and press Enter..." autocomplete="off" style="flex:1;font-family:var(--font-mono);font-size:0.78rem">
+          <button type="button" class="btn btn-xs btn-primary" id="btnSendInput">Send</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       FINDINGS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="findings">
+    <div class="p-20">
+
+      <!-- ── Filter bar ───────────────────────────────────── -->
+      <div class="findings-toolbar">
+        <div class="findings-filter-group">
+          <span class="findings-filter-label">Scope:</span>
+          <select class="form-control" id="findingsFilterScope">
+            <option value="">All Scopes</option>
+          </select>
+        </div>
+        <div class="findings-filter-group">
+          <span class="findings-filter-label">Tool:</span>
+          <select class="form-control" id="findingsFilterTool">
+            <option value="">All Tools</option>
+          </select>
+        </div>
+        <div class="findings-filter-group" id="findingsOosFilterGroup" {% if not project or project.oos_handling|default('explicit') == 'explicit' %}hidden{% endif %}>
+          <span class="findings-filter-label">Scope Status:</span>
+          <select class="form-control" id="findingsFilterOos">
+            <option value="">All</option>
+            <option value="inscope">In-Scope Only</option>
+            <option value="oos">Out-of-Scope Only</option>
+          </select>
+        </div>
+        <div class="findings-filter-group">
+          <span class="findings-filter-label">Sort:</span>
+          <select class="form-control" id="findingsSortOrder">
+            <option value="risk">By Risk</option>
+            <option value="alpha">Alphabetical</option>
+          </select>
+        </div>
+        <input type="text" class="form-control findings-search" id="findingsSearch" placeholder="Search findings...">
+        <div class="findings-count" id="findingsCount">0 findings</div>
+        <div class="flex gap-4">
+          <button type="button" class="btn btn-xs btn-secondary" id="btnToggleCategoryView">Category View</button>
+          <button type="button" class="btn btn-xs btn-secondary" id="btnClearFindingsFilters">Clear Filters</button>
+          <button type="button" class="btn btn-xs btn-secondary" id="btnShowFP">Show FP</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="btnReloadFindings">Reload</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="btnExportFindings" title="Export findings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</button>
+        </div>
+      </div>
+
+      <!-- ── Risk toggle pills ────────────────────────────── -->
+      <div class="flex gap-8 flex-wrap mb-8" id="findingsStatsBar">
+        <button type="button" class="risk-toggle active" data-risk="CRITICAL"><span class="risk-badge risk-critical">C</span><span class="font-mono text-xs" id="fStatCrit">0</span></button>
+        <button type="button" class="risk-toggle active" data-risk="HIGH"><span class="risk-badge risk-high">H</span><span class="font-mono text-xs" id="fStatHigh">0</span></button>
+        <button type="button" class="risk-toggle active" data-risk="MEDIUM"><span class="risk-badge risk-medium">M</span><span class="font-mono text-xs" id="fStatMed">0</span></button>
+        <button type="button" class="risk-toggle active" data-risk="LOW"><span class="risk-badge risk-low">L</span><span class="font-mono text-xs" id="fStatLow">0</span></button>
+        <button type="button" class="risk-toggle active" data-risk="INFO"><span class="risk-badge risk-info">I</span><span class="font-mono text-xs" id="fStatInfo">0</span></button>
+      </div>
+
+      <!-- ── Findings table ───────────────────────────────── -->
+      <div class="overflow-x-auto">
+        <table class="findings-table" id="findingsTable">
+          <thead>
+            <tr>
+              <th class="col-risk">Risk</th>
+              <th>CVSS</th>
+              <th>Scope</th>
+              <th class="col-tool">Tool</th>
+              <th class="col-title">Title</th>
+              <th>Target</th>
+              <th>IP</th>
+              <th>URL</th>
+              <th>Port</th>
+              <th>Affected</th>
+              <th>Sources</th>
+              <th>Evidence</th>
+              <th>Roles</th>
+              <th>Details</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="findingsTableBody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div id="findingsCategoryView" hidden></div>
+
+      <div class="empty-state" id="findingsEmpty">
+        <div class="empty-state-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+        </div>
+        <div class="empty-state-title">No findings yet</div>
+        <div class="empty-state-text">Findings will appear here as tools discover vulnerabilities.</div>
+      </div>
+
+      <!-- ── Pagination ───────────────────────────────────── -->
+      <div class="pagination" id="findingsPagination" hidden></div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       TARGETS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <!-- ══════════════════════════════════════════════════════════
+       ACTION ITEMS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="action-items">
+    <div class="p-20">
+
+      <!-- ── Summary bar ──────────────────────────────────── -->
+      <div class="flex gap-16 flex-wrap mb-16" id="actionSummaryBar">
+        <div class="flex gap-4" style="align-items:center"><span class="badge" style="background:rgba(231,76,60,.15);color:#e74c3c">Urgent</span><span class="font-mono text-xs" id="actUrgent">0</span></div>
+        <div class="flex gap-4" style="align-items:center"><span class="badge" style="background:rgba(249,115,22,.15);color:#f97316">Recommended</span><span class="font-mono text-xs" id="actRecommended">0</span></div>
+        <div class="flex gap-4" style="align-items:center"><span class="badge" style="background:rgba(74,144,217,.15);color:#4a90d9">Optional</span><span class="font-mono text-xs" id="actOptional">0</span></div>
+        <div class="flex gap-4 ml-auto" style="align-items:center">
+          <button type="button" class="btn btn-xs" id="resetToggleBtn" onclick="_toggleResets()" style="border:1px solid var(--border);background:transparent;color:var(--text-muted)">Show Resets</button>
+          <button type="button" class="btn btn-xs" id="oosToggleBtn" onclick="_toggleOOS()" style="border:1px solid var(--border);background:transparent;color:var(--text-muted)">Out-of-Scope <span class="font-mono" id="oosCount" style="margin-left:4px">0</span></button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="loadActionItems()">Refresh</button>
+        </div>
+      </div>
+
+      <!-- ── Bulk action buttons ────────────────────────────── -->
+      <div class="flex gap-8 flex-wrap mb-16" id="bulkActionBar" hidden>
+      </div>
+
+      <!-- ── Action items table ───────────────────────────── -->
+      <div class="overflow-x-auto">
+        <table class="findings-table" id="actionTable">
+          <thead>
+            <tr>
+              <th style="width:90px">Priority</th>
+              <th>Title</th>
+              <th>Target</th>
+              <th>Scope</th>
+              <th>Recommended Tool</th>
+              <th>Status</th>
+              <th style="width:140px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="actionTableBody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="actionEmpty">
+        <div class="empty-state-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="empty-state-title">No action items</div>
+        <div class="empty-state-text">Action items appear when tools recommend follow-up testing.</div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       INTELLIGENCE TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="intelligence">
+    <div class="p-20">
+
+      <!-- ── Scope-level tool tabs ─────────────────────────── -->
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:2px solid var(--border);padding-bottom:6px;margin-bottom:8px">
+        <div class="tab-nav" id="intelScopeNav" style="flex:1;border:none;padding:0;margin:0"></div>
+        <button type="button" class="btn btn-xs btn-ghost" id="btnExportIntel" title="Export scope intelligence as XLSX" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export XLSX</button>
+      </div>
+
+      <!-- ── Sub-tab navigation (built dynamically by selectScope) ── -->
+      <div class="tab-nav mb-16" id="intelSubNav"></div>
+
+      <!-- ── Intel content area ───────────────────────────── -->
+      <div id="intelContent">
+        <div class="empty-state" id="intelEmpty">
+          <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          </div>
+          <div class="empty-state-title">Intelligence data</div>
+          <div class="empty-state-text">Intelligence panels populate as tools run and discover data.</div>
+        </div>
+        <div id="intelBody" hidden></div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       IMPORT TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="import">
+    <div class="console-split" id="importSplit">
+
+      <!-- Left sidebar -->
+      <aside class="console-sidebar">
+        <div class="console-sidebar-header" style="padding:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select class="form-control" id="importToolSelect" style="flex:1;min-width:140px;font-size:0.8rem;padding:4px 8px">
+              <option value="">Auto-detect</option>
+            </select>
+            <button type="button" class="btn btn-xs btn-primary" id="btnImportFile">Import File</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="btnImportFolder">Import Folder</button>
+          </div>
+          <input type="file" id="importFileInput" hidden multiple>
+        </div>
+
+        <div class="activity-feed" id="importJobFeed">
+          <div class="empty-state" id="importEmptyState">
+            <div class="empty-state-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="empty-state-text">No imports yet</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right console pane -->
+      <div class="console-pane">
+        <div class="console-toolbar">
+          <div class="console-toolbar-left">
+            <span id="importConsoleTitleBadge"></span>
+            <span id="importConsoleTitle" class="font-medium">Select an import job</span>
+            <span id="importConsoleStatusBadge"></span>
+          </div>
+          <div class="console-toolbar-right">
+            <button type="button" class="btn btn-xs btn-ghost" id="btnImportConsoleCopy" disabled>Copy</button>
+            <label class="console-auto-scroll">
+              <input type="checkbox" id="importAutoScrollToggle" checked>
+              Auto-scroll
+            </label>
+          </div>
+        </div>
+        <div class="console-body" id="importConsoleBody">
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="empty-state-title">No import selected</div>
+            <div class="empty-state-text">Import a file or folder to begin. Parser output will appear here.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       SETTINGS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="settings">
+    <div class="p-20">
+
+      <!-- ── Sub-tab: Engagement + per-tool ───────────────── -->
+      <div class="tab-nav mb-16" id="settingsSubNav">
+        <!-- populated by JS: Engagement tab + one tab per tool -->
+      </div>
+
+      <div id="settingsContent">
+        <!-- ── Engagement info panel ─────────────────────── -->
+        <div id="settingsEngagement" hidden>
+          <div class="form-grid" style="gap:20px 32px;">
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Client</h3>
+              <div class="form-grid">
+                <div class="form-group"><span class="form-label">Client Name</span><span class="text-primary" id="seClientName">--</span></div>
+                <div class="form-group"><span class="form-label">Short Name</span><span class="text-primary" id="seClientShort">--</span></div>
+                <div class="form-group"><span class="form-label">Point of Contact</span><span class="text-primary" id="sePocName">--</span><span class="text-muted" style="font-size:0.82rem" id="sePocTitle"></span><span class="text-muted" style="font-size:0.82rem" id="sePocPhone"></span><span class="text-muted" style="font-size:0.82rem" id="sePocEmail"></span></div>
+              </div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Consultant</h3>
+              <div class="form-grid">
+                <div class="form-group"><span class="form-label">Name</span><span class="text-primary" id="seConsultName">--</span></div>
+                <div class="form-group"><span class="form-label">Title</span><span class="text-primary" id="seConsultTitle">--</span></div>
+                <div class="form-group"><span class="form-label">Email</span><span class="text-primary" id="seConsultEmail">--</span></div>
+              </div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Engagement</h3>
+              <div class="form-grid">
+                <div class="form-group"><span class="form-label">Engagement Name</span><span class="text-primary" id="seEngName">--</span></div>
+                <div class="form-group"><span class="form-label">Scope Type</span><span class="text-primary" id="seScope">--</span></div>
+                <div class="form-group"><span class="form-label">Start Date</span><span class="text-primary" id="seStartDate">--</span></div>
+                <div class="form-group"><span class="form-label">End Date</span><span class="text-primary" id="seEndDate">--</span></div>
+              </div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Scopes</h3>
+              <p class="text-muted text-sm mb-8">Check additional scopes to add to this engagement, then click Save Scopes.</p>
+              <div id="seScopeChecks" class="form-grid" style="gap:6px 24px;"></div>
+              <div class="form-actions" style="margin-top:12px">
+                <button type="button" class="btn btn-primary" id="btnSaveScopes">Save Scopes</button>
+              </div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Automation</h3>
+              <label class="form-check" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input type="checkbox" id="seAutoQueue" {% if project and project.auto_queue %}checked{% endif %}>
+                <span>
+                  <strong>Auto-Queue</strong>
+                  <span class="form-hint" style="display:block;margin-top:2px;">Automatically queue recommended tool runs when action items are identified during scans.</span>
+                </span>
+              </label>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Engagement Hours</h3>
+              <span class="form-hint" style="display:block;margin-bottom:12px;">Restrict active testing to a defined time window. Running tools will be paused outside these hours and resumed automatically when the window reopens.</span>
+              <label class="form-check" style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px">
+                <input type="checkbox" id="seEngagementEnabled">
+                <span><strong>Enable Engagement Hours</strong></span>
+              </label>
+              <div id="engagementConfig" style="display:none;gap:10px;flex-wrap:wrap;align-items:end">
+                <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+                  <span class="text-xs">Start</span>
+                  <input type="time" id="seEngagementStart" value="08:00" class="form-control" style="width:120px">
+                </label>
+                <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+                  <span class="text-xs">End</span>
+                  <input type="time" id="seEngagementEnd" value="18:00" class="form-control" style="width:120px">
+                </label>
+                <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+                  <span class="text-xs">Timezone</span>
+                  <select id="seEngagementTz" class="form-control" style="width:180px">
+                    <option value="US/Eastern">US/Eastern</option>
+                    <option value="US/Central" selected>US/Central</option>
+                    <option value="US/Mountain">US/Mountain</option>
+                    <option value="US/Pacific">US/Pacific</option>
+                    <option value="UTC">UTC</option>
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="Europe/Berlin">Europe/Berlin</option>
+                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                  </select>
+                </label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <span class="text-xs" style="margin-right:4px">Days:</span>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="0" checked> Mon</label>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="1" checked> Tue</label>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="2" checked> Wed</label>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="3" checked> Thu</label>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="4" checked> Fri</label>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="5"> Sat</label>
+                  <label class="text-xs"><input type="checkbox" class="seEngDay" value="6"> Sun</label>
+                </div>
+                <button type="button" class="btn btn-xs btn-primary" onclick="_saveEngagementHours()">Save</button>
+              </div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Scheduled Engagement Start</h3>
+              <span class="form-hint" style="display:block;margin-bottom:12px;">Schedule the engagement to auto-start at a future date and time. All enabled tools will launch automatically, routed through the queue for proper parallelism.</span>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+                <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+                  <span class="text-xs">Start Date &amp; Time</span>
+                  <input type="datetime-local" id="seSchedAt" class="form-control" style="width:220px">
+                </label>
+                <button type="button" class="btn btn-xs btn-primary" onclick="_scheduleEngagement()">Schedule</button>
+              </div>
+              <div id="scheduledStartsList"></div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Out-of-Scope Handling</h3>
+              <span class="form-hint" style="display:block;margin-bottom:12px;">Controls how derived targets that are not explicitly defined as in-scope are handled during testing.</span>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                  <input type="radio" name="seOosHandling" value="explicit" {% if not project or project.oos_handling|default('explicit') == 'explicit' %}checked{% endif %}>
+                  <span>
+                    <strong>Explicit In-Scope Testing Only</strong> <span class="badge badge-sm" style="background:var(--emerald-600);color:#fff;font-size:10px;padding:1px 6px;border-radius:3px;vertical-align:middle;">DEFAULT</span>
+                    <span class="form-hint" style="display:block;margin-top:2px;">Only targets explicitly defined as in-scope will be tested.</span>
+                  </span>
+                </label>
+                <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                  <input type="radio" name="seOosHandling" value="separated" {% if project and project.oos_handling|default('explicit') == 'separated' %}checked{% endif %}>
+                  <span>
+                    <strong>Include Out-of-Scope &mdash; Separated Results</strong>
+                    <span class="form-hint" style="display:block;margin-top:2px;">Derived targets sharing a parent domain or IP will be tested. Findings tagged &ldquo;OOS&rdquo; and kept separate.</span>
+                  </span>
+                </label>
+                <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                  <input type="radio" name="seOosHandling" value="combined" {% if project and project.oos_handling|default('explicit') == 'combined' %}checked{% endif %}>
+                  <span>
+                    <strong>Include Out-of-Scope as In-Scope &mdash; Combined Results</strong>
+                    <span class="form-hint" style="display:block;margin-top:2px;">Derived targets sharing a parent domain or IP will be tested. Findings merged with in-scope results.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Excluded IPs</h3>
+              <span class="form-hint" style="display:block;margin-bottom:12px;">IPs added here will be removed from all findings, targets, and Nessus data within this engagement. Future imports will also ignore these IPs.</span>
+              <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <input type="text" class="form-control" id="seExcludeIpInput" placeholder="e.g. 10.0.0.50" style="max-width:260px">
+                <button type="button" class="btn btn-danger btn-sm" id="btnExcludeIp">Exclude</button>
+              </div>
+              <div id="seExcludedIpsList"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Tool settings panel ───────────────────────── -->
+        <div class="empty-state" id="settingsEmpty">
+          <div class="empty-state-text">Select a tool above to configure its settings.</div>
+        </div>
+        <div id="settingsBody" hidden>
+          <form id="settingsForm" autocomplete="off">
+            <div id="settingsFields" class="form-grid">
+              <!-- dynamically populated -->
+            </div>
+            <div id="settingsAdvancedToggle" hidden>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnAdvancedToggle" style="margin:12px 0">Advanced Settings</button>
+            </div>
+            <div id="settingsAdvancedFields" class="form-grid" hidden>
+              <!-- advanced fields populated by schema -->
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" id="btnSettingsReset">Reset</button>
+              <button type="submit" class="btn btn-primary" id="btnSettingsSave">Save</button>
+            </div>
+          </form>
+
+          <!-- Test Connection — Fracture / Siphon only -->
+          <div id="settingsTestConn" class="panel mt-16" hidden>
+            <div class="panel-header">
+              <span class="panel-title">Test Connection</span>
+              <button type="button" class="btn btn-xs btn-primary" id="btnSettingsTestConn">Run Test</button>
+            </div>
+            <div class="panel-body">
+              <p class="text-muted text-sm mb-8">Test target reachability and authentication using the saved settings above.</p>
+              <div id="settingsTestConnResult" hidden>
+                <div class="flex gap-8 mb-4" style="align-items:center">
+                  <span class="font-medium" id="stcResultLabel">Result</span>
+                  <span id="stcResultBadge"></span>
+                </div>
+                <pre id="stcResultBody" style="max-height:200px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Scope addition modal ────────────────────────── -->
+      <div class="modal-overlay" id="scopeAddModal">
+        <div class="modal-box" style="max-width:520px">
+          <div class="modal-header">
+            <h3 class="modal-title">Add Scope — <span id="scopeModalTitle"></span></h3>
+          </div>
+          <div class="modal-body">
+            <div id="scopeModalFields" class="form-grid" style="gap:12px"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btnScopeModalSave">Add Scope</button>
+            <button type="button" class="btn btn-ghost" id="btnScopeModalCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Settings invalidation modal ─────────────────── -->
+      <div class="modal-overlay" id="settingsInvalidateModal">
+        <div class="modal-box" style="max-width:480px">
+          <div class="modal-header">
+            <h3 class="modal-title">Results Will Be Invalidated</h3>
+          </div>
+          <div class="modal-body">
+            <p id="settingsInvalidateMsg"></p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-danger" id="btnInvalidateConfirm">Archive &amp; Re-scan</button>
+            <button type="button" class="btn btn-ghost" id="btnInvalidateCancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       LOGS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="logs">
+    <div class="p-20">
+
+      <!-- ── Filter bar ───────────────────────────────────── -->
+      <div class="logs-toolbar">
+        <div class="logs-time-filter">
+          <label for="logsFrom">From:</label>
+          <input type="datetime-local" step="1" id="logsFrom">
+          <label for="logsTo">To:</label>
+          <input type="datetime-local" step="1" id="logsTo">
+          <button type="button" class="btn btn-xs btn-ghost" id="btnLogsClearRange">Clear range</button>
+        </div>
+        <div class="findings-filter-group">
+          <span class="findings-filter-label">Tool:</span>
+          <select class="form-control" id="logsFilterTool" style="min-width:120px">
+            <option value="">All Tools</option>
+          </select>
+        </div>
+        <div class="findings-filter-group">
+          <span class="findings-filter-label">Level:</span>
+          <select class="form-control" id="logsFilterLevel" style="min-width:120px">
+            <option value="">All Levels</option>
+            <option value="EVENT">Event</option>
+            <option value="INFO">Info</option>
+            <option value="WARN">Warn</option>
+            <option value="ERROR">Error</option>
+            <option value="EXCEPTION">Exception</option>
+            <option value="TOOL_ERROR">Tool Error</option>
+          </select>
+        </div>
+        <button type="button" class="btn btn-xs btn-ghost ml-auto" id="btnCopyLogs" title="Copy all logs to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy</button>
+        <button type="button" class="btn btn-xs btn-ghost" id="btnClearLogs">Clear</button>
+      </div>
+
+      <!-- ── Logs table ───────────────────────────────────── -->
+      <div class="overflow-x-auto">
+        <table class="logs-table" id="logsTable">
+          <thead>
+            <tr>
+              <th class="col-ts">Timestamp</th>
+              <th class="col-level">Level</th>
+              <th class="col-tool-log">Tool</th>
+              <th class="col-message">Message</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="logsEmpty">
+        <div class="empty-state-text">No log entries yet.</div>
+      </div>
+
+      <div class="pagination" id="logsPagination" hidden></div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       ERRORS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="errors">
+    <div class="p-20">
+
+      <!-- ── Filter bar ───────────────────────────────────── -->
+      <div class="logs-toolbar">
+        <div class="logs-time-filter">
+          <label for="errorsFrom">From:</label>
+          <input type="datetime-local" step="1" id="errorsFrom">
+          <label for="errorsTo">To:</label>
+          <input type="datetime-local" step="1" id="errorsTo">
+          <button type="button" class="btn btn-xs btn-ghost" id="btnErrorsClearRange">Clear range</button>
+        </div>
+        <div class="findings-filter-group">
+          <span class="findings-filter-label">Tool:</span>
+          <select class="form-control" id="errorsFilterTool" style="min-width:120px">
+            <option value="">All Tools</option>
+          </select>
+        </div>
+        <button type="button" class="btn btn-xs btn-ghost ml-auto" id="btnCopyErrors" title="Copy all errors to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy</button>
+        <button type="button" class="btn btn-xs btn-ghost" id="btnClearErrors">Clear</button>
+      </div>
+
+      <!-- ── Errors table ─────────────────────────────────── -->
+      <div class="overflow-x-auto">
+        <table class="logs-table" id="errorsTable">
+          <thead>
+            <tr>
+              <th class="col-ts">Timestamp</th>
+              <th class="col-level">Level</th>
+              <th class="col-tool-log">Tool</th>
+              <th class="col-message">Message</th>
+            </tr>
+          </thead>
+          <tbody id="errorsTableBody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="errorsEmpty">
+        <div class="empty-state-text">No errors recorded.</div>
+      </div>
+
+      <div class="pagination" id="errorsPagination" hidden></div>
+
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       FINDING DETAIL MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="findingDetailModal">
+    <div class="modal-box modal-wide">
+      <div class="modal-header">
+        <span class="modal-title" id="findingDetailTitle">Finding</span>
+        <button type="button" class="modal-close" onclick="closeFindingDetail()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="findingDetailBody">
+        <!-- populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeFindingDetail()">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       BULK ACTION MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="bulkActionModal">
+    <div class="modal-box" style="max-width:700px">
+      <div class="modal-header">
+        <span class="modal-title" id="bulkActionTitle">Bulk Launch</span>
+        <button type="button" class="modal-close" onclick="closeBulkActionModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="flex gap-8 mb-12">
+          <button type="button" class="btn btn-xs btn-ghost" onclick="_bulkSelectAll(true)">Select All</button>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="_bulkSelectAll(false)">Clear Selection</button>
+          <span class="text-muted text-sm ml-auto" id="bulkSelectedCount">0 selected</span>
+        </div>
+        <div id="bulkTargetList" style="max-height:50vh;overflow-y:auto"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeBulkActionModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="bulkExecuteBtn" onclick="_bulkExecute()">Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Action item detail modal ──────────────────────────── -->
+  <div class="modal-overlay" id="actionDetailModal">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header">
+        <span class="modal-title" id="actionDetailTitle">Action Item</span>
+        <button type="button" class="modal-close" onclick="document.getElementById('actionDetailModal').classList.remove('open')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="actionDetailBody" style="max-height:60vh;overflow-y:auto"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('actionDetailModal').classList.remove('open')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Action item launch settings modal ────────────────────── -->
+  <div class="modal-overlay" id="actionLaunchModal">
+    <div class="modal-box" style="max-width:640px">
+      <div class="modal-header">
+        <span class="modal-title" id="actionLaunchTitle">Launch Settings</span>
+        <button type="button" class="modal-close" onclick="document.getElementById('actionLaunchModal').classList.remove('open')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="actionLaunchBody" style="max-height:60vh;overflow-y:auto"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('actionLaunchModal').classList.remove('open')">Cancel</button>
+        <button type="button" class="btn btn-primary" id="actionLaunchExecBtn" onclick="_execWithSettings()">Execute</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Action item reset confirmation modal ──────────────── -->
+  <div class="modal-overlay" id="actionResetModal">
+    <div class="modal-box" style="max-width:520px">
+      <div class="modal-header">
+        <span class="modal-title">Confirm Reset</span>
+        <button type="button" class="modal-close" onclick="document.getElementById('actionResetModal').classList.remove('open')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="actionResetBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('actionResetModal').classList.remove('open')">Cancel</button>
+        <button type="button" class="btn" id="actionResetConfirmBtn" style="border-color:#f97316;color:#f97316" onclick="_confirmReset()">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       EVIDENCE VIEWER MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="evidenceViewerModal">
+    <div class="modal-box" style="width:90vw;max-width:1400px;height:85vh;max-height:85vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <span class="modal-title" id="evidenceViewerTitle">Evidence</span>
+        <button type="button" class="modal-close" onclick="closeEvidenceViewer()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="evidenceDualControls" hidden style="padding:8px 16px;border-bottom:1px solid var(--border-color)">
+        <label class="form-label" style="margin-right:8px;display:inline">Affected Location:</label>
+        <select id="evidenceLocationSelect" class="form-control" style="max-width:400px;display:inline-block"></select>
+      </div>
+      <div id="evidenceHighlightBar" hidden style="padding:4px 12px;display:flex;align-items:center;gap:8px;font-size:0.75rem;background:var(--bg-card);border-bottom:1px solid var(--border-color)">
+        <button class="btn btn-xs btn-hl-nav" onclick="_evHlNav(-1)" title="Previous highlight">&#x25B2;</button>
+        <button class="btn btn-xs btn-hl-counter" id="evHlCount" onclick="_evHlNav(1)" title="Click to jump to next highlight">0 highlights</button>
+        <button class="btn btn-xs btn-hl-nav" onclick="_evHlNav(1)" title="Next highlight">&#x25BC;</button>
+        <span style="color:var(--text-secondary);font-size:0.7rem" id="evHlTerms"></span>
+      </div>
+      <div class="modal-body" style="flex:1;overflow:hidden;padding:0;display:flex">
+        <div id="evidenceSinglePane" style="display:flex;width:100%;height:100%">
+          <div id="evidenceFileNav" style="width:240px;min-width:180px;border-right:1px solid var(--border-color);overflow-y:auto;padding:8px"></div>
+          <div id="evidenceContent" style="flex:1;overflow:auto;padding:12px">
+            <pre id="evidenceContentPre" style="margin:0;white-space:pre-wrap;word-break:break-word;font-size:0.8rem"></pre>
+          </div>
+        </div>
+        <div id="evidenceDualPane" hidden style="display:none;width:100%;height:100%">
+          <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border-color)">
+            <div style="padding:6px 12px;font-weight:600;font-size:0.75rem;border-bottom:1px solid var(--border-color);background:var(--bg-card)">REQUEST</div>
+            <pre id="evidenceRequestPre" style="flex:1;margin:0;overflow:auto;padding:12px;white-space:pre-wrap;word-break:break-word;font-size:0.8rem"></pre>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column">
+            <div style="padding:6px 12px;font-weight:600;font-size:0.75rem;border-bottom:1px solid var(--border-color);background:var(--bg-card)">RESPONSE</div>
+            <pre id="evidenceResponsePre" style="flex:1;margin:0;overflow:auto;padding:12px;white-space:pre-wrap;word-break:break-word;font-size:0.8rem"></pre>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeEvidenceViewer()">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       SCREENSHOT VIEWER MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="screenshotModal">
+    <div class="modal-box" style="width:85vw;max-width:1400px;height:85vh;max-height:85vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <span class="modal-title" id="screenshotModalTitle">Screenshot</span>
+        <button type="button" class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="flex:1;overflow:auto;padding:16px;display:flex;align-items:center;justify-content:center;background:var(--bg-alt)">
+        <img id="screenshotModalImg" src="" alt="Screenshot" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.3)">
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+        <div id="screenshotModalMeta" style="font-size:0.8rem;color:var(--text-secondary)"></div>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('screenshotModal').classList.remove('open')">Close</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       PROMPT MODAL (tool prompts / sudo requests)
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="promptModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="promptTitle">Tool Prompt</span>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary mb-8" id="promptMessage"></p>
+        <div class="form-group" id="promptInputGroup">
+          <input type="text" class="form-control" id="promptInput" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="btnPromptCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnPromptSubmit">Submit</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       SUDO MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="sudoModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Authentication Required</span>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary mb-8" id="sudoToolLabel">A tool requires elevated privileges.</p>
+        <div class="form-group">
+          <label class="form-label" for="sudoPasswordInput">sudo password</label>
+          <input type="password" class="form-control" id="sudoPasswordInput" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" id="btnSudoCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnSudoSubmit">Authenticate</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       CONSOLE INSTANCE DETAILS MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="instanceDetailModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title" id="instanceDetailTitle">Instance Details</span>
+        <button type="button" class="modal-close" onclick="closeInstanceDetail()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="instanceDetailBody">
+        <div class="flex-center p-20"><div class="spinner"></div></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeInstanceDetail()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       RISK OVERRIDE MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="riskOverrideModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Override Risk Level</span>
+        <button type="button" class="modal-close" onclick="closeRiskOverride()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary mb-8" id="riskOverrideLabel"></p>
+        <div class="form-group mb-8">
+          <label class="form-label" for="riskOverrideSelect">New Risk Level</label>
+          <select class="form-control" id="riskOverrideSelect">
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+            <option value="INFO">Info</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="riskOverrideReason">Justification</label>
+          <textarea class="form-control" id="riskOverrideReason" rows="2" placeholder="Reason for override..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeRiskOverride()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnRiskOverrideSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       NOTES MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="notesModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-title">Finding Notes</span>
+        <button type="button" class="modal-close" onclick="closeNotesModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <textarea class="form-control" id="notesInput" rows="6" placeholder="Add notes about this finding..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeNotesModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnNotesSave">Save Notes</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .project-layout -->
+
+<!-- ── Incomplete report warning modal ─────────────────────────── -->
+<div class="modal-overlay" id="reportIncompleteModal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-header">
+      <h3 class="modal-title">Engagement Not Complete</h3>
+      <button type="button" class="modal-close" onclick="closeReportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;">This engagement still has tools <strong>running or queued</strong>. Generating a report now will produce an <strong>incomplete report</strong> and it will be stamped accordingly.</p>
+      <div id="reportIncompleteDetails" style="font-size:.85rem;color:var(--text-muted);margin-bottom:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-warning" id="reportProceedBtn">Generate Anyway</button>
+      <button type="button" class="btn btn-ghost" onclick="closeReportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     REPORT TYPE SELECTION MODAL
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="reportTypeModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">Generate Report</span>
+      <button type="button" class="modal-close" onclick="closeReportTypeModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-12">
+        <label class="form-label">Report Type</label>
+        <div id="reportTypeList" style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          <div style="text-align:center;padding:20px;color:var(--text-secondary)">Loading report types...</div>
+        </div>
+      </div>
+      <div class="form-group mb-12">
+        <label class="form-label">Format</label>
+        <div style="display:flex;gap:12px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="reportFormat" value="pdf" checked>
+            <span style="font-size:.9rem">PDF</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="reportFormat" value="html">
+            <span style="font-size:.9rem">HTML</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="reportFilename">Filename</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="text" class="form-control" id="reportFilename" style="flex:1" placeholder="auto-generated">
+          <span class="text-secondary" id="reportFileExt" style="font-size:.85rem;white-space:nowrap">.pdf</span>
+        </div>
+        <span style="display:block;font-size:.75rem;color:var(--text-secondary);margin-top:4px">Leave blank for default. Your browser&#39;s download settings determine the save location.</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeReportTypeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btnGenerateReport">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Generate Report
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- OOS Confirmation Modal -->
+<div class="modal-overlay" id="seOosConfirmModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h3 class="modal-title">Confirm Out-of-Scope Handling</h3>
+      <button type="button" class="modal-close" id="seOosModalCancel">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="seOosModalSeparated" hidden>
+        <p style="margin-bottom:12px"><strong>Include Out-of-Scope &mdash; Separated Results</strong></p>
+        <p style="margin-bottom:8px;">This mode will test derived targets that share a parent domain or IP address with your explicitly defined in-scope targets. Results will be kept separate from in-scope findings.</p>
+        <ul style="margin:8px 0 12px 18px;font-size:.875rem;color:var(--text-secondary)">
+          <li>OOS findings will be tagged and visually distinguished in the Findings tab</li>
+          <li>The report will include separate scope sections for OOS findings</li>
+          <li>Derived targets that do not share a parent domain or IP with in-scope targets will <strong>not</strong> be tested</li>
+        </ul>
+      </div>
+      <div id="seOosModalCombined" hidden>
+        <p style="margin-bottom:12px"><strong>Include Out-of-Scope as In-Scope &mdash; Combined Results</strong></p>
+        <p style="margin-bottom:8px;">This mode will test derived targets and <strong>merge all findings</strong> with in-scope results. There will be no distinction between in-scope and OOS findings.</p>
+        <ul style="margin:8px 0 12px 18px;font-size:.875rem;color:var(--text-secondary)">
+          <li>All findings are treated identically regardless of whether the target was explicitly in-scope</li>
+          <li>The report will include OOS findings in the same sections as in-scope findings</li>
+          <li>Derived targets that do not share a parent domain or IP with in-scope targets will <strong>not</strong> be tested</li>
+        </ul>
+      </div>
+      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.85rem;color:var(--amber-800)">
+        <strong>Warning:</strong> Testing out-of-scope targets may violate your rules of engagement. Ensure you have explicit authorization before enabling this option.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" id="seOosModalDeny">Cancel</button>
+      <button type="button" class="btn btn-primary" id="seOosModalConfirm">I Understand, Enable</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Exclude IP confirmation modal ──────────────────────────── -->
+<div class="modal-overlay" id="seExcludeIpModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h3 class="modal-title">Confirm IP Exclusion</h3>
+      <button type="button" class="modal-close" id="seExcludeIpModalCancel">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px">You are about to exclude <strong id="seExcludeIpModalAddr"></strong> from this engagement.</p>
+      <p style="margin-bottom:8px;">The following actions will be taken:</p>
+      <ul style="margin:8px 0 12px 18px;font-size:.875rem;color:var(--text-secondary)">
+        <li>All findings referencing this IP will be <strong>removed</strong> from findings data</li>
+        <li>This IP will be <strong>removed</strong> from targets information</li>
+        <li>All Nessus (.nessus) files will be <strong>modified</strong> to remove this IP&rsquo;s scan data</li>
+        <li>Future imports and scans will <strong>ignore</strong> this IP</li>
+      </ul>
+      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.85rem;color:var(--amber-800)">
+        <strong>Note:</strong> Non-pr0t31n tool output files will not be modified. Only Crucible findings data and Nessus XML files are affected. This action cannot be undone &mdash; removed data cannot be recovered.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" id="seExcludeIpModalDeny">Cancel</button>
+      <button type="button" class="btn btn-danger" id="seExcludeIpModalConfirm">Exclude IP</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     EXPORT FINDINGS MODAL
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="exportFindingsModal">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">Export Findings</span>
+      <button type="button" class="modal-close" onclick="document.getElementById('exportFindingsModal').classList.remove('open')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-12">
+        <label class="form-label">Format</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s" class="export-format-option">
+            <input type="radio" name="exportFormat" value="csv_merged" checked style="margin-top:3px">
+            <span>
+              <strong style="font-size:.9rem">Merged CSV</strong>
+              <span style="display:block;font-size:.8rem;color:var(--text-secondary);margin-top:2px">Cross-tool deduplicated findings in a single CSV</span>
+            </span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s" class="export-format-option">
+            <input type="radio" name="exportFormat" value="csv_unmerged" style="margin-top:3px">
+            <span>
+              <strong style="font-size:.9rem">Unmerged CSV</strong>
+              <span style="display:block;font-size:.8rem;color:var(--text-secondary);margin-top:2px">All findings from all tools without cross-tool dedup</span>
+            </span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s" class="export-format-option">
+            <input type="radio" name="exportFormat" value="xlsx" style="margin-top:3px">
+            <span>
+              <strong style="font-size:.9rem">Per-Tool XLSX</strong>
+              <span style="display:block;font-size:.8rem;color:var(--text-secondary);margin-top:2px">Each tool instance in its own sheet (EXT_SS3, INT_NE, etc.)</span>
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="exportFilename">Filename</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="text" class="form-control" id="exportFilename" style="flex:1" placeholder="findings">
+          <span class="text-secondary" id="exportFileExt" style="font-size:.85rem;white-space:nowrap">.csv</span>
+        </div>
+        <span style="display:block;font-size:.75rem;color:var(--text-secondary);margin-top:4px">Leave blank for default. Extension is set by format.</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="document.getElementById('exportFindingsModal').classList.remove('open')">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btnExportFindingsGo">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast container ─────────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════
+     IMPORT DETAIL MODAL
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="importDetailModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">Import Details</span>
+      <button type="button" class="modal-close" onclick="closeImportDetail()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="importDetailBody">
+      <table class="detail-table" style="width:100%">
+        <tr><td class="detail-label">File</td><td id="idFile">—</td></tr>
+        <tr><td class="detail-label">Tool</td><td id="idTool">—</td></tr>
+        <tr><td class="detail-label">Scope</td><td id="idScope">—</td></tr>
+        <tr><td class="detail-label">Status</td><td id="idStatus">—</td></tr>
+        <tr><td class="detail-label">Started</td><td id="idStarted">—</td></tr>
+        <tr><td class="detail-label">Finished</td><td id="idFinished">—</td></tr>
+        <tr><td class="detail-label">Duration</td><td id="idDuration">—</td></tr>
+        <tr><td class="detail-label">Findings</td><td id="idFindings">—</td></tr>
+        <tr><td class="detail-label">Targets</td><td id="idTargets">—</td></tr>
+        <tr><td class="detail-label">Dest Dir</td><td id="idDestDir" style="word-break:break-all;font-size:0.78rem">—</td></tr>
+      </table>
+      <div id="idErrorWrap" style="display:none;margin-top:12px">
+        <label class="form-label" style="color:var(--red-600)">Error</label>
+        <pre id="idError" style="background:var(--bg-subtle);padding:8px 12px;border-radius:6px;font-size:0.78rem;max-height:160px;overflow:auto;white-space:pre-wrap;color:var(--red-700)"></pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeImportDetail()">Close</button>
+      <button type="button" class="btn btn-danger btn-xs" id="idCancelBtn" style="display:none">Cancel Import</button>
+      <button type="button" class="btn btn-primary btn-xs" id="idRetryBtn" style="display:none">Retry</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="/static/js/socket.io.min.js"></script>
+<script id="projectConfig" type="application/json">{"pid":{{ project_id|tojson }},"project":{{ project|tojson }},"toolsCfg":{{ tools_config|tojson }}}</script>
+<script src="/static/js/project.js"></script>
+<script>
+var _selectedReportType = 'full';
+
+function requestReport(pid) {
+  fetch('/api/report-types/' + pid)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _populateReportTypes(data.types || []);
+      document.getElementById('reportTypeModal').classList.add('open');
+    })
+    .catch(function() {
+      _populateReportTypes([{key:'full', label:'Full Pentest Report', description:'Complete engagement report', available:true}]);
+      document.getElementById('reportTypeModal').classList.add('open');
+    });
+}
+
+function _populateReportTypes(types) {
+  var container = document.getElementById('reportTypeList');
+  container.innerHTML = '';
+  _selectedReportType = 'full';
+  types.forEach(function(t) {
+    var label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:' + (t.available ? 'pointer' : 'not-allowed') + ';padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s;' + (t.available ? '' : 'opacity:0.45;');
+    label.className = 'report-type-option';
+    var radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'reportType';
+    radio.value = t.key;
+    radio.style.marginTop = '3px';
+    radio.disabled = !t.available;
+    if (t.key === 'full') radio.checked = true;
+    radio.addEventListener('change', function() {
+      _selectedReportType = t.key;
+      _updateReportFilename();
+    });
+    var span = document.createElement('span');
+    var title = '<strong style="font-size:.9rem">' + _escReportHtml(t.label) + '</strong>';
+    var desc = '<span style="display:block;font-size:.8rem;color:var(--text-secondary);margin-top:2px">' + _escReportHtml(t.description) + '</span>';
+    if (!t.available && t.scope_gate) {
+      desc += '<span style="display:block;font-size:.75rem;color:var(--red-500);margin-top:2px">Requires ' + _escReportHtml(t.scope_gate) + ' scope</span>';
+    }
+    span.innerHTML = title + desc;
+    label.appendChild(radio);
+    label.appendChild(span);
+    container.appendChild(label);
+  });
+  _updateReportFilename();
+}
+
+function _escReportHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function _updateReportFilename() {
+  var fmt = document.querySelector('input[name="reportFormat"]:checked');
+  var ext = fmt && fmt.value === 'html' ? '.html' : '.pdf';
+  document.getElementById('reportFileExt').textContent = ext;
+}
+
+function closeReportTypeModal() {
+  document.getElementById('reportTypeModal').classList.remove('open');
+}
+
+function closeReportModal() {
+  document.getElementById('reportIncompleteModal').classList.remove('open');
+}
+
+document.querySelectorAll('input[name="reportFormat"]').forEach(function(r) {
+  r.addEventListener('change', _updateReportFilename);
+});
+
+document.getElementById('btnGenerateReport').addEventListener('click', function() {
+  var pid = PID;
+  var reportType = _selectedReportType;
+  var fmt = (document.querySelector('input[name="reportFormat"]:checked') || {}).value || 'pdf';
+  var filename = document.getElementById('reportFilename').value.trim();
+
+  closeReportTypeModal();
+
+  fetch('/api/engagement-status/' + pid)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var url = '/api/generate-report/' + pid + '?report_type=' + encodeURIComponent(reportType) + '&format=' + encodeURIComponent(fmt);
+      if (filename) url += '&filename=' + encodeURIComponent(filename);
+
+      if (data.incomplete) {
+        var details = document.getElementById('reportIncompleteDetails');
+        var html = '';
+        if (data.running && data.running.length)
+          html += '<div><strong>Running:</strong> ' + data.running.join(', ') + '</div>';
+        if (data.queued && data.queued.length)
+          html += '<div><strong>Queued:</strong> ' + data.queued.join(', ') + '</div>';
+        details.innerHTML = html;
+        document.getElementById('reportProceedBtn').onclick = function() {
+          closeReportModal();
+          window.location.href = url;
+        };
+        document.getElementById('reportIncompleteModal').classList.add('open');
+      } else {
+        window.location.href = url;
+      }
+    })
+    .catch(function() {
+      var url = '/api/generate-report/' + pid + '?report_type=' + encodeURIComponent(reportType) + '&format=' + encodeURIComponent(fmt);
+      if (filename) url += '&filename=' + encodeURIComponent(filename);
+      window.location.href = url;
+    });
+});
+</script>
+
+<style>
+/* ── Project-specific layout ──────────────────────────────────── */
+.project-layout {
+    min-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+}
+
+.project-layout > .tab-nav {
+    flex-shrink: 0;
+    padding: 0 16px;
+    background: var(--bg-surface);
+    position: sticky;
+    top: 48px;
+    z-index: 100;
+}
+
+.project-layout > .tab-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── Console split layout ─────────────────────────────────────── */
+.console-split {
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    height: calc(100vh - 48px - 42px);
+    overflow: hidden;
+}
+
+.console-sidebar {
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.console-sidebar-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+}
+
+.console-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.console-pane .console-toolbar {
+    flex-shrink: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+}
+
+.console-pane .console-body {
+    flex: 1;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-subtle);
+    max-height: none;
+}
+
+/* ── Console input bar ────────────────────────────────────────── */
+.console-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+}
+
+/* ── Responsive overrides ─────────────────────────────────────── */
+@media (max-width: 768px) {
+    .console-split {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+    .console-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+        max-height: 35vh;
+    }
+    .project-layout > .tab-nav {
+        padding: 0 8px;
+    }
+}
+
+/* ── Status Tree ─────────────────────────────────────────────── */
+.st-section {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    overflow: visible;
+}
+.st-sect-body { overflow: visible; }
+.st-spacer { flex: 1; }
+.st-phase-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .35rem .6rem .35rem 1.6rem;
+    border-bottom: 1px solid var(--border-dim, var(--border-subtle));
+    font-size: 11px;
+    transition: background .1s;
+}
+.st-phase-row:last-child { border-bottom: none; }
+.st-phase-row:hover { background: var(--bg-hover); }
+.st-phase-row.st-phase-running  { background: rgba(90,170,90,.10); }
+.st-phase-row.st-phase-complete { background: rgba(74,154,208,.06); }
+.st-phase-row.st-phase-skipped  { opacity: .5; }
+.st-phase-row.st-phase-error    { background: rgba(180,60,60,.10); }
+.st-phase-icon {
+    font-size: 12px;
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+.st-phase-row.st-phase-running  .st-phase-icon { color: #5aaa5a; animation: st-spin-icon 1.2s linear infinite; }
+.st-phase-row.st-phase-complete .st-phase-icon { color: #4a9ad0; }
+.st-phase-row.st-phase-error    .st-phase-icon { color: #cc4444; }
+@keyframes st-spin-icon {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.st-phase-label {
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+.st-phase-row.st-phase-skipped .st-phase-label { color: var(--text-muted); }
+.st-phase-step {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+    flex-shrink: 0;
+}
+.st-badge {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.st-badge-idle     { background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.st-badge-running  { background: rgba(90,170,90,.18);  border: 1px solid rgba(90,170,90,.4); color: #5aaa5a; animation: st-pulse 1.8s ease-in-out infinite; }
+.st-badge-complete { background: rgba(74,154,208,.18); border: 1px solid rgba(74,154,208,.35); color: #4a9ad0; }
+.st-badge-skipped  { background: var(--bg-secondary);  border: 1px solid var(--border-subtle); color: var(--text-muted); }
+.st-badge-error    { background: rgba(180,60,60,.12);  border: 1px solid rgba(180,60,60,.35); color: #cc4444; }
+.st-badge-halted   { background: rgba(220,160,40,.12); border: 1px solid rgba(220,160,40,.35); color: #d4a020; }
+@keyframes st-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .6; }
+}
+.st-comp-tag {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.st-comp-tag.st-comp-complete { background: rgba(74,154,208,.18); color: #4a9ad0; border-color: rgba(74,154,208,.35); }
+.st-comp-tag.st-comp-running  { background: rgba(90,170,90,.18); color: #5aaa5a; border-color: rgba(90,170,90,.4); animation: st-pulse 1.8s ease-in-out infinite; }
+.st-comp-tag.st-comp-partial  { background: rgba(200,146,31,.15); color: var(--accent-primary); border-color: rgba(200,146,31,.35); }
+.st-comp-tag.st-comp-error    { background: rgba(180,60,60,.12); color: #cc4444; border-color: rgba(180,60,60,.35); }
+.st-comp-tag.st-comp-halted   { background: rgba(220,160,40,.12); color: #d4a020; border-color: rgba(220,160,40,.35); }
+.st-row-expand-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+.st-row-expand-ph { width: 18px; flex-shrink: 0; display: inline-block; }
+.st-row-chevron {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    position: relative;
+    transition: transform .15s ease;
+}
+.st-row-chevron::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    border: 4px solid transparent;
+    border-left: 5px solid var(--text-muted);
+    transform: translate(-25%, -50%);
+}
+.st-phase-body {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-dim, var(--border-subtle));
+}
+.st-phase-body.hidden { display: none; }
+.st-child-row {
+    padding-left: 2.8rem;
+    border-bottom: 1px solid var(--border-dim, var(--border-subtle));
+    background: var(--bg-surface);
+}
+.st-child-row:last-child { border-bottom: none; }
+.st-child-row:hover { background: var(--bg-hover); }
+.st-tool-list {
+    display: flex;
+    flex-direction: column;
+    padding: .25rem .5rem .35rem 2.4rem;
+}
+.st-tool-placeholder {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-style: italic;
+    padding: .3rem 0;
+}
+.st-tool-item {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 2px 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    border-left: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+}
+.st-tool-item:hover { background: var(--bg-hover); }
+.st-tool-ok      { border-left-color: #5aaa5a; color: var(--text-primary); }
+.st-tool-missing { border-left-color: #cc4444; color: var(--text-secondary); opacity: .85; }
+.st-tool-pending { border-left-color: var(--border-subtle); color: var(--text-secondary); opacity: .85; }
+.st-tool-running { border-left-color: #5aaa5a; color: var(--text-primary); animation: st-pulse-tool .9s ease-in-out infinite alternate; }
+@keyframes st-pulse-tool {
+    from { opacity: .6; }
+    to   { opacity: 1; }
+}
+.st-tool-warn { border-left-color: var(--warning, #e0a000); color: var(--warning, #e0a000); }
+.st-tool-skip { border-left-color: var(--border-subtle); color: var(--text-secondary); }
+.st-tool-dot  { font-size: 9px; flex-shrink: 0; width: 10px; }
+.st-tool-name { font-weight: 600; flex-shrink: 0; }
+.st-tool-result {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+.st-tool-result-updated  { background: rgba(90,170,90,.15); color: #5aaa5a; border-color: rgba(90,170,90,.4); }
+.st-tool-result-running  { background: rgba(90,170,90,.12); color: #5aaa5a; border-color: rgba(90,170,90,.35); }
+.st-tool-result-complete { background: rgba(74,154,208,.12); color: #4a9ad0; border-color: rgba(74,154,208,.35); }
+.st-tool-result-error    { background: rgba(180,60,60,.12); color: #cc4444; border-color: rgba(180,60,60,.35); }
+.st-tool-result-skipped  { background: var(--bg-secondary); color: var(--text-muted); border-color: var(--border-subtle); }
+.st-tool-result-failed   { background: rgba(180,60,60,.12); color: #cc4444; border-color: rgba(180,60,60,.35); }
+.st-tool-idle            { border-left-color: var(--border-subtle); color: var(--text-secondary); opacity: .7; }
+
+/* ── Multi-Target Status Layout ─────────────────────────────── */
+.st-mt-layout {
+    display: flex;
+    gap: 16px;
+    min-height: 300px;
+}
+.st-mt-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    overflow-y: auto;
+    max-height: 600px;
+}
+.st-mt-header {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-muted);
+    padding: 10px 12px 6px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.st-mt-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-dim, var(--border-subtle));
+    transition: background .1s;
+}
+.st-mt-item:last-child { border-bottom: none; }
+.st-mt-item:hover { background: var(--bg-hover); }
+.st-mt-item.st-mt-selected {
+    background: rgba(200,146,31,.10);
+    border-left: 3px solid var(--accent-primary, #c8921f);
+    padding-left: 9px;
+}
+.st-mt-label {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.st-mt-pill {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.st-mt-idle     { background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.st-mt-running  { background: rgba(90,170,90,.18); border: 1px solid rgba(90,170,90,.4); color: #5aaa5a; animation: st-pulse 1.8s ease-in-out infinite; }
+.st-mt-complete { background: rgba(74,154,208,.18); border: 1px solid rgba(74,154,208,.35); color: #4a9ad0; }
+.st-mt-partial  { background: rgba(200,146,31,.15); border: 1px solid rgba(200,146,31,.35); color: var(--accent-primary, #c8921f); }
+.st-mt-error    { background: rgba(180,60,60,.12); border: 1px solid rgba(180,60,60,.35); color: #cc4444; }
+.st-mt-detail {
+    flex: 1;
+    min-width: 0;
+}
+@media (max-width: 700px) {
+    .st-mt-layout { flex-direction: column; }
+    .st-mt-sidebar { width: 100%; max-height: 200px; }
+}
+
+/* ── Structure Tree (Fracture / Siphon) ─────────────────────── */
+.struct-tree { font-family: var(--font-mono); font-size:.82rem; line-height:1.6; }
+.struct-row { display:flex; align-items:center; gap:.4rem; padding:.15rem .25rem; border-radius:4px; }
+.struct-row:hover { background: var(--bg-card); }
+.struct-grayed { opacity: 0.45; }
+.struct-redirect { color: var(--text-muted); font-size: .78rem; font-style: italic; white-space: nowrap; }
+.struct-ep-row { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.3rem .5rem; border-bottom:1px solid var(--border-color, var(--border)); }
+.struct-ep-row:last-child { border-bottom:none; }
+.struct-ep-row.struct-rogue { background: rgba(248,81,73,.06); }
+.struct-children { padding-left:1.4rem; border-left:1px dashed var(--border-color, var(--border)); margin-left:.5rem; }
+.struct-icon { width:1.2rem; text-align:center; }
+.struct-path { color: var(--text-primary); font-weight:500; }
+.struct-status { padding:.1rem .35rem; border-radius:3px; font-size:.78rem; font-weight:600; }
+.struct-ok    { background:rgba(63,185,80,.15); color:#3fb950; }
+.struct-redir { background:rgba(210,153,34,.15); color:#d29922; }
+.struct-err   { background:rgba(248,81,73,.15); color:#f85149; }
+.struct-auth-tag { background:rgba(88,166,255,.12); color:#58a6ff; border-radius:3px; padding:.1rem .3rem; font-size:.75rem; }
+.struct-source-tag { background:rgba(124,185,124,.1); color:#7cb97c; border-radius:3px; padding:.1rem .3rem; font-size:.72rem; opacity:.8; }
+.struct-spec-tag { background:rgba(63,185,80,.1); color:#3fb950; border-radius:3px; padding:.1rem .3rem; font-size:.75rem; }
+.struct-rogue-tag { background:rgba(210,153,34,.1); color:#d29922; border-radius:3px; padding:.1rem .3rem; font-size:.75rem; }
+.struct-methods { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem; margin-top:.15rem; width:100%; }
+.struct-method-pill { border-radius:3px; padding:.1rem .4rem; font-size:.75rem; font-weight:700; text-transform:uppercase; }
+.struct-method-pill.get    { background:rgba(63,185,80,.15); color:#3fb950; }
+.struct-method-pill.post   { background:rgba(88,166,255,.15); color:#58a6ff; }
+.struct-method-pill.put    { background:rgba(210,153,34,.15); color:#d29922; }
+.struct-method-pill.patch  { background:rgba(210,168,255,.12); color:#d2a8ff; }
+.struct-method-pill.delete { background:rgba(248,81,73,.15); color:#f85149; }
+.struct-method-pill.head   { background:var(--bg-secondary); color:var(--text-muted); }
+.struct-method-pill.options{ background:var(--bg-secondary); color:var(--text-muted); }
+/* ── Auth Status ────────────────────────────────────────────── */
+.auth-role-grid { display:flex; flex-wrap:wrap; gap:1rem; }
+.auth-role-card { background:var(--bg-card); border:1px solid var(--border-color, var(--border)); border-radius:6px; padding:.75rem 1rem; min-width:280px; flex:1 1 320px; max-width:600px; }
+.auth-role-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:.6rem; gap:.5rem; }
+.auth-role-name { font-weight:600; color:var(--text-primary); font-size:.92rem; }
+.auth-status-badge { border-radius:10px; padding:.15rem .55rem; font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.auth-status-success { background:rgba(63,185,80,.15); color:#3fb950; }
+.auth-status-failed  { background:rgba(248,81,73,.15); color:#f85149; }
+.auth-status-unauth  { background:var(--bg-secondary); color:var(--text-muted); }
+.auth-status-unknown { background:var(--bg-secondary); color:var(--text-muted); }
+.auth-field-row { display:flex; align-items:center; gap:.5rem; margin-bottom:.35rem; font-size:.83rem; }
+.auth-field-row-top { align-items:flex-start; }
+.auth-field-label { color:var(--text-muted); min-width:90px; flex-shrink:0; padding-top:.1rem; }
+.auth-field-val { color:var(--text-primary); word-break:break-all; }
+.auth-cookie-table-wrap { overflow-x:auto; flex:1; }
+.auth-cookie-table { width:100%; border-collapse:collapse; font-size:.78rem; }
+.auth-cookie-table th { text-align:left; padding:.25rem .4rem; color:var(--text-muted); border-bottom:1px solid var(--border-color, var(--border)); white-space:nowrap; }
+.auth-cookie-table td { padding:.2rem .4rem; border-bottom:1px solid var(--border-color, var(--border)); color:var(--text-primary); vertical-align:top; }
+.auth-cookie-table tr:last-child td { border-bottom:none; }
+.auth-cookie-val { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+{% endblock %}

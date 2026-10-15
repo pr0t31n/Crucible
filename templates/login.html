@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en" data-palette="forge" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f0eb">
+<title>CRUCIBLE — Login</title>
+<link rel="icon" href="/static/img/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/style.css">
+<script src="/static/js/palette-init.js"></script>
+<style>
+  body{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:var(--bg-primary);color:var(--text-primary);
+    padding:16px;
+  }
+  .auth-card{
+    width:100%;max-width:380px;
+    background:var(--bg-card);
+    border:1px solid var(--border-mid);
+    border-radius:12px;padding:40px 32px 32px;
+    text-align:center;
+    box-shadow:var(--shadow-md);
+  }
+  .auth-logo{width:48px;height:48px;margin:0 auto 16px;display:block;opacity:.9}
+  .auth-title{
+    font-size:22px;font-weight:700;letter-spacing:4px;
+    color:var(--text-primary);margin:0 0 4px;
+  }
+  .auth-subtitle{
+    font-size:11px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--text-muted);margin:0 0 28px;
+  }
+  .auth-error{
+    background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.3);
+    border-radius:6px;padding:10px 14px;margin:0 0 20px;
+    font-size:13px;color:#f87171;text-align:left;
+  }
+  .auth-field{margin:0 0 16px;text-align:left}
+  .auth-field label{
+    display:block;font-size:11px;font-weight:600;letter-spacing:1px;
+    text-transform:uppercase;color:var(--text-secondary);margin:0 0 6px;
+  }
+  .auth-field input{
+    width:100%;height:42px;padding:0 14px;
+    background:var(--bg-input);
+    border:1px solid var(--border-mid);
+    border-radius:6px;color:var(--text-primary);
+    font-size:14px;outline:none;transition:border-color .15s;
+  }
+  .auth-field input:focus{border-color:var(--accent-primary)}
+  .auth-field input::placeholder{color:var(--text-muted)}
+  .auth-submit{
+    width:100%;height:42px;margin:8px 0 0;
+    background:var(--accent-primary);color:var(--text-inverse);
+    border:none;border-radius:6px;font-size:12px;font-weight:700;
+    letter-spacing:2px;cursor:pointer;transition:opacity .15s;
+  }
+  .auth-submit:hover{opacity:.85}
+  .auth-submit:active{opacity:.7}
+</style>
+</head>
+<body>
+<div class="auth-card">
+  <img src="/static/img/logo.svg" alt="Crucible" class="auth-logo">
+  <h1 class="auth-title">CRUCIBLE</h1>
+  <p class="auth-subtitle">UNIFIED PENETRATION TESTING PLATFORM</p>
+
+  {% if error %}
+  <div class="auth-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/login" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="auth-field">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" placeholder="Enter username" required autofocus>
+    </div>
+
+    <div class="auth-field">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="Enter password" required>
+    </div>
+
+    <button type="submit" class="auth-submit">AUTHENTICATE</button>
+  </form>
+</div>
+
+<script src="/static/js/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,1045 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-page">
+
+  <!-- ── Step indicator ────────────────────────────────────── -->
+  <div class="wizard-steps" id="wizardSteps">
+    <div class="wizard-step active" data-step="1">
+      <span class="wizard-dot">1</span>
+      <span class="wizard-label">Engagement</span>
+    </div>
+    <div class="wizard-connector"></div>
+    <div class="wizard-step" data-step="2">
+      <span class="wizard-dot">2</span>
+      <span class="wizard-label">Tools</span>
+    </div>
+    <div class="wizard-connector"></div>
+    <div class="wizard-step" data-step="3">
+      <span class="wizard-dot">3</span>
+      <span class="wizard-label">Scope</span>
+    </div>
+    <div class="wizard-connector"></div>
+    <div class="wizard-step" data-step="4">
+      <span class="wizard-dot">4</span>
+      <span class="wizard-label">Review</span>
+    </div>
+  </div>
+
+  <h1 class="form-page-title" id="wizardTitle">
+    {{ 'Edit Engagement' if edit_mode else 'Create Engagement' }}
+  </h1>
+
+  <form id="wizardForm" autocomplete="off" novalidate>
+
+    <!-- ════════════════════════════════════════════════════════
+         STEP 1 — Engagement Details
+         ════════════════════════════════════════════════════════ -->
+    <div class="wizard-panel" id="step1" data-step="1">
+
+      <div class="form-section">
+        <h3 class="form-section-title">Engagement Info</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="engName">Engagement Name <span class="required">*</span></label>
+            <input type="text" id="engName" class="form-control" required
+                   placeholder="e.g. ACME Corp External 2026-Q3"
+                   value="{{ project.name|default('', true) if project else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="clientName">Client Name <span class="required">*</span></label>
+            <input type="text" id="clientName" class="form-control" required
+                   placeholder="e.g. ACME Corporation"
+                   value="{{ project.client_name|default('', true) if project else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="clientShort">Client Short</label>
+            <input type="text" id="clientShort" class="form-control"
+                   placeholder="Auto-derived" maxlength="20"
+                   value="{{ project.client_short|default('', true) if project else '' }}">
+            <span class="form-hint">Used for directory naming. Auto-derived if left blank.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="scopeType">Scope Type <span class="required">*</span></label>
+            <select id="scopeType" class="form-control" required>
+              <option value=""{{ ' selected' if not project or not project.scope }} disabled> - Select Scope - </option>
+              <option value="multi"{{ ' selected' if project and project.scope == 'multi' }}>Multi-Scope</option>
+              <option value="api"{{ ' selected' if project and project.scope == 'api' }}>API</option>
+              <option value="bluetooth"{{ ' selected' if project and project.scope == 'bluetooth' }}>Bluetooth (802.15.1)</option>
+              <option value="cloud"{{ ' selected' if project and project.scope == 'cloud' }}>Cloud Infrastructure</option>
+              <option value="database"{{ ' selected' if project and project.scope == 'database' }}>Database</option>
+              <option value="endpoint"{{ ' selected' if project and project.scope == 'endpoint' }}>Endpoint Security</option>
+              <option value="external"{{ ' selected' if project and project.scope == 'external' }}>External</option>
+              <option value="file"{{ ' selected' if project and project.scope == 'file' }}>File Analysis</option>
+              <option value="firewall"{{ ' selected' if project and project.scope == 'firewall' }}>Firewall Config Analysis</option>
+              <option value="internal"{{ ' selected' if project and project.scope == 'internal' }}>Internal</option>
+              <option value="mobile"{{ ' selected' if project and project.scope == 'mobile' }}>Mobile Application</option>
+              <option value="osint"{{ ' selected' if project and project.scope == 'osint' }}>OSINT</option>
+              <option value="pcap"{{ ' selected' if project and project.scope == 'pcap' }}>PCAP Analysis</option>
+              <option value="uwb"{{ ' selected' if project and project.scope == 'uwb' }}>Ultra-Wideband (UWB) (802.15.4z)</option>
+              <option value="webapp"{{ ' selected' if project and project.scope == 'webapp' }}>Web Application</option>
+              <option value="wifi"{{ ' selected' if project and project.scope == 'wifi' }}>Wi-Fi (802.11)</option>
+              <option value="zigbee"{{ ' selected' if project and project.scope == 'zigbee' }}>Zigbee (802.15.4)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="startDate">Start Date</label>
+            <input type="date" id="startDate" class="form-control"
+                   value="{{ project.start_date|default('', true) if project else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="endDate">End Date</label>
+            <input type="date" id="endDate" class="form-control"
+                   value="{{ project.end_date|default('', true) if project else '' }}">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3 class="form-section-title">Consultant</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="consultName">Name</label>
+            <input type="text" id="consultName" class="form-control"
+                   value="{{ project.consultant.name|default('', true) if project and project.consultant else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="consultTitle">Title</label>
+            <input type="text" id="consultTitle" class="form-control"
+                   value="{{ project.consultant.title|default('', true) if project and project.consultant else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="consultEmail">Email</label>
+            <input type="email" id="consultEmail" class="form-control"
+                   value="{{ project.consultant.email|default('', true) if project and project.consultant else '' }}">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3 class="form-section-title">Client Point of Contact</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="pocName">Name</label>
+            <input type="text" id="pocName" class="form-control"
+                   value="{{ project.client_poc.name|default('', true) if project and project.client_poc else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pocPhone">Phone</label>
+            <input type="tel" id="pocPhone" class="form-control"
+                   value="{{ project.client_poc.phone|default('', true) if project and project.client_poc else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pocEmail">Email</label>
+            <input type="email" id="pocEmail" class="form-control"
+                   value="{{ project.client_poc.email|default('', true) if project and project.client_poc else '' }}">
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /step1 -->
+
+
+    <!-- ════════════════════════════════════════════════════════
+         STEP 2 — Tool Selection
+         ════════════════════════════════════════════════════════ -->
+    <div class="wizard-panel" id="step2" data-step="2" hidden>
+
+      <div class="form-section">
+        <h3 class="form-section-title">Select Tools</h3>
+        <span class="form-hint" style="display:block;margin-top:-8px;margin-bottom:14px;">Tools are filtered by the selected scope type. Grayed-out tools are not applicable.</span>
+
+        <div class="tool-select-grid">
+          <div class="tool-select-card" data-tool="aether_b"><input type="checkbox" name="tools" value="aether_b" hidden><span class="tool-badge tool-ab">AB</span><span class="tool-select-label">Aether (Bluetooth)</span><span class="tool-select-desc">802.15.1 Bluetooth testing</span></div>
+          <div class="tool-select-card" data-tool="aether_u"><input type="checkbox" name="tools" value="aether_u" hidden><span class="tool-badge tool-aw">AW</span><span class="tool-select-label">Aether (UWB)</span><span class="tool-select-desc">802.15.4z UWB testing</span></div>
+          <div class="tool-select-card" data-tool="aether"><input type="checkbox" name="tools" value="aether" hidden><span class="tool-badge tool-ae">AE</span><span class="tool-select-label">Aether (Wi-Fi)</span><span class="tool-select-desc">802.11 wireless testing</span></div>
+          <div class="tool-select-card" data-tool="aether_z"><input type="checkbox" name="tools" value="aether_z" hidden><span class="tool-badge tool-az">AZ</span><span class="tool-select-label">Aether (Zigbee)</span><span class="tool-select-desc">802.15.4 Zigbee testing</span></div>
+          <div class="tool-select-card" data-tool="auger"><input type="checkbox" name="tools" value="auger" hidden><span class="tool-badge tool-au">AU</span><span class="tool-select-label">Auger</span><span class="tool-select-desc">Database testing</span></div>
+          <div class="tool-select-card" data-tool="bastion"><input type="checkbox" name="tools" value="bastion" hidden><span class="tool-badge tool-ba">BA</span><span class="tool-select-label">Bastion</span><span class="tool-select-desc">Firewall config audit</span></div>
+          <div class="tool-select-card" data-tool="dredge"><input type="checkbox" name="tools" value="dredge" hidden><span class="tool-badge tool-dg">DG</span><span class="tool-select-label">Dredge</span><span class="tool-select-desc">Windows endpoint security audit</span></div>
+          <div class="tool-select-card" data-tool="forge"><input type="checkbox" name="tools" value="forge" hidden><span class="tool-badge tool-fg">FG</span><span class="tool-select-label">Forge</span><span class="tool-select-desc">Cloud infrastructure audit</span></div>
+          <div class="tool-select-card" data-tool="fracture"><input type="checkbox" name="tools" value="fracture" hidden><span class="tool-badge tool-fr">FR</span><span class="tool-select-label">Fracture</span><span class="tool-select-desc">Web app testing</span></div>
+          <div class="tool-select-card" data-tool="isotope"><input type="checkbox" name="tools" value="isotope" hidden><span class="tool-badge tool-is">IS</span><span class="tool-select-label">Isotope</span><span class="tool-select-desc">File analysis</span></div>
+          <div class="tool-select-card" data-tool="osift"><input type="checkbox" name="tools" value="osift" hidden><span class="tool-badge tool-os">OS</span><span class="tool-select-label">OSift</span><span class="tool-select-desc">OSINT recon</span></div>
+          <div class="tool-select-card" data-tool="quill"><input type="checkbox" name="tools" value="quill" hidden><span class="tool-badge tool-qu">QU</span><span class="tool-select-label">Quill</span><span class="tool-select-desc">Mobile app analysis</span></div>
+          <div class="tool-select-card" data-tool="ss3"><input type="checkbox" name="tools" value="ss3" hidden><span class="tool-badge tool-ss">SS</span><span class="tool-select-label">Scattershot3</span><span class="tool-select-desc">Network recon</span></div>
+          <div class="tool-select-card" data-tool="siphon"><input type="checkbox" name="tools" value="siphon" hidden><span class="tool-badge tool-si">SI</span><span class="tool-select-label">Siphon</span><span class="tool-select-desc">API testing</span></div>
+          <div class="tool-select-card" data-tool="trawler"><input type="checkbox" name="tools" value="trawler" hidden><span class="tool-badge tool-tr">TR</span><span class="tool-select-label">Trawler</span><span class="tool-select-desc">Traffic analysis</span></div>
+        </div>
+      </div>
+
+      <div class="form-section" style="margin-top:24px">
+        <h3 class="form-section-title">Automation</h3>
+        <label class="form-check" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="autoQueue" {% if project and project.auto_queue %}checked{% endif %}>
+          <span>
+            <strong>Auto-Queue</strong>
+            <span class="form-hint" style="display:block;margin-top:2px;">Automatically queue recommended tool runs when action items are identified during scans. Tools respect parallelism rules and will wait in queue if needed.</span>
+          </span>
+        </label>
+      </div>
+
+      <div class="form-section" style="margin-top:24px">
+        <h3 class="form-section-title">Out-of-Scope Handling</h3>
+        <span class="form-hint" style="display:block;margin-bottom:12px;">Controls how derived targets that are not explicitly defined as in-scope are handled during testing.</span>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="radio" name="oosHandling" value="explicit" {% if not project or project.oos_handling|default('explicit') == 'explicit' %}checked{% endif %}>
+            <span>
+              <strong>Explicit In-Scope Testing Only</strong> <span class="badge badge-sm" style="background:var(--emerald-600);color:#fff;font-size:10px;padding:1px 6px;border-radius:3px;vertical-align:middle;">DEFAULT</span>
+              <span class="form-hint" style="display:block;margin-top:2px;">Only targets explicitly defined as in-scope will be tested. Derived or referenced targets remain out-of-scope and untested.</span>
+            </span>
+          </label>
+          <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="radio" name="oosHandling" value="separated" {% if project and project.oos_handling|default('explicit') == 'separated' %}checked{% endif %}>
+            <span>
+              <strong>Include Out-of-Scope &mdash; Separated Results</strong>
+              <span class="form-hint" style="display:block;margin-top:2px;">Derived targets sharing a parent domain or IP with in-scope targets will be tested. Findings are kept separate and tagged with &ldquo;OOS&rdquo;.</span>
+            </span>
+          </label>
+          <label class="form-check" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="radio" name="oosHandling" value="combined" {% if project and project.oos_handling|default('explicit') == 'combined' %}checked{% endif %}>
+            <span>
+              <strong>Include Out-of-Scope as In-Scope &mdash; Combined Results</strong>
+              <span class="form-hint" style="display:block;margin-top:2px;">Derived targets sharing a parent domain or IP with in-scope targets will be tested. Findings are merged with in-scope results.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section" style="margin-top:24px">
+        <h3 class="form-section-title">Engagement Hours</h3>
+        <span class="form-hint" style="display:block;margin-bottom:12px;">Restrict active testing to a defined time window. Running tools will be paused outside these hours and resumed automatically when the window reopens.</span>
+        <label class="form-check" style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px">
+          <input type="checkbox" id="wizEngagementEnabled">
+          <span><strong>Enable Engagement Hours</strong></span>
+        </label>
+        <div id="wizEngagementConfig" style="display:none;gap:10px;flex-wrap:wrap;align-items:end">
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+            <span class="text-xs">Start</span>
+            <input type="time" id="wizEngagementStart" value="08:00" class="form-control" style="width:120px">
+          </label>
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+            <span class="text-xs">End</span>
+            <input type="time" id="wizEngagementEnd" value="18:00" class="form-control" style="width:120px">
+          </label>
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+            <span class="text-xs">Timezone</span>
+            <select id="wizEngagementTz" class="form-control" style="width:180px">
+              <option value="US/Eastern">US/Eastern</option>
+              <option value="US/Central" selected>US/Central</option>
+              <option value="US/Mountain">US/Mountain</option>
+              <option value="US/Pacific">US/Pacific</option>
+              <option value="UTC">UTC</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="Europe/Berlin">Europe/Berlin</option>
+              <option value="Asia/Tokyo">Asia/Tokyo</option>
+            </select>
+          </label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="text-xs" style="margin-right:4px">Days:</span>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="0" checked> Mon</label>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="1" checked> Tue</label>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="2" checked> Wed</label>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="3" checked> Thu</label>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="4" checked> Fri</label>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="5"> Sat</label>
+            <label class="text-xs"><input type="checkbox" class="wizEngDay" value="6"> Sun</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section" style="margin-top:24px">
+        <h3 class="form-section-title">Scheduled Engagement Start</h3>
+        <span class="form-hint" style="display:block;margin-bottom:12px;">Schedule the engagement to auto-start at a future date and time. All enabled tools will launch automatically, routed through the queue for proper parallelism.</span>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+            <span class="text-xs">Start Date &amp; Time</span>
+            <input type="datetime-local" id="wizSchedAt" class="form-control" style="width:220px">
+          </label>
+        </div>
+      </div>
+
+    </div><!-- /step2 -->
+
+
+    <!-- ════════════════════════════════════════════════════════
+         STEP 3 — Scope Definition
+         ════════════════════════════════════════════════════════ -->
+    <div class="wizard-panel" id="step3" data-step="3" hidden>
+
+      <!-- ── Scattershot3 ──────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeSs3Section" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-ss">SS</span> Scattershot3</h3>
+        <div class="form-group">
+          <label class="form-label" for="cidrs">Network CIDRs / IPs</label>
+          <textarea id="cidrs" class="form-control" rows="4"
+                    placeholder="One CIDR or IP per line&#10;e.g. 10.0.0.0/24&#10;     192.168.1.0/24">{% if project and project.scope_definition %}{{ project.scope_definition.network_cidrs|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+        <div class="form-grid" style="margin-top:16px">
+          <div class="form-group">
+            <label class="form-label" for="ss3DiscMinRate">Discovery Min Rate (pps)</label>
+            <input type="number" id="ss3DiscMinRate" class="form-control" min="0" max="100000" placeholder="default: no limit"
+                   value="{% if project and project.scope_definition and project.scope_definition.ss3_discovery_min_rate %}{{ project.scope_definition.ss3_discovery_min_rate }}{% endif %}">
+            <span class="form-hint">nmap --min-rate for -sn discovery. Higher = faster but more aggressive.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="ss3DiscMinParallelism">Discovery Min Parallelism</label>
+            <input type="number" id="ss3DiscMinParallelism" class="form-control" min="1" max="1000" placeholder="default: 20"
+                   value="{% if project and project.scope_definition and project.scope_definition.ss3_discovery_min_parallelism %}{{ project.scope_definition.ss3_discovery_min_parallelism }}{% endif %}">
+            <span class="form-hint">nmap --min-parallelism for -sn discovery (default: 20).</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="ss3TimingTemplate">Timing Template</label>
+            <select id="ss3TimingTemplate" class="form-control">
+              <option value="">Default (no override)</option>
+              <option value="0"{% if project and project.scope_definition and project.scope_definition.ss3_timing_template == '0' %} selected{% endif %}>T0 — Paranoid</option>
+              <option value="1"{% if project and project.scope_definition and project.scope_definition.ss3_timing_template == '1' %} selected{% endif %}>T1 — Sneaky</option>
+              <option value="2"{% if project and project.scope_definition and project.scope_definition.ss3_timing_template == '2' %} selected{% endif %}>T2 — Polite</option>
+              <option value="3"{% if project and project.scope_definition and project.scope_definition.ss3_timing_template == '3' %} selected{% endif %}>T3 — Normal</option>
+              <option value="4"{% if project and project.scope_definition and project.scope_definition.ss3_timing_template == '4' %} selected{% endif %}>T4 — Aggressive</option>
+              <option value="5"{% if project and project.scope_definition and project.scope_definition.ss3_timing_template == '5' %} selected{% endif %}>T5 — Insane</option>
+            </select>
+            <span class="form-hint">nmap timing template for discovery scans (-T0 through -T5).</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="ss3PassiveSeedDuration">Passive Seed Duration (s)</label>
+            <input type="number" id="ss3PassiveSeedDuration" class="form-control" min="0" max="900" placeholder="default: 300"
+                   value="{% if project and project.scope_definition and project.scope_definition.ss3_passive_seed_duration %}{{ project.scope_definition.ss3_passive_seed_duration }}{% endif %}">
+            <span class="form-hint">Seconds of tcpdump capture run concurrently with Phase 1 discovery. Trawler analyses the pcap in hunt mode (testing server excluded) to surface broadcast/multicast protocols and seed action items. 0 = disabled.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Fracture ──────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeFractureSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-fr">FR</span> Fracture</h3>
+
+        <div class="form-group">
+          <label class="form-label" for="targetUrls">Web Application Target URLs</label>
+          <textarea id="targetUrls" class="form-control" rows="4"
+                    placeholder="One URL per line&#10;e.g. https://app.example.com&#10;     https://staging.example.com">{% if project and project.scope_definition %}{{ project.scope_definition.target_urls|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+
+        <div class="form-group" style="margin-top:16px">
+          <span class="form-label">Roles</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Add one entry per role. Fracture tests every endpoint with each set of credentials and unauthenticated, comparing access across roles.</span>
+          <div id="frRoleRows" style="display:flex;flex-direction:column;gap:6px"></div>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRoleRow('fr')">+ Add Role</button>
+        </div>
+
+        <div style="margin-top:16px">
+          <span class="form-label">Test Connection</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Tests using the first role's credentials. On success, you can save the auth method for Fracture.</span>
+          <div class="form-grid">
+            <div class="form-group form-grid-full">
+              <div style="display:flex;gap:8px;align-items:flex-start">
+                <input type="text" id="frTcTarget" class="form-control" placeholder="https://app.example.com" style="flex:1">
+                <button type="button" class="btn btn-secondary" id="btnFrTestConn" style="white-space:nowrap">Test Connection</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="frTcAuthMethod">Auth Method</label>
+              <select id="frTcAuthMethod" class="form-control tc-auth-method-select">
+                <option value="none">None</option>
+                <option value="auto">Auto-Detect  (try form login → token → basic → digest → NTLM)</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="form_login">Form Login</option>
+                <option value="api_key">API Key</option>
+                <option value="session_cookie">Session Cookie</option>
+                <option value="oauth2_client">OAuth2 Client Credentials</option>
+                <option value="oauth1">OAuth1</option>
+                <option value="ntlm">NTLM</option>
+                <option value="digest">Digest</option>
+                <option value="mtls">mTLS</option>
+                <option value="saml">SAML</option>
+                <option value="oidc">OIDC</option>
+                <option value="totp">TOTP / MFA</option>
+                <option value="proxy_header">Proxy Header</option>
+                <option value="kerberos">Kerberos</option>
+                <option value="custom_header">Custom Header</option>
+              </select>
+            </div>
+            <div class="form-group" id="frTcAuthFields"></div>
+          </div>
+          <div id="frTcResultArea" hidden>
+            <div class="panel mt-8">
+              <div class="panel-header">
+                <span class="panel-title" id="frTcResultTitle">Result</span>
+                <span id="frTcResultBadge"></span>
+              </div>
+              <div class="panel-body">
+                <pre id="frTcResultBody" style="max-height:200px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+              </div>
+            </div>
+            <div id="frTcSaveArea" hidden style="margin-top:8px">
+              <button type="button" class="btn btn-sm btn-primary" id="btnFrSaveAuth">Save Auth for Fracture</button>
+              <span class="form-hint" id="frTcSaveStatus" style="margin-left:8px;"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Siphon ────────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeSiphonSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-si">SI</span> Siphon</h3>
+
+        <div class="form-group">
+          <label class="form-label" for="apiUrls">API Target URLs</label>
+          <textarea id="apiUrls" class="form-control" rows="3"
+                    placeholder="One API base URL per line&#10;e.g. https://api.example.com/v2">{% if project and project.scope_definition %}{{ project.scope_definition.api_urls|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+
+        <div class="form-group" style="margin-top:8px">
+          <span class="form-label">API Specifications</span>
+          <div class="file-upload-area" id="apiSpecUpload">
+            <input type="file" id="apiSpecFile" accept=".json,.yaml,.yml" multiple hidden>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('apiSpecFile').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Files
+            </button>
+            <span class="form-hint" style="margin-left:10px;" id="apiSpecCount">No files selected</span>
+          </div>
+          <ul class="file-list" id="apiSpecList"></ul>
+          {% if project and project.scope_definition and project.scope_definition.api_specs %}
+          <div class="form-hint" style="margin-top:8px;">
+            Existing specs: {{ project.scope_definition.api_specs|join(', ') }}
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="form-group" style="margin-top:16px">
+          <span class="form-label">Roles</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Add one entry per role. Siphon tests every API endpoint with each set of credentials and unauthenticated, comparing access across roles.</span>
+          <div id="siRoleRows" style="display:flex;flex-direction:column;gap:6px"></div>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRoleRow('si')">+ Add Role</button>
+        </div>
+
+        <div style="margin-top:16px">
+          <span class="form-label">Test Connection</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Tests using the first role's credentials. On success, you can save the auth method for Siphon.</span>
+          <div class="form-grid">
+            <div class="form-group form-grid-full">
+              <div style="display:flex;gap:8px;align-items:flex-start">
+                <input type="text" id="siTcTarget" class="form-control" placeholder="https://api.example.com/v2" style="flex:1">
+                <button type="button" class="btn btn-secondary" id="btnSiTestConn" style="white-space:nowrap">Test Connection</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="siTcAuthMethod">Auth Method</label>
+              <select id="siTcAuthMethod" class="form-control tc-auth-method-select">
+                <option value="none">None</option>
+                <option value="auto">Auto-Detect  (try token → basic → cookie login → digest → NTLM)</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+                <option value="form_login">Form Login</option>
+                <option value="api_key">API Key</option>
+                <option value="session_cookie">Session Cookie</option>
+                <option value="oauth2_client">OAuth2 Client Credentials</option>
+                <option value="oauth1">OAuth1</option>
+                <option value="ntlm">NTLM</option>
+                <option value="digest">Digest</option>
+                <option value="mtls">mTLS</option>
+                <option value="saml">SAML</option>
+                <option value="oidc">OIDC</option>
+                <option value="totp">TOTP / MFA</option>
+                <option value="proxy_header">Proxy Header</option>
+                <option value="kerberos">Kerberos</option>
+                <option value="custom_header">Custom Header</option>
+              </select>
+            </div>
+            <div class="form-group" id="siTcAuthFields"></div>
+          </div>
+          <div id="siTcResultArea" hidden>
+            <div class="panel mt-8">
+              <div class="panel-header">
+                <span class="panel-title" id="siTcResultTitle">Result</span>
+                <span id="siTcResultBadge"></span>
+              </div>
+              <div class="panel-body">
+                <pre id="siTcResultBody" style="max-height:200px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+              </div>
+            </div>
+            <div id="siTcSaveArea" hidden style="margin-top:8px">
+              <button type="button" class="btn btn-sm btn-primary" id="btnSiSaveAuth">Save Auth for Siphon</button>
+              <span class="form-hint" id="siTcSaveStatus" style="margin-left:8px;"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── OSift ─────────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeOsiftSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-os">OS</span> OSift</h3>
+        <div class="form-group">
+          <label class="form-label" for="domains">Domains</label>
+          <textarea id="domains" class="form-control" rows="4"
+                    placeholder="One domain per line&#10;e.g. example.com&#10;     sub.example.com">{% if project and project.scope_definition %}{{ project.scope_definition.domains|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+      </div>
+
+      <!-- ── Auger ─────────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeAugerSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-au">AU</span> Auger</h3>
+
+        <div class="form-group">
+          <label class="form-label" for="augerMode">Mode</label>
+          <select id="augerMode" class="form-control" style="max-width:320px">
+            <option value="remote">Remote / Local Connection</option>
+            <option value="file">Database File / Export</option>
+          </select>
+        </div>
+
+        <!-- Remote connection fields -->
+        <div id="augerRemoteFields">
+          <div class="form-group">
+            <label class="form-label" for="dbTargets">Database Targets</label>
+            <textarea id="dbTargets" class="form-control" rows="3"
+                      placeholder="One target per line&#10;e.g. mysql://10.0.0.5:3306&#10;     postgres://db.internal:5432/app">{% if project and project.scope_definition %}{{ project.scope_definition.db_targets|default([])|join('\n') }}{% endif %}</textarea>
+          </div>
+          <div class="form-grid" style="margin-top:8px">
+            <div class="form-group">
+              <label class="form-label" for="augerDbType">Database Type</label>
+              <select id="augerDbType" class="form-control">
+                <option value="">Auto-detect from target URL</option>
+                <option value="mysql">MySQL</option>
+                <option value="mariadb">MariaDB</option>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="mssql">MS SQL Server</option>
+                <option value="oracle">Oracle</option>
+                <option value="mongodb">MongoDB</option>
+                <option value="redis">Redis</option>
+                <option value="cassandra">Cassandra</option>
+                <option value="elasticsearch">Elasticsearch</option>
+                <option value="couchdb">CouchDB</option>
+                <option value="influxdb">InfluxDB</option>
+                <option value="neo4j">Neo4j</option>
+                <option value="memcached">Memcached</option>
+                <option value="redshift">AWS Redshift</option>
+                <option value="dynamodb">AWS DynamoDB</option>
+                <option value="rds">AWS RDS</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="augerDatabase">Database / Schema</label>
+              <input type="text" id="augerDatabase" class="form-control" placeholder="(optional)">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:8px">
+            <span class="form-label">Credentials</span>
+            <span class="form-hint" style="display:block;margin-bottom:8px;">If blank, Auger tests default credentials for the database type.</span>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <input type="text" id="augerUsername" class="form-control" placeholder="Username" style="flex:1;min-width:160px">
+              <input type="password" id="augerPassword" class="form-control" placeholder="Password" style="flex:1;min-width:160px" autocomplete="new-password">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:8px">
+            <label class="form-label" for="augerJdbc">JDBC Connection String</label>
+            <input type="text" id="augerJdbc" class="form-control" placeholder="jdbc:mysql://host:3306/db (optional — overrides target + credentials)">
+            <span class="form-hint">Alternative to target URLs; Auger parses host, port, type, and database from the JDBC string.</span>
+          </div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="augerSsl"> <span class="form-label" style="margin:0">Enable SSL/TLS</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- File import fields -->
+        <div id="augerFileFields" hidden>
+          <div class="form-group">
+            <label class="form-label" for="augerFileType">Database File Type</label>
+            <select id="augerFileType" class="form-control" style="max-width:320px">
+              <option value="sqlite">SQLite (.db, .sqlite, .sqlite3)</option>
+              <option value="mysql_dump">MySQL Dump (.sql)</option>
+              <option value="pg_dump">PostgreSQL Dump (.sql, .dump)</option>
+              <option value="mssql_bacpac">MSSQL BACPAC (.bacpac)</option>
+              <option value="mongo_dump">MongoDB Dump (.bson, .json, .archive)</option>
+              <option value="redis_rdb">Redis RDB (.rdb)</option>
+              <option value="h2">H2 Database (.mv.db, .h2.db)</option>
+              <option value="access">MS Access (.mdb, .accdb)</option>
+              <option value="csv">CSV / TSV Export (.csv, .tsv)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-top:8px">
+            <span class="form-label">Upload Database Files</span>
+            <div class="file-upload-area" id="dbFileUpload">
+              <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3,.sql,.dump,.bacpac,.bson,.json,.archive,.rdb,.mv.db,.h2.db,.mdb,.accdb,.csv,.tsv" multiple hidden>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('dbFileInput').click()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Choose Files
+              </button>
+              <span class="form-hint" style="margin-left:10px;" id="dbFileCount">No files selected</span>
+            </div>
+            <ul class="file-list" id="dbFileList"></ul>
+          </div>
+          <span class="form-hint" style="display:block;margin-top:8px;">Auger will analyse the file locally without requiring a network connection to the database.</span>
+        </div>
+      </div>
+
+      <!-- ── Trawler ───────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeTrawlerSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-tr">TR</span> Trawler</h3>
+        <div class="form-group">
+          <span class="form-label">PCAP Files</span>
+          <div class="file-upload-area" id="pcapUpload">
+            <input type="file" id="pcapFile" accept=".pcap,.pcapng,.cap" multiple hidden>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('pcapFile').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Files
+            </button>
+            <span class="form-hint" style="margin-left:10px;" id="pcapCount">No files selected</span>
+          </div>
+          <ul class="file-list" id="pcapList"></ul>
+        </div>
+        <div class="form-group" style="margin-top:8px">
+          <label class="form-label" for="trawlerTargets">Target IPs</label>
+          <textarea id="trawlerTargets" class="form-control" rows="2"
+                    placeholder="One IP per line (targets within the capture to analyse)">{% if project and project.scope_definition %}{{ project.scope_definition.trawler_targets|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+      </div>
+
+      <!-- ── Dredge (Endpoint) ──────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeEndpointSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-dg">DG</span> Dredge (Endpoint Security)</h3>
+        <div class="form-group">
+          <label class="form-label" for="endpointTargets">Endpoint Targets</label>
+          <textarea id="endpointTargets" class="form-control" rows="3"
+                    placeholder="One hostname or IP per line&#10;e.g. 10.0.0.50&#10;     DC01.corp.local">{% if project and project.scope_definition %}{{ project.scope_definition.endpoint_targets|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label" for="dredgeMode">Execution Mode</label>
+          <select id="dredgeMode" class="form-control">
+            <option value="import"{{ ' selected' if not project or (project.scope_definition or {}).get('dredge_mode','import') == 'import' }}>Import Collection</option>
+            <option value="winrm"{{ ' selected' if project and (project.scope_definition or {}).get('dredge_mode') == 'winrm' }}>WinRM Remote Collection</option>
+          </select>
+          <span class="form-hint">Import: browse to a pre-collected JSON or CMD batch directory. WinRM: collect live from a Windows target.</span>
+        </div>
+
+        <!-- Import mode fields -->
+        <div id="dredgeImportFields" style="margin-top:8px">
+          <div class="form-group">
+            <span class="form-label">Collection Path</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnDgBrowse">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                Browse
+              </button>
+              <span class="form-hint" id="dgCollectionCount">No path selected</span>
+            </div>
+            <div id="dgCollectionDisplay" hidden style="margin-top:8px">
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-size:.82rem">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--status-running)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                <span id="dgCollectionPath" style="flex:1;word-break:break-all;color:var(--text-primary)"></span>
+                <span id="dgCollectionTypeBadge" style="font-size:.72rem;padding:2px 8px;border-radius:10px;background:var(--accent-muted);color:var(--accent-primary);white-space:nowrap"></span>
+                <button type="button" class="file-remove" id="btnDgClearPath" title="Clear selection">&times;</button>
+              </div>
+            </div>
+            <span class="form-hint" style="margin-top:4px;display:block">Navigate to a PS1 collection JSON file or CMD batch output directory. Auto-detected.</span>
+          </div>
+        </div>
+
+        <!-- WinRM mode fields -->
+        <div id="dredgeWinrmFields" hidden style="margin-top:8px">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="dgWinrmHost">WinRM Host</label>
+              <input type="text" id="dgWinrmHost" class="form-control" placeholder="10.0.0.50 or hostname"
+                     value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('dredge_winrm_host','') }}{% endif %}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dgWinrmUser">WinRM Username</label>
+              <input type="text" id="dgWinrmUser" class="form-control" placeholder="Administrator"
+                     value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('dredge_winrm_user','') }}{% endif %}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dgWinrmPass">WinRM Password</label>
+              <input type="password" id="dgWinrmPass" class="form-control" autocomplete="new-password"
+                     value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('dredge_winrm_pass','') }}{% endif %}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dgWinrmPort">WinRM Port</label>
+              <input type="number" id="dgWinrmPort" class="form-control" value="{{ (project.scope_definition or {}).get('dredge_winrm_port', 5985) if project and project.scope_definition else 5985 }}" style="max-width:120px">
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
+            <input type="checkbox" id="dgWinrmSsl" {{ 'checked' if project and project.scope_definition and (project.scope_definition or {}).get('dredge_winrm_ssl') }}>
+            <span>Use HTTPS (WinRM over SSL)</span>
+          </label>
+        </div>
+
+        <!-- API Keys -->
+        <div class="form-grid" style="margin-top:16px">
+          <div class="form-group">
+            <label class="form-label" for="dgVtKey">VirusTotal API Key <span class="form-hint">(optional)</span></label>
+            <input type="password" id="dgVtKey" class="form-control" placeholder="Enter API key for hash enrichment" autocomplete="new-password"
+                   value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('dredge_vt_key','') }}{% endif %}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dgAbuseKey">AbuseIPDB Key <span class="form-hint">(optional)</span></label>
+            <input type="password" id="dgAbuseKey" class="form-control" placeholder="Enter API key for IP reputation" autocomplete="new-password"
+                   value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('dredge_abuseipdb_key','') }}{% endif %}">
+          </div>
+        </div>
+
+        <!-- Skip Sections -->
+        <div class="form-group" style="margin-top:8px">
+          <label class="form-label" for="dgSkipSections">Skip Analyzer Sections <span class="form-hint">(optional)</span></label>
+          <input type="text" id="dgSkipSections" class="form-control" placeholder="e.g. active_directory, browsers (comma-separated)"
+                 value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('dredge_skip_sections','') }}{% endif %}">
+        </div>
+
+        <!-- External Tool Output Ingestion -->
+        <div class="form-group" style="margin-top:16px">
+          <span class="form-label">External Tool Output <span class="form-hint">(optional — ingest third-party tool results)</span></span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Upload output files from other Windows security tools. Dredge will parse them and merge findings.</span>
+          <div class="file-upload-area" id="dgExtToolUpload">
+            <input type="file" id="dgExtToolFile" accept=".json,.csv,.xml,.txt" multiple hidden>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('dgExtToolFile').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Files
+            </button>
+            <span class="form-hint" style="margin-left:10px;" id="dgExtToolCount">No files selected</span>
+          </div>
+          <ul class="file-list" id="dgExtToolList"></ul>
+          <div style="display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="dg-ext-parser" value="seatbelt"> <span>Seatbelt (JSON)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="dg-ext-parser" value="winpeas"> <span>WinPEAS (JSON/TXT)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="dg-ext-parser" value="hardeningkitty"> <span>HardeningKitty (CSV)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="dg-ext-parser" value="bloodhound"> <span>BloodHound (JSON)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="dg-ext-parser" value="pingcastle"> <span>PingCastle (XML)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="dg-ext-parser" value="privesccheck"> <span>PrivescCheck (JSON)</span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Aether (Wireless) ─────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeWirelessSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-ae">AE</span> Aether (Wireless)</h3>
+        <div class="form-group">
+          <label class="form-label" for="ssids">Target SSIDs</label>
+          <textarea id="ssids" class="form-control" rows="3"
+                    placeholder="One SSID per line">{% if project and project.scope_definition %}{{ project.scope_definition.wireless_ssids|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+      </div>
+
+      <!-- ── Bastion ───────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeBastionSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-ba">BA</span> Bastion</h3>
+        <div class="form-group">
+          <label class="form-label" for="fwVendor">Vendor</label>
+          <select id="fwVendor" class="form-control">
+            <option value="auto">Auto-Detect</option>
+            <option value="cisco_asa">Cisco ASA</option>
+            <option value="cisco_ios">Cisco IOS</option>
+            <option value="palo_alto">Palo Alto</option>
+            <option value="fortinet">Fortinet / FortiOS</option>
+            <option value="checkpoint">Check Point</option>
+            <option value="juniper">Juniper SRX / ScreenOS</option>
+            <option value="pfsense">pfSense</option>
+            <option value="opnsense">OPNsense</option>
+            <option value="iptables">iptables / nftables</option>
+            <option value="windows_fw">Windows Firewall</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-top:8px">
+          <span class="form-label">Upload Configuration Files</span>
+          <div class="file-upload-area" id="fwConfigUpload">
+            <input type="file" id="fwConfigFile" accept=".conf,.cfg,.txt,.xml,.json,.rules" multiple hidden>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('fwConfigFile').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Files
+            </button>
+            <span class="form-hint" style="margin-left:10px;" id="fwConfigCount">No files selected</span>
+          </div>
+          <ul class="file-list" id="fwConfigList"></ul>
+        </div>
+      </div>
+
+      <!-- ── Forge ─────────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeForgeSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-fg">FG</span> Forge</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="cloudProvider">Cloud Provider</label>
+            <select id="cloudProvider" class="form-control">
+              <option value="all">All Providers</option>
+              <option value="aws">AWS</option>
+              <option value="azure">Azure</option>
+              <option value="gcp">GCP</option>
+            </select>
+          </div>
+          <div class="form-group" id="cloudAwsGroup">
+            <label class="form-label" for="awsProfile">AWS Profile</label>
+            <input type="text" id="awsProfile" class="form-control" placeholder="default" value="">
+          </div>
+          <div class="form-group" id="cloudAwsRegionGroup">
+            <label class="form-label" for="awsRegion">AWS Region</label>
+            <input type="text" id="awsRegion" class="form-control" placeholder="us-east-1 (leave blank for all)" value="">
+          </div>
+          <div class="form-group" id="cloudAzureGroup">
+            <label class="form-label" for="azureSubscription">Azure Subscription ID</label>
+            <input type="text" id="azureSubscription" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="">
+          </div>
+          <div class="form-group" id="cloudGcpGroup">
+            <label class="form-label" for="gcpProject">GCP Project ID</label>
+            <input type="text" id="gcpProject" class="form-control" placeholder="my-project-123" value="">
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Quill ─────────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeQuillSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-qu">QU</span> Quill</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for="mobilePlatform">Platform</label>
+            <select id="mobilePlatform" class="form-control">
+              <option value="auto">Auto-Detect</option>
+              <option value="ios">iOS</option>
+              <option value="android">Android</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="mobileDynamic">Analysis Type</label>
+            <select id="mobileDynamic" class="form-control">
+              <option value="static">Static Only</option>
+              <option value="both">Static + Dynamic</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:8px">
+          <span class="form-label">Upload Application Binary</span>
+          <div class="file-upload-area" id="mobileAppUpload">
+            <input type="file" id="mobileAppFile" accept=".ipa,.apk" multiple hidden>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('mobileAppFile').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Files
+            </button>
+            <span class="form-hint" style="margin-left:10px;" id="mobileAppCount">No files selected</span>
+          </div>
+          <ul class="file-list" id="mobileAppList"></ul>
+        </div>
+        <div class="form-group" id="mobileFridaGroup" hidden>
+          <label class="form-label" for="fridaDevice">Frida Device ID</label>
+          <input type="text" id="fridaDevice" class="form-control" placeholder="Device ID (leave blank for USB)">
+          <span class="form-hint">Required for dynamic analysis. Connect device or start emulator first.</span>
+        </div>
+      </div>
+
+      <!-- ── Isotope ──────────────────────────────────────── -->
+      <div class="form-section tool-scope-group" id="scopeIsotopeSection" hidden>
+        <h3 class="form-section-title"><span class="tool-badge tool-is">IS</span> Isotope</h3>
+        <div class="form-group">
+          <span class="form-label">Files to Analyse</span>
+          <div class="file-upload-area" id="isoFileUpload">
+            <input type="file" id="isoFileInput" multiple hidden>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('isoFileInput').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Files
+            </button>
+            <span class="form-hint" style="margin-left:10px;" id="isoFileCount">No files selected</span>
+          </div>
+          <ul class="file-list" id="isoFileList"></ul>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <span class="form-label">Analysis Modules</span>
+          <div style="display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="identification" checked disabled> <span>Identification</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="entropy" checked> <span>Entropy / Encryption</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="strings" checked> <span>Strings</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="code" checked> <span>Code Analysis</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="metadata" checked> <span>Metadata</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="binary" checked> <span>Binary / Executable</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="secrets" checked> <span>Secrets Scanning</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="hashing" checked> <span>Hashing / IOC</span></label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="iso-module" value="archive" checked> <span>Archive Extraction</span></label>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:8px">
+          <label class="form-label" for="isoArchiveDepth">Archive Recursion Depth</label>
+          <input type="number" id="isoArchiveDepth" class="form-control" value="5" min="1" max="20" style="max-width:120px">
+          <span class="form-hint">Maximum nesting depth for archives within archives.</span>
+        </div>
+      </div>
+
+      <!-- ── Exclusions — always shown ─────────────────────── -->
+      <div class="form-section" id="scopeExclusionsSection">
+        <h3 class="form-section-title">Exclusions</h3>
+        <div class="form-group">
+          <label class="form-label" for="exclusions">Out-of-Scope Targets</label>
+          <textarea id="exclusions" class="form-control" rows="3"
+                    placeholder="One exclusion per line&#10;IPs, CIDRs, hostnames, or URLs">{% if project and project.scope_definition %}{{ project.scope_definition.exclusions|default([])|join('\n') }}{% endif %}</textarea>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnAutoExclude">+ Add Testing Device IPs</button>
+            <span class="form-hint" id="autoExcludeStatus"></span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /step3 -->
+
+
+    <!-- ════════════════════════════════════════════════════════
+         STEP 4 — Review & Submit
+         ════════════════════════════════════════════════════════ -->
+    <div class="wizard-panel" id="step4" data-step="4" hidden>
+
+      <div class="form-section">
+        <h3 class="form-section-title">Engagement Summary</h3>
+        <div class="review-grid" id="reviewEngagement"></div>
+      </div>
+
+      <div class="form-section">
+        <h3 class="form-section-title">Selected Tools</h3>
+        <div class="review-tools" id="reviewTools"></div>
+      </div>
+
+      <div class="form-section">
+        <h3 class="form-section-title">Scope</h3>
+        <div class="review-grid" id="reviewScope"></div>
+      </div>
+
+      <div class="form-section" id="reviewConsultantSection">
+        <h3 class="form-section-title">Consultant / POC</h3>
+        <div class="review-grid" id="reviewPeople"></div>
+      </div>
+
+    </div><!-- /step4 -->
+
+  </form>
+
+  <!-- ── Navigation buttons ──────────────────────────────── -->
+  <div class="form-actions" id="wizardActions">
+    <a href="/" class="btn btn-ghost" id="btnHome" title="Return to home">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </a>
+    <button type="button" class="btn btn-secondary" id="btnBack" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <div style="flex:1"></div>
+    <button type="button" class="btn btn-primary" id="btnNext">
+      Next
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+    <button type="button" class="btn btn-primary" id="btnSubmit" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      {{ 'Save Changes' if edit_mode else 'Create Engagement' }}
+    </button>
+  </div>
+
+</div><!-- /form-page -->
+
+<!-- OOS Confirmation Modal -->
+<div class="modal-overlay" id="oosConfirmModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h3 class="modal-title" id="oosModalTitle">Confirm Out-of-Scope Handling</h3>
+      <button type="button" class="modal-close" id="oosModalCancel">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="oosModalSeparated" hidden>
+        <p style="margin-bottom:12px"><strong>Include Out-of-Scope &mdash; Separated Results</strong></p>
+        <p style="margin-bottom:8px;">This mode will test derived targets that share a parent domain or IP address with your explicitly defined in-scope targets. Results will be kept separate from in-scope findings.</p>
+        <ul style="margin:8px 0 12px 18px;font-size:.875rem;color:var(--text-secondary)">
+          <li>OOS findings will be tagged and visually distinguished in the Findings tab</li>
+          <li>The report will include separate scope sections for OOS findings</li>
+          <li>Derived targets that do not share a parent domain or IP with in-scope targets will <strong>not</strong> be tested</li>
+        </ul>
+      </div>
+      <div id="oosModalCombined" hidden>
+        <p style="margin-bottom:12px"><strong>Include Out-of-Scope as In-Scope &mdash; Combined Results</strong></p>
+        <p style="margin-bottom:8px;">This mode will test derived targets and <strong>merge all findings</strong> with in-scope results. There will be no distinction between in-scope and OOS findings.</p>
+        <ul style="margin:8px 0 12px 18px;font-size:.875rem;color:var(--text-secondary)">
+          <li>All findings are treated identically regardless of whether the target was explicitly in-scope</li>
+          <li>The report will include OOS findings in the same sections as in-scope findings</li>
+          <li>Derived targets that do not share a parent domain or IP with in-scope targets will <strong>not</strong> be tested</li>
+        </ul>
+      </div>
+      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:6px;padding:10px 14px;margin-top:12px;font-size:.85rem;color:var(--amber-800)">
+        <strong>Warning:</strong> Testing out-of-scope targets may violate your rules of engagement. Ensure you have explicit authorization to test derived targets before enabling this option.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" id="oosModalDeny">Cancel</button>
+      <button type="button" class="btn btn-primary" id="oosModalConfirm">I Understand, Enable</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dredge File Browser Modal -->
+<div class="modal-overlay" id="dgBrowseModal">
+  <div class="modal-box" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 class="modal-title">Browse for Dredge Collection</h3>
+      <button type="button" class="modal-close" id="dgBrowseClose">&times;</button>
+    </div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border-subtle);font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      <span id="dgBrowseCrumbs" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;padding:0;min-height:200px">
+      <div id="dgBrowseLoading" style="padding:24px;text-align:center;color:var(--text-muted)">Loading...</div>
+      <ul id="dgBrowseList" style="list-style:none;padding:0;margin:0"></ul>
+    </div>
+    <div id="dgBrowseDetectBar" hidden style="padding:8px 16px;border-top:1px solid var(--border-subtle);font-size:.8rem;display:flex;align-items:center;gap:8px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--status-running)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      <span id="dgBrowseDetectLabel" style="flex:1;color:var(--text-secondary)"></span>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary" id="dgBrowseCancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="dgBrowseSelectFolder" disabled>Select This Folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Inline wizard styles -->
+<style>
+.wizard-steps{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:28px;padding:16px 0}
+.wizard-step{display:flex;align-items:center;gap:8px;cursor:pointer}
+.wizard-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;border:2px solid var(--border-mid);color:var(--text-muted);background:transparent;transition:all .2s ease;flex-shrink:0}
+.wizard-label{font-size:.8rem;font-weight:500;color:var(--text-muted);transition:color .2s ease}
+.wizard-step.active .wizard-dot{border-color:var(--accent-primary);background:var(--accent-primary);color:var(--text-inverse)}
+.wizard-step.active .wizard-label{color:var(--text-primary)}
+.wizard-step.done .wizard-dot{border-color:var(--status-running);background:var(--status-running);color:#fff}
+.wizard-step.done .wizard-label{color:var(--text-secondary)}
+.wizard-connector{width:40px;height:2px;background:var(--border-mid);margin:0 8px;flex-shrink:0}
+.tool-select-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.tool-select-card{display:flex;flex-direction:column;gap:6px;padding:14px;background:var(--bg-card);border:2px solid var(--border-subtle);border-radius:var(--radius-md);cursor:pointer;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease,opacity .15s ease;user-select:none}
+.tool-select-card:hover:not(.disabled){border-color:var(--border-strong);background:var(--bg-hover)}
+.tool-select-card.selected{border-color:var(--accent-primary);background:var(--accent-muted);box-shadow:0 0 0 1px var(--accent-primary)}
+.tool-select-card.disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+.tool-select-card .tool-badge{align-self:flex-start}
+.tool-select-label{font-size:.85rem;font-weight:600;color:var(--text-primary)}
+.tool-select-desc{font-size:.72rem;color:var(--text-muted);line-height:1.3}
+.file-upload-area{display:flex;align-items:center;margin-top:4px}
+.file-list{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:4px}
+.file-list li{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text-secondary);padding:4px 8px;background:var(--bg-card);border-radius:var(--radius-sm)}
+.file-list .file-remove{margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.9rem;padding:0 4px}
+.file-list .file-remove:hover{color:var(--status-error)}
+.review-grid{display:grid;grid-template-columns:160px 1fr;gap:6px 16px;font-size:.84rem}
+.review-grid .review-label{color:var(--text-muted);font-weight:500}
+.review-grid .review-value{color:var(--text-primary);white-space:pre-line;word-break:break-word}
+.review-grid .review-empty{color:var(--text-muted);font-style:italic}
+.review-tools{display:flex;flex-wrap:wrap;gap:8px}
+.review-tools .review-tool-chip{display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:var(--radius-md);font-size:.82rem;color:var(--text-primary)}
+.review-tools-empty{font-size:.82rem;color:var(--text-muted);font-style:italic}
+#dgBrowseList li{display:flex;align-items:center;gap:10px;padding:8px 16px;cursor:pointer;font-size:.84rem;color:var(--text-primary);border-bottom:1px solid var(--border-subtle);transition:background .1s ease}
+#dgBrowseList li:hover{background:var(--bg-hover)}
+#dgBrowseList li.dg-browse-parent{color:var(--text-muted);font-style:italic}
+#dgBrowseList li .dg-browse-icon{flex-shrink:0;width:16px;height:16px}
+#dgBrowseList li .dg-browse-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:600px){.wizard-label{display:none}.wizard-connector{width:24px;margin:0 4px}.tool-select-grid{grid-template-columns:1fr 1fr}.review-grid{grid-template-columns:1fr}.review-grid .review-label{font-weight:600}}
+</style>
+{% endblock %}
+
+
+{% block scripts %}
+<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path',''))|tojson if project else '""' }}}</script>
+<script src="/static/js/wizard.js"></script>
+{% endblock %}
+

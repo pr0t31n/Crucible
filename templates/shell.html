@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.shell-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px);
+  padding: 0;
+}
+.shell-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.shell-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--fg);
+  margin: 0;
+}
+.shell-actions {
+  display: flex;
+  gap: 8px;
+}
+.shell-terminal {
+  flex: 1;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+.shell-status {
+  font-size: 11px;
+  padding: 4px 16px;
+  color: var(--fg-muted);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.shell-status.connected { color: var(--success, #4caf50); }
+.shell-status.disconnected { color: var(--danger, #f44336); }
+
+/* xterm overrides */
+.xterm { height: 100%; padding: 4px; }
+.xterm-viewport::-webkit-scrollbar { width: 6px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background: var(--fg-muted); border-radius: 3px; }
+</style>
+
+<div class="shell-container">
+  <div class="shell-toolbar">
+    <h2 class="shell-title">Web Shell</h2>
+    <div class="shell-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="shellReconnect" title="Reconnect" hidden>Reconnect</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="shellClear" title="Clear scrollback">Clear</button>
+      <button type="button" class="btn btn-danger btn-sm" id="shellDisconnect" title="Disconnect">Disconnect</button>
+    </div>
+  </div>
+  <div id="terminal" class="shell-terminal"></div>
+  <div class="shell-status" id="shellStatus">Connecting...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="/static/css/xterm.css">
+<script src="/static/js/xterm.min.js"></script>
+<script src="/static/js/xterm-addon-fit.min.js"></script>
+<script src="/static/js/socket.io.min.js"></script>
+<script src="/static/js/shell.js"></script>
+{% endblock %}

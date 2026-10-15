@@ -1,0 +1,674 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.project-card[data-href] { cursor: pointer; }
+.project-card[data-href]:hover { background: var(--bg-hover); }
+.project-card-actions { position: relative; z-index: 1; }
+.home-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr 320px;
+  min-height: calc(100vh - 48px);
+}
+.home-right-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 20px;
+  gap: 24px;
+}
+.console-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.console-link:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+.console-link svg {
+  width: 48px;
+  height: 48px;
+  stroke-width: 2.2;
+}
+[data-mode="light"] .console-link { color: var(--text-muted); }
+[data-mode="light"] .console-link:hover { color: var(--accent-primary); }
+[data-mode="dark"] .console-link { color: var(--text-secondary); }
+[data-mode="dark"] .console-link:hover { color: var(--accent-primary); }
+.console-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+}
+.home-sysinfo-panel {
+  width: 100%;
+}
+.home-sysinfo-panel .sysinfo-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-align: center;
+}
+.sysinfo-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  font-size: 0.78rem;
+}
+.sysinfo-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.sysinfo-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.btn-new-engagement {
+  display: block;
+  width: 66%;
+  margin: 0 auto;
+  padding: 10px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.1);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+.btn-new-engagement:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 14px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.12);
+  transform: translateY(-1px);
+}
+.btn-new-engagement:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
+@media (max-width: 1024px) {
+  .home-layout { grid-template-columns: 280px 1fr; }
+  .home-right-panel { display: none; }
+}
+@media (max-width: 768px) {
+  .home-layout { grid-template-columns: 1fr; }
+  .home-right-panel { display: none; }
+}
+</style>
+
+<div class="home-layout">
+  <!-- ── Left Sidebar: Engagements ──────────────────────── -->
+  <aside class="home-sidebar">
+    <div class="home-sidebar-header">
+      <h2 class="home-sidebar-title">ENGAGEMENTS</h2>
+      <button type="button" class="btn-new-engagement" onclick="window.location.href='/new_project'">Create New Engagement</button>
+    </div>
+
+    <div class="home-sidebar-list">
+      {% if projects %}
+      <ul style="list-style:none;padding:0;margin:0;">
+        {% for p in projects %}
+        <li class="project-card" data-id="{{ p.id }}" data-href="/project/{{ p.id }}">
+          <div class="project-card-name">{{ p.name }}</div>
+          <div class="project-card-meta">
+            <span>{{ p.client_name|default('—', true) }}</span>
+            {% if p.start_date or p.end_date %}
+            <span>{{ p.start_date|default('') }}{% if p.start_date and p.end_date %} — {% endif %}{{ p.end_date|default('') }}</span>
+            {% endif %}
+          </div>
+          <div class="project-card-tools">
+            {% for t in p.tools|default([]) %}
+            <span class="tool-badge tool-{{ t }}" title="{{ tools_config[t].name if t in tools_config else t }}">{{ tools_config[t].key if t in tools_config else t|upper }}</span>
+            {% endfor %}
+          </div>
+          <div class="project-card-actions">
+            <button type="button" class="btn-icon" title="Generate Report" onclick="event.stopPropagation(); requestReport('{{ p.id }}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            </button>
+            <a href="/edit_project/{{ p.id }}" class="btn-icon" title="Edit">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </a>
+            <a href="/api/download-project/{{ p.id }}" class="btn-icon" title="Download">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </a>
+            <button type="button" class="btn-icon" title="Clear results" onclick="clearProject('{{ p.id }}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke-width="2"/></svg>
+            </button>
+            <button type="button" class="btn-icon" title="Delete" style="color:var(--status-error);" onclick="deleteProject('{{ p.id }}', '{{ p.name|e }}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            </button>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </aside>
+
+  <!-- ── Center: Main content ───────────────────────────── -->
+  <section class="home-main" style="flex-direction:column;align-items:center;padding-top:48px;">
+    <img src="/static/img/logo.svg" alt="Crucible" class="hero-logo" width="88" height="88" style="margin-bottom:32px;opacity:0.85;">
+
+    <table class="tool-table">
+      <thead>
+        <tr><th style="width:70px;text-align:center">Installed</th><th>Tool</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        {% for tid, tcfg in tools_config.items()|sort(attribute='1.name') %}
+        {% if tcfg.script is not none %}
+        <tr>
+          <td style="text-align:center">
+            {% if tcfg.installed %}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--status-success, #22c55e)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            {% else %}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            {% endif %}
+          </td>
+          <td>{{ tcfg.name }}</td>
+          <td>{{ tcfg.desc|default('—', true) }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- ── Standalone Tools ───────────────────────────────── -->
+    <div style="margin-top:36px;width:100%;max-width:680px;">
+      <h3 style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;text-align:center;">Standalone Tools</h3>
+      <table class="tool-table" style="width:100%;">
+        <thead>
+          <tr><th>Tool</th><th>Purpose</th><th style="width:80px;text-align:center">Action</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:500;">Engagement Merger</td>
+            <td>Merge multiple Crucible/Vantage engagements and Nessus results into one</td>
+            <td style="text-align:center"><a href="/tools/merger" class="btn-icon" title="Open" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;text-decoration:none;">Run</a></td>
+          </tr>
+          <tr>
+            <td style="font-weight:500;">AuthProbe</td>
+            <td>Detect authentication methods, fingerprint software, probe well-known endpoints</td>
+            <td style="text-align:center"><button type="button" onclick="openAuthProbeModal()" class="btn-icon" title="Run AuthProbe" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Right Panel: Console + Testing Host ────────────── -->
+  <aside class="home-right-panel">
+    <a href="/shell" class="console-link" title="Web Shell">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    </a>
+    <span class="console-label">Web Shell</span>
+
+    <div class="home-sysinfo-panel" id="homeSystemInfo">
+      <div class="sysinfo-title">Testing Host</div>
+      <div class="sysinfo-grid" id="homeSystemInfoGrid">
+        <span class="sysinfo-label">Loading...</span><span></span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ── AuthProbe launch modal ───────────────────────────── -->
+<div class="modal-overlay" id="authProbeModal">
+  <div class="modal-box modal-wide" style="max-width:640px">
+    <div class="modal-header">
+      <h3 class="modal-title">AuthProbe</h3>
+      <button type="button" class="modal-close" onclick="closeAuthProbeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
+      <form id="authProbeForm" onsubmit="return runAuthProbe(event)">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Target URL <span class="required">*</span></label>
+          <input type="url" id="apTarget" class="form-control" placeholder="https://example.com" required>
+          <span class="form-hint">Root URL, login endpoint, or protected path</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div class="form-group">
+            <label class="form-label">Target Type</label>
+            <select id="apType" class="form-control">
+              <option value="auto">Auto-detect</option>
+              <option value="webapp">Web Application</option>
+              <option value="api">API</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Timeout (seconds)</label>
+            <input type="number" id="apTimeout" class="form-control" value="30" min="5" max="300">
+          </div>
+        </div>
+
+        <details style="margin-bottom:14px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:0;">
+          <summary style="padding:10px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;color:var(--text-secondary);user-select:none;">Credentials (optional)</summary>
+          <div style="padding:4px 14px 14px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+              <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" id="apUsername" class="form-control" placeholder="admin" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" id="apPassword" class="form-control" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;" autocomplete="off">
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+              <label class="form-label">Bearer / API Token</label>
+              <input type="text" id="apToken" class="form-control" placeholder="eyJhbGci..." autocomplete="off">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+              <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="text" id="apApiKey" class="form-control" placeholder="sk-..." autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label class="form-label">API Key Header</label>
+                <input type="text" id="apApiKeyHeader" class="form-control" placeholder="X-API-Key">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+              <div class="form-group">
+                <label class="form-label">API Key Cookie</label>
+                <input type="text" id="apApiKeyCookie" class="form-control" placeholder="api_key">
+              </div>
+              <div class="form-group">
+                <label class="form-label">TOTP Secret</label>
+                <input type="password" id="apTotpSecret" class="form-control" placeholder="Base32 secret" autocomplete="off">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Login URL</label>
+              <input type="text" id="apLoginUrl" class="form-control" placeholder="https://example.com/auth/login">
+              <span class="form-hint">Override auto-discovered login endpoint</span>
+            </div>
+          </div>
+        </details>
+
+        <details style="margin-bottom:14px;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:0;">
+          <summary style="padding:10px 14px;cursor:pointer;font-size:0.82rem;font-weight:600;color:var(--text-secondary);user-select:none;">Advanced Options</summary>
+          <div style="padding:4px 14px 14px;">
+            <div class="form-group" style="margin-bottom:10px;">
+              <label class="form-label">HTTP Proxy</label>
+              <input type="text" id="apProxy" class="form-control" placeholder="http://127.0.0.1:8080">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+              <div class="form-group">
+                <label class="form-label">Output Directory</label>
+                <input type="text" id="apOutputDir" class="form-control" placeholder="/path/to/output">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Client Short Name</label>
+                <input type="text" id="apClientShort" class="form-control" placeholder="acme">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
+              <div class="form-group">
+                <label class="form-label">Client Name</label>
+                <input type="text" id="apClientName" class="form-control" placeholder="Acme Corp">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Engagement Name</label>
+                <input type="text" id="apEngagementName" class="form-control" placeholder="Q4 External Pentest">
+              </div>
+            </div>
+            <div style="display:flex;gap:20px;">
+              <div class="form-check">
+                <input type="checkbox" id="apRendered">
+                <label for="apRendered">Rendered mode (headless Chrome)</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" id="apNoVerify">
+                <label for="apNoVerify">Disable SSL verification</label>
+              </div>
+            </div>
+          </div>
+        </details>
+      </form>
+
+      <!-- Results panel (hidden until run completes) -->
+      <div id="apResultsPanel" style="display:none;margin-top:16px;">
+        <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Results</div>
+        <div id="apResultsContent" style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:12px;font-size:0.82rem;max-height:40vh;overflow-y:auto;font-family:var(--font-mono);white-space:pre-wrap;word-break:break-all;"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="authProbeForm" class="btn btn-primary" id="apRunBtn">Run AuthProbe</button>
+      <button type="button" class="btn btn-ghost" onclick="closeAuthProbeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Incomplete report warning modal ──────────────────── -->
+<div class="modal-overlay" id="reportIncompleteModal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-header">
+      <h3 class="modal-title">Engagement Not Complete</h3>
+      <button type="button" class="modal-close" onclick="closeReportModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;">This engagement still has tools <strong>running or queued</strong>. Generating a report now will produce an <strong>incomplete report</strong> and it will be stamped accordingly.</p>
+      <div id="reportIncompleteDetails" style="font-size:.85rem;color:var(--text-muted);margin-bottom:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-warning" id="reportProceedBtn">Generate Anyway</button>
+      <button type="button" class="btn btn-ghost" onclick="closeReportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     REPORT TYPE SELECTION MODAL
+     ══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="reportTypeModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">Generate Report</span>
+      <button type="button" class="modal-close" onclick="closeReportTypeModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group mb-12">
+        <label class="form-label">Report Type</label>
+        <div id="reportTypeList" style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          <div style="text-align:center;padding:20px;color:var(--text-secondary)">Loading report types...</div>
+        </div>
+      </div>
+      <div class="form-group mb-12">
+        <label class="form-label">Format</label>
+        <div style="display:flex;gap:12px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="reportFormat" value="pdf" checked>
+            <span style="font-size:.9rem">PDF</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="reportFormat" value="html">
+            <span style="font-size:.9rem">HTML</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="reportFilename">Filename</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="text" class="form-control" id="reportFilename" style="flex:1" placeholder="auto-generated">
+          <span class="text-secondary" id="reportFileExt" style="font-size:.85rem;white-space:nowrap">.pdf</span>
+        </div>
+        <span style="display:block;font-size:.75rem;color:var(--text-secondary);margin-top:4px">Leave blank for default. Your browser&#39;s download settings determine the save location.</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeReportTypeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btnGenerateReport">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Generate Report
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete confirmation modal ────────────────────────── -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title">Delete Engagement</h3>
+      <button type="button" class="modal-close" id="deleteCloseBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to delete <strong id="deleteProjectName"></strong>?</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;">
+        <input type="checkbox" id="deleteFilesCheck">
+        <span>Also delete files from disk</span>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-danger" id="deleteConfirmBtn">Delete</button>
+      <button type="button" class="btn btn-ghost" id="deleteCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/index.js"></script>
+<script>
+var _selectedReportType = 'full';
+var _reportPid = null;
+
+function requestReport(pid) {
+  _reportPid = pid;
+  fetch('/api/report-types/' + pid)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _populateReportTypes(data.types || []);
+      document.getElementById('reportTypeModal').classList.add('open');
+    })
+    .catch(function() {
+      _populateReportTypes([{key:'full', label:'Full Pentest Report', description:'Complete engagement report', available:true}]);
+      document.getElementById('reportTypeModal').classList.add('open');
+    });
+}
+
+function _populateReportTypes(types) {
+  var container = document.getElementById('reportTypeList');
+  container.innerHTML = '';
+  _selectedReportType = 'full';
+  types.forEach(function(t) {
+    var label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:' + (t.available ? 'pointer' : 'not-allowed') + ';padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s;' + (t.available ? '' : 'opacity:0.45;');
+    label.className = 'report-type-option';
+    var radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'reportType';
+    radio.value = t.key;
+    radio.style.marginTop = '3px';
+    radio.disabled = !t.available;
+    if (t.key === 'full') radio.checked = true;
+    radio.addEventListener('change', function() {
+      _selectedReportType = t.key;
+      _updateReportFilename();
+    });
+    var span = document.createElement('span');
+    var title = '<strong style="font-size:.9rem">' + _escReportHtml(t.label) + '</strong>';
+    var desc = '<span style="display:block;font-size:.8rem;color:var(--text-secondary);margin-top:2px">' + _escReportHtml(t.description) + '</span>';
+    if (!t.available && t.scope_gate) {
+      desc += '<span style="display:block;font-size:.75rem;color:var(--red-500);margin-top:2px">Requires ' + _escReportHtml(t.scope_gate) + ' scope</span>';
+    }
+    span.innerHTML = title + desc;
+    label.appendChild(radio);
+    label.appendChild(span);
+    container.appendChild(label);
+  });
+  _updateReportFilename();
+}
+
+function _escReportHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function _updateReportFilename() {
+  var fmt = document.querySelector('input[name="reportFormat"]:checked');
+  var ext = fmt && fmt.value === 'html' ? '.html' : '.pdf';
+  document.getElementById('reportFileExt').textContent = ext;
+}
+
+function closeReportTypeModal() {
+  document.getElementById('reportTypeModal').classList.remove('open');
+}
+
+function closeReportModal() {
+  document.getElementById('reportIncompleteModal').classList.remove('open');
+}
+
+document.querySelectorAll('input[name="reportFormat"]').forEach(function(r) {
+  r.addEventListener('change', _updateReportFilename);
+});
+
+document.getElementById('btnGenerateReport').addEventListener('click', function() {
+  var pid = _reportPid;
+  if (!pid) return;
+  var reportType = _selectedReportType;
+  var fmt = (document.querySelector('input[name="reportFormat"]:checked') || {}).value || 'pdf';
+  var filename = document.getElementById('reportFilename').value.trim();
+
+  closeReportTypeModal();
+
+  fetch('/api/engagement-status/' + pid)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var url = '/api/generate-report/' + pid + '?report_type=' + encodeURIComponent(reportType) + '&format=' + encodeURIComponent(fmt);
+      if (filename) url += '&filename=' + encodeURIComponent(filename);
+
+      if (data.incomplete) {
+        var details = document.getElementById('reportIncompleteDetails');
+        var html = '';
+        if (data.running && data.running.length)
+          html += '<div><strong>Running:</strong> ' + data.running.join(', ') + '</div>';
+        if (data.queued && data.queued.length)
+          html += '<div><strong>Queued:</strong> ' + data.queued.join(', ') + '</div>';
+        details.innerHTML = html;
+        document.getElementById('reportProceedBtn').onclick = function() {
+          closeReportModal();
+          window.location.href = url;
+        };
+        document.getElementById('reportIncompleteModal').classList.add('open');
+      } else {
+        window.location.href = url;
+      }
+    })
+    .catch(function() {
+      var url = '/api/generate-report/' + pid + '?report_type=' + encodeURIComponent(reportType) + '&format=' + encodeURIComponent(fmt);
+      if (filename) url += '&filename=' + encodeURIComponent(filename);
+      window.location.href = url;
+    });
+});
+
+/* ── AuthProbe modal ──────────────────────────────────── */
+function openAuthProbeModal() {
+  document.getElementById('authProbeModal').classList.add('open');
+  document.getElementById('apTarget').focus();
+}
+function closeAuthProbeModal() {
+  document.getElementById('authProbeModal').classList.remove('open');
+}
+function runAuthProbe(e) {
+  e.preventDefault();
+  var btn = document.getElementById('apRunBtn');
+  var orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  document.getElementById('apResultsPanel').style.display = 'none';
+
+  var body = { target: document.getElementById('apTarget').value.trim() };
+  var type = document.getElementById('apType').value;
+  if (type !== 'auto') body.type = type;
+
+  var timeout = parseInt(document.getElementById('apTimeout').value, 10);
+  if (timeout && timeout !== 30) body.timeout = timeout;
+
+  var fields = [
+    ['username', 'apUsername'], ['password', 'apPassword'],
+    ['token', 'apToken'], ['api_key', 'apApiKey'],
+    ['api_key_header', 'apApiKeyHeader'], ['api_key_cookie', 'apApiKeyCookie'],
+    ['login_url', 'apLoginUrl'], ['totp_secret', 'apTotpSecret'],
+    ['proxy', 'apProxy'], ['output_dir', 'apOutputDir'],
+    ['client_short', 'apClientShort'], ['client_name', 'apClientName'],
+    ['engagement_name', 'apEngagementName']
+  ];
+  fields.forEach(function(f) {
+    var v = document.getElementById(f[1]).value.trim();
+    if (v) body[f[0]] = v;
+  });
+
+  if (document.getElementById('apRendered').checked) body.rendered = true;
+  if (document.getElementById('apNoVerify').checked) body.no_verify = true;
+
+  fetch('/api/authprobe', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    var panel = document.getElementById('apResultsPanel');
+    var content = document.getElementById('apResultsContent');
+    panel.style.display = 'block';
+
+    if (data.ok && data.result) {
+      var r = data.result;
+      var lines = [];
+      if (r.target) lines.push('Target:     ' + r.target);
+      if (r.url_type) lines.push('URL Type:   ' + r.url_type);
+      if (r.software && r.software.length) {
+        lines.push('\n== Software Fingerprints ==');
+        r.software.forEach(function(s) { lines.push('  ' + s.product + (s.version ? ' ' + s.version : '') + (s.confidence ? ' (' + s.confidence + '%)' : '')); });
+      }
+      if (r.auth_methods && r.auth_methods.length) {
+        lines.push('\n== Detected Auth Methods ==');
+        r.auth_methods.forEach(function(m) { lines.push('  ' + m.method + (m.confidence ? ' (' + m.confidence + '%)' : '') + (m.details ? ' — ' + m.details : '')); });
+      }
+      if (r.well_known && r.well_known.length) {
+        lines.push('\n== Well-Known Endpoints ==');
+        r.well_known.forEach(function(w) { lines.push('  ' + w.url + ' [' + w.status + ']' + (w.type ? ' — ' + w.type : '')); });
+      }
+      if (r.login_endpoints && r.login_endpoints.length) {
+        lines.push('\n== Login Endpoints ==');
+        r.login_endpoints.forEach(function(ep) { lines.push('  ' + ep.url + (ep.method ? ' (' + ep.method + ')' : '')); });
+      }
+      if (r.findings && r.findings.length) {
+        lines.push('\n== Findings (' + r.findings.length + ') ==');
+        r.findings.forEach(function(f) { lines.push('  [' + f.risk + '] ' + f.title); });
+      }
+      if (r.credential_validation) {
+        var cv = r.credential_validation;
+        lines.push('\n== Credential Validation ==');
+        lines.push('  Result: ' + (cv.valid ? 'VALID' : 'INVALID'));
+        if (cv.message) lines.push('  ' + cv.message);
+      }
+      if (r.recommendations && r.recommendations.length) {
+        lines.push('\n== Recommendations ==');
+        r.recommendations.forEach(function(rec) { lines.push('  - ' + rec); });
+      }
+      content.textContent = lines.length ? lines.join('\n') : JSON.stringify(r, null, 2);
+    } else {
+      content.textContent = data.error || data.stderr || JSON.stringify(data, null, 2);
+      content.style.color = 'var(--status-error)';
+      setTimeout(function() { content.style.color = ''; }, 5000);
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    var panel = document.getElementById('apResultsPanel');
+    var content = document.getElementById('apResultsContent');
+    panel.style.display = 'block';
+    content.textContent = 'Error: ' + err.message;
+    content.style.color = 'var(--status-error)';
+  });
+  return false;
+}
+</script>
+{% endblock %}

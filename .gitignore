@@ -1,0 +1,10 @@
+.secret_key
+.auth.json
+.session_tokens.json
+.csrf_tokens.json
+ssl.crt
+ssl.key
+__pycache__/
+*.pyc
+execute_queue.json
+projects.json.bak
