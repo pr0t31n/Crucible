@@ -99,6 +99,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^Deprecated Protocol Enabled:\s*TLS\s*v?\s*1[\s.]0$', re.IGNORECASE), 'SSL/TLS Vulnerability: TLSv1.0 is Deprecated'),
     (re.compile(r'^Deprecated Protocol Enabled:\s*TLS\s*v?\s*1[\s.]1$', re.IGNORECASE), 'SSL/TLS Vulnerability: TLSv1.1 is Deprecated'),
     (re.compile(r'^Deprecated Protocol Enabled:\s*SSLv2/SSLv3$', re.IGNORECASE), 'SSL/TLS Vulnerability: SSLv2/SSLv3 is Deprecated'),
+    (re.compile(r'^SSL/TLS: TLSv1\.3 Not Supported$', re.IGNORECASE), 'SSL/TLS Vulnerability: TLSv1.3 Not Supported'),
     (re.compile(r'^SSL/TLS Certificate Information$', re.IGNORECASE), 'Discovery: SSL/TLS Certificate'),
     (re.compile(r'^Unconfirmed UDP Ports.*', re.IGNORECASE), 'Discovery: UDP Ports [UNCONFIRMED]'),
     (re.compile(r'^Web Page Identified$', re.IGNORECASE), 'Discovery: Web Page Identified'),
@@ -136,7 +137,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^Wayback Machine CDX returned \d+.*', re.IGNORECASE), 'Discovery: Historical URLs Identified'),
     (re.compile(r'^Unnecessary/Outdated Website Available$', re.IGNORECASE), 'Discovery: Legacy Web Application'),
     (re.compile(r'^Outdated or Unnecessary Website Detected$', re.IGNORECASE), 'Discovery: Legacy Web Application'),
-    (re.compile(r'^SSL/TLS Vulnerability \(Potential\):\s*Lucky\s*13$', re.IGNORECASE), 'SSL/TLS Vulnerability: Lucky13 [UNCONFIRMED]'),
+    (re.compile(r'^SSL/TLS Vulnerability \[UNCONFIRMED\]:\s*LOGJAM$', re.IGNORECASE), 'SSL/TLS Vulnerability (Potential): LOGJAM'),
     (re.compile(r'^SSL Anonymous Cipher Suites Supported$', re.IGNORECASE), 'SSL/TLS Ciphers: Anonymous Cipher Suites'),
     (re.compile(r'^Weak Cipher Identified$', re.IGNORECASE), 'SSL/TLS Ciphers: Weak Cipher'),
     (re.compile(r'^IP Forwarding Enabled$', re.IGNORECASE), 'Network Misconfiguration: IP Forwarding Enabled'),
@@ -177,6 +178,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^DNS: Recursion Enabled$', re.IGNORECASE), 'DNS Vulnerability: Recursion Enabled'),
     (re.compile(r'^DNS: Zone Transfer Permitted.*', re.IGNORECASE), 'DNS Vulnerability: Zone Transfer Permitted (AXFR)'),
     (re.compile(r'^DNS: Server Version Disclosed\b.*', re.IGNORECASE), 'Information Disclosure: DNS Server Version Disclosure'),
+    (re.compile(r'^PTR Detected$', re.IGNORECASE), 'DNS Information: PTR Record Detected'),
     # Catch-all: remaining DNS: → DNS Information:
     (re.compile(r'^DNS: (.+)$'), r'DNS Information: \1'),
     # ── RDP ──────────────────────────────────────────────────────────────
@@ -232,6 +234,8 @@ _TITLE_RENAMES = [
     (re.compile(r'^PHP Info Page Exposed$', re.IGNORECASE), 'Sensitive File Exposed: phpinfo()'),
     (re.compile(r'^(?:Exposed \.git Repository|Git Repository Exposed via Web)$', re.IGNORECASE), 'Sensitive File Exposed: .git Repository'),
     (re.compile(r'^Application Structure Disclosed via sitemap\.xml$', re.IGNORECASE), 'Sensitive File Exposed: sitemap.xml'),
+    # ── Business Logic ──────────────────────────────────────────────────
+    (re.compile(r'^Business Logic\s*[-—]\s*(.+)$', re.IGNORECASE), r'Business Logic: \1'),
     # ── Debug / error ────────────────────────────────────────────────────
     (re.compile(r'^Debug (?:Mode Enabled|/ Developer Console Exposed)\b.*', re.IGNORECASE), 'Debug Endpoint Exposed: Developer Console'),
     # ── Misc ─────────────────────────────────────────────────────────────
@@ -249,6 +253,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^OAuth Scope Escalation\b.*', re.IGNORECASE), 'Authentication: OAuth Scope Escalation'),
     (re.compile(r'^MFA Bypass\s*[-—]\s*Direct Navigation$', re.IGNORECASE), 'Authentication: MFA Bypass (Direct Navigation)'),
     (re.compile(r'^MFA Missing Rate Limiting on OTP$', re.IGNORECASE), 'Authentication: MFA Missing Rate Limiting'),
+    (re.compile(r'^Missing Rate Limiting\s*/\s*Brute-Force Protection$', re.IGNORECASE), 'Authentication: Missing Rate Limiting'),
     (re.compile(r'^Multi-Factor Authentication Detected$', re.IGNORECASE), 'Authentication: Multi-Factor Authentication Detected'),
     (re.compile(r'^JSON API Accepts Form Content-Type \(CSRF\)$', re.IGNORECASE), 'Authentication: CSRF via Content-Type Confusion'),
     (re.compile(r'^CSRF Token Leaked via URL\b.*', re.IGNORECASE), 'Authentication: CSRF Token Leaked in URL'),
@@ -309,6 +314,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^(?:Security Misconfiguration\s*/\s*)?CORS Wildcard with Credentials$', re.IGNORECASE), 'Permissive Security Header: CORS Wildcard with Credentials'),
     (re.compile(r'^CORS Allows Null Origin$', re.IGNORECASE), 'Permissive Security Header: CORS Null Origin Accepted'),
     # ── Additional Information Disclosure ────────────────────────────────
+    (re.compile(r'^Unhandled Application Exception Disclosed$', re.IGNORECASE), 'Information Disclosure: Unhandled Application Exception'),
     (re.compile(r'^Sensitive Data Exposed in HTML Comments$', re.IGNORECASE), 'Information Disclosure: Sensitive Data in HTML Comments'),
     (re.compile(r'^Cloud Storage Bucket URL Exposed$', re.IGNORECASE), 'Information Disclosure: Cloud Storage Bucket URL'),
     (re.compile(r'^Inline Source Map in JavaScript Bundle$', re.IGNORECASE), 'Information Disclosure: Inline Source Map'),
@@ -320,23 +326,32 @@ _TITLE_RENAMES = [
     (re.compile(r'^Terraform State File Exposed$', re.IGNORECASE), 'Sensitive File Exposed: Terraform State'),
     (re.compile(r'^JavaScript Source Map Exposed$', re.IGNORECASE), 'Sensitive File Exposed: JavaScript Source Map'),
     (re.compile(r'^Plaintext Credentials in Web File$', re.IGNORECASE), 'Sensitive File Exposed: Plaintext Credentials'),
+    (re.compile(r'^Sensitive File Exposed$', re.IGNORECASE), 'Sensitive File Exposed: Default File'),
     # ── Additional Discovery ─────────────────────────────────────────────
     (re.compile(r'^API Layer Detected\b.*', re.IGNORECASE), 'Discovery: API Layer Detected'),
     (re.compile(r'^Authenticated API Layer Detected\b.*', re.IGNORECASE), 'Discovery: Authenticated API Layer Detected'),
     (re.compile(r'^API Endpoint Identified\b.*', re.IGNORECASE), 'Discovery: API Endpoint Identified'),
     (re.compile(r'^JetDirect\s*/\s*PJL Printer Accessible$', re.IGNORECASE), 'Discovery: JetDirect / PJL Printer'),
     (re.compile(r'^File Upload Endpoint Detected$', re.IGNORECASE), 'Discovery: File Upload Endpoint'),
+    (re.compile(r'^Interesting Endpoint Discovered$', re.IGNORECASE), 'Discovery: Interesting Endpoint'),
+    (re.compile(r'^Login Page Identified$', re.IGNORECASE), 'Discovery: Login Page'),
+    (re.compile(r'^OAuth 2$', re.IGNORECASE), 'Discovery: OAuth 2.0 Endpoint'),
+    (re.compile(r'^Single Page Application Detected$', re.IGNORECASE), 'Discovery: Single Page Application'),
     # ── Debug / Metrics ──────────────────────────────────────────────────
     (re.compile(r'^Exposed Metrics Endpoint\b.*', re.IGNORECASE), 'Debug Endpoint Exposed: Metrics Endpoint'),
     # ── Injection ────────────────────────────────────────────────────────
+    (re.compile(r'^NoSQL Injection$', re.IGNORECASE), 'Injection: NoSQL Injection'),
+    (re.compile(r'^Server-Side Template Injection \(SSTI\)\s*[-—]\s*SSTImap Confirmed$', re.IGNORECASE), 'Injection: SSTI — SSTImap Confirmed'),
+    (re.compile(r'^HTTP Parameter Pollution \(HPP\)$', re.IGNORECASE), 'Injection: HTTP Parameter Pollution (HPP)'),
+    (re.compile(r'^HTTP Parameter Pollution \(Reflected\)$', re.IGNORECASE), 'Injection: HTTP Parameter Pollution (Reflected)'),
     (re.compile(r'^Mass Assignment\s*/\s*Privilege Escalation via Parameter Binding$', re.IGNORECASE), 'Injection: Mass Assignment (Privilege Escalation)'),
     # Out of Date Software: prefix the full title (preserves version-specific detail)
     (re.compile(r'^(OpenSSH\b.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
     (re.compile(r'^(Apache Log4j\b.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
     (re.compile(r'^(urllib3\b.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
     # General out-of-date catch-alls (prefix full title)
-    (re.compile(r'^(?!(?:Out of Date Software|EOL Software|EOL Operating System|Discovery|SSL/TLS|SSH Vulnerability|SSH Configuration|Missing Security Header|Insecure Protocol Detected|Information Disclosure|Software Version Detected|Software Identified|Web Misconfiguration|Permissive Security Header|Network Misconfiguration|SMB Vulnerability|DNS|Enumeration|LDAP|RPC|gRPC|NTP|RDP|FTP|IKE|Unauthenticated Access|SMTP|SNMP|TFTP|IPMI|Sensitive File Exposed|Debug Endpoint Exposed|Authentication|Authorization|GraphQL|WebSocket|JWT|Injection):)(.+Multiple Vulnerabilities.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
-    (re.compile(r'^(?!(?:Out of Date Software|EOL Software|EOL Operating System|Discovery|SSL/TLS|SSH Vulnerability|SSH Configuration|Missing Security Header|Insecure Protocol Detected|Information Disclosure|Software Version Detected|Software Identified|Web Misconfiguration|Permissive Security Header|Network Misconfiguration|SMB Vulnerability|DNS|Enumeration|LDAP|RPC|gRPC|NTP|RDP|FTP|IKE|Unauthenticated Access|SMTP|SNMP|TFTP|IPMI|Sensitive File Exposed|Debug Endpoint Exposed|Authentication|Authorization|GraphQL|WebSocket|JWT|Injection):)(.+<\s*\d[\d.]+.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
+    (re.compile(r'^(?!(?:Out of Date Software|EOL Software|EOL Operating System|Discovery|SSL/TLS|SSH Vulnerability|SSH Configuration|Missing Security Header|Insecure Protocol Detected|Information Disclosure|Software Version Detected|Software Identified|Web Misconfiguration|Permissive Security Header|Network Misconfiguration|SMB Vulnerability|DNS|Enumeration|LDAP|RPC|gRPC|NTP|RDP|FTP|IKE|Unauthenticated Access|SMTP|SNMP|TFTP|IPMI|Sensitive File Exposed|Debug Endpoint Exposed|Authentication|Authorization|GraphQL|WebSocket|JWT|Injection|Business Logic):)(.+Multiple Vulnerabilities.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
+    (re.compile(r'^(?!(?:Out of Date Software|EOL Software|EOL Operating System|Discovery|SSL/TLS|SSH Vulnerability|SSH Configuration|Missing Security Header|Insecure Protocol Detected|Information Disclosure|Software Version Detected|Software Identified|Web Misconfiguration|Permissive Security Header|Network Misconfiguration|SMB Vulnerability|DNS|Enumeration|LDAP|RPC|gRPC|NTP|RDP|FTP|IKE|Unauthenticated Access|SMTP|SNMP|TFTP|IPMI|Sensitive File Exposed|Debug Endpoint Exposed|Authentication|Authorization|GraphQL|WebSocket|JWT|Injection|Business Logic):)(.+<\s*\d[\d.]+.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
     # TLS version format normalization (display-level)
     (re.compile(r'TLS\s+1[\s.]0', re.IGNORECASE), 'TLSv1.0'),
     (re.compile(r'TLS\s+1[\s.]1', re.IGNORECASE), 'TLSv1.1'),
@@ -384,6 +399,8 @@ _CATALOGUE_RISK = {
     "ssl/tls vulnerability: sweet32": "MEDIUM",
 }
 
+_RE_UNABLE_TO_CONNECT = re.compile(r'^Unable to connect to\b', re.IGNORECASE)
+
 
 def deduplicate(findings):
     """Deduplicate findings by (normalized_title, tool, scope).
@@ -394,6 +411,8 @@ def deduplicate(findings):
     pr0t31n = []
     nessus = []
     for f in findings:
+        if _RE_UNABLE_TO_CONNECT.search(f.get("title") or ""):
+            continue
         orig = f.get("title") or ""
         f["title"] = _apply_title_renames(orig)
         if f["title"] != orig:

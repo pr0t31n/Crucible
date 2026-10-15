@@ -109,7 +109,14 @@ class ToolAdapter(ABC):
         return []
 
     def _load_multitarget_findings(self, tool_output_dir):
-        """Load findings from root findings.json + per-target subdirectories."""
+        """Load findings from root findings.json OR per-target subdirectories.
+
+        The root findings.json is the authoritative aggregate produced by the
+        tool at scan completion — its output_file paths are already relative to
+        the tool dir.  Per-target subdirs contain the raw per-host findings
+        and are only loaded when no root aggregate exists yet (scan still
+        running, no final merge).
+        """
         findings = []
         td = Path(tool_output_dir)
         fp = td / "findings.json"
@@ -122,6 +129,8 @@ class ToolAdapter(ABC):
                     finding["tool"] = self.tool_id
                 finding["_source_file"] = str(fp)
                 findings.append(finding)
+            if findings:
+                return findings
         if td.is_dir():
             for subdir in sorted(td.iterdir()):
                 if subdir.is_dir() and (subdir / "findings.json").exists():
