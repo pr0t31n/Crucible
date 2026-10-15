@@ -234,6 +234,24 @@ _TITLE_RENAMES = [
     (re.compile(r'^PHP Info Page Exposed$', re.IGNORECASE), 'Sensitive File Exposed: phpinfo()'),
     (re.compile(r'^(?:Exposed \.git Repository|Git Repository Exposed via Web)$', re.IGNORECASE), 'Sensitive File Exposed: .git Repository'),
     (re.compile(r'^Application Structure Disclosed via sitemap\.xml$', re.IGNORECASE), 'Sensitive File Exposed: sitemap.xml'),
+    # ── OSINT / Recon ─────────────────────────────────────────────────────
+    (re.compile(r'^Typosquatting Domain Detected$', re.IGNORECASE), 'Discovery: Typosquatting Domain'),
+    (re.compile(r'^Suspicious Typosquatting Domain:\s*(.+)', re.IGNORECASE), r'Discovery: Typosquatting Domain: \1'),
+    (re.compile(r'^Email Naming Convention Identified$', re.IGNORECASE), 'Discovery: Email Naming Convention'),
+    # ── Nikto ────────────────────────────────────────────────────────────
+    (re.compile(r'^An ASP page that allows attackers to upload files\b.*', re.IGNORECASE), 'Sensitive File Exposed: ASP Upload Page'),
+    (re.compile(r'^Database SQL found\b.*', re.IGNORECASE), 'Sensitive File Exposed: Database File'),
+    (re.compile(r'^Database SQL\?\s*$', re.IGNORECASE), 'Sensitive File Exposed: Database File'),
+    (re.compile(r'^Encryption key exposed\b.*', re.IGNORECASE), 'Sensitive File Exposed: Encryption Key'),
+    (re.compile(r'^LocalWEB2000 users\b.*', re.IGNORECASE), 'Information Disclosure: User List'),
+    (re.compile(r'^May be FactoSystem CMS\b.*', re.IGNORECASE), 'Software Identified: FactoSystem CMS'),
+    (re.compile(r'^Possible debug directory/program found\b.*', re.IGNORECASE), 'Debug Endpoint Exposed: Debug Directory'),
+    (re.compile(r'^This may be User Online version\b.*', re.IGNORECASE), 'Software Identified: User Online'),
+    (re.compile(r'^VP-ASP shopping cart admin\b.*', re.IGNORECASE), 'Discovery: Admin Panel'),
+    (re.compile(r'^XMB Magic Lantern forum\b.*', re.IGNORECASE), 'Software Identified: XMB Magic Lantern'),
+    (re.compile(r'^web-erp\b.*', re.IGNORECASE), 'Software Identified: web-erp'),
+    (re.compile(r'^Shopping cart config file\b.*', re.IGNORECASE), 'Sensitive File Exposed: Shopping Cart Config'),
+    (re.compile(r'^Log File Publicly Accessible\b.*', re.IGNORECASE), 'Sensitive File Exposed: Log File'),
     # ── Business Logic ──────────────────────────────────────────────────
     (re.compile(r'^Business Logic\s*[-—]\s*(.+)$', re.IGNORECASE), r'Business Logic: \1'),
     # ── Debug / error ────────────────────────────────────────────────────
