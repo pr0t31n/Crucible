@@ -949,6 +949,7 @@ class ActionEngine:
         "server misconfiguration", "load balancer detected",
         "permissive security header", "missing secure cookie",
         "outdated copyright", "directory listing",
+        "o365 tenant detected", "o365 account enumeration",
     })
 
     _RISK_PRIORITY = {
@@ -1661,13 +1662,28 @@ class ActionEngine:
                 if dom:
                     o365_domains[dom] = f
 
-            if title == "Discovery: Email Address" and tool in ("osift", ""):
+            _is_email = (
+                title == "Discovery: Email Address"
+                or (tool in ("osift", "") and (
+                    title.startswith("Email:")
+                    or title.startswith("Discovery: Email:")
+                ))
+            )
+            if _is_email:
                 affected = (f.get("affected") or "").strip()
                 for line in affected.split("\n"):
                     addr = line.strip().lower()
                     if "@" in addr:
                         dom_part = addr.rsplit("@", 1)[1]
                         osift_emails.setdefault(dom_part, []).append(addr)
+                _te = ""
+                if title.startswith("Email:"):
+                    _te = title[6:].strip().lower()
+                elif title.startswith("Discovery: Email:"):
+                    _te = title[17:].strip().lower()
+                if _te and "@" in _te:
+                    _dp = _te.rsplit("@", 1)[1]
+                    osift_emails.setdefault(_dp, []).append(_te)
 
         if not o365_domains or not osift_emails:
             return 0
@@ -1694,7 +1710,7 @@ class ActionEngine:
             emails = sorted(set(emails))
             item = self._add_or_collect(project_dir, {
                 "source_tool": "crucible",
-                "recommended_tool": "ss3",
+                "recommended_tool": "deps",
                 "category": "o365_enum",
                 "title": f"O365 Account Enumeration: {dom}",
                 "target": dom,
@@ -1704,6 +1720,7 @@ class ActionEngine:
                 "in_scope": True,
                 "metadata": {
                     "source_category": "cross_tool_o365",
+                    "dep_tool": "o365spray",
                     "ss3_o365_detected": True,
                     "osift_emails_available": True,
                     "harvested_email_count": len(emails),

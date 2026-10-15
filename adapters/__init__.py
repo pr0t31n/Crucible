@@ -29,6 +29,8 @@ _ADAPTER_MAP = {
     "asnmap":         ("adapters.external", "ASNMapAdapter"),
     "webanalyze":     ("adapters.external", "WebAnalyzeAdapter"),
     "amass":          ("adapters.external", "AmassAdapter"),
+    # ── Dependencies console ────────────────────────────────────
+    "deps":           ("adapters.deps",     "DepsAdapter"),
 }
 
 _instances = {}

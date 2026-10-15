@@ -555,12 +555,14 @@ socket.on('tool_done', function(data) {
     }
     if (allActionItems._loaded) loadActionItems();
     _populateEngagementTiming({engagement_start_time: null, engagement_end_time: new Date().toISOString()});
+    _fetchQueueData();
 });
 
 socket.on('tool_started', function(data) {
     if (data.project_id !== PID) return;
     toast('info', (TOOLS_CFG[data.tool_id] ? TOOLS_CFG[data.tool_id].name : data.tool_id) + ' started.');
     _activeToolCount++;
+    _fetchQueueData();
     if (!_findingsRefreshTimer) {
         _findingsRefreshTimer = setInterval(function() {
             if (allFindings._loaded) loadFindings(true);
@@ -580,6 +582,7 @@ socket.on('tool_killed', function(data) {
         clearInterval(_findingsRefreshTimer);
         _findingsRefreshTimer = null;
     }
+    _fetchQueueData();
     fetch('/api/checkpoint/' + PID + '/' + data.tool_id, {credentials: 'same-origin'})
         .then(function(r) { return r.json(); })
         .then(function(d) {
@@ -601,8 +604,8 @@ socket.on('tool_queued', function(data) {
         toolStatuses[tid] = toolStatuses[tid] || {};
         toolStatuses[tid].status = 'queued';
         if (data.reason) toolStatuses[tid].phase = data.reason;
-        renderToolFeeds();
     }
+    _fetchQueueData();
 });
 
 /* ── Desktop notifications ────────────────────────────────────── */
@@ -905,6 +908,89 @@ function _buildFeedItem(tid, clickable) {
 }
 
 var _NO_CONSOLE = {'nessus':1};
+var _queueData = [];
+var _ACTIVE_STATUSES = {'running':1,'pausing':1,'paused':1,'idle':1,'queued':1};
+var _COMPLETE_STATUSES = {'complete':1,'failed':1,'killed':1};
+
+function _fetchQueueData() {
+    fetch('/api/queue/' + PID, {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _queueData = d.queue || [];
+            renderToolFeeds();
+        })
+        .catch(function() {});
+}
+
+function _buildSectionHeader(label) {
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'padding:6px 8px 4px;margin-top:4px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);border-bottom:1px solid var(--border)';
+    hdr.textContent = label;
+    return hdr;
+}
+
+function _buildQueueFeedItem(entry, position) {
+    var tid = entry.tool_id;
+    var cfg = TOOLS_CFG[tid] || {};
+    var key = cfg.key || tid.toUpperCase().substring(0,2);
+    var cssClass = 'tool-' + key.toLowerCase();
+    var displayName = cfg.name || tid;
+    var scope = entry.scope || '';
+    if (scope) {
+        var isOOS = /_oos$/i.test(scope);
+        var sd = scope.replace(/_?oos$/i, '').replace(/_/g, ' ').trim();
+        if (isOOS) displayName += sd ? ' — OOS ' + sd : ' — OOS';
+        else if (sd) displayName += ' — ' + sd;
+    }
+
+    var item = document.createElement('div');
+    item.className = 'feed-item';
+    item.setAttribute('data-tool', tid);
+    item.style.cursor = 'pointer';
+
+    item.innerHTML =
+        '<div class="feed-item-icon tool-badge ' + cssClass + '">' + esc(key) + '</div>' +
+        '<div class="feed-item-body">' +
+            '<div class="feed-item-name">' + esc(displayName) + '</div>' +
+            '<div class="feed-item-preview" style="font-size:0.72rem;color:var(--text-muted)">Queued ' + esc(entry.queued_at || '') + '</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-left:auto">' +
+            '<span style="background:var(--accent);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;min-width:20px;text-align:center">' + position + '</span>' +
+            '<button class="btn-icon btn-dequeue" title="Remove from queue" data-tid="' + esc(tid) + '" style="color:var(--risk-high);opacity:0.7">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+            '</button>' +
+        '</div>';
+
+    item.querySelector('.btn-dequeue').addEventListener('click', function(e) {
+        e.stopPropagation();
+        _dequeueTool(tid);
+    });
+    item.addEventListener('click', function() { selectTool(tid); });
+    return item;
+}
+
+function _dequeueTool(tid) {
+    fetch('/api/dequeue', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, tool_id: tid})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok && d.removed) {
+            toast('info', (TOOLS_CFG[tid] ? TOOLS_CFG[tid].name : tid) + ' removed from queue.');
+            if (toolStatuses[tid] && toolStatuses[tid].status === 'queued') {
+                toolStatuses[tid].status = 'idle';
+            }
+            _fetchQueueData();
+        } else if (d.ok) {
+            toast('info', 'Tool was not in the queue.');
+        } else {
+            toast('error', d.error || 'Dequeue failed.');
+        }
+    })
+    .catch(function() { toast('error', 'Dequeue failed.'); });
+}
 
 function renderFeed(containerId, clickable) {
     var container = document.getElementById(containerId);
@@ -912,28 +998,120 @@ function renderFeed(containerId, clickable) {
     container.innerHTML = '';
 
     var rendered = {};
+    var _SCOPE_DYNAMIC = {'fracture':1,'siphon':1,'ss3':1,'osift':1};
+
+    /* Collect all known tool ids (base + scoped dynamic) */
+    var allTids = [];
     PROJECT_TOOLS.forEach(function(tid) {
         var st = toolStatuses[tid] || {};
         if (st.resolved_key) return;
         if (clickable && _NO_CONSOLE[tid]) return;
-        rendered[tid] = true;
-        container.appendChild(_buildFeedItem(tid, clickable));
+        allTids.push(tid);
     });
-
-    var _SCOPE_DYNAMIC = {'fracture':1,'siphon':1,'ss3':1,'osift':1};
     Object.keys(toolStatuses).sort().forEach(function(tid) {
         if (tid.indexOf(':') === -1) return;
         var _base = tid.substring(0, tid.indexOf(':'));
         if (!_SCOPE_DYNAMIC[_base]) return;
-        if (rendered[tid]) return;
+        if (allTids.indexOf(tid) !== -1) return;
         var st = (toolStatuses[tid] || {}).status || 'idle';
         if (st === 'idle') return;
-        rendered[tid] = true;
-        container.appendChild(_buildFeedItem(tid, clickable));
+        allTids.push(tid);
     });
+
+    /* Classify each tool into sections */
+    var depsTids = [];
+    var activeTids = [];
+    var completeTids = [];
+    var queuedTidSet = {};
+    _queueData.forEach(function(e) { queuedTidSet[e.tool_id] = true; });
+
+    allTids.forEach(function(tid) {
+        var baseTid = tid.indexOf(':') !== -1 ? tid.substring(0, tid.indexOf(':')) : tid;
+        if (baseTid === 'deps') {
+            depsTids.push(tid);
+            return;
+        }
+        var st = (toolStatuses[tid] || {}).status || 'idle';
+        if (_COMPLETE_STATUSES[st]) {
+            completeTids.push(tid);
+        } else {
+            activeTids.push(tid);
+        }
+    });
+
+    /* 1. Dependencies section — always visible */
+    container.appendChild(_buildSectionHeader('Dependencies'));
+    if (depsTids.length) {
+        depsTids.forEach(function(tid) {
+            rendered[tid] = true;
+            container.appendChild(_buildFeedItem(tid, clickable));
+        });
+    } else {
+        var depsPlaceholder = document.createElement('div');
+        depsPlaceholder.className = 'feed-item';
+        depsPlaceholder.setAttribute('data-tool', 'deps');
+        depsPlaceholder.style.cursor = 'pointer';
+        depsPlaceholder.innerHTML =
+            '<div class="feed-item-icon tool-badge tool-dp">DP</div>' +
+            '<div class="feed-item-body">' +
+                '<div class="feed-item-name">Dependencies</div>' +
+                '<div class="feed-item-preview">o365spray, nuclei, testssl...</div>' +
+            '</div>' +
+            '<div class="feed-item-status">' +
+                '<span class="status-badge status-idle">idle</span>' +
+            '</div>';
+        if (clickable) {
+            depsPlaceholder.addEventListener('click', function() { selectTool('deps'); });
+        }
+        container.appendChild(depsPlaceholder);
+        rendered['deps'] = true;
+    }
+
+    /* 2. Active section */
+    container.appendChild(_buildSectionHeader('Active'));
+    if (activeTids.length) {
+        activeTids.forEach(function(tid) {
+            rendered[tid] = true;
+            container.appendChild(_buildFeedItem(tid, clickable));
+        });
+    } else {
+        var emptyActive = document.createElement('div');
+        emptyActive.style.cssText = 'padding:8px 12px;font-size:0.78rem;color:var(--text-muted);font-style:italic';
+        emptyActive.textContent = 'No active tools';
+        container.appendChild(emptyActive);
+    }
+
+    /* 3. Queued section */
+    container.appendChild(_buildSectionHeader('Queued'));
+    if (_queueData.length) {
+        _queueData.forEach(function(entry, idx) {
+            rendered[entry.tool_id] = true;
+            container.appendChild(_buildQueueFeedItem(entry, idx + 1));
+        });
+    } else {
+        var emptyQueue = document.createElement('div');
+        emptyQueue.style.cssText = 'padding:8px 12px;font-size:0.78rem;color:var(--text-muted);font-style:italic';
+        emptyQueue.textContent = 'No queued tools';
+        container.appendChild(emptyQueue);
+    }
+
+    /* 4. Completed section */
+    container.appendChild(_buildSectionHeader('Completed'));
+    if (completeTids.length) {
+        completeTids.forEach(function(tid) {
+            rendered[tid] = true;
+            container.appendChild(_buildFeedItem(tid, clickable));
+        });
+    } else {
+        var emptyComplete = document.createElement('div');
+        emptyComplete.style.cssText = 'padding:8px 12px;font-size:0.78rem;color:var(--text-muted);font-style:italic';
+        emptyComplete.textContent = 'No completed tools';
+        container.appendChild(emptyComplete);
+    }
 }
 
 renderToolFeeds();
+_fetchQueueData();
 
 /* ── Eager findings count for pill ────────────────────────────── */
 fetch('/api/findings-count/' + PID, {credentials: 'same-origin'})
@@ -1003,10 +1181,14 @@ function updateConsoleHeader() {
     var isActive = isRunning || isPausing;
     var hasCheckpoint = toolCheckpoints[selectedTool] || false;
     var canResume = isPaused || (hasCheckpoint && !isActive);
-    document.getElementById('btnToolStart').disabled = !selectedTool || isActive || isPaused;
+    var isDeps = _baseSel === 'deps';
+    document.getElementById('btnToolStart').disabled = !selectedTool || isActive || isPaused || isDeps;
     document.getElementById('btnToolKill').disabled = !selectedTool || !isActive;
-    document.getElementById('btnToolPause').disabled = !selectedTool || !isRunning;
-    document.getElementById('btnToolResume').disabled = !selectedTool || !canResume;
+    document.getElementById('btnToolPause').disabled = !selectedTool || !isRunning || isDeps;
+    document.getElementById('btnToolResume').disabled = !selectedTool || !canResume || isDeps;
+    document.getElementById('btnToolStart').style.display = isDeps ? 'none' : '';
+    document.getElementById('btnToolPause').style.display = isDeps ? 'none' : '';
+    document.getElementById('btnToolResume').style.display = isDeps ? 'none' : '';
     document.getElementById('btnConsoleClear').disabled = !selectedTool;
     document.getElementById('btnConsoleCopy').disabled = !selectedTool;
     document.getElementById('btnConsoleSave').disabled = !selectedTool;

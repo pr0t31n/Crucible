@@ -641,6 +641,17 @@ def api_execute_action():
         if meta.get("credentialled_scan") and meta.get("credentials") and qm:
             extra_args = qm._prepare_credentialled_launch(project, tool_id, meta)
 
+        if tool_id == "deps" and meta.get("dep_tool"):
+            settings["dep_tool"] = meta["dep_tool"]
+            if meta["dep_tool"] == "o365spray" and meta.get("harvested_emails"):
+                from adapters import get_adapter
+                deps_adapter = get_adapter("deps")
+                if deps_adapter and hasattr(deps_adapter, "prepare_email_file"):
+                    ef = deps_adapter.prepare_email_file(
+                        project, meta["harvested_emails"], scope=scope or "external")
+                    if ef:
+                        settings["email_file"] = ef
+
         can_launch = True
         reason = ""
         if qm:
@@ -705,6 +716,28 @@ def api_queue_action():
         return jsonify({"ok": True})
     except Exception as exc:
         log.exception("Error queueing action item %s", item_id)
+        return jsonify({"error": str(exc)}), 500
+
+
+@action_items_bp.route("/api/dequeue", methods=["POST"])
+def api_dequeue():
+    """Remove a tool from the execution queue."""
+    data = request.get_json(silent=True) or {}
+    project_id = data.get("project_id")
+    tool_id = data.get("tool_id")
+    if not project_id or not tool_id:
+        return jsonify({"error": "project_id and tool_id required"}), 400
+    try:
+        require_project(project_id)
+        qm = get_ext("queue_manager")
+        if not qm:
+            return jsonify({"error": "Queue manager not available"}), 503
+        removed = qm.remove_from_queue(project_id, tool_id)
+        if removed:
+            return jsonify({"ok": True, "removed": True})
+        return jsonify({"ok": True, "removed": False})
+    except Exception as exc:
+        log.exception("Error dequeuing %s for %s", tool_id, project_id)
         return jsonify({"error": str(exc)}), 500
 
 
@@ -1070,6 +1103,16 @@ def api_preview_command():
                 if scope:
                     _inject_targets(proj_dir, tool_id, [target], settings,
                                     project=project, scope=scope)
+                meta = item.get("metadata", {})
+                if tool_id == "deps" and meta.get("dep_tool"):
+                    settings["dep_tool"] = meta["dep_tool"]
+                    if meta["dep_tool"] == "o365spray" and meta.get("harvested_emails"):
+                        if hasattr(adapter, "prepare_email_file"):
+                            ef = adapter.prepare_email_file(
+                                project, meta["harvested_emails"],
+                                scope=scope or "external")
+                            if ef:
+                                settings["email_file"] = ef
 
         cmd = adapter.build_command(project, settings, resume=False)
         import shlex

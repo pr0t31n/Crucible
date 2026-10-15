@@ -63,6 +63,8 @@ TOOLS = {
     "emailharvester": {"name": "EmailHarvester",  "key": "EH", "domain": "recon",   "script": None, "sudo": False, "group": "any", "desc": "Email address harvesting"},
     "asnmap":         {"name": "asnmap",          "key": "AN", "domain": "recon",   "script": None, "sudo": False, "group": "any", "desc": "ASN and IP range mapping"},
     "webanalyze":     {"name": "webanalyze",      "key": "WA", "domain": "recon",   "script": None, "sudo": False, "group": "any", "desc": "Web technology fingerprinting"},
+    # ── Dependencies console ────────────────────────────────────
+    "deps":           {"name": "Dependencies",    "key": "DP", "domain": "deps",   "script": None, "sudo": False, "group": "any", "desc": "External dependency tools (o365spray, etc.)"},
 }
 
 AETHER_TOOLS = {"aether", "aether_b", "aether_z", "aether_u"}
@@ -76,7 +78,7 @@ PARALLEL_GROUPS = {
     "exclusive": {"ss3", "fracture", "siphon", "forge"} | AETHER_TOOLS,
     "any":       {"trawler", "auger", "authprobe", "nessus", "bastion", "quill", "isotope", "dredge",
                   "nuclei", "testssl", "sslscan", "droopescan", "dnstwist",
-                  "xurlfind3r", "emailharvester", "asnmap", "webanalyze"},
+                  "xurlfind3r", "emailharvester", "asnmap", "webanalyze", "deps"},
 }
 # OSift can run alongside SS3 but no other exclusive tool
 OSIFT_COMPAT = frozenset({"ss3"})
@@ -115,6 +117,7 @@ TOOL_ENV = {
     "emailharvester": {},
     "asnmap":         {},
     "webanalyze":     {},
+    "deps":           {},
 }
 
 # ── Settings file prefixes per tool ──────────────────────────
@@ -126,7 +129,7 @@ TOOL_SETTINGS_PREFIX = {
     "bastion": "ba", "forge": "fg", "quill": "qu", "isotope": "is", "dredge": "dg",
     "nuclei": "nu", "testssl": "ts", "sslscan": "sl", "droopescan": "ds",
     "dnstwist": "dt", "xurlfind3r": "xu", "emailharvester": "eh",
-    "asnmap": "an", "webanalyze": "wa",
+    "asnmap": "an", "webanalyze": "wa", "deps": "dp",
 }
 
 # ── Buffer limits ────────────────────────────────────────────
@@ -173,6 +176,7 @@ TOOL_OUTPUT_DIRS = {
     "nuclei": "nuclei", "testssl": "testssl", "sslscan": "sslscan",
     "droopescan": "droopescan", "dnstwist": "dnstwist", "xurlfind3r": "xurlfind3r",
     "emailharvester": "emailharvester", "asnmap": "asnmap", "webanalyze": "webanalyze",
+    "deps": "deps",
 }
 
 # ── Nessus defaults ──────────────────────────────────────────
