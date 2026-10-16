@@ -1361,15 +1361,15 @@ function _populateReportTypes(types) {
   container.innerHTML = '';
   _selectedReportType = 'full';
   types.forEach(function(t) {
+    if (!t.available) return;
     var label = document.createElement('label');
-    label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:' + (t.available ? 'pointer' : 'not-allowed') + ';padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s;' + (t.available ? '' : 'opacity:0.45;');
+    label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s;';
     label.className = 'report-type-option';
     var radio = document.createElement('input');
     radio.type = 'radio';
     radio.name = 'reportType';
     radio.value = t.key;
     radio.style.marginTop = '3px';
-    radio.disabled = !t.available;
     if (t.key === 'full') radio.checked = true;
     radio.addEventListener('change', function() {
       _selectedReportType = t.key;
@@ -1378,9 +1378,6 @@ function _populateReportTypes(types) {
     var span = document.createElement('span');
     var title = '<strong style="font-size:.9rem">' + _escReportHtml(t.label) + '</strong>';
     var desc = '<span style="display:block;font-size:.8rem;color:var(--text-secondary);margin-top:2px">' + _escReportHtml(t.description) + '</span>';
-    if (!t.available && t.scope_gate) {
-      desc += '<span style="display:block;font-size:.75rem;color:var(--red-500);margin-top:2px">Requires ' + _escReportHtml(t.scope_gate) + ' scope</span>';
-    }
     span.innerHTML = title + desc;
     label.appendChild(radio);
     label.appendChild(span);
