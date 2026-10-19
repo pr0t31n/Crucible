@@ -3,6 +3,7 @@
 import io
 import re
 import json
+import urllib.parse
 from pathlib import Path
 
 from flask import Blueprint, request, jsonify, send_file
@@ -1098,6 +1099,8 @@ def _classify_web_page(title, server, status_code):
         return "Not Found (404)"
     if sc == 405:
         return "Method Not Allowed (405)"
+    if sc == 429:
+        return "Too Many Requests (429)"
     if sc == 500:
         return "Internal Server Error (500)"
     if sc == 502:
@@ -1108,8 +1111,12 @@ def _classify_web_page(title, server, status_code):
         return f"Client Error ({sc})"
     if 500 <= sc < 600:
         return f"Server Error ({sc})"
+    if sc == 307:
+        return "Redirect (307)"
+    if sc == 308:
+        return "Redirect (308)"
     if "login" in t or "sign in" in t or "log in" in t or "signin" in t:
-        return "Login Form Identified"
+        return "Login Page"
     if "dashboard" in t:
         return "Dashboard / Admin Panel"
     if "wordpress" in t or "wp-" in t:
@@ -1126,6 +1133,12 @@ def _classify_web_page(title, server, status_code):
         return "Directory Listing"
     if "api" in t or "swagger" in t or "openapi" in t:
         return "API Documentation"
+    if "too many requests" in t:
+        return "Too Many Requests"
+    if "bad domain" in t or "domain not found" in t:
+        return "Bad Domain"
+    if "service unavailable" in t:
+        return "Service Unavailable"
     if "error" in t or "exception" in t:
         return "Error Page"
     if not title or title.strip() == "":
@@ -1254,15 +1267,24 @@ def _scan_ss3_screenshots(project, scope_filter):
                 except ValueError:
                     rel = png.name
                 seen_ip_port.add((ip, port))
+                _sc_desc = meta.get("classification") or meta.get("description", "")
+                if _sc_desc:
+                    _sc_desc = _sc_desc.replace("Discovery: ", "").replace("Discovery:", "").strip()
+                if not _sc_desc:
+                    _sc_desc = _classify_web_page(
+                        meta.get("page_title") or meta.get("title", ""),
+                        meta.get("server", ""),
+                        meta.get("status_code"),
+                    )
                 results.append({
                     "url": url,
                     "ip": ip,
                     "port": port,
                     "scheme": scheme,
                     "title": meta.get("title", ""),
-                    "server": "",
-                    "status_code": None,
-                    "description": meta.get("description", "Web Page Captured"),
+                    "server": meta.get("server", ""),
+                    "status_code": meta.get("status_code"),
+                    "description": _sc_desc or "Web Page Captured",
                     "scope": scope_label,
                     "screenshot_path": rel,
                     "tool": "ss3",
@@ -1404,16 +1426,24 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                         url = f"{scheme}://{hp}/"
                     else:
                         url = f"{scheme}://{hp}:{port}/"
-                desc = meta.get("description") or meta.get("title", "Web Page Captured")
+                _fr_desc = meta.get("classification") or meta.get("description", "")
+                if _fr_desc:
+                    _fr_desc = _fr_desc.replace("Discovery: ", "").replace("Discovery:", "").strip()
+                if not _fr_desc:
+                    _fr_desc = _classify_web_page(
+                        meta.get("page_title") or meta.get("title", ""),
+                        meta.get("server", ""),
+                        meta.get("status_code"),
+                    )
                 results.append({
                     "url": url,
                     "ip": ip,
                     "port": port,
                     "scheme": scheme,
-                    "title": "",
-                    "server": "",
-                    "status_code": None,
-                    "description": desc,
+                    "title": meta.get("page_title") or meta.get("title", ""),
+                    "server": meta.get("server", ""),
+                    "status_code": meta.get("status_code"),
+                    "description": _fr_desc or "Web Page Captured",
                     "scope": dir_scope or "webapp",
                     "screenshot_path": rel,
                     "tool": "fracture",
@@ -1493,10 +1523,36 @@ def api_screenshots(project_id):
     seen = set()
     deduped = []
     for s in screenshots:
-        key = (s.get("ip", ""), s.get("port", 0), s.get("screenshot_path", ""))
-        if key not in seen:
-            seen.add(key)
-            deduped.append(s)
+        _u = s.get("url", "")
+        _parsed = urllib.parse.urlparse(_u) if _u else None
+        _path = ((_parsed.path or "/").rstrip("/") or "/") if _parsed else "/"
+        key = (s.get("ip", ""), s.get("port", 0), _path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(s)
+
+    scope_targets = set()
+    for _t in project.get("scope_targets", []):
+        if _t and isinstance(_t, str):
+            scope_targets.add(_t.strip().lower())
+    if scope_targets:
+        for s in deduped:
+            _ip = s.get("ip", "")
+            _hn = s.get("hostname", "")
+            _uh = ""
+            _su = s.get("url", "")
+            if _su:
+                try:
+                    _uh = urllib.parse.urlparse(_su).hostname or ""
+                except Exception:
+                    pass
+            _in_scope = any(
+                h.lower() in scope_targets
+                for h in (_ip, _hn, _uh) if h
+            )
+            s["oos"] = not _in_scope
+
     deduped.sort(key=lambda s: (s.get("ip", ""), s.get("port", 0)))
     return jsonify({"screenshots": deduped, "count": len(deduped)})
 
