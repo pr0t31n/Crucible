@@ -177,7 +177,7 @@ def _resolve_isotope_targets(item, project):
 _TOOL_GENERATORS = {
     "fracture": ["osift", "ss3"],
     "siphon":   ["osift", "ss3"],
-    "auger":    ["ss3"],
+    "auger":    ["ss3", "fracture"],
     "ss3":      ["osift"],
 }
 
@@ -468,7 +468,18 @@ def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
             eng["client_name"] = project.get("client_name", "")
     elif tool_id == "auger":
         t = targets[0]
-        if ":" in t and not t.startswith("["):
+        # File-based target: URL or local path from action item metadata
+        _is_file_target = (
+            t.startswith("http://") or t.startswith("https://")
+            or t.startswith("file://") or t.startswith("/")
+            or t.endswith((".sql", ".dump", ".sqlite", ".sqlite3", ".db",
+                           ".rdb", ".h2.db", ".mv.db", ".sqlitedb", ".s3db"))
+        )
+        if _is_file_target:
+            existing["db_file"] = t
+            existing.pop("host", None)
+            existing.pop("port", None)
+        elif ":" in t and not t.startswith("["):
             parts = t.rsplit(":", 1)
             existing["host"] = parts[0]
             try:
@@ -477,6 +488,14 @@ def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
                 existing["host"] = t
         else:
             existing["host"] = t
+        if project:
+            td = (project.get("tool_dirs") or {}).get(tool_id)
+            if td:
+                scan = existing.setdefault("scan", {})
+                scan["project"] = td
+            eng = existing.setdefault("engagement", {})
+            eng["client_short"] = project.get("client_short", "")
+            eng["client_name"] = project.get("client_name", "")
     elif tool_id in ("ss3", "osift"):
         scan = existing.setdefault("scan", {})
         if tool_id == "ss3":
