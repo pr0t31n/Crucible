@@ -2474,49 +2474,60 @@ function _evHlNav(dir) {
     if (cntEl) cntEl.textContent = (_evHlIndex + 1) + ' / ' + _evHlCount;
 }
 
-function _parseOutputFilePaths(raw) {
-    var trimmed = raw.trim();
-    if (trimmed.charAt(0) === '[') {
+function _parseJsonArrays(raw) {
+    var trimmed = (raw || '').trim();
+    if (!trimmed || trimmed.charAt(0) !== '[') return null;
+    try { var a = JSON.parse(trimmed); if (Array.isArray(a)) return a; } catch(e) {}
+    var merged = [];
+    trimmed.split('\n').forEach(function(line) {
+        var l = line.trim();
+        if (!l || l.charAt(0) !== '[') return;
         try {
-            var arr = JSON.parse(trimmed);
-            var paths = [];
-            arr.forEach(function(entry) {
-                if (typeof entry === 'string') { paths.push(entry); return; }
-                if (entry.file) paths.push(entry.file);
-                if (entry.req) paths.push(entry.req);
-                if (entry.resp) paths.push(entry.resp);
-            });
-            return paths.filter(function(p) { return !!p; });
-        } catch(e) {}
+            var a = JSON.parse(l);
+            if (Array.isArray(a)) a.forEach(function(e) { merged.push(e); });
+        } catch(e2) {}
+    });
+    return merged.length ? merged : null;
+}
+
+function _parseOutputFilePaths(raw) {
+    var arr = _parseJsonArrays(raw);
+    if (arr) {
+        var paths = [];
+        arr.forEach(function(entry) {
+            if (typeof entry === 'string') { paths.push(entry); return; }
+            if (entry.file) paths.push(entry.file);
+            if (entry.req) paths.push(entry.req);
+            if (entry.resp) paths.push(entry.resp);
+        });
+        var filtered = paths.filter(function(p) { return !!p; });
+        if (filtered.length) return filtered;
     }
     return raw.replace(/\n/g, ',').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return !!p; });
 }
 
 function _extractEvidencePairs(raw) {
-    var trimmed = (raw || '').trim();
-    if (trimmed.charAt(0) !== '[') return [];
-    try {
-        var arr = JSON.parse(trimmed);
-        var pairs = [];
-        arr.forEach(function(entry) {
-            if (typeof entry !== 'object' || !entry) return;
-            if (entry.req || entry.resp) {
-                var label = entry.url || entry.label || '';
-                if (label) {
-                    try {
-                        var u = new URL(label);
-                        label = u.hostname + (u.port ? ':' + u.port : '') + u.pathname;
-                    } catch(e2) {}
-                }
-                pairs.push({
-                    request: entry.req || '',
-                    response: entry.resp || '',
-                    label: label
-                });
+    var arr = _parseJsonArrays(raw);
+    if (!arr) return [];
+    var pairs = [];
+    arr.forEach(function(entry) {
+        if (typeof entry !== 'object' || !entry) return;
+        if (entry.req || entry.resp) {
+            var label = entry.url || entry.label || '';
+            if (label) {
+                try {
+                    var u = new URL(label);
+                    label = u.hostname + (u.port ? ':' + u.port : '') + u.pathname;
+                } catch(e2) {}
             }
-        });
-        return pairs;
-    } catch(e) { return []; }
+            pairs.push({
+                request: entry.req || '',
+                response: entry.resp || '',
+                label: label
+            });
+        }
+    });
+    return pairs;
 }
 
 function openEvidenceViewer(f) {

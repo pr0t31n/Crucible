@@ -615,6 +615,33 @@ def _union_merge(target, source, field):
         target[field] = "\n".join(merged)
 
 
+def _try_parse_json_array(val):
+    """Return parsed list if val is a JSON array string, else None."""
+    s = val.strip()
+    if s.startswith("["):
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
+def _plain_to_json_entries(val):
+    """Wrap plain newline-delimited paths as [{file: path}, ...]."""
+    return [{"file": p} for p in val.split("\n") if p.strip()]
+
+
+def _evidence_entry_key(entry):
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return (entry.get("req") or "", entry.get("resp") or "",
+                entry.get("file") or "", entry.get("url") or "")
+    return str(entry)
+
+
 def _merge_finding(target, source, nessus_secondary=False):
     """Merge source into target.  IP/port/hostname always fold into affected.
     When nessus_secondary, target risk is authoritative (pr0t31n > Nessus)."""
@@ -642,10 +669,26 @@ def _merge_finding(target, source, nessus_secondary=False):
     t_of = target.get("output_file") or ""
     if s_of and s_of != t_of:
         if t_of:
-            existing = set(t_of.split("\n"))
-            new_paths = [p for p in s_of.split("\n") if p and p not in existing]
-            if new_paths:
-                target["output_file"] = t_of + "\n" + "\n".join(new_paths)
+            t_json = _try_parse_json_array(t_of)
+            s_json = _try_parse_json_array(s_of)
+            if t_json is not None or s_json is not None:
+                t_list = t_json if t_json is not None else _plain_to_json_entries(t_of)
+                s_list = s_json if s_json is not None else _plain_to_json_entries(s_of)
+                seen_keys = set()
+                for e in t_list:
+                    seen_keys.add(_evidence_entry_key(e))
+                merged = list(t_list)
+                for e in s_list:
+                    k = _evidence_entry_key(e)
+                    if k not in seen_keys:
+                        merged.append(e)
+                        seen_keys.add(k)
+                target["output_file"] = json.dumps(merged)
+            else:
+                existing = set(t_of.split("\n"))
+                new_paths = [p for p in s_of.split("\n") if p and p not in existing]
+                if new_paths:
+                    target["output_file"] = t_of + "\n" + "\n".join(new_paths)
         else:
             target["output_file"] = s_of
 
