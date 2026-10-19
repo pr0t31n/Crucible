@@ -65,6 +65,41 @@ def _resolve_tool_dir(project, tool_id):
     return td
 
 
+def _build_ip_fqdn_map(project):
+    """Build IP→set[FQDN] reverse map from OSift's targets_osint.json."""
+    ip_to_fqdns = {}
+    osift_dir = _resolve_tool_dir(project, "osift")
+    if not osift_dir:
+        return ip_to_fqdns
+    for candidate in (Path(osift_dir) / "reports" / "targets_osint.json",
+                      Path(osift_dir) / "targets_osint.json"):
+        if candidate.exists():
+            try:
+                data = json.loads(candidate.read_text())
+                for sub in (data.get("subdomains") or []):
+                    host = (sub.get("host") or "").strip()
+                    if not host:
+                        continue
+                    for ip in (sub.get("ips") or []):
+                        if ip:
+                            ip_to_fqdns.setdefault(ip, set()).add(host)
+                    single_ip = (sub.get("ip") or "").strip()
+                    if single_ip:
+                        ip_to_fqdns.setdefault(single_ip, set()).add(host)
+                for ip_rec in (data.get("ips") or []):
+                    ip = (ip_rec.get("ip") or "").strip()
+                    if not ip:
+                        continue
+                    for fqdn_rec in (ip_rec.get("fqdns") or []):
+                        fqdn = fqdn_rec.get("fqdn") if isinstance(fqdn_rec, dict) else str(fqdn_rec)
+                        if fqdn:
+                            ip_to_fqdns.setdefault(ip, set()).add(fqdn.strip())
+                break
+            except (json.JSONDecodeError, OSError):
+                pass
+    return ip_to_fqdns
+
+
 def load_all_findings(project):
     """Load and merge findings from all tools in a project.
     Returns deduplicated, sorted list."""
@@ -87,7 +122,8 @@ def load_all_findings(project):
     if excluded:
         all_findings = [f for f in all_findings if f.get("ip", "") not in excluded]
 
-    return deduplicate(all_findings)
+    ip_fqdn_map = _build_ip_fqdn_map(project)
+    return deduplicate(all_findings, ip_fqdn_map=ip_fqdn_map)
 
 
 # ── Title Normalization (from Vantage) ──────────────────────
@@ -420,12 +456,17 @@ _CATALOGUE_RISK = {
 _RE_UNABLE_TO_CONNECT = re.compile(r'^Unable to connect to\b', re.IGNORECASE)
 
 
-def deduplicate(findings):
+def deduplicate(findings, ip_fqdn_map=None):
     """Deduplicate findings by (normalized_title, tool, scope).
     pr0t31n tool findings processed first.  Nessus merges into existing
     pr0t31n findings when the same (title, scope) exists; otherwise Nessus
     findings merge with each other.  IP/port/hostname always fold into
-    affected."""
+    affected.
+
+    When *ip_fqdn_map* (IP→set[FQDN]) is provided, enrich each finding's
+    hostname from OSift DNS data so engagement-level dedup collapses
+    findings on the same FQDN behind different IPs."""
+    ip_fqdn_map = ip_fqdn_map or {}
     pr0t31n = []
     nessus = []
     for f in findings:
@@ -435,6 +476,10 @@ def deduplicate(findings):
         f["title"] = _apply_title_renames(orig)
         if f["title"] != orig:
             f["_original_title"] = orig
+        if ip_fqdn_map and f.get("ip") and not f.get("hostname"):
+            fqdns = ip_fqdn_map.get(f["ip"])
+            if fqdns:
+                f["hostname"] = sorted(fqdns)[0]
         aff = (f.get("affected") or "").strip()
         if aff:
             f["affected"] = _prefix_relative_affected(

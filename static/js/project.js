@@ -5593,13 +5593,13 @@ function _renderOsintDomains(data) {
                 var srows = subs.map(function(s) {
                     if (typeof s === 'string') return [esc(s)];
                     var nm = s.host || s.subdomain || s.domain || '';
-                    var ip = s.ip || '';
+                    var ip = Array.isArray(s.ips) && s.ips.length ? s.ips.join(', ') : (s.ip || '');
                     var src = Array.isArray(s.sources) ? s.sources.join(', ') : (s.source || '');
                     var status = s.http_status != null ? String(s.http_status) : '';
                     var redir = s.redirect_to || (Array.isArray(s.redirects_to) && s.redirects_to.length ? s.redirects_to.join(', ') : '');
                     return [esc(nm), esc(ip), esc(src), esc(status), esc(s.first_seen || ''), esc(redir)];
                 });
-                var scols = typeof subs[0] === 'string' ? ['Subdomain'] : ['Subdomain', 'IP', 'Sources', 'HTTP', 'First Seen', 'Redirects'];
+                var scols = typeof subs[0] === 'string' ? ['Subdomain'] : ['Subdomain', 'IP(s)', 'Sources', 'HTTP', 'First Seen', 'Redirects'];
                 h += '<div style="margin-top:16px;margin-bottom:8px;font-weight:600;color:var(--clr-accent)">' + esc(root) + ' <span style="color:var(--text-secondary);font-weight:400">(' + subs.length + ' subdomains)</span></div>' + _intelTable(scols, srows);
             });
         }
