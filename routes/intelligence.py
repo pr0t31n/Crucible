@@ -65,6 +65,57 @@ def _filter_excluded_intel(data, sm, project):
     return data
 
 
+def _filter_oos_intel(data, sm, project):
+    """Remove entries whose IP is not in any scope CIDR / IP list.
+
+    Works on the same shapes as _filter_excluded_intel (list-of-dicts with
+    'ip'/'host' key, or dict keyed by IP).  Falls through gracefully when
+    the project has no scope definition — returns data unchanged.
+    """
+    if data is None or sm is None:
+        return data
+
+    scope_def = project.get("scope_definition", {})
+    has_cidrs = bool(scope_def.get("network_cidrs"))
+    has_urls = bool(scope_def.get("target_urls"))
+    if not has_cidrs and not has_urls:
+        return data
+
+    if isinstance(data, list):
+        filtered = []
+        for entry in data:
+            if not isinstance(entry, dict):
+                filtered.append(entry)
+                continue
+            ip = entry.get("ip") or entry.get("host") or ""
+            if ip and not sm.is_ip_in_scope(project, str(ip)):
+                continue
+            filtered.append(entry)
+        return filtered
+
+    if isinstance(data, dict):
+        filtered = {}
+        for key, val in data.items():
+            if key.startswith("_") or key in ("available", "meta"):
+                filtered[key] = val
+                continue
+            try:
+                _ipaddress.ip_address(key)
+                if not sm.is_ip_in_scope(project, key):
+                    continue
+            except ValueError:
+                pass
+            if isinstance(val, list):
+                filtered[key] = _filter_oos_intel(val, sm, project)
+            elif isinstance(val, dict):
+                filtered[key] = _filter_oos_intel(val, sm, project)
+            else:
+                filtered[key] = val
+        return filtered
+
+    return data
+
+
 _TOOL_STANDARD_DIRNAME = {
     "ss3": "scattershot3", "osift": "osift", "fracture": "fracture",
     "siphon": "siphon", "auger": "auger", "trawler": "trawler",
@@ -982,12 +1033,15 @@ def api_intel_panel(panel, project_id):
     all_tool_dirs = _resolve_tool_dirs(project, tool_key)
     key = panel.replace("-", "_")
 
-    # Retroactive exclusion filter for network-related panels
+    # Retroactive exclusion + OOS scope filter for network panels
     sm = get_ext("scope_manager")
+    _net_panels = frozenset(("net-hosts", "net-services", "net-ports"))
 
     def _maybe_filter(d):
         if sm and d is not None:
-            return _filter_excluded_intel(d, sm, project)
+            d = _filter_excluded_intel(d, sm, project)
+            if panel in _net_panels:
+                d = _filter_oos_intel(d, sm, project)
         return d
 
     if not all_tool_dirs:
@@ -2120,6 +2174,8 @@ def api_export_intel_xlsx(project_id):
     header_fill = PatternFill("solid", fgColor="2d3748")
     sheets_added = 0
 
+    _sm_export = get_ext("scope_manager")
+
     for tid in tool_ids:
         subtabs = _SCOPE_SUBTAB_MAP.get(tid, [])
         for panel_key, sheet_name in subtabs:
@@ -2136,6 +2192,10 @@ def api_export_intel_xlsx(project_id):
                 continue
             if panel_key in ("net-services", "net-hosts"):
                 data = _filter_confirmed_ports(data)
+            if panel_key in ("net-hosts", "net-services", "net-ports"):
+                if _sm_export:
+                    data = _filter_excluded_intel(data, _sm_export, project)
+                    data = _filter_oos_intel(data, _sm_export, project)
             if panel_key == "net-hosts":
                 data = _enrich_host_findings(data, project_id, project)
             if panel_key in ("fr-structure", "si-structure"):
@@ -2212,6 +2272,8 @@ def _save_scope_intel_xlsx(project, project_id, scope_key):
     header_fill = PatternFill("solid", fgColor="2d3748")
     sheets_added = 0
 
+    _sm_export = get_ext("scope_manager")
+
     for tid in tool_ids:
         subtabs = _SCOPE_SUBTAB_MAP.get(tid, [])
         for panel_key, sheet_name in subtabs:
@@ -2228,6 +2290,10 @@ def _save_scope_intel_xlsx(project, project_id, scope_key):
                 continue
             if panel_key in ("net-services", "net-hosts"):
                 data = _filter_confirmed_ports(data)
+            if panel_key in ("net-hosts", "net-services", "net-ports"):
+                if _sm_export:
+                    data = _filter_excluded_intel(data, _sm_export, project)
+                    data = _filter_oos_intel(data, _sm_export, project)
             if panel_key == "net-hosts":
                 data = _enrich_host_findings(data, project_id, project)
             if panel_key in ("fr-structure", "si-structure"):
