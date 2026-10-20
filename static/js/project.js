@@ -4760,8 +4760,8 @@ var _scopeToolsMap = {};
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
     ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['screenshots','{scope} Screenshots']],
-    fracture: [['status','WebApp Status'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['screenshots','WebApp Screenshots']],
-    siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['api','API Inventory']],
+    fracture: [['status','WebApp Status'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
+    siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['cookies','API Cookies'],['api','API Inventory']],
     osift:    [['status','OSINT Status'],['osint-domains','OSINT Domains'],['osint-dns','OSINT DNS'],['osint-certs','OSINT Certificates'],['osint-emails','OSINT Emails'],['osint-people','OSINT People'],['osint-breaches','OSINT Data Breaches'],['osint-wayback','OSINT Wayback URLs'],['osint-typosquat','OSINT Typosquatting']],
     trawler:  [['status','PCAP Status'],['traffic-overview','Traffic Overview'],['traffic-convos','Traffic Conversations']],
     auger:    [['status','Database Status'],['db-schema','DB Schema Map'],['db-privs','DB Privilege Matrix']],
@@ -5277,6 +5277,7 @@ function loadIntelPanel(panel, tool) {
         'endpoint-cis': '/api/intel/endpoint-cis/' + PID,
         'endpoint-nist': '/api/intel/endpoint-nist/' + PID,
         'endpoint-stig': '/api/intel/endpoint-stig/' + PID,
+        'cookies': '/api/intel/cookies/' + PID,
     };
 
     var url = urlMap[panel];
@@ -7854,7 +7855,112 @@ function _complianceGauge(score) {
         '</div></div>';
 }
 
+function _renderCookies(data) {
+    var cookies = data.cookies;
+    if (!cookies || typeof cookies !== 'object') return _renderIntelGeneric(data);
+    var siteWide = cookies.site_wide || [];
+    var perRole  = cookies.per_role  || {};
+    var stats    = cookies.stats     || {};
+    var allCk    = cookies.all       || [];
+    if (!siteWide.length && !allCk.length && !Object.keys(perRole).length)
+        return '<div class="empty-state"><div class="empty-state-text">No cookie data available. Run a scan with authentication enabled.</div></div>';
+
+    var h = '';
+    // Stats bar
+    h += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">';
+    var statItems = [
+        ['Total Cookies', stats.total || 0],
+        ['Site-Wide', stats.site_wide || 0],
+        ['Role-Specific', stats.role_specific || 0],
+        ['Missing HttpOnly', stats.missing_httponly || 0],
+        ['Missing Secure', stats.missing_secure || 0],
+        ['Missing SameSite', stats.missing_samesite || 0]
+    ];
+    for (var si = 0; si < statItems.length; si++) {
+        var isWarn = si >= 3 && statItems[si][1] > 0;
+        var statCol = isWarn ? 'var(--clr-high)' : 'var(--text-secondary)';
+        h += '<div style="padding:10px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;min-width:120px;text-align:center">';
+        h += '<div style="font-size:1.5rem;font-weight:700;color:' + statCol + '">' + statItems[si][1] + '</div>';
+        h += '<div style="font-size:.75rem;color:var(--text-muted)">' + statItems[si][0] + '</div>';
+        h += '</div>';
+    }
+    h += '</div>';
+
+    function _ckFlag(val) {
+        if (val === true) return '<span style="color:var(--clr-success)">✓</span>';
+        if (val === false) return '<span style="color:var(--clr-high)">✗</span>';
+        return '<span style="color:var(--text-muted)">—</span>';
+    }
+    function _ckExpiry(exp) {
+        if (!exp && exp !== 0) return '<span style="color:var(--text-muted)">Session</span>';
+        if (typeof exp === 'number') {
+            try { return esc(new Date(exp * 1000).toISOString().slice(0, 19).replace('T', ' ')); } catch(e) {}
+        }
+        return esc(String(exp));
+    }
+    function _ckTable(items) {
+        var t = '<div style="overflow-x:auto;max-height:50vh;overflow-y:auto"><table class="tool-table" style="width:100%"><thead><tr>';
+        t += '<th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>HttpOnly</th><th>Secure</th><th>SameSite</th><th>Expires</th>';
+        if (items.length && items[0].roles) t += '<th>Roles</th>';
+        t += '</tr></thead><tbody>';
+        for (var ci = 0; ci < items.length; ci++) {
+            var c = items[ci];
+            var cv = c.value || '';
+            var dv = cv.length > 50 ? cv.slice(0, 50) + '…' : cv;
+            t += '<tr>';
+            t += '<td style="font-family:var(--font-mono);white-space:nowrap">' + esc(c.name || '') + '</td>';
+            t += '<td style="font-family:var(--font-mono);font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="' + esc(cv) + '">' + esc(dv) + '</td>';
+            t += '<td>' + esc(c.domain || '') + '</td>';
+            t += '<td>' + esc(c.path || '') + '</td>';
+            t += '<td style="text-align:center">' + _ckFlag(c.httpOnly) + '</td>';
+            t += '<td style="text-align:center">' + _ckFlag(c.secure) + '</td>';
+            t += '<td>' + esc(c.samesite || c.sameSite || '') + '</td>';
+            t += '<td style="font-size:.75rem;color:var(--text-muted)">' + _ckExpiry(c.expires) + '</td>';
+            if (c.roles) t += '<td style="font-size:.78rem">' + esc((c.roles || []).join(', ')) + '</td>';
+            t += '</tr>';
+        }
+        t += '</tbody></table></div>';
+        return t;
+    }
+
+    // Site-wide cookies
+    if (siteWide.length) {
+        h += '<div style="margin-bottom:24px">';
+        h += '<div style="font-weight:600;font-size:1.05rem;margin-bottom:8px">Site-Wide Cookies <span style="color:var(--text-muted);font-weight:400;font-size:.85rem">(' + siteWide.length + ' — present across all authentication contexts)</span></div>';
+        h += _ckTable(siteWide);
+        h += '</div>';
+    }
+
+    // Per-role cookies
+    var roleKeys = Object.keys(perRole);
+    if (roleKeys.length) {
+        h += '<div style="margin-bottom:24px">';
+        h += '<div style="font-weight:600;font-size:1.05rem;margin-bottom:12px">Per-Role Cookies</div>';
+        for (var ri = 0; ri < roleKeys.length; ri++) {
+            var rk = roleKeys[ri];
+            var rCookies = perRole[rk] || [];
+            if (!rCookies.length) continue;
+            h += '<div style="margin-bottom:16px">';
+            h += '<div style="font-weight:500;margin-bottom:6px;padding:4px 8px;background:var(--bg-card);border-radius:4px;display:inline-block">' + esc(rk) + ' <span style="color:var(--text-muted)">(' + rCookies.length + ')</span></div>';
+            h += _ckTable(rCookies);
+            h += '</div>';
+        }
+        h += '</div>';
+    }
+
+    // All cookies (flat view)
+    if (allCk.length && !siteWide.length && !roleKeys.length) {
+        h += '<div style="margin-bottom:24px">';
+        h += '<div style="font-weight:600;font-size:1.05rem;margin-bottom:8px">All Observed Cookies <span style="color:var(--text-muted);font-weight:400;font-size:.85rem">(' + allCk.length + ')</span></div>';
+        h += _ckTable(allCk);
+        h += '</div>';
+    }
+
+    return h;
+}
+
 var _INTEL_RENDERERS = {
+    'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
     'net-services': _renderNetServices,
     'net-software': _renderNetSoftware,

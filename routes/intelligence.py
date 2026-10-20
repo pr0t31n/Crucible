@@ -441,6 +441,145 @@ def api_auth_status(project_id):
     return jsonify(result)
 
 
+def _aggregate_cookie_intelligence(project, tool_filter=None):
+    """Build cookie intelligence by aggregating authentication_status.json."""
+    candidates = ([tool_filter] if tool_filter in ("fracture", "siphon")
+                  else ["fracture", "siphon"])
+    auth_entries = []
+    for tool_id in candidates:
+        td = _resolve_tool_dir(project, tool_id)
+        if not td:
+            continue
+        td = Path(td)
+        ci_path = td / "cookie_inventory.json"
+        if ci_path.exists():
+            try:
+                data = json.loads(ci_path.read_text())
+                if data:
+                    return data
+            except (json.JSONDecodeError, OSError):
+                pass
+        for sub in sorted(td.iterdir()) if td.is_dir() else []:
+            if sub.is_dir() and (sub / "authentication_status.json").exists():
+                try:
+                    entries = json.loads(
+                        (sub / "authentication_status.json").read_text())
+                    if isinstance(entries, list):
+                        auth_entries.extend(entries)
+                except (json.JSONDecodeError, OSError):
+                    pass
+        root_as = td / "authentication_status.json"
+        if root_as.exists():
+            try:
+                entries = json.loads(root_as.read_text())
+                if isinstance(entries, list):
+                    auth_entries.extend(entries)
+            except (json.JSONDecodeError, OSError):
+                pass
+        if auth_entries:
+            break
+    if not auth_entries:
+        return None
+
+    cookie_map = {}
+    all_role_names = []
+    for entry in auth_entries:
+        role = entry.get("role", "unknown")
+        if role not in all_role_names:
+            all_role_names.append(role)
+        for ck in entry.get("cookies", []):
+            name = ck.get("name", "")
+            if not name:
+                continue
+            if name not in cookie_map:
+                cookie_map[name] = {
+                    "name": name,
+                    "domain": ck.get("domain", ""),
+                    "path": ck.get("path", ""),
+                    "secure": ck.get("secure", False),
+                    "httpOnly": ck.get("httpOnly", False),
+                    "samesite": ck.get("samesite", ck.get("sameSite", "")),
+                    "expires": ck.get("expires"),
+                    "roles": [],
+                    "values": {},
+                }
+            cm = cookie_map[name]
+            if role not in cm["roles"]:
+                cm["roles"].append(role)
+            cm["values"][role] = ck.get("value", "")
+            if ck.get("domain"):
+                cm["domain"] = ck["domain"]
+            if ck.get("path"):
+                cm["path"] = ck["path"]
+            if ck.get("secure"):
+                cm["secure"] = True
+            if ck.get("httpOnly"):
+                cm["httpOnly"] = True
+            ss = ck.get("samesite", ck.get("sameSite", ""))
+            if ss and not cm["samesite"]:
+                cm["samesite"] = ss
+
+    if not cookie_map:
+        return None
+
+    auth_roles = [r for r in all_role_names
+                  if r.lower() not in ("unauthenticated", "")]
+    n_auth = max(len(auth_roles), 1)
+
+    site_wide = []
+    per_role = {}
+
+    for name, cm in sorted(cookie_map.items()):
+        first_role = cm["roles"][0] if cm["roles"] else ""
+        display_val = cm["values"].get(first_role, "")
+        base = {
+            "name": cm["name"], "value": display_val,
+            "domain": cm["domain"], "path": cm["path"],
+            "secure": cm["secure"], "httpOnly": cm["httpOnly"],
+            "samesite": cm["samesite"], "expires": cm["expires"],
+            "roles": cm["roles"],
+        }
+        auth_count = sum(1 for r in cm["roles"]
+                         if r.lower() not in ("unauthenticated", ""))
+        if auth_count >= n_auth and n_auth > 0:
+            site_wide.append(base)
+        else:
+            for role in cm["roles"]:
+                per_role.setdefault(role, [])
+                role_entry = dict(base)
+                role_entry["value"] = cm["values"].get(role, "")
+                per_role[role].append(role_entry)
+
+    all_ck = list(cookie_map.values())
+    stats = {
+        "total": len(all_ck),
+        "site_wide": len(site_wide),
+        "role_specific": len(all_ck) - len(site_wide),
+        "missing_httponly": sum(1 for c in all_ck if not c["httpOnly"]),
+        "missing_secure": sum(1 for c in all_ck if not c["secure"]),
+        "missing_samesite": sum(1 for c in all_ck if not c.get("samesite")),
+        "roles": all_role_names,
+    }
+    return {
+        "cookies": {
+            "site_wide": site_wide,
+            "per_role": per_role,
+            "stats": stats,
+        }
+    }
+
+
+@intelligence_bp.route("/api/intel/cookies/<project_id>")
+def api_intel_cookies(project_id):
+    project = require_project(project_id)
+    tool = request.args.get("tool", "").lower()
+    data = _aggregate_cookie_intelligence(project, tool_filter=tool or None)
+    if data is None:
+        return jsonify({"cookies": None, "available": False})
+    data["available"] = True
+    return jsonify(data)
+
+
 @intelligence_bp.route("/api/target-profile/<project_id>")
 def api_target_profile(project_id):
     project = require_project(project_id)
