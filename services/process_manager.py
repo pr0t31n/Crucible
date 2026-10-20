@@ -1950,10 +1950,16 @@ class ProcessManager:
                                 prev_subtools[n] = {"status": "complete"}
                 elif data.get("step") and data.get("status") == "running":
                     step_name = data["step"]
-                    for n, info in prev_subtools.items():
-                        if info.get("status") == "running" and n != step_name:
-                            prev_subtools[n] = {"status": "complete"}
-                    prev_subtools[step_name] = {"status": "running"}
+                    _is_counter = bool(re.search(r'\b\d+/\d+\b', step_name))
+                    if _is_counter:
+                        for n, info in prev_subtools.items():
+                            if info.get("status") == "running":
+                                prev_subtools[n] = {"status": "complete"}
+                    else:
+                        for n, info in prev_subtools.items():
+                            if info.get("status") == "running" and n != step_name:
+                                prev_subtools[n] = {"status": "complete"}
+                        prev_subtools[step_name] = {"status": "running"}
                 if data.get("status") in ("complete", "skipped", "error"):
                     for n in prev_subtools:
                         if prev_subtools[n].get("status") == "running":
