@@ -118,9 +118,35 @@ def load_all_findings(project):
             loaded.add((tool_id, td))
             all_findings.extend(load_findings_from_tool(td, tool_id))
 
-    excluded = set(project.get("scope_definition", {}).get("exclusions", []))
-    if excluded:
-        all_findings = [f for f in all_findings if f.get("ip", "") not in excluded]
+    _excl_raw = project.get("scope_definition", {}).get("exclusions", [])
+    if _excl_raw:
+        import ipaddress as _ipa
+        _excl_addrs = set()
+        _excl_nets = []
+        for _ex in _excl_raw:
+            if not _ex:
+                continue
+            _ex = _ex.strip()
+            try:
+                _net = _ipa.ip_network(_ex, strict=False)
+                if _net.prefixlen == _net.max_prefixlen:
+                    _excl_addrs.add(str(_net.network_address))
+                else:
+                    _excl_nets.append(_net)
+            except ValueError:
+                _excl_addrs.add(_ex)
+        def _ip_excluded(ip_str):
+            if not ip_str:
+                return False
+            if ip_str in _excl_addrs:
+                return True
+            try:
+                _a = _ipa.ip_address(ip_str)
+                return any(_a in _n for _n in _excl_nets)
+            except ValueError:
+                return ip_str in _excl_addrs
+        all_findings = [f for f in all_findings
+                        if not _ip_excluded(f.get("ip", ""))]
 
     ip_fqdn_map = _build_ip_fqdn_map(project)
     return deduplicate(all_findings, ip_fqdn_map=ip_fqdn_map)

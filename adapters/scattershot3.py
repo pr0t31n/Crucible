@@ -51,6 +51,14 @@ class Scattershot3Adapter(ToolAdapter):
                     "network_cidrs", [])
             if targets:
                 cmd.extend(targets)
+        # -- Pass project-level exclusions to SS3 -------------------------
+        exclusions = project.get("scope_definition", {}).get("exclusions", [])
+        if exclusions:
+            for exc in exclusions:
+                exc = exc.strip() if isinstance(exc, str) else ""
+                if exc:
+                    cmd.extend(["--exclude", exc])
+
         eng_dir = project.get("engagement_dir", "")
         if eng_dir:
             from config import TOOL_OUTPUT_DIRS, TOOL_DIR
@@ -78,7 +86,7 @@ class Scattershot3Adapter(ToolAdapter):
         "banner_timeout", "sslscan_timeout", "testssl_timeout",
         "nuclei_timeout", "wpscan_token",
         "discovery_min_rate", "discovery_min_parallelism", "timing_template",
-        "passive_seed_duration",
+        "passive_seed_duration", "exclude",
     })
 
     def default_settings(self):
@@ -123,6 +131,13 @@ class Scattershot3Adapter(ToolAdapter):
                                    if t.strip()]
             else:
                 scan["targets"] = []
+        if isinstance(scan.get("exclude"), str):
+            raw = scan["exclude"].strip()
+            if raw:
+                scan["exclude"] = [e.strip() for e in raw.splitlines()
+                                   if e.strip()]
+            else:
+                scan["exclude"] = []
         result = {}
         if engagement:
             result["engagement"] = engagement
