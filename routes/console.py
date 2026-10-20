@@ -22,10 +22,15 @@ def api_console(project_id, tool_id):
     Running tools return the live in-memory buffer.  Completed / killed /
     failed tools return the full scan.log from disk so the output is
     auditable without truncation.
+
+    ?tail=N  — return only the last N lines (used by mobile clients to
+    avoid OOM on multi-MB console logs).
     """
     pm = _pm()
     if not pm:
         return jsonify({"lines": []})
+
+    tail = request.args.get("tail", type=int)
 
     base_tid = tool_id
     scope = None
@@ -34,10 +39,12 @@ def api_console(project_id, tool_id):
 
     if pm.is_running(project_id, tool_id):
         lines = pm.get_console(project_id, tool_id)
-        return jsonify({"lines": lines})
-    lines = _load_full_console(project_id, base_tid, scope=scope)
-    if not lines:
-        lines = pm.get_console(project_id, tool_id)
+    else:
+        lines = _load_full_console(project_id, base_tid, scope=scope)
+        if not lines:
+            lines = pm.get_console(project_id, tool_id)
+    if tail and tail > 0 and len(lines) > tail:
+        lines = lines[-tail:]
     return jsonify({"lines": lines})
 
 

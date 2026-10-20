@@ -70,6 +70,8 @@ var toolPhases = {};        /* tool_id -> { phase_key: {status, step, label, too
 var toolCheckpoints = {};   /* tool_id -> bool — true when a resume checkpoint exists on disk */
 var consoleBuffers = {};    /* tool_id -> [lines] */
 var selectedTool = null;    /* current console tool_id */
+var _isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+var _MOBILE_CONSOLE_TAIL = 200;
 var allFindings = [];       /* full array */
 var filteredFindings = [];  /* after filter */
 var showFP = false;
@@ -391,7 +393,8 @@ socket.on('console_line', function(data) {
     var tid = data.tool_id;
     if (!consoleBuffers[tid]) consoleBuffers[tid] = [];
     consoleBuffers[tid].push(data);
-    if (consoleBuffers[tid].length > 5000) consoleBuffers[tid].shift();
+    var maxBuf = _isMobile ? _MOBILE_CONSOLE_TAIL : 5000;
+    if (consoleBuffers[tid].length > maxBuf) consoleBuffers[tid].shift();
     if (tid === selectedTool) appendConsoleLine(data);
 });
 
@@ -1134,7 +1137,9 @@ function selectTool(tid) {
 
     /* request console buffer if not cached */
     if (!consoleBuffers[tid]) {
-        socket.emit('get_console', {project_id: PID, tool_id: tid});
+        var req = {project_id: PID, tool_id: tid};
+        if (_isMobile) req.tail = _MOBILE_CONSOLE_TAIL;
+        socket.emit('get_console', req);
     }
     renderConsole();
 

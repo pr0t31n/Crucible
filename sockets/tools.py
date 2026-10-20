@@ -125,6 +125,9 @@ def register_tool_events(socketio, process_manager, queue_manager):
             buf = _load_full_console(pid, base_tid, scope=scope)
             if not buf:
                 buf = process_manager.get_console(pid, base_tid, scope=scope)
+        tail = (data or {}).get("tail")
+        if tail and isinstance(tail, int) and tail > 0 and len(buf) > tail:
+            buf = buf[-tail:]
         emit("console_buffer", {"project_id": pid, "tool_id": tid,
                                 "lines": buf})
 
