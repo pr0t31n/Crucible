@@ -508,18 +508,22 @@ socket.on('tool_error', function(data) {
 /* ── tool_prompt: interactive prompt from tool ─────────────────── */
 socket.on('tool_prompt', function(data) {
     if (data.project_id !== PID) return;
-    if (data.type === 'sudo') {
+    var p = data.payload || data;
+    if (p.type === 'sudo') {
         sudoContext = {project_id: PID, tool_id: data.tool_id};
         var toolName = TOOLS_CFG[data.tool_id] ? TOOLS_CFG[data.tool_id].name : data.tool_id;
         document.getElementById('sudoToolLabel').textContent = toolName + ' requires elevated privileges.';
         document.getElementById('sudoPasswordInput').value = '';
         document.getElementById('sudoModal').classList.add('open');
     } else {
-        promptContext = {project_id: PID, tool_id: data.tool_id, type: data.type || 'input'};
-        document.getElementById('promptTitle').textContent = data.title || 'Tool Prompt';
-        document.getElementById('promptMessage').textContent = data.message || '';
+        promptContext = {project_id: PID, tool_id: data.tool_id, type: p.type || 'input'};
+        document.getElementById('promptTitle').textContent = p.title || 'Tool Prompt';
+        document.getElementById('promptMessage').textContent = p.question || p.message || '';
         document.getElementById('promptInput').value = '';
-        document.getElementById('promptInput').placeholder = data.placeholder || '';
+        document.getElementById('promptInput').placeholder = p.placeholder || '';
+        if (p.type === 'confirm' && p.options && p.options.length) {
+            document.getElementById('promptInput').placeholder = p.options.join(' / ');
+        }
         document.getElementById('promptModal').classList.add('open');
         document.getElementById('promptInput').focus();
     }

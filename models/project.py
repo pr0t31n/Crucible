@@ -720,6 +720,12 @@ def clear_project(project_id):
             for ai_file in scope_dir.rglob("action_items.json"):
                 ai_file.unlink(missing_ok=True)
 
+    try:
+        from models.action_items import _store as _ai_store
+        _ai_store.invalidate(str(proj_dir))
+    except Exception:
+        pass
+
     orig_tools = meta.get("original_tools")
     orig_scope_tools = meta.get("original_scope_tools")
     keep_dirs = set()
