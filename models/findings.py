@@ -334,6 +334,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^MFA Bypass\s*[-—]\s*Direct Navigation$', re.IGNORECASE), 'Authentication: MFA Bypass (Direct Navigation)'),
     (re.compile(r'^MFA Missing Rate Limiting on OTP$', re.IGNORECASE), 'Authentication: MFA Missing Rate Limiting'),
     (re.compile(r'^Missing Rate Limiting\s*/\s*Brute-Force Protection$', re.IGNORECASE), 'Authentication: Missing Rate Limiting'),
+    (re.compile(r'^Insufficient Auth Failure Logging\s*/\s*No Brute-Force Detection$', re.IGNORECASE), 'Authentication: Insufficient Failure Logging / No Brute-Force Detection'),
     (re.compile(r'^Multi-Factor Authentication Detected$', re.IGNORECASE), 'Authentication: Multi-Factor Authentication Detected'),
     (re.compile(r'^JSON API Accepts Form Content-Type \(CSRF\)$', re.IGNORECASE), 'Authentication: CSRF via Content-Type Confusion'),
     (re.compile(r'^CSRF Token Leaked via URL\b.*', re.IGNORECASE), 'Authentication: CSRF Token Leaked in URL'),
@@ -347,6 +348,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^Cross-User Data Leakage \(IDOR\)$', re.IGNORECASE), 'Authorization: Cross-User Data Leakage (IDOR)'),
     (re.compile(r'^API Endpoint Returns Same Data for All Users$', re.IGNORECASE), 'Authorization: Missing User-Level Access Control'),
     (re.compile(r'^Missing Authentication Enforcement$', re.IGNORECASE), 'Authorization: Missing Authentication Enforcement'),
+    (re.compile(r'^(?:Broken Access Control:\s*)?Unauthenticated Access to Protected Path$', re.IGNORECASE), 'Broken Access Control: Unauthenticated Access to Protected Path'),
     # ── GraphQL ─────────────────────────────────────────────────────────
     (re.compile(r'^(?:Enumeration: )?GraphQL Introspection Enabled$', re.IGNORECASE), 'GraphQL: Introspection Enabled'),
     (re.compile(r'^GraphQL Batch Query Attack\b.*', re.IGNORECASE), 'GraphQL: Batch Query Attack'),
