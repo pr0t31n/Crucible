@@ -417,6 +417,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^Login Page Identified$', re.IGNORECASE), 'Discovery: Login Page'),
     (re.compile(r'^OAuth 2$', re.IGNORECASE), 'Discovery: OAuth 2.0 Endpoint'),
     (re.compile(r'^Single Page Application Detected$', re.IGNORECASE), 'Discovery: Single Page Application'),
+    (re.compile(r'^Web Screenshot:\s*.+', re.IGNORECASE), 'Discovery: Web Screenshot Captured'),
     # ── Debug / Metrics ──────────────────────────────────────────────────
     (re.compile(r'^Exposed Metrics Endpoint\b.*', re.IGNORECASE), 'Debug Endpoint Exposed: Metrics Endpoint'),
     # ── Injection ────────────────────────────────────────────────────────
