@@ -395,8 +395,21 @@ def api_purge_tool(project_id, tool_id):
     project = require_project(project_id)
     td = project.get("tool_dirs", {}).get(tool_id)
     if td and Path(td).exists():
+        tp = Path(td)
+        saved = {}
+        for f in tp.glob("*_settings*.json"):
+            try:
+                saved[f.name] = f.read_text()
+            except OSError:
+                pass
         shutil.rmtree(td, ignore_errors=True)
-        Path(td).mkdir(parents=True, exist_ok=True)
+        tp.mkdir(parents=True, exist_ok=True)
+        for name, content in saved.items():
+            (tp / name).write_text(content)
+    proj_dir = project.get("project_dir", "")
+    if proj_dir:
+        from models.action_items import clear_action_items_by_tool
+        clear_action_items_by_tool(proj_dir, tool_id)
     return jsonify({"ok": True})
 
 

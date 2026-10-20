@@ -637,6 +637,26 @@ def _clear_dir_preserve_meta(dirpath):
             child.unlink(missing_ok=True)
 
 
+def _save_settings_files(dirpath):
+    """Back up *_settings*.json files from a directory before it is wiped."""
+    saved = {}
+    dp = Path(dirpath)
+    if dp.exists():
+        for f in dp.glob("*_settings*.json"):
+            try:
+                saved[f.name] = f.read_text()
+            except OSError:
+                pass
+    return saved
+
+
+def _restore_settings_files(dirpath, saved):
+    dp = Path(dirpath)
+    dp.mkdir(parents=True, exist_ok=True)
+    for name, content in saved.items():
+        (dp / name).write_text(content)
+
+
 def clear_project(project_id):
     data = _load_projects()
     meta = data.get(project_id)
@@ -650,19 +670,23 @@ def clear_project(project_id):
     for td in meta.get("tool_dirs", {}).values():
         tp = Path(td)
         if tp.exists() and str(tp) not in cleared:
+            saved = _save_settings_files(tp)
             if tp == proj_dir:
                 _clear_dir_preserve_meta(tp)
             else:
                 shutil.rmtree(tp, ignore_errors=True)
+            _restore_settings_files(tp, saved)
             cleared.add(str(tp))
     for scope_dirs in meta.get("scope_tool_dirs", {}).values():
         for td in scope_dirs.values():
             tp = Path(td)
             if tp.exists() and str(tp) not in cleared:
+                saved = _save_settings_files(tp)
                 if tp == proj_dir:
                     _clear_dir_preserve_meta(tp)
                 else:
                     shutil.rmtree(tp, ignore_errors=True)
+                _restore_settings_files(tp, saved)
                 cleared.add(str(tp))
 
     auto_added = set(meta.get("auto_added_tools") or [])

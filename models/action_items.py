@@ -382,6 +382,17 @@ class ActionItemStore:
                 _dedup_key(i) for i in self._stores[project_dir]}
             self._persist(project_dir)
 
+    def clear_by_tool(self, project_dir, tool_id):
+        with self._lock:
+            self._ensure_loaded(project_dir)
+            items = self._stores.get(project_dir, [])
+            self._stores[project_dir] = [
+                i for i in items
+                if (i.get("recommended_tool") or "").lower() != tool_id]
+            self._keys[project_dir] = {
+                _dedup_key(i) for i in self._stores[project_dir]}
+            self._persist(project_dir)
+
     def add_note(self, project_dir, item_id, note_text):
         with self._lock:
             self._ensure_loaded(project_dir)
@@ -712,6 +723,10 @@ def remove_action_item(project_dir, item_id):
 
 def clear_action_items(project_dir, status_filter=None):
     _store.clear(project_dir, status_filter)
+
+
+def clear_action_items_by_tool(project_dir, tool_id):
+    _store.clear_by_tool(project_dir, tool_id)
 
 
 def add_action_item_note(project_dir, item_id, note_text):
