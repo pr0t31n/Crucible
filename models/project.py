@@ -537,6 +537,9 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         auth = scope_def.get("fracture_auth")
         if auth:
             settings["scan"]["auth"] = auth
+        fr_roles = scope_def.get("fracture_roles", [])
+        if fr_roles:
+            settings["auth_matrix"] = fr_roles
     elif tool_id == "siphon":
         if "scan" not in settings:
             settings["scan"] = {}
@@ -555,6 +558,9 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         auth = scope_def.get("siphon_auth")
         if auth:
             settings["scan"]["auth"] = auth
+        si_roles = scope_def.get("siphon_roles", [])
+        if si_roles:
+            settings["auth_matrix"] = si_roles
     elif tool_id == "auger":
         db_targets = scope_def.get("db_targets", [])
         settings["host"] = db_targets[0] if db_targets else ""

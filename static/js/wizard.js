@@ -31,8 +31,8 @@
     endpoint:  ['dredge'],
     external:  ['ss3'],
     internal:  ['ss3'],
-    webapp:    ['fracture','trawler','isotope'],
-    api:       ['siphon','trawler','isotope'],
+    webapp:    ['fracture'],
+    api:       ['siphon'],
     osint:     ['osift'],
     database:  ['auger'],
     pcap:      ['trawler'],
@@ -1069,6 +1069,12 @@
   }
   document.getElementById('oosModalCancel').addEventListener('click', _cancelOos);
   document.getElementById('oosModalDeny').addEventListener('click', _cancelOos);
+
+  /* ── Edit mode: restore saved roles ────────────────────── */
+  if (EDIT_MODE) {
+    (_cfg.fractureRoles || []).forEach(function(r) { addRoleRow('fr', r.role, r.username, r.password); });
+    (_cfg.siphonRoles || []).forEach(function(r) { addRoleRow('si', r.role, r.username, r.password); });
+  }
 
   /* ── Edit mode: load existing engagement hours + scheduled starts ── */
   if (EDIT_MODE && PROJECT_ID) {

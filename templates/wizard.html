@@ -1039,7 +1039,7 @@
 
 
 {% block scripts %}
-<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }}}</script>
+<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }}}</script>
 <script src="/static/js/wizard.js"></script>
 {% endblock %}
 
