@@ -22,8 +22,8 @@ _intel_log = _logging.getLogger("crucible.routes.intelligence")
 def _filter_excluded_intel(data, sm, project):
     """Remove entries with excluded IPs from intelligence data.
 
-    Handles lists of dicts (filter by 'ip'/'host' key), dicts keyed by IP,
-    and nested structures.  Returns the filtered data.
+    Handles lists of dicts (filter by 'ip'/'host' key) and dicts keyed by IP.
+    Top-level only — no recursion into nested port/tool structures.
     """
     if data is None:
         return data
@@ -46,20 +46,13 @@ def _filter_excluded_intel(data, sm, project):
             if key.startswith("_") or key in ("available", "meta"):
                 filtered[key] = val
                 continue
-            # Check if key itself is an IP
             try:
                 _ipaddress.ip_address(key)
                 if sm.is_excluded(project, key):
                     continue
             except ValueError:
                 pass
-            # Recurse into list values
-            if isinstance(val, list):
-                filtered[key] = _filter_excluded_intel(val, sm, project)
-            elif isinstance(val, dict):
-                filtered[key] = _filter_excluded_intel(val, sm, project)
-            else:
-                filtered[key] = val
+            filtered[key] = val
         return filtered
 
     return data
@@ -71,6 +64,7 @@ def _filter_oos_intel(data, sm, project):
     Works on the same shapes as _filter_excluded_intel (list-of-dicts with
     'ip'/'host' key, or dict keyed by IP).  Falls through gracefully when
     the project has no scope definition — returns data unchanged.
+    Top-level only — no recursion into nested structures.
     """
     if data is None or sm is None:
         return data
@@ -105,13 +99,169 @@ def _filter_oos_intel(data, sm, project):
                     continue
             except ValueError:
                 pass
-            if isinstance(val, list):
-                filtered[key] = _filter_oos_intel(val, sm, project)
-            elif isinstance(val, dict):
-                filtered[key] = _filter_oos_intel(val, sm, project)
-            else:
-                filtered[key] = val
+            filtered[key] = val
         return filtered
+
+    return data
+
+
+def _slim_host_entry(entry):
+    """Project a single host dict to renderer-needed fields only."""
+    slim = {
+        "ip": entry.get("ip", ""),
+        "hostname": entry.get("hostname", entry.get("fqdn", "")),
+        "os": entry.get("os", entry.get("os_name", entry.get("os_hint", ""))),
+        "risk": entry.get("risk", entry.get("top_risk", "")),
+        "tools": entry.get("tools", []),
+        "first_seen": entry.get("first_seen", ""),
+        "alive": entry.get("alive", True),
+        "finding_count": entry.get("finding_count", 0),
+        "top_risk": entry.get("top_risk", ""),
+    }
+    raw_ports = entry.get("ports", [])
+    if isinstance(raw_ports, list):
+        slim["ports"] = [
+            {"port": p.get("port", 0), "protocol": p.get("protocol", "tcp"),
+             "service": p.get("service", p.get("name", "")),
+             "state": p.get("state", "open")}
+            if isinstance(p, dict) else p
+            for p in raw_ports
+        ]
+        slim["port_count"] = len(slim["ports"])
+    elif isinstance(raw_ports, dict):
+        slim["ports"] = {}
+        for pnum, pd in raw_ports.items():
+            if isinstance(pd, dict):
+                slim["ports"][pnum] = {
+                    "port": pd.get("port", pnum),
+                    "protocol": pd.get("protocol", "tcp"),
+                    "service": pd.get("service", pd.get("name", "")),
+                    "state": pd.get("state", "open"),
+                }
+            else:
+                slim["ports"][pnum] = pd
+        slim["port_count"] = len(slim["ports"])
+    else:
+        slim["ports"] = raw_ports
+        slim["port_count"] = 0
+    return slim
+
+
+def _slim_hosts_payload(data):
+    """Strip heavyweight nested data (tool_results, web metadata, evidence)
+    from host/correlated payloads before sending to the browser.
+
+    The net-hosts renderer only needs: ip, hostname, os, ports (port/protocol/
+    service/state), risk, tools, first_seen, alive, finding_count.
+    """
+    if data is None:
+        return data
+
+    if isinstance(data, list):
+        return [_slim_host_entry(e) if isinstance(e, dict) else e for e in data]
+
+    if isinstance(data, dict):
+        if "hosts" in data:
+            result = {}
+            for k, v in data.items():
+                if k == "hosts":
+                    result["hosts"] = _slim_hosts_payload(v)
+                elif k.startswith("_") or k in ("meta", "available", "total_ports",
+                                                  "os_list", "services"):
+                    result[k] = v
+                else:
+                    try:
+                        _ipaddress.ip_address(k)
+                        result[k] = _slim_host_entry(v) if isinstance(v, dict) else v
+                        continue
+                    except ValueError:
+                        pass
+                    result[k] = v
+            return result
+        has_ip_keys = False
+        for k in data:
+            if k.startswith("_") or k in ("available", "meta"):
+                continue
+            try:
+                _ipaddress.ip_address(k)
+                has_ip_keys = True
+                break
+            except ValueError:
+                pass
+        if has_ip_keys:
+            result = {}
+            for k, v in data.items():
+                if k.startswith("_") or k in ("available", "meta"):
+                    result[k] = v
+                    continue
+                try:
+                    _ipaddress.ip_address(k)
+                    result[k] = _slim_host_entry(v) if isinstance(v, dict) else v
+                except ValueError:
+                    result[k] = v
+            return result
+
+    return data
+
+
+def _slim_services_payload(data):
+    """Strip heavyweight nested data from service payloads.
+
+    The net-services renderer needs: service name, ip, port, protocol,
+    product, version.
+    """
+    if data is None:
+        return data
+
+    _SVC_KEYS = ("ip", "hostname", "port", "protocol", "service",
+                 "state", "product", "version", "software", "name")
+
+    if isinstance(data, list):
+        slimmed = []
+        for entry in data:
+            if not isinstance(entry, dict):
+                slimmed.append(entry)
+                continue
+            if "ports" in entry:
+                ip = entry.get("ip", "")
+                hostname = entry.get("hostname", "")
+                for p in entry.get("ports", []):
+                    if isinstance(p, dict):
+                        slimmed.append({
+                            "ip": ip, "hostname": hostname,
+                            "port": p.get("port", 0),
+                            "protocol": p.get("protocol", "tcp"),
+                            "service": p.get("service", p.get("name", "")),
+                            "state": p.get("state", "open"),
+                            "product": p.get("product", ""),
+                            "version": p.get("version", ""),
+                        })
+            else:
+                slimmed.append({k: entry[k] for k in _SVC_KEYS if k in entry})
+        return slimmed
+
+    if isinstance(data, dict):
+        if "hosts" in data:
+            hosts = data["hosts"]
+            return _slim_services_payload(
+                hosts if isinstance(hosts, list)
+                else list(hosts.values()) if isinstance(hosts, dict)
+                else hosts
+            )
+        result = {}
+        for k, v in data.items():
+            if k.startswith("_") or k in ("available", "meta"):
+                result[k] = v
+                continue
+            if isinstance(v, list):
+                result[k] = [
+                    {sk: e[sk] for sk in _SVC_KEYS if sk in e}
+                    if isinstance(e, dict) else e
+                    for e in v
+                ]
+            else:
+                result[k] = v
+        return result
 
     return data
 
@@ -1033,15 +1183,21 @@ def api_intel_panel(panel, project_id):
     all_tool_dirs = _resolve_tool_dirs(project, tool_key)
     key = panel.replace("-", "_")
 
-    # Retroactive exclusion + OOS scope filter for network panels
+    # Retroactive exclusion + OOS scope filter + payload projection
     sm = get_ext("scope_manager")
     _net_panels = frozenset(("net-hosts", "net-services", "net-ports"))
+    _SLIM_FN = {"net-hosts": _slim_hosts_payload,
+                "net-services": _slim_services_payload,
+                "net-ports": _slim_hosts_payload}
 
     def _maybe_filter(d):
         if sm and d is not None:
             d = _filter_excluded_intel(d, sm, project)
             if panel in _net_panels:
                 d = _filter_oos_intel(d, sm, project)
+        slim = _SLIM_FN.get(panel)
+        if slim and d is not None:
+            d = slim(d)
         return d
 
     if not all_tool_dirs:
