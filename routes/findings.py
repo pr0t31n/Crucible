@@ -117,6 +117,25 @@ def api_suppress_finding():
     return jsonify({"ok": True, "remaining": len(updated)})
 
 
+@findings_bp.route("/api/suppress-finding-partial", methods=["POST"])
+def api_suppress_finding_partial():
+    """Mark specific affected locations within a finding as false positive."""
+    data = request.get_json(silent=True) or {}
+    project_id = data.get("project_id")
+    finding_id = data.get("finding_id")
+    affected_locations = data.get("affected_locations", [])
+    if not project_id or not finding_id or not affected_locations:
+        return jsonify({"error": "project_id, finding_id, and affected_locations required"}), 400
+    if not isinstance(affected_locations, list):
+        return jsonify({"error": "affected_locations must be a list"}), 400
+    project = require_project(project_id)
+    updated, fp = _engine().mark_partial_fp(project_id, project, finding_id,
+                                            affected_locations)
+    if fp is None:
+        return jsonify({"error": "Finding not found"}), 404
+    return jsonify({"ok": True, "remaining": len(updated)})
+
+
 @findings_bp.route("/api/unsuppress-finding", methods=["POST"])
 def api_unsuppress_finding():
     data = request.get_json(silent=True) or {}

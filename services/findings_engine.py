@@ -9,6 +9,7 @@ from pathlib import Path
 from services.audit_logger import audit as _audit
 from models.findings import (
     load_all_findings, load_false_positives, mark_false_positive,
+    mark_partial_fp as _mark_partial_fp,
     recover_false_positive, override_risk, persist_risk_override,
     accept_finding, unaccept_finding, add_note, get_risk_summary,
     get_tool_breakdown, deduplicate, _risk_sort_key,
@@ -496,6 +497,28 @@ class FindingsEngine:
         _audit(project_dir, "FINDING_FP", finding_id=finding_id,
                title=target.get("title", ""))
         return list(updated), target
+
+    def mark_partial_fp(self, project_id, project, finding_id, affected_locations):
+        """Mark specific affected locations as FP. Returns (updated_findings, fp_entry)."""
+        project_dir = project.get("project_dir", "")
+        with self._lock:
+            cached = self._cache.get(project_id, [])
+            target = None
+            for f in cached:
+                if f.get("id") == finding_id:
+                    target = f
+                    break
+        if not target or not project_dir:
+            return None, None
+        updated, fp_entry = _mark_partial_fp(project_dir, target, cached,
+                                             affected_locations)
+        with self._lock:
+            self._cache[project_id] = updated
+            self._fp_cache.pop(project_id, None)
+        _audit(project_dir, "FINDING_PARTIAL_FP", finding_id=finding_id,
+               title=target.get("title", ""),
+               affected_locations=", ".join(affected_locations))
+        return list(updated), fp_entry
 
     def recover_fp(self, project_id, project, finding_id):
         """Recover a finding from false positive. Returns the recovered finding or None."""

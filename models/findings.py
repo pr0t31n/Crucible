@@ -903,6 +903,74 @@ def mark_false_positive(project_dir, finding, findings_list):
         return [f for f in findings_list if f.get("id") != fid]
 
 
+def mark_partial_fp(project_dir, finding, findings_list, affected_locations):
+    """Mark specific affected locations within a merged finding as FP.
+
+    Splits the finding: selected locations go to falsePositives.json;
+    original finding keeps the remaining locations. If ALL locations
+    are selected, behaves like a full mark_false_positive().
+
+    Returns (updated_findings_list, fp_entry).
+    """
+    import copy
+
+    all_affected = [a.strip() for a in (finding.get("affected") or "").split("\n")
+                    if a.strip()]
+    selected = set(a.strip() for a in affected_locations if a.strip())
+    remaining = [a for a in all_affected if a not in selected]
+
+    if not remaining:
+        return mark_false_positive(project_dir, finding, findings_list), finding
+
+    with _findings_lock:
+        pd = Path(project_dir)
+        fp_entry = copy.deepcopy(finding)
+        fp_entry["affected"] = "\n".join(sorted(selected))
+        fp_entry["fp_marked_at"] = datetime.now().isoformat()
+        fp_entry["_partial_fp"] = True
+        fp_entry["_parent_finding_id"] = finding.get("id", "")
+        loc_hash = hashlib.md5("\n".join(sorted(selected)).encode()).hexdigest()[:8]
+        fp_entry["id"] = finding.get("id", "") + "_pfp_" + loc_hash
+
+        _preserve_fp_evidence(project_dir, fp_entry)
+
+        fps = load_false_positives(project_dir)
+        fps.append(fp_entry)
+        with open(pd / "falsePositives.json", "w") as f:
+            json.dump(fps, f, indent=2)
+        _write_fp_csv(pd, fps)
+
+        finding["affected"] = "\n".join(remaining)
+        _persist_partial_fp_update(project_dir, finding.get("id", ""),
+                                   finding["affected"])
+
+        return list(findings_list), fp_entry
+
+
+def _persist_partial_fp_update(project_dir, finding_id, new_affected):
+    """Update the affected field in on-disk findings.json files after partial FP."""
+    if not finding_id:
+        return
+    pd = Path(project_dir)
+    for fj in pd.rglob("findings.json"):
+        try:
+            data = json.loads(fj.read_text())
+            items = data if isinstance(data, list) else data.get("findings", [])
+            changed = False
+            for f in items:
+                if f.get("id") == finding_id:
+                    f["affected"] = new_affected
+                    changed = True
+            if changed:
+                if isinstance(data, list):
+                    fj.write_text(json.dumps(data, indent=2, default=str))
+                else:
+                    data["findings"] = items
+                    fj.write_text(json.dumps(data, indent=2, default=str))
+        except (json.JSONDecodeError, OSError):
+            continue
+
+
 def recover_false_positive(project_dir, finding_id):
     """Move a finding back from FP to active.
     Returns the recovered finding or None."""

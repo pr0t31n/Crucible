@@ -1046,6 +1046,40 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════════
+       FALSE POSITIVE MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="fpModal">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <span class="modal-title">Mark as False Positive</span>
+        <button type="button" class="modal-close" onclick="closeFPModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary mb-8" id="fpModalTitle" style="font-weight:600"></p>
+        <div id="fpModalSingle" style="display:none">
+          <p class="text-sm text-secondary">This finding has a single affected location. It will be marked entirely as a false positive.</p>
+        </div>
+        <div id="fpModalMulti" style="display:none">
+          <p class="text-sm text-secondary mb-8">This finding has multiple affected locations. Select which to mark as false positive, or mark the entire finding.</p>
+          <div class="form-group mb-8">
+            <label class="fp-check-row" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-weight:600;border-bottom:1px solid var(--border)">
+              <input type="checkbox" id="fpCheckAll"> Mark entire finding
+            </label>
+          </div>
+          <div id="fpLocationList" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px 0"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeFPModal()">Cancel</button>
+        <button type="button" class="btn btn-warning" id="btnFPConfirm">Mark as False Positive</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
        RISK OVERRIDE MODAL
        ══════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="riskOverrideModal">

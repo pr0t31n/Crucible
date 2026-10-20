@@ -3066,19 +3066,108 @@ window.closeEvidenceViewer = function() {
 };
 
 /* ── Finding actions ───────────────────────────────────────────── */
+var _fpCtx = null;
+
 function markFP(f) {
-    if (!confirm('Mark "' + (f.title||'') + '" as false positive?')) return;
-    fetch('/api/suppress-finding', {
+    _fpCtx = f;
+    document.getElementById('fpModalTitle').textContent = f.title || 'Finding';
+    var affRaw = (f.affected || '').trim();
+    var locations = affRaw ? affRaw.split('\n').filter(function(a) { return a.trim(); }) : [];
+
+    var singleEl = document.getElementById('fpModalSingle');
+    var multiEl = document.getElementById('fpModalMulti');
+    var listEl = document.getElementById('fpLocationList');
+    var checkAll = document.getElementById('fpCheckAll');
+
+    if (locations.length <= 1) {
+        singleEl.style.display = '';
+        multiEl.style.display = 'none';
+    } else {
+        singleEl.style.display = 'none';
+        multiEl.style.display = '';
+        checkAll.checked = false;
+        listEl.innerHTML = '';
+        locations.forEach(function(loc, i) {
+            var row = document.createElement('label');
+            row.className = 'fp-check-row';
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:.85rem';
+            if (i < locations.length - 1) row.style.borderBottom = '1px solid var(--border)';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.className = 'fp-loc-cb';
+            cb.value = loc.trim();
+            row.appendChild(cb);
+            var span = document.createElement('span');
+            span.className = 'font-mono';
+            span.style.wordBreak = 'break-all';
+            span.textContent = loc.trim();
+            row.appendChild(span);
+            listEl.appendChild(row);
+        });
+    }
+    document.getElementById('fpModal').classList.add('open');
+}
+
+window.closeFPModal = function() {
+    document.getElementById('fpModal').classList.remove('open');
+    _fpCtx = null;
+};
+
+document.getElementById('fpCheckAll').addEventListener('change', function() {
+    var cbs = document.querySelectorAll('#fpLocationList .fp-loc-cb');
+    var checked = this.checked;
+    cbs.forEach(function(cb) { cb.checked = checked; cb.disabled = checked; });
+});
+
+document.getElementById('btnFPConfirm').addEventListener('click', function() {
+    if (!_fpCtx) return;
+    var f = _fpCtx;
+    var affRaw = (f.affected || '').trim();
+    var locations = affRaw ? affRaw.split('\n').filter(function(a) { return a.trim(); }) : [];
+    var checkAll = document.getElementById('fpCheckAll');
+
+    if (locations.length <= 1 || checkAll.checked) {
+        fetch('/api/suppress-finding', {
+            method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({project_id: PID, finding_id: f.id, tool: f.tool})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.ok) { toast('success', 'Finding marked as FP.'); loadFindings(); closeFPModal(); }
+            else toast('error', d.error || 'Failed.');
+        });
+        return;
+    }
+
+    var selected = [];
+    document.querySelectorAll('#fpLocationList .fp-loc-cb:checked').forEach(function(cb) {
+        selected.push(cb.value);
+    });
+    if (!selected.length) {
+        toast('warning', 'Select at least one affected location (or mark the entire finding).');
+        return;
+    }
+
+    fetch('/api/suppress-finding-partial', {
         method: 'POST', credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({project_id: PID, finding_id: f.id, tool: f.tool})
+        body: JSON.stringify({project_id: PID, finding_id: f.id, affected_locations: selected})
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-        if (d.ok) { toast('success', 'Finding marked as FP.'); loadFindings(); }
-        else toast('error', d.error || 'Failed.');
+        if (d.ok) {
+            var msg = selected.length === 1
+                ? '1 affected location marked as FP.'
+                : selected.length + ' affected locations marked as FP.';
+            toast('success', msg);
+            loadFindings();
+            closeFPModal();
+        } else {
+            toast('error', d.error || 'Failed.');
+        }
     });
-}
+});
 
 function openRiskOverride(f) {
     riskOverrideCtx = f;
