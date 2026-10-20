@@ -285,10 +285,7 @@ def api_test_connection(tool_id):
     if not script or not Path(script).exists():
         return jsonify({"error": "Test connection script not found"}), 500
 
-    tc_config = {"url": target}
-    auth = data.get("auth") or {}
-    if auth.get("method") or auth.get("auth_method"):
-        tc_config["auth_method"] = auth.get("method") or auth.get("auth_method", "none")
+    auth_in = data.get("auth") or {}
     _AUTH_FIELD_MAP = {
         "username": "username", "password": "password", "domain": "domain",
         "token": "token", "auth_token": "token",
@@ -326,11 +323,16 @@ def api_test_connection(tool_id):
         "cookie_name": "session_cookie", "cookie_value": "session_cookie",
         "kerberos_realm": "kerberos_impersonate",
     }
+    auth_obj = {}
+    method = auth_in.get("method") or auth_in.get("auth_method", "")
+    if method:
+        auth_obj["method"] = method
     for src_key, dst_key in _AUTH_FIELD_MAP.items():
-        val = auth.get(src_key, "")
-        if val and dst_key not in tc_config:
-            tc_config[dst_key] = val
+        val = auth_in.get(src_key, "")
+        if val and dst_key not in auth_obj:
+            auth_obj[dst_key] = val
 
+    tc_config = {"url": target, "auth": auth_obj}
     if data.get("proxy"):
         tc_config["proxy"] = data["proxy"]
     if data.get("timeout"):
