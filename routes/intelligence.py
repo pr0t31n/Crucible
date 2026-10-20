@@ -1402,6 +1402,28 @@ def _classify_web_page(title, server, status_code):
     return "Web Page Detected"
 
 
+def _classify_web_page_by_path(url_path):
+    """URL-path-based classification when title/server/status are unavailable."""
+    p = (url_path or "").lower().rstrip("/")
+    if not p or p == "/":
+        return "Landing Page"
+    if any(k in p for k in ("/login", "/signin", "/logon", "/sso", "/auth/", "/oauth")):
+        return "Login Page"
+    if any(k in p for k in ("/dashboard", "/home", "/landing", "/main", "/portal")):
+        return "Landing Page"
+    if any(k in p for k in ("/register", "/signup", "/sign-up", "/enroll")):
+        return "Registration Page"
+    if any(k in p for k in ("/admin", "/wp-admin", "/manage")):
+        return "Admin Page"
+    if any(k in p for k in ("/api", "/swagger", "/docs", "/openapi")):
+        return "API Documentation"
+    if any(k in p for k in ("/upload", "/import", "/attach")):
+        return "File Upload Page"
+    if "error" in p or "404" in p or "not-found" in p or "notfound" in p:
+        return "Error Page"
+    return "Interesting Page"
+
+
 _RE_CURL_STATUS = re.compile(r'^Status:\s*(\d+)', re.MULTILINE)
 _RE_CURL_SCHEME = re.compile(r'^URL:\s*(https?)://', re.MULTILINE)
 _RE_HDR_SERVER = re.compile(r'^Server:\s*(.+)', re.MULTILINE | re.IGNORECASE)
@@ -1674,19 +1696,39 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                         url = f"{scheme}://{hp}:{port}/"
                 _fr_desc = meta.get("classification") or meta.get("description", "")
                 if _fr_desc:
-                    _fr_desc = _fr_desc.replace("Discovery: ", "").replace("Discovery:", "").strip()
+                    _fr_desc = re.sub(
+                        r'^(?:Discovery|Recon|Auth|Screenshot|Enumeration)\s*:\s*',
+                        '', _fr_desc, flags=re.IGNORECASE).strip()
+                    _fr_desc = _fr_desc.replace("Web Screenshot Captured", "").strip(" -—:")
                 if not _fr_desc:
+                    _fr_page_title = meta.get("page_title") or ""
+                    _fr_sidecar_title = meta.get("title", "")
+                    if _fr_sidecar_title and _fr_sidecar_title.startswith("Web Screenshot: "):
+                        _fr_sidecar_title = ""
                     _fr_desc = _classify_web_page(
-                        meta.get("page_title") or meta.get("title", ""),
+                        _fr_page_title or _fr_sidecar_title,
                         meta.get("server", ""),
                         meta.get("status_code"),
                     )
+                    if not _fr_desc or _fr_desc == "Blank / Minimal Response":
+                        _fr_url_path = ""
+                        if url:
+                            try:
+                                _fr_url_path = urllib.parse.urlparse(url).path or "/"
+                            except Exception:
+                                pass
+                        _fr_desc = _classify_web_page_by_path(_fr_url_path)
+                _fr_page_title_display = meta.get("page_title", "")
+                if not _fr_page_title_display:
+                    _fr_st = meta.get("title", "")
+                    if _fr_st and not _fr_st.startswith("Web Screenshot:"):
+                        _fr_page_title_display = _fr_st
                 results.append({
                     "url": url,
                     "ip": ip,
                     "port": port,
                     "scheme": scheme,
-                    "title": meta.get("page_title") or meta.get("title", ""),
+                    "title": _fr_page_title_display,
                     "server": meta.get("server", ""),
                     "status_code": meta.get("status_code"),
                     "description": _fr_desc or "Web Page Captured",
@@ -1730,7 +1772,19 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                                     f_aff = f"{sc}://{hp}/"
                                 else:
                                     f_aff = f"{sc}://{hp}:{f_port}/"
-                            desc = t.replace("Web Screenshot Captured", "").strip(" -—") or "Web Page Captured"
+                            desc = re.sub(
+                                r'^(?:Discovery|Recon|Auth|Screenshot|Enumeration)\s*:\s*',
+                                '', t, flags=re.IGNORECASE).strip()
+                            desc = desc.replace("Web Screenshot Captured", "").strip(" -—:")
+                            if not desc:
+                                _fb_url = f_aff or ""
+                                _fb_path = ""
+                                if _fb_url:
+                                    try:
+                                        _fb_path = urllib.parse.urlparse(_fb_url).path or "/"
+                                    except Exception:
+                                        pass
+                                desc = _classify_web_page_by_path(_fb_path) if _fb_path else "Web Page Captured"
                             results.append({
                                 "url": f_aff,
                                 "ip": f_ip,

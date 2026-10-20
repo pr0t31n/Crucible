@@ -6283,10 +6283,12 @@ function _loadScreenshotsPanel(body, empty, tool) {
             }
             var h = '<div style="margin-bottom:16px"><h3 style="margin:0 0 4px 0;font-size:1.1rem">Screenshots <span style="font-weight:400;color:var(--text-secondary);font-size:0.85rem">(' + items.length + ')</span></h3>' +
                 '<div style="color:var(--text-secondary);font-size:0.85rem">Click a row to view the screenshot</div></div>';
+            var _isWebApp = (scopeKey === 'webapp' || tool === 'fracture');
+            var _ipHeader = _isWebApp ? 'Base URL' : 'IP';
             h += '<div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr>' +
                 '<th style="width:40px">#</th>' +
                 '<th>URL</th>' +
-                '<th>IP</th>' +
+                '<th>' + _ipHeader + '</th>' +
                 '<th style="width:60px">Port</th>' +
                 '<th>Page Title</th>' +
                 '<th>Server</th>' +
@@ -6300,11 +6302,13 @@ function _loadScreenshotsPanel(body, empty, tool) {
                 if (dl.indexOf('login') !== -1 || dl.indexOf('dashboard') !== -1) descClass = ' style="color:var(--clr-high);font-weight:600"';
                 else if (dl.indexOf('default') !== -1 || dl.indexOf('blank') !== -1) descClass = ' style="color:var(--text-secondary)"';
                 else if (dl.indexOf('directory') !== -1 || dl.indexOf('error') !== -1) descClass = ' style="color:var(--clr-medium)"';
-                else if (dl.indexOf('restricted') !== -1) descClass = ' style="color:var(--clr-critical)"';
+                else if (dl.indexOf('restricted') !== -1 || dl.indexOf('admin') !== -1) descClass = ' style="color:var(--clr-critical)"';
+                else if (dl.indexOf('landing') !== -1 || dl.indexOf('interesting') !== -1) descClass = ' style="color:var(--clr-info);font-weight:600"';
+                var _ipCell = _isWebApp ? (s.url ? s.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : esc(s.ip)) : esc(s.ip);
                 h += '<tr style="cursor:pointer" onclick="_openScreenshot(\'' + esc(s.screenshot_path).replace(/'/g, "\\'") + '\',\'' + esc(s.url).replace(/'/g, "\\'") + '\',\'' + esc(s.description).replace(/'/g, "\\'") + '\',\'' + esc(s.ip).replace(/'/g, "\\'") + '\',' + s.port + ',\'' + esc(s.server || '').replace(/'/g, "\\'") + '\')">' +
                     '<td>' + (i + 1) + '</td>' +
                     '<td style="font-family:var(--font-mono);font-size:0.8rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.url) + '">' + esc(s.url) + '</td>' +
-                    '<td style="font-family:var(--font-mono);font-size:0.85rem">' + esc(s.ip) + '</td>' +
+                    '<td style="font-family:var(--font-mono);font-size:0.85rem">' + esc(_ipCell) + '</td>' +
                     '<td>' + s.port + '</td>' +
                     '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.title || '') + '">' + esc(s.title || '—') + '</td>' +
                     '<td style="font-size:0.85rem">' + esc(s.server || '—') + '</td>' +
