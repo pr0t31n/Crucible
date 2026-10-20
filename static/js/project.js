@@ -1769,6 +1769,9 @@ function renderFindingsTable() {
         var sources = f.sources || '';
         var evidence = f.output_file || f.output || '';
         var roles = f.roles || '';
+        if (!roles && Array.isArray(f.accounts) && f.accounts.length) {
+            roles = f.accounts.map(function(a) { return a.role || ''; }).filter(Boolean).join(', ');
+        }
         var details = f.description || f.output || '';
         if (details.length > 80) details = details.substring(0, 80) + '…';
 
