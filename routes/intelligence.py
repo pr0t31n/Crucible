@@ -106,8 +106,42 @@ def _filter_oos_intel(data, sm, project):
 
 
 def _slim_host_entry(entry):
-    """Project a single host dict to renderer-needed fields only."""
-    slim = {
+    """Project a single host dict to renderer-needed fields only.
+
+    Returns the slim dict, or None if the host has zero confirmed open ports
+    and no findings — those hosts are noise for the Host Map.
+    """
+    raw_ports = entry.get("ports", [])
+    confirmed = []
+    if isinstance(raw_ports, list):
+        for p in raw_ports:
+            if isinstance(p, dict):
+                if not _is_confirmed_port(p):
+                    continue
+                confirmed.append({
+                    "port": p.get("port", 0),
+                    "protocol": p.get("protocol", "tcp"),
+                    "service": p.get("service", p.get("name", "")),
+                    "state": p.get("state", "open"),
+                })
+            else:
+                confirmed.append(p)
+    elif isinstance(raw_ports, dict):
+        for pnum, pd in raw_ports.items():
+            if isinstance(pd, dict):
+                if not _is_confirmed_port(pd):
+                    continue
+                confirmed.append({
+                    "port": pd.get("port", pnum),
+                    "protocol": pd.get("protocol", "tcp"),
+                    "service": pd.get("service", pd.get("name", "")),
+                    "state": pd.get("state", "open"),
+                })
+            else:
+                confirmed.append(pd)
+    if not confirmed and not entry.get("finding_count"):
+        return None
+    return {
         "ip": entry.get("ip", ""),
         "hostname": entry.get("hostname", entry.get("fqdn", "")),
         "os": entry.get("os", entry.get("os_name", entry.get("os_hint", ""))),
@@ -117,48 +151,32 @@ def _slim_host_entry(entry):
         "alive": entry.get("alive", True),
         "finding_count": entry.get("finding_count", 0),
         "top_risk": entry.get("top_risk", ""),
+        "ports": confirmed,
+        "port_count": len(confirmed),
     }
-    raw_ports = entry.get("ports", [])
-    if isinstance(raw_ports, list):
-        slim["ports"] = [
-            {"port": p.get("port", 0), "protocol": p.get("protocol", "tcp"),
-             "service": p.get("service", p.get("name", "")),
-             "state": p.get("state", "open")}
-            if isinstance(p, dict) else p
-            for p in raw_ports
-        ]
-        slim["port_count"] = len(slim["ports"])
-    elif isinstance(raw_ports, dict):
-        slim["ports"] = {}
-        for pnum, pd in raw_ports.items():
-            if isinstance(pd, dict):
-                slim["ports"][pnum] = {
-                    "port": pd.get("port", pnum),
-                    "protocol": pd.get("protocol", "tcp"),
-                    "service": pd.get("service", pd.get("name", "")),
-                    "state": pd.get("state", "open"),
-                }
-            else:
-                slim["ports"][pnum] = pd
-        slim["port_count"] = len(slim["ports"])
-    else:
-        slim["ports"] = raw_ports
-        slim["port_count"] = 0
-    return slim
 
 
 def _slim_hosts_payload(data):
-    """Strip heavyweight nested data (tool_results, web metadata, evidence)
-    from host/correlated payloads before sending to the browser.
+    """Project host payloads to renderer fields and drop dead/portless hosts.
 
-    The net-hosts renderer only needs: ip, hostname, os, ports (port/protocol/
-    service/state), risk, tools, first_seen, alive, finding_count.
+    Hosts with zero confirmed open ports and no findings are excluded —
+    the Host Map only needs hosts with accessible services.
     """
     if data is None:
         return data
 
     if isinstance(data, list):
-        return [_slim_host_entry(e) if isinstance(e, dict) else e for e in data]
+        out = []
+        for e in data:
+            if not isinstance(e, dict):
+                out.append(e)
+                continue
+            slim = _slim_host_entry(e)
+            if slim is not None:
+                out.append(slim)
+        _intel_log.debug("slim_hosts: %d -> %d hosts (list)",
+                         len(data), len(out))
+        return out
 
     if isinstance(data, dict):
         if "hosts" in data:
@@ -172,7 +190,9 @@ def _slim_hosts_payload(data):
                 else:
                     try:
                         _ipaddress.ip_address(k)
-                        result[k] = _slim_host_entry(v) if isinstance(v, dict) else v
+                        slim = _slim_host_entry(v) if isinstance(v, dict) else v
+                        if slim is not None:
+                            result[k] = slim
                         continue
                     except ValueError:
                         pass
@@ -190,15 +210,22 @@ def _slim_hosts_payload(data):
                 pass
         if has_ip_keys:
             result = {}
+            dropped = 0
             for k, v in data.items():
                 if k.startswith("_") or k in ("available", "meta"):
                     result[k] = v
                     continue
                 try:
                     _ipaddress.ip_address(k)
-                    result[k] = _slim_host_entry(v) if isinstance(v, dict) else v
+                    slim = _slim_host_entry(v) if isinstance(v, dict) else v
+                    if slim is not None:
+                        result[k] = slim
+                    else:
+                        dropped += 1
                 except ValueError:
                     result[k] = v
+            _intel_log.debug("slim_hosts: %d -> %d hosts (dict, dropped %d)",
+                             len(data), len(result), dropped)
             return result
 
     return data
@@ -1248,12 +1275,21 @@ def api_intel_panel(panel, project_id):
                 fp = sd / fn
                 if fp.exists():
                     try:
+                        raw_size = fp.stat().st_size
                         with open(fp) as f:
                             data = json.load(f)
                         if panel in ("net-services", "net-hosts"):
                             data = _filter_confirmed_ports(data)
                         if data:
-                            return jsonify({key: _maybe_filter(data), "available": True})
+                            filtered = _maybe_filter(data)
+                            resp = jsonify({key: filtered, "available": True})
+                            if panel in _net_panels:
+                                _intel_log.info(
+                                    "intel %s: file=%s raw=%dKB resp=%dKB",
+                                    panel, fn, raw_size // 1024,
+                                    resp.content_length // 1024
+                                    if resp.content_length else -1)
+                            return resp
                         file_data = data
                     except (json.JSONDecodeError, OSError):
                         pass
