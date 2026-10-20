@@ -1378,6 +1378,18 @@ table {
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
+.role-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    border-radius: 3px;
+    line-height: 1.4;
+    white-space: nowrap;
+    margin: 1px 1px;
+    letter-spacing: 0.03em;
+}
 
 /* Evidence viewer — file navigation */
 .ev-nav-btn {

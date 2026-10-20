@@ -1731,6 +1731,34 @@ function _renderSourcePills(sources) {
     return html;
 }
 
+var _ROLE_COLORS = {
+    'unauthenticated': {bg:'#c62828',fg:'#fff'},
+    'admin':           {bg:'#6a1b9a',fg:'#fff'},
+    'administrator':   {bg:'#6a1b9a',fg:'#fff'},
+    'superadmin':      {bg:'#4a148c',fg:'#fff'},
+    'root':            {bg:'#4a148c',fg:'#fff'},
+    'standard':        {bg:'#1565c0',fg:'#fff'},
+    'user':            {bg:'#1565c0',fg:'#fff'},
+    'viewer':          {bg:'#00838f',fg:'#fff'},
+    'readonly':        {bg:'#00838f',fg:'#fff'},
+    'read-only':       {bg:'#00838f',fg:'#fff'},
+    'guest':           {bg:'#546e7a',fg:'#fff'},
+    'api':             {bg:'#e65100',fg:'#fff'},
+};
+var _ROLE_FALLBACK = {bg:'#455a64',fg:'#fff'};
+function _renderRolePills(roles) {
+    if (!roles) return '';
+    var parts = roles.split(',');
+    var html = '';
+    for (var i = 0; i < parts.length; i++) {
+        var r = parts[i].trim();
+        if (!r) continue;
+        var c = _ROLE_COLORS[r.toLowerCase()] || _ROLE_FALLBACK;
+        html += '<span class="role-pill" style="background:' + c.bg + ';color:' + c.fg + '" title="' + esc(r) + '">' + esc(r) + '</span>';
+    }
+    return html;
+}
+
 function renderFindingsTable() {
     var tbody = document.getElementById('findingsTableBody');
     var empty = document.getElementById('findingsEmpty');
@@ -1791,7 +1819,7 @@ function renderFindingsTable() {
             '<td class="text-sm text-truncate" style="max-width:120px" title="' + esc(affected) + '">' + esc(affected) + '</td>' +
             '<td class="text-sm" style="max-width:140px">' + _renderSourcePills(sources) + '</td>' +
             '<td class="text-sm" style="max-width:100px">' + (evidence ? '<button class="btn btn-xs btn-evidence" data-action="evidence" data-idx="' + globalIdx + '" title="View evidence files">View</button>' : '<span style="color:var(--text-secondary)">—</span>') + '</td>' +
-            '<td class="text-sm">' + esc(roles) + '</td>' +
+            '<td class="text-sm">' + _renderRolePills(roles) + '</td>' +
             '<td class="text-sm text-truncate" style="max-width:160px" title="' + esc(f.description||'') + '">' + esc(details) + '</td>' +
             '<td class="col-actions">' +
                 '<div class="flex gap-4">' +
