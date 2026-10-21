@@ -752,6 +752,7 @@ _PANEL_MAP = {
     "fr-access":     ("fracture", ["access_matrix.json"]),
     "fr-auth":       ("fracture", ["authentication_status.json"]),
     "fr-screenshots": ("fracture", []),
+    "webapp-intel":    ("fracture", ["dns_resolution.json", "target_profile.json"]),
     # Siphon (api) — for XLSX export
     "si-structure":  ("siphon", ["api_map.json"]),
     "si-access":     ("siphon", ["access_matrix.json"]),
@@ -1584,7 +1585,14 @@ def _extract_web_meta_from_files(port_dir, ip_dirname, port):
             m = _RE_CURL_SCHEME.search(txt)
             if m:
                 meta["scheme"] = m.group(1)
-            m = _RE_HDR_SERVER.search(txt)
+            hdr_section = txt
+            if "--- HEADERS ---" in txt:
+                after = txt.split("--- HEADERS ---", 1)[1]
+                if "--- BODY" in after:
+                    hdr_section = after.split("--- BODY", 1)[0]
+                else:
+                    hdr_section = after
+            m = _RE_HDR_SERVER.search(hdr_section)
             if m:
                 meta["server"] = m.group(1).strip()
             break
@@ -1705,15 +1713,31 @@ def _scan_ss3_screenshots(project, scope_filter):
         if corr_path.exists():
             try:
                 corr = json.loads(corr_path.read_text())
-                host_list = corr if isinstance(corr, list) else corr.get("hosts", [])
+                hosts_raw = corr if isinstance(corr, list) else corr.get("hosts", [])
+                if isinstance(hosts_raw, dict):
+                    host_list = list(hosts_raw.values())
+                else:
+                    host_list = hosts_raw
                 for host in host_list:
                     if not isinstance(host, dict):
                         continue
                     ip = host.get("ip", "")
-                    for port_obj in host.get("ports", []):
+                    ports_raw = host.get("ports", {})
+                    if isinstance(ports_raw, dict):
+                        port_objs = list(ports_raw.values())
+                    else:
+                        port_objs = ports_raw
+                    for port_obj in port_objs:
+                        if not isinstance(port_obj, dict):
+                            continue
                         pnum = port_obj.get("port")
                         web = port_obj.get("web")
-                        if web and pnum:
+                        if not web:
+                            for tr in port_obj.get("tool_results", []):
+                                if tr.get("tool") == "http-probe":
+                                    web = tr.get("data", {})
+                                    break
+                        if web and web.get("responds") is not False and pnum:
                             web_meta[(ip, pnum)] = web
             except (json.JSONDecodeError, OSError):
                 pass
@@ -1994,6 +2018,52 @@ def api_screenshots(project_id):
 
     deduped.sort(key=lambda s: (s.get("ip", ""), s.get("port", 0)))
     return jsonify({"screenshots": deduped, "count": len(deduped)})
+
+
+@intelligence_bp.route("/api/webapp-intel/<project_id>")
+def api_webapp_intel(project_id):
+    """Return web application intelligence data (DNS resolution, infrastructure)."""
+    project = require_project(project_id)
+    fr_dir = _resolve_tool_dir(project, "fracture")
+    result = {"dns": None, "target_profile": None, "infrastructure": {}}
+    if not fr_dir:
+        return jsonify(result)
+    dns_path = fr_dir / "dns_resolution.json"
+    if dns_path.exists():
+        try:
+            result["dns"] = json.loads(dns_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    tp_path = fr_dir / "target_profile.json"
+    if tp_path.exists():
+        try:
+            result["target_profile"] = json.loads(tp_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    tp = result.get("target_profile") or {}
+    dns = result.get("dns") or {}
+    infra = {}
+    if tp.get("waf"):
+        infra["waf"] = tp["waf"]
+    if tp.get("edge_security"):
+        infra["edge_security"] = tp["edge_security"]
+    if tp.get("cdn"):
+        infra["cdn"] = tp["cdn"]
+    if dns.get("load_balancer_detected"):
+        infra["load_balancer"] = True
+        infra["backend_ips"] = dns.get("total_unique_ips", 0)
+    if tp.get("tls_enabled") is not None:
+        infra["tls_enabled"] = tp["tls_enabled"]
+    if tp.get("protocols"):
+        infra["tls_protocols"] = tp["protocols"]
+    if tp.get("cert_issuer"):
+        infra["cert_issuer"] = tp["cert_issuer"]
+    if tp.get("cert_expiry"):
+        infra["cert_expiry"] = tp["cert_expiry"]
+    if tp.get("cert_subject"):
+        infra["cert_subject"] = tp["cert_subject"]
+    result["infrastructure"] = infra
+    return jsonify(result)
 
 
 _SCOPE_SUBTAB_MAP = {

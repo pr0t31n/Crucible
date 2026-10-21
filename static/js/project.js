@@ -4783,7 +4783,7 @@ var _scopeToolsMap = {};
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
     ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['screenshots','{scope} Screenshots']],
-    fracture: [['status','WebApp Status'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
+    fracture: [['status','WebApp Status'],['webapp-intel','Web Application Intelligence'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
     siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['cookies','API Cookies'],['api','API Inventory']],
     osift:    [['status','OSINT Status'],['osint-domains','OSINT Domains'],['osint-dns','OSINT DNS'],['osint-certs','OSINT Certificates'],['osint-emails','OSINT Emails'],['osint-people','OSINT People'],['osint-breaches','OSINT Data Breaches'],['osint-wayback','OSINT Wayback URLs'],['osint-typosquat','OSINT Typosquatting']],
     trawler:  [['status','PCAP Status'],['traffic-overview','Traffic Overview'],['traffic-convos','Traffic Conversations']],
@@ -5301,6 +5301,7 @@ function loadIntelPanel(panel, tool) {
         'endpoint-nist': '/api/intel/endpoint-nist/' + PID,
         'endpoint-stig': '/api/intel/endpoint-stig/' + PID,
         'cookies': '/api/intel/cookies/' + PID,
+        'webapp-intel': '/api/webapp-intel/' + PID,
     };
 
     var url = urlMap[panel];
@@ -7982,6 +7983,82 @@ function _renderCookies(data) {
     return h;
 }
 
+/* ── Web Application Intelligence Renderer ───────────────────── */
+function _renderWebappIntel(data) {
+    var dns = data.dns;
+    var infra = data.infrastructure || {};
+    var tp = data.target_profile || {};
+    if (!dns && !Object.keys(infra).length && !Object.keys(tp).length)
+        return '<div class="empty-state"><div class="empty-state-text">No web application intelligence data available yet.<br>DNS resolution data will appear once Fracture begins testing.</div></div>';
+
+    var h = '';
+
+    /* ── DNS Resolution ────────────────── */
+    if (dns) {
+        h += '<div style="margin-bottom:20px">';
+        h += '<div style="font-weight:600;font-size:15px;margin-bottom:10px">DNS Resolution</div>';
+        h += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">';
+        h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+           + '<span style="color:var(--text-secondary)">Hostname:</span> <strong>' + esc(dns.hostname || '') + '</strong></div>';
+        h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+           + '<span style="color:var(--text-secondary)">Unique IPs:</span> <strong>' + (dns.total_unique_ips || 0) + '</strong></div>';
+        var lbDet = dns.load_balancer_detected;
+        var lbColor = lbDet ? 'var(--clr-medium)' : 'var(--clr-info)';
+        h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+           + '<span style="color:var(--text-secondary)">Load Balancer:</span> <strong style="color:' + lbColor + '">' + (lbDet ? 'Detected' : 'Not Detected') + '</strong></div>';
+        if (dns.last_updated) {
+            h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+               + '<span style="color:var(--text-secondary)">Last Updated:</span> ' + esc(dns.last_updated) + '</div>';
+        }
+        h += '</div>';
+
+        var ips = dns.resolved_ips || [];
+        if (ips.length) {
+            var rows = ips.map(function(entry) {
+                var srcs = entry.sources || [];
+                return [
+                    '<span style="font-family:var(--font-mono)">' + esc(entry.ip || '') + '</span>',
+                    esc(entry.first_seen || ''),
+                    esc(entry.last_seen || ''),
+                    srcs.map(function(s) {
+                        return '<span style="display:inline-block;padding:2px 6px;margin:1px 2px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;font-size:12px">' + esc(s) + '</span>';
+                    }).join(' ')
+                ];
+            });
+            h += _intelTable(['IP Address', 'First Seen', 'Last Seen', 'Sources'], rows);
+        }
+        h += '</div>';
+    }
+
+    /* ── Infrastructure Summary ─────────── */
+    var infraItems = [];
+    if (infra.waf) infraItems.push(['WAF / Edge Security', esc(typeof infra.waf === 'object' ? JSON.stringify(infra.waf) : String(infra.waf))]);
+    if (infra.edge_security) infraItems.push(['Edge Security', esc(String(infra.edge_security))]);
+    if (infra.cdn) infraItems.push(['CDN', esc(String(infra.cdn))]);
+    if (infra.load_balancer) infraItems.push(['Load Balancer', '<span style="color:var(--clr-medium)">Detected</span> (' + (infra.backend_ips || 0) + ' backend IPs)']);
+    if (infra.tls_enabled !== undefined) infraItems.push(['TLS', infra.tls_enabled ? '<span style="color:var(--clr-low)">Enabled</span>' : '<span style="color:var(--clr-high)">Disabled</span>']);
+    if (infra.tls_protocols) infraItems.push(['TLS Protocols', esc(Array.isArray(infra.tls_protocols) ? infra.tls_protocols.join(', ') : String(infra.tls_protocols))]);
+    if (infra.cert_issuer) infraItems.push(['Certificate Issuer', esc(String(infra.cert_issuer))]);
+    if (infra.cert_subject) infraItems.push(['Certificate Subject', esc(String(infra.cert_subject))]);
+    if (infra.cert_expiry) infraItems.push(['Certificate Expiry', esc(String(infra.cert_expiry))]);
+    if (infraItems.length) {
+        h += _intelCard('Infrastructure', infraItems);
+    }
+
+    /* ── Target Profile extras ─────────── */
+    var tpItems = [];
+    if (tp.server) tpItems.push(['Server', esc(String(tp.server))]);
+    if (tp.technologies && tp.technologies.length) tpItems.push(['Technologies', esc(tp.technologies.join(', '))]);
+    if (tp.frameworks && tp.frameworks.length) tpItems.push(['Frameworks', esc(tp.frameworks.join(', '))]);
+    if (tp.cms) tpItems.push(['CMS', esc(String(tp.cms))]);
+    if (tp.programming_languages && tp.programming_languages.length) tpItems.push(['Languages', esc(tp.programming_languages.join(', '))]);
+    if (tpItems.length) {
+        h += _intelCard('Target Profile', tpItems);
+    }
+
+    return h || '<div class="empty-state"><div class="empty-state-text">No data available.</div></div>';
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8015,6 +8092,7 @@ var _INTEL_RENDERERS = {
     'endpoint-cis': _renderEndpointCIS,
     'endpoint-nist': _renderEndpointNIST,
     'endpoint-stig': _renderEndpointSTIG,
+    'webapp-intel': _renderWebappIntel,
 };
 
 
