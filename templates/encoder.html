@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+.enc-layout {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+.enc-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.enc-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+.enc-header a {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.enc-header a:hover { color: var(--accent-primary); }
+.enc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.enc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.enc-panel label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.enc-panel textarea {
+  width: 100%;
+  min-height: 180px;
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  resize: vertical;
+  line-height: 1.5;
+}
+.enc-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+  align-items: center;
+}
+.enc-controls select {
+  font-size: 0.84rem;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+.enc-controls button {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.enc-controls button:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+.enc-controls button.btn-primary {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  border-color: var(--accent-primary);
+}
+.enc-controls button.btn-primary:hover {
+  background: var(--accent-hover);
+}
+.enc-status {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.hash-grid {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 10px;
+  font-size: 0.82rem;
+  margin-top: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.hash-grid .hash-label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.hash-grid .hash-value {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  word-break: break-all;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.hash-grid .hash-value:hover {
+  color: var(--accent-primary);
+}
+@media (max-width: 768px) {
+  .enc-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="enc-layout">
+  <div class="enc-header">
+    <a href="/">&larr; Home</a>
+    <h2>Encode / Decode Toolkit</h2>
+  </div>
+
+  <div class="enc-controls">
+    <select id="encMode">
+      <option value="base64">Base64</option>
+      <option value="url">URL Encode</option>
+      <option value="html">HTML Entities</option>
+      <option value="hex">Hex</option>
+      <option value="rot13">ROT13</option>
+      <option value="unicode">Unicode Escape</option>
+      <option value="jwt">JWT Decode</option>
+    </select>
+    <button class="btn-primary" onclick="encEncode()">Encode &rarr;</button>
+    <button onclick="encDecode()">&larr; Decode</button>
+    <button onclick="encSwap()">Swap</button>
+    <button onclick="encClear()">Clear</button>
+    <button onclick="encCopy()">Copy Output</button>
+    <span class="enc-status" id="encStatus"></span>
+  </div>
+
+  <div class="enc-grid">
+    <div class="enc-panel">
+      <label>Input</label>
+      <textarea id="encInput" placeholder="Enter text to encode or decode..."></textarea>
+    </div>
+    <div class="enc-panel">
+      <label>Output</label>
+      <textarea id="encOutput" placeholder="Result appears here..." readonly></textarea>
+    </div>
+  </div>
+
+  <div class="enc-controls" style="margin-top:24px;">
+    <button onclick="encHash()">Generate Hashes</button>
+    <span class="enc-status" id="hashStatus"></span>
+  </div>
+  <div class="hash-grid" id="hashGrid" style="display:none;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function _status(id, msg) {
+  var el = document.getElementById(id);
+  el.textContent = msg;
+  setTimeout(function() { el.textContent = ''; }, 3000);
+}
+
+function encEncode() {
+  var input = document.getElementById('encInput').value;
+  var mode = document.getElementById('encMode').value;
+  var output = '';
+  try {
+    switch (mode) {
+      case 'base64': output = btoa(unescape(encodeURIComponent(input))); break;
+      case 'url': output = encodeURIComponent(input); break;
+      case 'html':
+        var d = document.createElement('div');
+        d.textContent = input;
+        output = d.innerHTML;
+        break;
+      case 'hex':
+        output = Array.from(new TextEncoder().encode(input))
+          .map(function(b) { return b.toString(16).padStart(2, '0'); }).join(' ');
+        break;
+      case 'rot13':
+        output = input.replace(/[a-zA-Z]/g, function(c) {
+          return String.fromCharCode(c.charCodeAt(0) + (c.toLowerCase() < 'n' ? 13 : -13));
+        });
+        break;
+      case 'unicode':
+        output = Array.from(input).map(function(c) {
+          var code = c.charCodeAt(0);
+          return code > 127 ? '\\u' + code.toString(16).padStart(4, '0') : c;
+        }).join('');
+        break;
+      case 'jwt':
+        output = 'Use Decode for JWT parsing';
+        break;
+      default: output = input;
+    }
+    document.getElementById('encOutput').value = output;
+    _status('encStatus', 'Encoded (' + mode + ')');
+  } catch (e) {
+    document.getElementById('encOutput').value = 'Error: ' + e.message;
+  }
+}
+
+function encDecode() {
+  var input = document.getElementById('encInput').value;
+  var mode = document.getElementById('encMode').value;
+  var output = '';
+  try {
+    switch (mode) {
+      case 'base64':
+        output = decodeURIComponent(escape(atob(input.trim())));
+        break;
+      case 'url': output = decodeURIComponent(input); break;
+      case 'html':
+        var d = document.createElement('div');
+        d.innerHTML = input;
+        output = d.textContent;
+        break;
+      case 'hex':
+        var hex = input.replace(/[^0-9a-fA-F]/g, '');
+        var bytes = [];
+        for (var i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+        output = new TextDecoder().decode(new Uint8Array(bytes));
+        break;
+      case 'rot13':
+        output = input.replace(/[a-zA-Z]/g, function(c) {
+          return String.fromCharCode(c.charCodeAt(0) + (c.toLowerCase() < 'n' ? 13 : -13));
+        });
+        break;
+      case 'unicode':
+        output = input.replace(/\\u([0-9a-fA-F]{4})/g, function(m, g) {
+          return String.fromCharCode(parseInt(g, 16));
+        });
+        break;
+      case 'jwt':
+        var parts = input.trim().split('.');
+        if (parts.length < 2) { output = 'Invalid JWT (expected 3 dot-separated parts)'; break; }
+        var pad = function(s) { while (s.length % 4) s += '='; return s; };
+        var header = JSON.parse(atob(pad(parts[0].replace(/-/g,'+').replace(/_/g,'/'))));
+        var payload = JSON.parse(atob(pad(parts[1].replace(/-/g,'+').replace(/_/g,'/'))));
+        var lines = ['== JWT Header ==', JSON.stringify(header, null, 2), '', '== JWT Payload ==', JSON.stringify(payload, null, 2)];
+        if (payload.exp) {
+          var exp = new Date(payload.exp * 1000);
+          lines.push('', 'Expires: ' + exp.toISOString() + (exp < new Date() ? ' (EXPIRED)' : ' (valid)'));
+        }
+        if (payload.iat) lines.push('Issued:  ' + new Date(payload.iat * 1000).toISOString());
+        output = lines.join('\n');
+        break;
+      default: output = input;
+    }
+    document.getElementById('encOutput').value = output;
+    _status('encStatus', 'Decoded (' + mode + ')');
+  } catch (e) {
+    document.getElementById('encOutput').value = 'Error: ' + e.message;
+  }
+}
+
+function encSwap() {
+  var inp = document.getElementById('encInput');
+  var out = document.getElementById('encOutput');
+  var tmp = inp.value;
+  inp.value = out.value;
+  out.value = tmp;
+}
+
+function encClear() {
+  document.getElementById('encInput').value = '';
+  document.getElementById('encOutput').value = '';
+  document.getElementById('hashGrid').style.display = 'none';
+}
+
+function encCopy() {
+  var out = document.getElementById('encOutput');
+  if (out.value) {
+    navigator.clipboard.writeText(out.value).then(function() {
+      _status('encStatus', 'Copied!');
+    });
+  }
+}
+
+async function encHash() {
+  var input = document.getElementById('encInput').value;
+  if (!input) { _status('hashStatus', 'Enter text first'); return; }
+  var buf = new TextEncoder().encode(input);
+  var grid = document.getElementById('hashGrid');
+  grid.style.display = 'grid';
+  grid.innerHTML = '';
+
+  var algos = [
+    ['MD5', null],
+    ['SHA-1', 'SHA-1'],
+    ['SHA-256', 'SHA-256'],
+    ['SHA-384', 'SHA-384'],
+    ['SHA-512', 'SHA-512']
+  ];
+
+  for (var i = 0; i < algos.length; i++) {
+    var name = algos[i][0];
+    var alg = algos[i][1];
+    var hex = '';
+    if (alg) {
+      try {
+        var h = await crypto.subtle.digest(alg, buf);
+        hex = Array.from(new Uint8Array(h)).map(function(b) { return b.toString(16).padStart(2,'0'); }).join('');
+      } catch(e) { hex = 'Not available'; }
+    } else {
+      hex = _md5(input);
+    }
+    var lbl = document.createElement('span');
+    lbl.className = 'hash-label';
+    lbl.textContent = name;
+    var val = document.createElement('span');
+    val.className = 'hash-value';
+    val.textContent = hex;
+    val.title = 'Click to copy';
+    val.onclick = (function(v) { return function() { navigator.clipboard.writeText(v); _status('hashStatus', 'Copied!'); }; })(hex);
+    grid.appendChild(lbl);
+    grid.appendChild(val);
+  }
+  _status('hashStatus', 'Hashes generated');
+}
+
+function _md5(s) {
+  function _f(s,t) { var l=(s&0xFFFF)+(t&0xFFFF), m=(s>>16)+(t>>16)+(l>>16); return (m<<16)|(l&0xFFFF); }
+  function _r(n,c) { return (n<<c)|(n>>>(32-c)); }
+  function _cm(q,a,b,x,s,t) { return _f(_r(_f(_f(a,q),_f(x,t)),s),b); }
+  function _ff(a,b,c,d,x,s,t) { return _cm((b&c)|((~b)&d),a,b,x,s,t); }
+  function _gg(a,b,c,d,x,s,t) { return _cm((b&d)|(c&(~d)),a,b,x,s,t); }
+  function _hh(a,b,c,d,x,s,t) { return _cm(b^c^d,a,b,x,s,t); }
+  function _ii(a,b,c,d,x,s,t) { return _cm(c^(b|(~d)),a,b,x,s,t); }
+  var x=[], i, l=s.length*8;
+  for(i=0;i<s.length;i++) { x[i>>2]|=(s.charCodeAt(i)&0xFF)<<((i%4)*8); }
+  x[i>>2]|=0x80<<((i%4)*8); var n=((i+8)>>>6)+1; while(x.length<n*16) x.push(0);
+  x[n*16-2]=l; x[n*16-1]=0;
+  var a=0x67452301, b=0xefcdab89, c=0x98badcfe, d=0x10325476;
+  for(i=0;i<x.length;i+=16) {
+    var oa=a,ob=b,oc=c,od=d;
+    a=_ff(a,b,c,d,x[i+0],7,-680876936);d=_ff(d,a,b,c,x[i+1],12,-389564586);c=_ff(c,d,a,b,x[i+2],17,606105819);b=_ff(b,c,d,a,x[i+3],22,-1044525330);
+    a=_ff(a,b,c,d,x[i+4],7,-176418897);d=_ff(d,a,b,c,x[i+5],12,1200080426);c=_ff(c,d,a,b,x[i+6],17,-1473231341);b=_ff(b,c,d,a,x[i+7],22,-45705983);
+    a=_ff(a,b,c,d,x[i+8],7,1770035416);d=_ff(d,a,b,c,x[i+9],12,-1958414417);c=_ff(c,d,a,b,x[i+10],17,-42063);b=_ff(b,c,d,a,x[i+11],22,-1990404162);
+    a=_ff(a,b,c,d,x[i+12],7,1804603682);d=_ff(d,a,b,c,x[i+13],12,-40341101);c=_ff(c,d,a,b,x[i+14],17,-1502002290);b=_ff(b,c,d,a,x[i+15],22,1236535329);
+    a=_gg(a,b,c,d,x[i+1],5,-165796510);d=_gg(d,a,b,c,x[i+6],9,-1069501632);c=_gg(c,d,a,b,x[i+11],14,643717713);b=_gg(b,c,d,a,x[i+0],20,-373897302);
+    a=_gg(a,b,c,d,x[i+5],5,-701558691);d=_gg(d,a,b,c,x[i+10],9,38016083);c=_gg(c,d,a,b,x[i+15],14,-660478335);b=_gg(b,c,d,a,x[i+0],20,-405537848);
+    a=_gg(a,b,c,d,x[i+5],5,568446438);d=_gg(d,a,b,c,x[i+10],9,-1019803690);c=_gg(c,d,a,b,x[i+15],14,-187363961);b=_gg(b,c,d,a,x[i+4],20,1163531501);
+    a=_gg(a,b,c,d,x[i+9],5,-1444681467);d=_gg(d,a,b,c,x[i+14],9,-51403784);c=_gg(c,d,a,b,x[i+3],14,1735328473);b=_gg(b,c,d,a,x[i+8],20,-1926607734);
+    a=_hh(a,b,c,d,x[i+5],4,-378558);d=_hh(d,a,b,c,x[i+8],11,-2022574463);c=_hh(c,d,a,b,x[i+11],16,1839030562);b=_hh(b,c,d,a,x[i+14],23,-35309556);
+    a=_hh(a,b,c,d,x[i+1],4,-1530992060);d=_hh(d,a,b,c,x[i+4],11,1272893353);c=_hh(c,d,a,b,x[i+7],16,-155497632);b=_hh(b,c,d,a,x[i+10],23,-1094730640);
+    a=_hh(a,b,c,d,x[i+13],4,681279174);d=_hh(d,a,b,c,x[i+0],11,-358537222);c=_hh(c,d,a,b,x[i+3],16,-722521979);b=_hh(b,c,d,a,x[i+6],23,76029189);
+    a=_hh(a,b,c,d,x[i+9],4,-640364487);d=_hh(d,a,b,c,x[i+12],11,-421815835);c=_hh(c,d,a,b,x[i+15],16,530742520);b=_hh(b,c,d,a,x[i+2],23,-995338651);
+    a=_ii(a,b,c,d,x[i+0],6,-198630844);d=_ii(d,a,b,c,x[i+7],10,1126891415);c=_ii(c,d,a,b,x[i+14],15,-1416354905);b=_ii(b,c,d,a,x[i+5],21,-57434055);
+    a=_ii(a,b,c,d,x[i+12],6,1700485571);d=_ii(d,a,b,c,x[i+3],10,-1894986606);c=_ii(c,d,a,b,x[i+10],15,-1051523);b=_ii(b,c,d,a,x[i+1],21,-2054922799);
+    a=_ii(a,b,c,d,x[i+8],6,1873313359);d=_ii(d,a,b,c,x[i+15],10,-30611744);c=_ii(c,d,a,b,x[i+6],15,-1560198380);b=_ii(b,c,d,a,x[i+13],21,1309151649);
+    a=_ii(a,b,c,d,x[i+4],6,-145523070);d=_ii(d,a,b,c,x[i+11],10,-1120210379);c=_ii(c,d,a,b,x[i+2],15,718787259);b=_ii(b,c,d,a,x[i+9],21,-343485551);
+    a=_f(a,oa);b=_f(b,ob);c=_f(c,oc);d=_f(d,od);
+  }
+  function _h(n) { var s=''; for(var i=0;i<4;i++) s+=('0'+((n>>(i*8))&0xFF).toString(16)).slice(-2); return s; }
+  return _h(a)+_h(b)+_h(c)+_h(d);
+}
+</script>
+{% endblock %}
