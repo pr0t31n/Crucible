@@ -909,11 +909,12 @@ def mark_false_positive(project_dir, finding, findings_list):
 def mark_partial_fp(project_dir, finding, findings_list, affected_locations):
     """Mark specific affected locations within a merged finding as FP.
 
-    Splits the finding: selected locations go to falsePositives.json;
-    original finding keeps the remaining locations. If ALL locations
-    are selected, behaves like a full mark_false_positive().
+    Splits the finding: each selected location gets its own individual
+    FP entry (with full details/evidence) so they can be recovered
+    independently.  The original finding keeps the remaining locations.
+    If ALL locations are selected, behaves like a full mark_false_positive().
 
-    Returns (updated_findings_list, fp_entry).
+    Returns (updated_findings_list, fp_entries_list).
     """
     import copy
 
@@ -927,18 +928,23 @@ def mark_partial_fp(project_dir, finding, findings_list, affected_locations):
 
     with _findings_lock:
         pd = Path(project_dir)
-        fp_entry = copy.deepcopy(finding)
-        fp_entry["affected"] = "\n".join(sorted(selected))
-        fp_entry["fp_marked_at"] = datetime.now().isoformat()
-        fp_entry["_partial_fp"] = True
-        fp_entry["_parent_finding_id"] = finding.get("id", "")
-        loc_hash = hashlib.md5("\n".join(sorted(selected)).encode()).hexdigest()[:8]
-        fp_entry["id"] = finding.get("id", "") + "_pfp_" + loc_hash
-
-        _preserve_fp_evidence(project_dir, fp_entry)
+        now = datetime.now().isoformat()
+        parent_id = finding.get("id", "")
 
         fps = load_false_positives(project_dir)
-        fps.append(fp_entry)
+        fp_entries = []
+        for loc in sorted(selected):
+            fp_entry = copy.deepcopy(finding)
+            fp_entry["affected"] = loc
+            fp_entry["fp_marked_at"] = now
+            fp_entry["_partial_fp"] = True
+            fp_entry["_parent_finding_id"] = parent_id
+            loc_hash = hashlib.md5(loc.encode()).hexdigest()[:8]
+            fp_entry["id"] = parent_id + "_pfp_" + loc_hash
+            _preserve_fp_evidence(project_dir, fp_entry)
+            fps.append(fp_entry)
+            fp_entries.append(fp_entry)
+
         with open(pd / "falsePositives.json", "w") as f:
             json.dump(fps, f, indent=2)
         _write_fp_csv(pd, fps)
@@ -947,7 +953,7 @@ def mark_partial_fp(project_dir, finding, findings_list, affected_locations):
         _persist_partial_fp_update(project_dir, finding.get("id", ""),
                                    finding["affected"])
 
-        return list(findings_list), fp_entry
+        return list(findings_list), fp_entries
 
 
 def _persist_partial_fp_update(project_dir, finding_id, new_affected):

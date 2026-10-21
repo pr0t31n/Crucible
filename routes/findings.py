@@ -129,9 +129,9 @@ def api_suppress_finding_partial():
     if not isinstance(affected_locations, list):
         return jsonify({"error": "affected_locations must be a list"}), 400
     project = require_project(project_id)
-    updated, fp = _engine().mark_partial_fp(project_id, project, finding_id,
-                                            affected_locations)
-    if fp is None:
+    updated, fp_entries = _engine().mark_partial_fp(project_id, project, finding_id,
+                                                    affected_locations)
+    if fp_entries is None:
         return jsonify({"error": "Finding not found"}), 404
     return jsonify({"ok": True, "remaining": len(updated)})
 

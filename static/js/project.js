@@ -1823,9 +1823,12 @@ function renderFindingsTable() {
             '<td class="text-sm text-truncate" style="max-width:160px" title="' + esc(f.description||'') + '">' + esc(details) + '</td>' +
             '<td class="col-actions">' +
                 '<div class="flex gap-4">' +
-                    '<button class="btn btn-xs btn-ghost" data-action="fp" data-idx="' + globalIdx + '" title="Mark as False Positive">FP</button>' +
-                    '<button class="btn btn-xs btn-ghost" data-action="risk" data-idx="' + globalIdx + '" title="Override Risk">R</button>' +
-                    '<button class="btn btn-xs btn-ghost" data-action="notes" data-idx="' + globalIdx + '" title="Notes">N</button>' +
+                    (showFP
+                        ? '<button class="btn btn-xs btn-ghost" data-action="recover" data-idx="' + globalIdx + '" title="Recover from False Positive" style="color:var(--success)">Recover</button>'
+                        : '<button class="btn btn-xs btn-ghost" data-action="fp" data-idx="' + globalIdx + '" title="Mark as False Positive">FP</button>' +
+                          '<button class="btn btn-xs btn-ghost" data-action="risk" data-idx="' + globalIdx + '" title="Override Risk">R</button>' +
+                          '<button class="btn btn-xs btn-ghost" data-action="notes" data-idx="' + globalIdx + '" title="Notes">N</button>'
+                    ) +
                 '</div>' +
             '</td>';
         tbody.appendChild(tr);
@@ -2163,6 +2166,7 @@ document.getElementById('findingsTableBody').addEventListener('click', function(
         var finding = filteredFindings[idx2];
         if (!finding) return;
         if (action === 'fp') markFP(finding);
+        else if (action === 'recover') recoverFP(finding);
         else if (action === 'risk') openRiskOverride(finding);
         else if (action === 'notes') openNotesModal(finding);
         else if (action === 'evidence') openEvidenceViewer(finding);
@@ -3199,6 +3203,25 @@ document.getElementById('btnFPConfirm').addEventListener('click', function() {
         }
     });
 });
+
+function recoverFP(f) {
+    if (!confirm('Recover "' + (f.title || 'this finding') + '" from false positives?')) return;
+    fetch('/api/unsuppress-finding', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, finding_id: f.id})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.ok) {
+            toast('success', 'Finding recovered.');
+            fpFindings = fpFindings.filter(function(fp) { return fp.id !== f.id; });
+            loadFindings();
+        } else {
+            toast('error', d.error || 'Recovery failed.');
+        }
+    });
+}
 
 function openRiskOverride(f) {
     riskOverrideCtx = f;

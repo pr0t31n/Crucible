@@ -499,7 +499,7 @@ class FindingsEngine:
         return list(updated), target
 
     def mark_partial_fp(self, project_id, project, finding_id, affected_locations):
-        """Mark specific affected locations as FP. Returns (updated_findings, fp_entry)."""
+        """Mark specific affected locations as FP. Returns (updated_findings, fp_entries)."""
         project_dir = project.get("project_dir", "")
         with self._lock:
             cached = self._cache.get(project_id, [])
@@ -510,15 +510,15 @@ class FindingsEngine:
                     break
         if not target or not project_dir:
             return None, None
-        updated, fp_entry = _mark_partial_fp(project_dir, target, cached,
-                                             affected_locations)
+        updated, fp_entries = _mark_partial_fp(project_dir, target, cached,
+                                               affected_locations)
         with self._lock:
             self._cache[project_id] = updated
             self._fp_cache.pop(project_id, None)
         _audit(project_dir, "FINDING_PARTIAL_FP", finding_id=finding_id,
                title=target.get("title", ""),
                affected_locations=", ".join(affected_locations))
-        return list(updated), fp_entry
+        return list(updated), fp_entries
 
     def recover_fp(self, project_id, project, finding_id):
         """Recover a finding from false positive. Returns the recovered finding or None."""
