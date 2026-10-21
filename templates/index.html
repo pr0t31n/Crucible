@@ -253,6 +253,11 @@
             <td>Quick packet capture with tshark/tcpdump and internal IP analysis</td>
             <td style="text-align:center"><button type="button" onclick="openTrafficDumpModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
           </tr>
+          <tr>
+            <td style="font-weight:500;">System Info</td>
+            <td>Hostname, OS, CPU, memory, GPU, users, interfaces, listeners, and disk</td>
+            <td style="text-align:center"><button type="button" onclick="openSystemInfoModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">View</button></td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -729,6 +734,25 @@
     <div class="modal-footer">
       <button type="submit" form="tdForm" class="btn btn-primary" id="tdRunBtn">Start Capture</button>
       <button type="button" class="btn btn-ghost" onclick="closeTrafficDumpModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── System Info modal ───────────────────────────────── -->
+<div class="modal-overlay" id="systemInfoModal">
+  <div class="modal-box modal-wide" style="max-width:760px">
+    <div class="modal-header">
+      <h3 class="modal-title">System Info</h3>
+      <button type="button" class="modal-close" onclick="closeSystemInfoModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <div id="siContent">
+        <div style="text-align:center;padding:40px;color:var(--text-muted);">Loading system information...</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary" onclick="loadSystemInfo()">Refresh</button>
+      <button type="button" class="btn btn-ghost" onclick="closeSystemInfoModal()">Close</button>
     </div>
   </div>
 </div>
@@ -1396,6 +1420,127 @@ function runTrafficDump(e) {
     }
   }).catch(function(err){ btn.disabled=false; btn.textContent=orig; document.getElementById('tdResultsPanel').style.display='block'; document.getElementById('tdResultsContent').innerHTML='<span style="color:var(--status-error)">Error: '+_esc(err.message)+'</span>'; });
   return false;
+}
+
+/* ── System Info modal ─────────────────────────────── */
+function openSystemInfoModal() { document.getElementById('systemInfoModal').classList.add('open'); loadSystemInfo(); }
+function closeSystemInfoModal() { document.getElementById('systemInfoModal').classList.remove('open'); }
+function loadSystemInfo() {
+  var content = document.getElementById('siContent');
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading system information...</div>';
+  fetch('/api/standalone/system-info')
+  .then(function(r){return r.json();}).then(function(data){
+    if (!data.ok) { content.innerHTML = '<span style="color:var(--status-error)">'+_esc(data.error||'Failed to collect info')+'</span>'; return; }
+    var html = '';
+    var s = data.system || {};
+    var hw = data.hardware || {};
+    var lu = data.last_update || {};
+    var u = data.users || {};
+    var net = data.network || {};
+
+    // System overview
+    html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">System</div>';
+    html += '<div style="display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin-bottom:16px;font-size:0.84rem;">';
+    html += _siRow('Hostname', s.hostname);
+    if (s.fqdn) html += _siRow('FQDN', s.fqdn);
+    html += _siRow('OS', s.os);
+    html += _siRow('Kernel', s.kernel);
+    html += _siRow('Architecture', s.architecture);
+    html += _siRow('Uptime', s.uptime);
+    html += _siRow('Python', s.python);
+    html += '</div>';
+
+    // Hardware
+    html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Hardware</div>';
+    html += '<div style="display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin-bottom:16px;font-size:0.84rem;">';
+    html += _siRow('CPU', hw.cpu_model || (hw.cpu_cores + ' cores'));
+    html += _siRow('Cores', hw.cpu_cores);
+    html += _siRow('Memory', hw.memory_total);
+    if (hw.memory_detail) html += _siRow('Usage', hw.memory_detail);
+    html += _siRow('GPU', hw.gpu || '—');
+    html += '</div>';
+
+    // Last update
+    if (lu.manager) {
+      html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Last Package Update</div>';
+      html += '<div style="display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin-bottom:16px;font-size:0.84rem;">';
+      html += _siRow('Manager', lu.manager);
+      html += _siRow('Last Update', lu.timestamp);
+      html += '</div>';
+    }
+
+    // Users
+    html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Users</div>';
+    html += '<div style="display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin-bottom:4px;font-size:0.84rem;">';
+    html += _siRow('System Users', (u.all||[]).join(', ') || '—');
+    html += '</div>';
+    if (u.active && u.active.length) {
+      html += '<div style="margin-top:6px;margin-bottom:4px;font-size:0.78rem;color:var(--text-muted);font-weight:500;">Active Sessions</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;margin-bottom:4px;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:3px 8px;">User</th><th style="text-align:left;padding:3px 8px;">Terminal</th><th style="text-align:left;padding:3px 8px;">Details</th></tr></thead><tbody>';
+      u.active.forEach(function(a){
+        html += '<tr><td style="padding:2px 8px;font-weight:500;">'+_esc(a.user)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(a.terminal)+'</td><td style="padding:2px 8px;font-size:0.78rem;">'+_esc(a.details)+'</td></tr>';
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:4px;">No active sessions</div>';
+    }
+    if (u.ssh_sessions && u.ssh_sessions.length) {
+      html += '<div style="margin-top:6px;margin-bottom:4px;font-size:0.78rem;color:var(--text-muted);font-weight:500;">SSH Sessions</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;margin-bottom:4px;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:3px 8px;">User</th><th style="text-align:left;padding:3px 8px;">Terminal</th><th style="text-align:left;padding:3px 8px;">From</th></tr></thead><tbody>';
+      u.ssh_sessions.forEach(function(ss){
+        html += '<tr><td style="padding:2px 8px;font-weight:500;">'+_esc(ss.user)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(ss.terminal)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(ss.from)+'</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '<div style="margin-bottom:16px;"></div>';
+
+    // Network interfaces
+    html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Network</div>';
+    if (net.gateway) {
+      html += '<div style="display:grid;grid-template-columns:130px 1fr;gap:4px 12px;margin-bottom:8px;font-size:0.84rem;">';
+      html += _siRow('Gateway', net.gateway);
+      if (net.dns && net.dns.length) html += _siRow('DNS', net.dns.join(', '));
+      html += '</div>';
+    }
+    if (net.interfaces && net.interfaces.length) {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;margin-bottom:16px;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:3px 8px;">Interface</th><th style="text-align:left;padding:3px 8px;">IPv4</th><th style="text-align:left;padding:3px 8px;">MAC</th><th style="text-align:left;padding:3px 8px;">Status</th></tr></thead><tbody>';
+      net.interfaces.forEach(function(iface){
+        var ipv4s = (iface.ipv4||[]).map(function(a){return a.address+(a.netmask?' / '+a.netmask:'');}).join(', ') || '—';
+        html += '<tr><td style="padding:2px 8px;font-weight:500;">'+_esc(iface.name)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(ipv4s)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(iface.mac||'—')+'</td><td style="padding:2px 8px;">'+_esc(iface.status||'—')+'</td></tr>';
+        if (iface.ipv6 && iface.ipv6.length) {
+          html += '<tr><td></td><td colspan="3" style="padding:1px 8px;font-family:var(--font-mono);font-size:0.72rem;color:var(--text-muted);">IPv6: '+_esc(iface.ipv6.join(', '))+'</td></tr>';
+        }
+      });
+      html += '</tbody></table>';
+    }
+
+    // Listening ports
+    if (data.listeners && data.listeners.length) {
+      html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Listening Ports</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;margin-bottom:16px;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:3px 8px;">Port</th><th style="text-align:left;padding:3px 8px;">Address</th><th style="text-align:left;padding:3px 8px;">Process</th></tr></thead><tbody>';
+      data.listeners.forEach(function(l){
+        html += '<tr><td style="padding:2px 8px;font-family:var(--font-mono);font-weight:500;">'+_esc(l.port)+'/'+_esc(l.protocol)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(l.address)+'</td><td style="padding:2px 8px;">'+_esc(l.process)+'</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+
+    // Disk
+    if (data.disk && data.disk.length) {
+      html += '<div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Disk Usage</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:3px 8px;">Mount</th><th style="text-align:left;padding:3px 8px;">Filesystem</th><th style="text-align:right;padding:3px 8px;">Size</th><th style="text-align:right;padding:3px 8px;">Used</th><th style="text-align:right;padding:3px 8px;">Avail</th><th style="text-align:right;padding:3px 8px;">Use%</th></tr></thead><tbody>';
+      data.disk.forEach(function(d){
+        var pctNum = parseInt(d.percent,10) || 0;
+        var pctColor = pctNum >= 90 ? 'var(--status-error,#ef4444)' : pctNum >= 75 ? 'var(--orange-500,#f97316)' : '';
+        html += '<tr><td style="padding:2px 8px;font-weight:500;">'+_esc(d.mount)+'</td><td style="padding:2px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(d.filesystem)+'</td><td style="padding:2px 8px;text-align:right;">'+_esc(d.size)+'</td><td style="padding:2px 8px;text-align:right;">'+_esc(d.used)+'</td><td style="padding:2px 8px;text-align:right;">'+_esc(d.available)+'</td><td style="padding:2px 8px;text-align:right;font-weight:500;'+(pctColor?'color:'+pctColor+';':'')+'">'+_esc(d.percent)+'</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+
+    content.innerHTML = html;
+  }).catch(function(err){ content.innerHTML = '<span style="color:var(--status-error)">Error: '+_esc(err.message)+'</span>'; });
+}
+function _siRow(label, value) {
+  return '<span style="color:var(--text-muted);font-weight:500;">'+_esc(label)+'</span><span style="font-family:var(--font-mono);font-size:0.8rem;word-break:break-all;">'+_esc(String(value||''))+'</span>';
 }
 
 /* ── Shared HTML-escape helper ──────────────────────── */

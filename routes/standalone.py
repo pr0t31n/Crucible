@@ -2,8 +2,10 @@
 
 import json
 import os
+import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -789,6 +791,379 @@ def api_traffic_dump():
     })
 
 
+# ── System Info ────────────────────────────────────────────────────────────
+
+def _run_quiet(cmd, timeout=10):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+@standalone_bp.route("/api/standalone/system-info")
+def api_system_info():
+    import datetime
+
+    is_mac = platform.system() == "Darwin"
+    is_linux = platform.system() == "Linux"
+
+    # ── System ──
+    hostname = socket.gethostname()
+    fqdn = socket.getfqdn()
+    kernel = platform.release()
+    arch = platform.machine()
+    py_ver = platform.python_version()
+
+    if is_mac:
+        mac_ver = platform.mac_ver()[0]
+        build = _run_quiet(["sw_vers", "-buildVersion"])
+        os_pretty = "macOS " + mac_ver + (" (" + build + ")" if build else "")
+    elif is_linux:
+        os_pretty = ""
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        os_pretty = line.split("=", 1)[1].strip().strip('"')
+                        break
+        except OSError:
+            pass
+        if not os_pretty:
+            os_pretty = "Linux " + kernel
+    else:
+        os_pretty = platform.system() + " " + platform.release()
+
+    uptime_str = _run_quiet(["uptime"])
+
+    system_info = {
+        "hostname": hostname,
+        "fqdn": fqdn if fqdn != hostname else "",
+        "os": os_pretty,
+        "kernel": kernel,
+        "architecture": arch,
+        "uptime": uptime_str,
+        "python": py_ver,
+    }
+
+    # ── CPU ──
+    cpu_cores = os.cpu_count() or 0
+    cpu_model = ""
+    if is_mac:
+        cpu_model = _run_quiet(["sysctl", "-n", "machdep.cpu.brand_string"])
+        if not cpu_model:
+            cpu_model = _run_quiet(["sysctl", "-n", "hw.chip"])
+    elif is_linux:
+        try:
+            with open("/proc/cpuinfo") as f:
+                for line in f:
+                    if line.startswith("model name"):
+                        cpu_model = line.split(":", 1)[1].strip()
+                        break
+        except OSError:
+            pass
+
+    # ── Memory ──
+    mem_total = ""
+    mem_detail = ""
+    if is_mac:
+        raw = _run_quiet(["sysctl", "-n", "hw.memsize"])
+        if raw:
+            try:
+                mem_total = "{:.1f} GB".format(int(raw) / (1024 ** 3))
+            except ValueError:
+                pass
+        phys = _run_quiet(["top", "-l", "1", "-s", "0"], timeout=15)
+        for line in phys.splitlines():
+            if "PhysMem:" in line:
+                mem_detail = line.split("PhysMem:", 1)[1].strip()
+                break
+    elif is_linux:
+        try:
+            with open("/proc/meminfo") as f:
+                mi = {}
+                for line in f:
+                    parts = line.split(":")
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        val = parts[1].strip().split()[0]
+                        try:
+                            mi[key] = int(val)
+                        except ValueError:
+                            pass
+                if "MemTotal" in mi:
+                    mem_total = "{:.1f} GB".format(mi["MemTotal"] / (1024 * 1024))
+                if "MemAvailable" in mi and "MemTotal" in mi:
+                    used = mi["MemTotal"] - mi["MemAvailable"]
+                    mem_detail = "{:.1f} GB used, {:.1f} GB available".format(
+                        used / (1024 * 1024), mi["MemAvailable"] / (1024 * 1024))
+        except OSError:
+            pass
+
+    # ── GPU ──
+    gpu = ""
+    if is_mac:
+        sp = _run_quiet(["system_profiler", "SPDisplaysDataType"], timeout=15)
+        for line in sp.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("Chipset Model:") or stripped.startswith("Chip:"):
+                gpu = stripped.split(":", 1)[1].strip()
+                break
+    elif is_linux:
+        lspci = _run_quiet(["lspci"])
+        for line in lspci.splitlines():
+            if "VGA" in line or "3D controller" in line:
+                idx = line.find(": ")
+                gpu = line[idx + 2:].strip() if idx != -1 else line
+                break
+        if not gpu:
+            nv = _run_quiet(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"])
+            if nv:
+                gpu = nv.splitlines()[0].strip()
+
+    hardware = {
+        "cpu_model": cpu_model,
+        "cpu_cores": cpu_cores,
+        "memory_total": mem_total,
+        "memory_detail": mem_detail,
+        "gpu": gpu,
+    }
+
+    # ── Last update ──
+    last_update = {"manager": "", "timestamp": ""}
+    if is_mac:
+        for p in ["/opt/homebrew/.git/FETCH_HEAD", "/usr/local/Homebrew/.git/FETCH_HEAD"]:
+            if os.path.exists(p):
+                try:
+                    mtime = os.path.getmtime(p)
+                    last_update = {
+                        "manager": "brew",
+                        "timestamp": datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                except OSError:
+                    pass
+                break
+    elif is_linux:
+        for path, mgr in [("/var/cache/apt/pkgcache.bin", "apt"),
+                          ("/var/log/dnf.log", "dnf"),
+                          ("/var/log/yum.log", "yum")]:
+            if os.path.exists(path):
+                try:
+                    mtime = os.path.getmtime(path)
+                    last_update = {
+                        "manager": mgr,
+                        "timestamp": datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                except OSError:
+                    pass
+                break
+
+    # ── Users ──
+    all_users = []
+    if is_mac:
+        raw = _run_quiet(["dscl", ".", "list", "/Users"])
+        all_users = sorted([u for u in raw.splitlines() if u and not u.startswith("_")])
+    elif is_linux:
+        try:
+            with open("/etc/passwd") as f:
+                for line in f:
+                    parts = line.strip().split(":")
+                    if len(parts) >= 7:
+                        try:
+                            uid = int(parts[2])
+                        except ValueError:
+                            continue
+                        shell = parts[6]
+                        if uid >= 1000 and "/nologin" not in shell and "/false" not in shell:
+                            all_users.append(parts[0])
+        except OSError:
+            pass
+        all_users.sort()
+
+    who_raw = _run_quiet(["who"])
+    active_users = []
+    ssh_sessions = []
+    for line in who_raw.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split()
+        user = parts[0] if parts else ""
+        terminal = parts[1] if len(parts) > 1 else ""
+        rest = " ".join(parts[2:]) if len(parts) > 2 else ""
+        active_users.append({"user": user, "terminal": terminal, "details": rest})
+        m = re.search(r'\(([^)]+)\)', rest)
+        if m and m.group(1) not in (":", ":0", "console", ":0.0"):
+            ssh_sessions.append({"user": user, "terminal": terminal, "from": m.group(1)})
+
+    users = {
+        "all": all_users,
+        "active": active_users,
+        "ssh_sessions": ssh_sessions,
+    }
+
+    # ── Network interfaces ──
+    interfaces = []
+    gateway = ""
+    dns_servers = []
+
+    if is_mac:
+        ifc = _run_quiet(["ifconfig", "-a"])
+        current = None
+        for line in ifc.splitlines():
+            if line and not line[0].isspace() and ":" in line:
+                name = line.split(":")[0]
+                current = {"name": name, "ipv4": [], "ipv6": [], "mac": "", "status": ""}
+                interfaces.append(current)
+            elif current:
+                stripped = line.strip()
+                if stripped.startswith("inet "):
+                    parts = stripped.split()
+                    ip = parts[1]
+                    mask = ""
+                    if "netmask" in parts:
+                        idx = parts.index("netmask")
+                        if idx + 1 < len(parts):
+                            h = parts[idx + 1]
+                            if h.startswith("0x") and len(h) == 10:
+                                try:
+                                    n = int(h, 16)
+                                    mask = "{}.{}.{}.{}".format(
+                                        (n >> 24) & 0xFF, (n >> 16) & 0xFF,
+                                        (n >> 8) & 0xFF, n & 0xFF)
+                                except ValueError:
+                                    mask = h
+                            else:
+                                mask = h
+                    current["ipv4"].append({"address": ip, "netmask": mask})
+                elif stripped.startswith("inet6 "):
+                    parts = stripped.split()
+                    current["ipv6"].append(parts[1] if len(parts) > 1 else "")
+                elif stripped.startswith("ether "):
+                    current["mac"] = stripped.split()[1]
+                elif stripped.startswith("status:"):
+                    current["status"] = stripped.split(":", 1)[1].strip()
+        interfaces = [i for i in interfaces if i["ipv4"] or i["ipv6"]]
+
+        gw_raw = _run_quiet(["route", "-n", "get", "default"])
+        for line in gw_raw.splitlines():
+            if "gateway:" in line:
+                gateway = line.split(":", 1)[1].strip()
+                break
+    elif is_linux:
+        ip_json = _run_quiet(["ip", "-j", "addr", "show"])
+        if ip_json:
+            try:
+                for iface in json.loads(ip_json):
+                    entry = {"name": iface.get("ifname", ""), "ipv4": [], "ipv6": [],
+                             "mac": iface.get("address", ""), "status": iface.get("operstate", "")}
+                    for ai in iface.get("addr_info", []):
+                        if ai.get("family") == "inet":
+                            entry["ipv4"].append({"address": ai.get("local", ""),
+                                                  "netmask": "/" + str(ai.get("prefixlen", ""))})
+                        elif ai.get("family") == "inet6":
+                            entry["ipv6"].append(ai.get("local", ""))
+                    if entry["ipv4"] or entry["ipv6"]:
+                        interfaces.append(entry)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
+
+        gw_raw = _run_quiet(["ip", "route", "show", "default"])
+        for line in gw_raw.splitlines():
+            parts = line.split()
+            if "via" in parts:
+                idx = parts.index("via")
+                if idx + 1 < len(parts):
+                    gateway = parts[idx + 1]
+                    break
+
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                if line.strip().startswith("nameserver"):
+                    parts = line.strip().split()
+                    if len(parts) >= 2 and parts[1] not in dns_servers:
+                        dns_servers.append(parts[1])
+    except OSError:
+        pass
+    if is_mac and not dns_servers:
+        scutil = _run_quiet(["scutil", "--dns"])
+        for line in scutil.splitlines():
+            if "nameserver" in line and ":" in line:
+                ns = line.split(":", 1)[1].strip()
+                if ns and ns not in dns_servers:
+                    dns_servers.append(ns)
+
+    network = {
+        "interfaces": interfaces,
+        "gateway": gateway,
+        "dns": dns_servers,
+    }
+
+    # ── Listening ports ──
+    listeners = []
+    if is_linux:
+        ss = _run_quiet(["ss", "-tlnp"])
+        for line in ss.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 4:
+                local = parts[3]
+                process_info = parts[5] if len(parts) > 5 else ""
+                if ":" in local:
+                    addr, port = local.rsplit(":", 1)
+                    proc_match = re.search(r'"([^"]+)"', process_info)
+                    proc_name = proc_match.group(1) if proc_match else ""
+                    listeners.append({"address": addr, "port": port,
+                                      "process": proc_name, "protocol": "tcp"})
+    else:
+        lsof = _run_quiet(["lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n"], timeout=15)
+        seen = set()
+        for line in lsof.splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 9:
+                process = parts[0]
+                pid = parts[1]
+                addr_port = parts[8]
+                if ":" in addr_port:
+                    addr, port = addr_port.rsplit(":", 1)
+                    key = (addr, port, process)
+                    if key not in seen:
+                        seen.add(key)
+                        listeners.append({"address": addr, "port": port,
+                                          "process": process + " (" + pid + ")",
+                                          "protocol": "tcp"})
+    try:
+        listeners.sort(key=lambda x: int(x["port"]))
+    except (ValueError, TypeError):
+        pass
+
+    # ── Disk ──
+    df_raw = _run_quiet(["df", "-h"])
+    disks = []
+    for line in df_raw.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 6 and parts[0].startswith("/dev"):
+            mount = " ".join(parts[5:]) if len(parts) > 6 else parts[5]
+            disks.append({
+                "filesystem": parts[0],
+                "size": parts[1],
+                "used": parts[2],
+                "available": parts[3],
+                "percent": parts[4],
+                "mount": mount,
+            })
+
+    return jsonify({
+        "ok": True,
+        "system": system_info,
+        "hardware": hardware,
+        "last_update": last_update,
+        "users": users,
+        "network": network,
+        "listeners": listeners,
+        "disk": disks,
+    })
+
+
 # ── Standalone tools registry ──────────────────────────────────────────────
 
 STANDALONE_TOOLS = [
@@ -875,6 +1250,14 @@ STANDALONE_TOOLS = [
         "name": "Traffic Dump",
         "desc": "Quick packet capture with tshark/tcpdump and internal IP analysis",
         "icon": "activity",
+        "url": None,
+        "modal": True,
+    },
+    {
+        "id": "system-info",
+        "name": "System Info",
+        "desc": "Hostname, OS, CPU, memory, GPU, users, interfaces, listeners, and disk usage",
+        "icon": "server",
         "url": None,
         "modal": True,
     },
