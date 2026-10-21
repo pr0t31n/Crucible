@@ -1239,6 +1239,20 @@ class ProcessManager:
                                    "system")
                 self.kill(project_id, tool_id, scope=scope,
                           children_only=True)
+                time.sleep(30)
+                with self._lock:
+                    st2 = (self._tool_status.get(project_id) or {}).get(tk)
+                    proc2 = (self._procs.get(project_id) or {}).get(tk)
+                if st2 == "pausing" and proc2 and proc2.poll() is None:
+                    log.warning("Pause escalation for %s — sending SIGTERM "
+                                "to parent after children_only failed", tk)
+                    self._emit_console(
+                        project_id, tk,
+                        f"[Crucible] {tool_name} still alive after "
+                        f"subprocess kill — sending SIGTERM to tool",
+                        "system")
+                    self.kill(project_id, tool_id, scope=scope,
+                              children_only=False)
 
         threading.Thread(target=_pause_timeout, daemon=True,
                          name=f"pause-timeout-{tk}").start()
