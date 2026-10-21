@@ -248,6 +248,11 @@
             <td>Scan visible wireless networks and manage interfaces</td>
             <td style="text-align:center"><button type="button" onclick="openWifiScanModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
           </tr>
+          <tr>
+            <td style="font-weight:500;">Traffic Dump</td>
+            <td>Quick packet capture with tshark/tcpdump and internal IP analysis</td>
+            <td style="text-align:center"><button type="button" onclick="openTrafficDumpModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -681,6 +686,53 @@
   </div>
 </div>
 
+<!-- ── Traffic Dump modal ──────────────────────────────── -->
+<div class="modal-overlay" id="trafficDumpModal">
+  <div class="modal-box modal-wide" style="max-width:700px">
+    <div class="modal-header">
+      <h3 class="modal-title">Traffic Dump</h3>
+      <button type="button" class="modal-close" onclick="closeTrafficDumpModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <form id="tdForm" onsubmit="return runTrafficDump(event)">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:flex-end;margin-bottom:14px;">
+          <div class="form-group">
+            <label class="form-label">Capture Interface <span class="required">*</span></label>
+            <select id="tdInterface" class="form-control" required>
+              <option value="">Loading interfaces...</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-ghost" onclick="loadTrafficInterfaces()" style="margin-bottom:0;white-space:nowrap;">Refresh</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div class="form-group">
+            <label class="form-label">Duration (seconds)</label>
+            <input type="number" id="tdDuration" class="form-control" value="30" min="5" max="120">
+            <span class="form-hint">5–120 seconds</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">BPF Filter</label>
+            <input type="text" id="tdFilter" class="form-control" placeholder="e.g. not port 22">
+            <span class="form-hint">Optional capture filter</span>
+          </div>
+        </div>
+        <div class="form-check" style="margin-bottom:14px;">
+          <input type="checkbox" id="tdPromisc">
+          <label for="tdPromisc">Promiscuous mode</label>
+        </div>
+      </form>
+      <div id="tdResultsPanel" style="display:none;margin-top:16px;">
+        <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Results</div>
+        <div id="tdResultsContent" style="max-height:50vh;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="tdForm" class="btn btn-primary" id="tdRunBtn">Start Capture</button>
+      <button type="button" class="btn btn-ghost" onclick="closeTrafficDumpModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Incomplete report warning modal ──────────────────── -->
 <div class="modal-overlay" id="reportIncompleteModal">
   <div class="modal-box" style="max-width:520px">
@@ -1015,6 +1067,9 @@ function runHostDiscovery(e) {
     if (data.ok && data.hosts) {
       var alive = data.hosts.filter(function(h){return h.status==='up';});
       var html = '<div style="margin-bottom:10px;font-weight:600;">' + data.alive + ' of ' + data.total + ' hosts alive</div>';
+      if (data.command) {
+        html += '<div style="margin-bottom:10px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:8px 10px;font-family:var(--font-mono);font-size:0.74rem;word-break:break-all;color:var(--text-muted);"><span style="color:var(--text-secondary);font-weight:600;">$</span> ' + _esc(data.command) + '</div>';
+      }
       html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:4px 8px;">IP</th><th style="text-align:left;padding:4px 8px;">Status</th><th style="text-align:left;padding:4px 8px;">Reason</th></tr></thead><tbody>';
       data.hosts.forEach(function(h){
         var color = h.status==='up' ? 'var(--status-success,#22c55e)' : 'var(--text-muted)';
@@ -1080,6 +1135,9 @@ function runPortProbe(e) {
     panel.style.display = 'block';
     if (data.ok && data.hosts) {
       var html = '';
+      if (data.command) {
+        html += '<div style="margin-bottom:10px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:8px 10px;font-family:var(--font-mono);font-size:0.74rem;word-break:break-all;color:var(--text-muted);"><span style="color:var(--text-secondary);font-weight:600;">$</span> ' + _esc(data.command) + '</div>';
+      }
       data.hosts.forEach(function(host){
         html += '<div style="font-weight:600;margin-bottom:6px;">' + _esc(host.ip) + (host.hostname ? ' (' + _esc(host.hostname) + ')' : '') + '</div>';
         if (host.ports && host.ports.length) {
@@ -1241,6 +1299,103 @@ function runWifiScan() {
       content.innerHTML = '<div style="color:var(--text-muted);">No networks found</div>';
     }
   }).catch(function(err){ btn.disabled=false; btn.textContent=orig; document.getElementById('wsResultsPanel').style.display='block'; document.getElementById('wsResultsContent').innerHTML='<span style="color:var(--status-error)">Error: '+_esc(err.message)+'</span>'; });
+}
+
+/* ── Traffic Dump modal ─────────────────────────────── */
+function openTrafficDumpModal() { document.getElementById('trafficDumpModal').classList.add('open'); loadTrafficInterfaces(); }
+function closeTrafficDumpModal() { document.getElementById('trafficDumpModal').classList.remove('open'); }
+function loadTrafficInterfaces() {
+  var sel = document.getElementById('tdInterface');
+  sel.innerHTML = '<option value="">Loading...</option>';
+  fetch('/api/standalone/traffic-interfaces').then(function(r){return r.json();}).then(function(data){
+    sel.innerHTML = '';
+    if (data.ok && data.interfaces && data.interfaces.length) {
+      data.interfaces.forEach(function(iface){
+        var opt = document.createElement('option');
+        opt.value = iface.name;
+        opt.textContent = iface.name + (iface.description ? ' (' + iface.description + ')' : '');
+        sel.appendChild(opt);
+      });
+    } else {
+      sel.innerHTML = '<option value="">No interfaces detected</option>';
+    }
+  }).catch(function(){ sel.innerHTML = '<option value="">Failed to load interfaces</option>'; });
+}
+function runTrafficDump(e) {
+  e.preventDefault();
+  var iface = document.getElementById('tdInterface').value;
+  if (!iface) return false;
+  var btn = document.getElementById('tdRunBtn'), orig = btn.textContent;
+  var dur = parseInt(document.getElementById('tdDuration').value, 10) || 30;
+  btn.disabled = true; btn.textContent = 'Capturing (' + dur + 's)...';
+  document.getElementById('tdResultsPanel').style.display = 'none';
+  var body = { interface: iface, duration: dur };
+  var filt = document.getElementById('tdFilter').value.trim();
+  if (filt) body.filter = filt;
+  if (document.getElementById('tdPromisc').checked) body.promiscuous = true;
+  fetch('/api/standalone/traffic-dump', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  .then(function(r){return r.json();}).then(function(data){
+    btn.disabled = false; btn.textContent = orig;
+    var panel = document.getElementById('tdResultsPanel'), content = document.getElementById('tdResultsContent');
+    panel.style.display = 'block';
+    if (data.ok) {
+      var html = '';
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">';
+      html += '<div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">'+data.packets.toLocaleString()+'</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">Packets</div></div>';
+      html += '<div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">'+data.internal_ips.length+'</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">Internal IPs</div></div>';
+      html += '<div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">'+data.external_ips.length+'</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">External IPs</div></div>';
+      var sz = data.file_size > 1048576 ? (data.file_size/1048576).toFixed(1)+' MB' : data.file_size > 1024 ? (data.file_size/1024).toFixed(1)+' KB' : data.file_size+' B';
+      html += '<div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">'+sz+'</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">Capture Size</div></div>';
+      html += '</div>';
+      html += '<div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:14px;">Captured via <strong>'+_esc(data.tool_used)+'</strong> for '+data.duration+'s &mdash; pcap: <code style="font-size:0.74rem;">'+_esc(data.capture_file)+'</code></div>';
+
+      if (data.internal_ips.length) {
+        html += '<div style="margin-bottom:14px;"><div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Internal IPs (RFC 1918)</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        data.internal_ips.forEach(function(ip){
+          var cnt = ''; data.top_talkers.forEach(function(t){ if(t.ip===ip) cnt=' ('+t.packets.toLocaleString()+' pkts)'; });
+          html += '<span style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:3px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(ip)+'<span style="color:var(--text-muted);font-size:0.72rem;">'+cnt+'</span></span>';
+        });
+        html += '</div></div>';
+      }
+
+      if (data.external_ips.length) {
+        html += '<div style="margin-bottom:14px;"><div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">External IPs</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        data.external_ips.forEach(function(ip){
+          var cnt = ''; data.top_talkers.forEach(function(t){ if(t.ip===ip) cnt=' ('+t.packets.toLocaleString()+' pkts)'; });
+          html += '<span style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:3px 8px;font-family:var(--font-mono);font-size:0.78rem;">'+_esc(ip)+'<span style="color:var(--text-muted);font-size:0.72rem;">'+cnt+'</span></span>';
+        });
+        html += '</div></div>';
+      }
+
+      if (data.top_talkers.length) {
+        html += '<div style="margin-bottom:14px;"><div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Top Talkers</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:4px 8px;">IP</th><th style="text-align:left;padding:4px 8px;">Type</th><th style="text-align:right;padding:4px 8px;">Packets</th></tr></thead><tbody>';
+        data.top_talkers.forEach(function(t){
+          var isInt = data.internal_ips.indexOf(t.ip) !== -1;
+          html += '<tr><td style="padding:3px 8px;font-family:var(--font-mono);">'+_esc(t.ip)+'</td><td style="padding:3px 8px;color:'+(isInt?'var(--status-success,#22c55e)':'var(--text-muted)')+';">'+(isInt?'Internal':'External')+'</td><td style="padding:3px 8px;text-align:right;font-family:var(--font-mono);">'+t.packets.toLocaleString()+'</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+
+      if (data.protocols.length) {
+        html += '<div><div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Protocol Breakdown</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:4px 8px;">Protocol</th><th style="text-align:right;padding:4px 8px;">Packets</th><th style="text-align:right;padding:4px 8px;">%</th></tr></thead><tbody>';
+        var totalProto = 0; data.protocols.forEach(function(p){ totalProto += p.packets; });
+        data.protocols.forEach(function(p){
+          var pct = totalProto ? (p.packets / totalProto * 100).toFixed(1) : '0.0';
+          html += '<tr><td style="padding:3px 8px;">'+_esc(p.protocol)+'</td><td style="padding:3px 8px;text-align:right;font-family:var(--font-mono);">'+p.packets.toLocaleString()+'</td><td style="padding:3px 8px;text-align:right;font-family:var(--font-mono);">'+pct+'%</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+
+      content.innerHTML = html;
+    } else {
+      content.innerHTML = '<span style="color:var(--status-error)">' + _esc(data.error||'Capture failed') + '</span>';
+    }
+  }).catch(function(err){ btn.disabled=false; btn.textContent=orig; document.getElementById('tdResultsPanel').style.display='block'; document.getElementById('tdResultsContent').innerHTML='<span style="color:var(--status-error)">Error: '+_esc(err.message)+'</span>'; });
+  return false;
 }
 
 /* ── Shared HTML-escape helper ──────────────────────── */

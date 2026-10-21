@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -226,7 +227,9 @@ def api_host_discovery():
         return jsonify({"error": "Failed to parse nmap output"}), 500
 
     alive = sum(1 for h in hosts if h["status"] == "up")
-    return jsonify({"ok": True, "hosts": hosts, "total": len(hosts), "alive": alive})
+    cmd_str = " ".join(cmd)
+    return jsonify({"ok": True, "hosts": hosts, "total": len(hosts), "alive": alive,
+                     "command": cmd_str})
 
 
 # ── Wordlist Generator ─────────────────────────────────────────────────────
@@ -356,7 +359,8 @@ def api_port_probe():
             return jsonify({"error": result.stderr or "nmap failed"}), 500
         return jsonify({"error": "Failed to parse nmap output"}), 500
 
-    return jsonify({"ok": True, "hosts": hosts})
+    cmd_str = " ".join(cmd)
+    return jsonify({"ok": True, "hosts": hosts, "command": cmd_str})
 
 
 # ── SSL/TLS Audit ──────────────────────────────────────────────────────────
@@ -597,6 +601,194 @@ def api_dns_resolve():
     })
 
 
+# ── Traffic Dump ──────────────────────────────────────────────────────────
+
+_INTERNAL_NETS = [
+    (0x0A000000, 0xFF000000),   # 10.0.0.0/8
+    (0xAC100000, 0xFFF00000),   # 172.16.0.0/12
+    (0xC0A80000, 0xFFFF0000),   # 192.168.0.0/16
+    (0x7F000000, 0xFF000000),   # 127.0.0.0/8
+]
+
+_IP_IN_TCPDUMP = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:\.\d+)?')
+
+
+def _is_internal_ip(ip_str):
+    parts = ip_str.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        n = (int(parts[0]) << 24) | (int(parts[1]) << 16) | (int(parts[2]) << 8) | int(parts[3])
+    except (ValueError, IndexError):
+        return False
+    return any((n & mask) == net for net, mask in _INTERNAL_NETS)
+
+
+@standalone_bp.route("/api/standalone/traffic-interfaces")
+def api_traffic_interfaces():
+    tshark = shutil.which("tshark")
+    tcpdump = shutil.which("tcpdump")
+    tool = tshark or tcpdump
+    if not tool:
+        return jsonify({"error": "Neither tshark nor tcpdump found"}), 500
+    try:
+        cmd = [tool, "-D"]
+        if os.geteuid() != 0:
+            cmd = ["sudo"] + cmd
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        interfaces = []
+        for line in result.stdout.strip().splitlines():
+            parts = line.strip().split(".", 1)
+            if len(parts) < 2:
+                continue
+            tok = parts[1].strip().split(None, 1)
+            name = tok[0] if tok else parts[1].strip()
+            desc = tok[1].strip("() ") if len(tok) > 1 else ""
+            interfaces.append({"name": name, "description": desc})
+        return jsonify({"ok": True, "interfaces": interfaces,
+                        "tool": os.path.basename(tool)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@standalone_bp.route("/api/standalone/traffic-dump", methods=["POST"])
+def api_traffic_dump():
+    data = request.get_json(silent=True) or {}
+    interface = data.get("interface", "").strip()
+    if not interface:
+        return jsonify({"error": "Network interface required"}), 400
+    if not re.match(r'^[a-zA-Z0-9._\-]+$', interface):
+        return jsonify({"error": f"Invalid interface: {interface}"}), 400
+
+    duration = max(5, min(120, int(data.get("duration", 30))))
+    bpf_filter = data.get("filter", "").strip()
+    promisc = bool(data.get("promiscuous", False))
+
+    tshark = shutil.which("tshark")
+    tcpdump = shutil.which("tcpdump")
+    if not tshark and not tcpdump:
+        return jsonify({"error": "Neither tshark nor tcpdump found"}), 500
+
+    fd, capture_file = tempfile.mkstemp(suffix=".pcap", prefix="crucible_cap_")
+    os.close(fd)
+
+    tool_used = "tshark" if tshark else "tcpdump"
+
+    if tshark:
+        cmd = [tshark, "-i", interface, "-a", f"duration:{duration}",
+               "-w", capture_file, "-q"]
+        if not promisc:
+            cmd.append("-p")
+        if bpf_filter:
+            cmd.extend(["-f", bpf_filter])
+        if os.geteuid() != 0:
+            cmd = ["sudo"] + cmd
+        try:
+            subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=duration + 30)
+        except subprocess.TimeoutExpired:
+            pass
+    else:
+        cmd = [tcpdump, "-i", interface, "-w", capture_file, "-nn"]
+        if not promisc:
+            cmd.append("-p")
+        if bpf_filter:
+            cmd.append(bpf_filter)
+        if os.geteuid() != 0:
+            cmd = ["sudo"] + cmd
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        try:
+            proc.wait(timeout=duration)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    if not os.path.exists(capture_file) or os.path.getsize(capture_file) == 0:
+        try:
+            os.unlink(capture_file)
+        except OSError:
+            pass
+        return jsonify({"error": "No packets captured — check interface and permissions"}), 500
+
+    # ── Analysis ──
+    all_ips = set()
+    ip_counts = {}
+    protocols = {}
+    packet_count = 0
+
+    if tshark:
+        try:
+            r = subprocess.run(
+                [tshark, "-r", capture_file, "-T", "fields",
+                 "-e", "ip.src", "-e", "ip.dst", "-e", "_ws.col.Protocol"],
+                capture_output=True, text=True, timeout=120)
+            for line in r.stdout.strip().splitlines():
+                cols = line.split("\t")
+                src = cols[0].strip() if len(cols) > 0 else ""
+                dst = cols[1].strip() if len(cols) > 1 else ""
+                proto = cols[2].strip() if len(cols) > 2 else ""
+                for ip in (src, dst):
+                    if ip:
+                        all_ips.add(ip)
+                        ip_counts[ip] = ip_counts.get(ip, 0) + 1
+                if proto:
+                    protocols[proto] = protocols.get(proto, 0) + 1
+                packet_count += 1
+        except (subprocess.TimeoutExpired, Exception):
+            pass
+    else:
+        try:
+            r = subprocess.run(
+                [tcpdump, "-r", capture_file, "-nn", "-q"],
+                capture_output=True, text=True, timeout=120)
+            for line in r.stdout.strip().splitlines():
+                found = _IP_IN_TCPDUMP.findall(line)
+                for ip in found:
+                    all_ips.add(ip)
+                    ip_counts[ip] = ip_counts.get(ip, 0) + 1
+                packet_count += 1
+                if " ARP" in line:
+                    protocols["ARP"] = protocols.get("ARP", 0) + 1
+                elif " ICMP " in line:
+                    protocols["ICMP"] = protocols.get("ICMP", 0) + 1
+                elif " UDP " in line:
+                    protocols["UDP"] = protocols.get("UDP", 0) + 1
+                else:
+                    protocols["TCP"] = protocols.get("TCP", 0) + 1
+        except (subprocess.TimeoutExpired, Exception):
+            pass
+
+    def _sort_ip(ip):
+        try:
+            return tuple(int(x) for x in ip.split("."))
+        except (ValueError, AttributeError):
+            return (999, 999, 999, 999)
+
+    internal = sorted([ip for ip in all_ips if _is_internal_ip(ip)], key=_sort_ip)
+    external = sorted([ip for ip in all_ips if not _is_internal_ip(ip)], key=_sort_ip)
+    top_talkers = [{"ip": ip, "packets": c}
+                   for ip, c in sorted(ip_counts.items(), key=lambda x: -x[1])[:20]]
+    proto_list = [{"protocol": p, "packets": c}
+                  for p, c in sorted(protocols.items(), key=lambda x: -x[1])]
+
+    return jsonify({
+        "ok": True,
+        "tool_used": tool_used,
+        "duration": duration,
+        "packets": packet_count,
+        "file_size": os.path.getsize(capture_file),
+        "capture_file": capture_file,
+        "internal_ips": internal,
+        "external_ips": external,
+        "top_talkers": top_talkers,
+        "protocols": proto_list,
+    })
+
+
 # ── Standalone tools registry ──────────────────────────────────────────────
 
 STANDALONE_TOOLS = [
@@ -675,6 +867,14 @@ STANDALONE_TOOLS = [
         "name": "WiFi Scanner",
         "desc": "Scan visible wireless networks and manage interfaces",
         "icon": "wifi",
+        "url": None,
+        "modal": True,
+    },
+    {
+        "id": "traffic-dump",
+        "name": "Traffic Dump",
+        "desc": "Quick packet capture with tshark/tcpdump and internal IP analysis",
+        "icon": "activity",
         "url": None,
         "modal": True,
     },
