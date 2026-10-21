@@ -13,7 +13,7 @@ import threading
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, send_file
 
 standalone_bp = Blueprint("standalone", __name__)
 
@@ -193,45 +193,66 @@ def api_host_discovery():
     if extra_ports and re.match(r'^[0-9,\-]+$', extra_ports):
         tcp_ports += "," + extra_ports
 
+    tmpdir = tempfile.mkdtemp(prefix="crucible_hd_")
+    xml_file = os.path.join(tmpdir, "scan.xml")
+    gnmap_file = os.path.join(tmpdir, "scan.gnmap")
+
     cmd = [nmap, "-sn", "-PE", "-PP", "-PM",
            f"-PS{tcp_ports}", "-PA80,443",
            "-PU53,161",
            "--min-rate", str(rate), "--max-retries", "2",
-           "-oX", "-"] + targets
+           "-oX", xml_file, "-oG", gnmap_file] + targets
 
     if os.geteuid() != 0:
         cmd = ["sudo"] + cmd
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Host discovery timed out (120s)"}), 504
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Host discovery timed out (120s)"}), 504
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-    hosts = []
-    try:
-        root = ET.fromstring(result.stdout)
-        for host_el in root.findall(".//host"):
-            addr_el = host_el.find("address[@addrtype='ipv4']")
-            if addr_el is None:
-                addr_el = host_el.find("address[@addrtype='ipv6']")
-            if addr_el is None:
-                continue
-            ip = addr_el.get("addr", "")
-            status_el = host_el.find("status")
-            status = status_el.get("state", "unknown") if status_el is not None else "unknown"
-            reason = status_el.get("reason", "") if status_el is not None else ""
-            hosts.append({"ip": ip, "status": status, "reason": reason})
-    except ET.ParseError:
-        if result.returncode != 0:
-            return jsonify({"error": result.stderr or "nmap failed", "exit_code": result.returncode}), 500
-        return jsonify({"error": "Failed to parse nmap output"}), 500
+        raw_xml = ""
+        raw_gnmap = ""
+        try:
+            with open(xml_file, "r") as f:
+                raw_xml = f.read()
+        except OSError:
+            pass
+        try:
+            with open(gnmap_file, "r") as f:
+                raw_gnmap = f.read()
+        except OSError:
+            pass
 
-    alive = sum(1 for h in hosts if h["status"] == "up")
-    cmd_str = " ".join(cmd)
-    return jsonify({"ok": True, "hosts": hosts, "total": len(hosts), "alive": alive,
-                     "command": cmd_str})
+        if not raw_xml:
+            return jsonify({"error": "nmap produced no XML output"}), 500
+
+        hosts = []
+        try:
+            root = ET.fromstring(raw_xml)
+            for host_el in root.findall(".//host"):
+                addr_el = host_el.find("address[@addrtype='ipv4']")
+                if addr_el is None:
+                    addr_el = host_el.find("address[@addrtype='ipv6']")
+                if addr_el is None:
+                    continue
+                ip = addr_el.get("addr", "")
+                status_el = host_el.find("status")
+                status = status_el.get("state", "unknown") if status_el is not None else "unknown"
+                reason = status_el.get("reason", "") if status_el is not None else ""
+                hosts.append({"ip": ip, "status": status, "reason": reason})
+        except ET.ParseError:
+            return jsonify({"error": "Failed to parse nmap output"}), 500
+
+        alive = sum(1 for h in hosts if h["status"] == "up")
+        cmd_str = " ".join(cmd)
+        return jsonify({"ok": True, "hosts": hosts, "total": len(hosts), "alive": alive,
+                         "command": cmd_str, "raw_xml": raw_xml, "raw_gnmap": raw_gnmap})
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ── Wordlist Generator ─────────────────────────────────────────────────────
@@ -313,56 +334,78 @@ def api_port_probe():
     else:
         port_flag = ["--top-ports", "1000"]
 
+    tmpdir = tempfile.mkdtemp(prefix="crucible_pp_")
+    xml_file = os.path.join(tmpdir, "scan.xml")
+    gnmap_file = os.path.join(tmpdir, "scan.gnmap")
+
     cmd = [nmap, "-sS", "-sV", "--open", f"-{timing}",
-           "-oX", "-"] + port_flag + [target]
+           "-oX", xml_file, "-oG", gnmap_file] + port_flag + [target]
 
     if os.geteuid() != 0:
         cmd = ["sudo"] + cmd
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": f"Port scan timed out ({timeout}s)"}), 504
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": f"Port scan timed out ({timeout}s)"}), 504
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-    hosts = []
-    try:
-        root = ET.fromstring(result.stdout)
-        for host_el in root.findall(".//host"):
-            addr_el = host_el.find("address[@addrtype='ipv4']")
-            if addr_el is None:
-                addr_el = host_el.find("address[@addrtype='ipv6']")
-            ip = addr_el.get("addr", "") if addr_el is not None else target
+        raw_xml = ""
+        raw_gnmap = ""
+        try:
+            with open(xml_file, "r") as f:
+                raw_xml = f.read()
+        except OSError:
+            pass
+        try:
+            with open(gnmap_file, "r") as f:
+                raw_gnmap = f.read()
+        except OSError:
+            pass
 
-            hostname = ""
-            hn_el = host_el.find(".//hostname")
-            if hn_el is not None:
-                hostname = hn_el.get("name", "")
+        if not raw_xml:
+            return jsonify({"error": "nmap produced no XML output"}), 500
 
-            port_list = []
-            for port_el in host_el.findall(".//port"):
-                state_el = port_el.find("state")
-                svc_el = port_el.find("service")
-                port_list.append({
-                    "port": int(port_el.get("portid", 0)),
-                    "protocol": port_el.get("protocol", "tcp"),
-                    "state": state_el.get("state", "") if state_el is not None else "",
-                    "service": svc_el.get("name", "") if svc_el is not None else "",
-                    "version": " ".join(filter(None, [
-                        svc_el.get("product", "") if svc_el is not None else "",
-                        svc_el.get("version", "") if svc_el is not None else "",
-                        svc_el.get("extrainfo", "") if svc_el is not None else "",
-                    ])).strip(),
-                })
-            hosts.append({"ip": ip, "hostname": hostname, "ports": port_list})
-    except ET.ParseError:
-        if result.returncode != 0:
-            return jsonify({"error": result.stderr or "nmap failed"}), 500
-        return jsonify({"error": "Failed to parse nmap output"}), 500
+        hosts = []
+        try:
+            root = ET.fromstring(raw_xml)
+            for host_el in root.findall(".//host"):
+                addr_el = host_el.find("address[@addrtype='ipv4']")
+                if addr_el is None:
+                    addr_el = host_el.find("address[@addrtype='ipv6']")
+                ip = addr_el.get("addr", "") if addr_el is not None else target
 
-    cmd_str = " ".join(cmd)
-    return jsonify({"ok": True, "hosts": hosts, "command": cmd_str})
+                hostname = ""
+                hn_el = host_el.find(".//hostname")
+                if hn_el is not None:
+                    hostname = hn_el.get("name", "")
+
+                port_list = []
+                for port_el in host_el.findall(".//port"):
+                    state_el = port_el.find("state")
+                    svc_el = port_el.find("service")
+                    port_list.append({
+                        "port": int(port_el.get("portid", 0)),
+                        "protocol": port_el.get("protocol", "tcp"),
+                        "state": state_el.get("state", "") if state_el is not None else "",
+                        "service": svc_el.get("name", "") if svc_el is not None else "",
+                        "version": " ".join(filter(None, [
+                            svc_el.get("product", "") if svc_el is not None else "",
+                            svc_el.get("version", "") if svc_el is not None else "",
+                            svc_el.get("extrainfo", "") if svc_el is not None else "",
+                        ])).strip(),
+                    })
+                hosts.append({"ip": ip, "hostname": hostname, "ports": port_list})
+        except ET.ParseError:
+            return jsonify({"error": "Failed to parse nmap output"}), 500
+
+        cmd_str = " ".join(cmd)
+        return jsonify({"ok": True, "hosts": hosts, "command": cmd_str,
+                         "raw_xml": raw_xml, "raw_gnmap": raw_gnmap})
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ── SSL/TLS Audit ──────────────────────────────────────────────────────────
@@ -594,12 +637,37 @@ def api_dns_resolve():
             except (subprocess.TimeoutExpired, Exception):
                 pass
 
+    raw_lines = ["# DNS Resolution: " + target, ""]
+    for rtype in types:
+        try:
+            r = subprocess.run([dig, target, rtype],
+                               capture_output=True, text=True, timeout=15)
+            raw_lines.append("$ dig " + target + " " + rtype)
+            raw_lines.append(r.stdout.strip())
+            raw_lines.append("")
+        except Exception:
+            pass
+    if data.get("reverse"):
+        try:
+            r = subprocess.run([dig, "-x", target],
+                               capture_output=True, text=True, timeout=15)
+            raw_lines.append("$ dig -x " + target)
+            raw_lines.append(r.stdout.strip())
+            raw_lines.append("")
+        except Exception:
+            pass
+    if whois_result:
+        raw_lines.append("$ whois " + target)
+        raw_lines.append(whois_result)
+        raw_lines.append("")
+
     return jsonify({
         "ok": True,
         "target": target,
         "records": records,
         "reverse": reverse_result,
         "whois": whois_result,
+        "raw_output": "\n".join(raw_lines),
     })
 
 
@@ -789,6 +857,19 @@ def api_traffic_dump():
         "top_talkers": top_talkers,
         "protocols": proto_list,
     })
+
+
+# ── File Download ─────────────────────────────────────────────────────────
+
+@standalone_bp.route("/api/standalone/download")
+def api_standalone_download():
+    fpath = request.args.get("path", "")
+    if not fpath:
+        return jsonify({"error": "No path specified"}), 400
+    real = os.path.realpath(fpath)
+    if not real.startswith("/tmp/") or not os.path.isfile(real):
+        return jsonify({"error": "File not found or access denied"}), 404
+    return send_file(real, as_attachment=True)
 
 
 # ── System Info ────────────────────────────────────────────────────────────

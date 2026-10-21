@@ -190,77 +190,6 @@
       </tbody>
     </table>
 
-    <!-- ── Standalone Tools ───────────────────────────────── -->
-    <div style="margin-top:36px;width:100%;max-width:680px;">
-      <h3 style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;text-align:center;">Standalone Tools</h3>
-      <table class="tool-table" style="width:100%;">
-        <thead>
-          <tr><th>Tool</th><th>Purpose</th><th style="width:80px;text-align:center">Action</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="font-weight:500;">Engagement Merger</td>
-            <td>Merge multiple Crucible/Vantage engagements and Nessus results into one</td>
-            <td style="text-align:center"><a href="/tools/merger" class="btn-icon" title="Open" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;text-decoration:none;">Run</a></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">AuthProbe</td>
-            <td>Detect authentication methods, fingerprint software, probe well-known endpoints</td>
-            <td style="text-align:center"><button type="button" onclick="openAuthProbeModal()" class="btn-icon" title="Run AuthProbe" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">Host Discovery</td>
-            <td>Quick nmap live-host scan with ICMP, TCP, and UDP probing for 95%+ accuracy</td>
-            <td style="text-align:center"><button type="button" onclick="openHostDiscoveryModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">Wordlist Generator</td>
-            <td>Scrape a client website and build targeted password-candidate wordlists</td>
-            <td style="text-align:center"><button type="button" onclick="openWordlistModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">Port Probe</td>
-            <td>Lightweight nmap TCP SYN scan with service and version detection</td>
-            <td style="text-align:center"><button type="button" onclick="openPortProbeModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">SSL/TLS Audit</td>
-            <td>Quick TLS configuration and cipher suite audit via testssl.sh or sslscan</td>
-            <td style="text-align:center"><button type="button" onclick="openSslAuditModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">Security Headers</td>
-            <td>Pass/fail scorecard for HTTP security headers with grade</td>
-            <td style="text-align:center"><button type="button" onclick="openSecHeadersModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">Encode / Decode</td>
-            <td>Base64, URL, HTML entities, hex, JWT decode, hash identification</td>
-            <td style="text-align:center"><a href="/tools/encoder" class="btn-icon" title="Open" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;text-decoration:none;">Run</a></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">DNS Resolver</td>
-            <td>Quick DNS lookups for A/AAAA/CNAME/MX/NS/TXT/SOA + reverse DNS + WHOIS</td>
-            <td style="text-align:center"><button type="button" onclick="openDnsResolveModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">WiFi Scanner</td>
-            <td>Scan visible wireless networks and manage interfaces</td>
-            <td style="text-align:center"><button type="button" onclick="openWifiScanModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">Traffic Dump</td>
-            <td>Quick packet capture with tshark/tcpdump and internal IP analysis</td>
-            <td style="text-align:center"><button type="button" onclick="openTrafficDumpModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">Run</button></td>
-          </tr>
-          <tr>
-            <td style="font-weight:500;">System Info</td>
-            <td>Hostname, OS, CPU, memory, GPU, users, interfaces, listeners, and disk</td>
-            <td style="text-align:center"><button type="button" onclick="openSystemInfoModal()" class="btn-icon" title="Run" style="display:inline-flex;align-items:center;gap:4px;color:var(--accent-primary);font-size:0.78rem;font-weight:600;background:none;border:none;cursor:pointer;">View</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
   </section>
 
   <!-- ── Right Panel: Console + Testing Host ────────────── -->
@@ -274,6 +203,29 @@
       <div class="sysinfo-title">Testing Host</div>
       <div class="sysinfo-grid" id="homeSystemInfoGrid">
         <span class="sysinfo-label">Loading...</span><span></span>
+      </div>
+    </div>
+
+    <!-- ── Quick Tools Dropdown ──────────────────────────── -->
+    <div style="margin-top:18px;">
+      <div style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;">Quick Tools</div>
+      <div style="display:flex;gap:6px;">
+        <select id="quickToolSelect" class="form-control" style="flex:1;font-size:0.82rem;padding:6px 8px;">
+          <option value="">Select tool...</option>
+          <option value="authprobe">AuthProbe</option>
+          <option value="dns-resolve">DNS Resolver</option>
+          <option value="encoder">Encode / Decode</option>
+          <option value="host-discovery">Host Discovery</option>
+          <option value="merger">Engagement Merger</option>
+          <option value="port-probe">Port Probe</option>
+          <option value="sec-headers">Security Headers</option>
+          <option value="ssl-audit">SSL/TLS Audit</option>
+          <option value="system-info">System Info</option>
+          <option value="traffic-dump">Traffic Dump</option>
+          <option value="wifi-scan">WiFi Scanner</option>
+          <option value="wordlist">Wordlist Generator</option>
+        </select>
+        <button type="button" class="btn btn-primary" onclick="runQuickTool()" style="white-space:nowrap;padding:6px 14px;font-size:0.82rem;">Run</button>
       </div>
     </div>
   </aside>
@@ -403,6 +355,7 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="authProbeForm" class="btn btn-primary" id="apRunBtn">Run AuthProbe</button>
+      <button type="button" class="btn btn-ghost" id="apSaveBtn" style="display:none;" onclick="saveAuthProbe()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeAuthProbeModal()">Cancel</button>
     </div>
   </div>
@@ -442,6 +395,10 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="hdForm" class="btn btn-primary" id="hdRunBtn">Discover Hosts</button>
+      <div id="hdSaveGroup" style="display:none;gap:4px;">
+        <button type="button" class="btn btn-ghost" onclick="saveHostDiscovery('gnmap')">Save .gnmap</button>
+        <button type="button" class="btn btn-ghost" onclick="saveHostDiscovery('xml')">Save .xml</button>
+      </div>
       <button type="button" class="btn btn-ghost" onclick="closeHostDiscoveryModal()">Cancel</button>
     </div>
   </div>
@@ -508,6 +465,7 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="wlForm" class="btn btn-primary" id="wlRunBtn">Generate Wordlist</button>
+      <button type="button" class="btn btn-ghost" id="wlSaveBtn" style="display:none;" onclick="saveWordlist()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeWordlistModal()">Cancel</button>
     </div>
   </div>
@@ -559,6 +517,10 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="ppForm" class="btn btn-primary" id="ppRunBtn">Scan Ports</button>
+      <div id="ppSaveGroup" style="display:none;gap:4px;">
+        <button type="button" class="btn btn-ghost" onclick="savePortProbe('gnmap')">Save .gnmap</button>
+        <button type="button" class="btn btn-ghost" onclick="savePortProbe('xml')">Save .xml</button>
+      </div>
       <button type="button" class="btn btn-ghost" onclick="closePortProbeModal()">Cancel</button>
     </div>
   </div>
@@ -586,6 +548,7 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="saForm" class="btn btn-primary" id="saRunBtn">Audit SSL/TLS</button>
+      <button type="button" class="btn btn-ghost" id="saSaveBtn" style="display:none;" onclick="saveSslAudit()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeSslAuditModal()">Cancel</button>
     </div>
   </div>
@@ -615,6 +578,7 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="shForm" class="btn btn-primary" id="shRunBtn">Analyze Headers</button>
+      <button type="button" class="btn btn-ghost" id="shSaveBtn" style="display:none;" onclick="saveSecHeaders()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeSecHeadersModal()">Cancel</button>
     </div>
   </div>
@@ -657,6 +621,7 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="drForm" class="btn btn-primary" id="drRunBtn">Resolve</button>
+      <button type="button" class="btn btn-ghost" id="drSaveBtn" style="display:none;" onclick="saveDnsResolve()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeDnsResolveModal()">Cancel</button>
     </div>
   </div>
@@ -686,6 +651,7 @@
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-primary" id="wsRunBtn" onclick="runWifiScan()">Scan Networks</button>
+      <button type="button" class="btn btn-ghost" id="wsSaveBtn" style="display:none;" onclick="saveWifiScan()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeWifiScanModal()">Cancel</button>
     </div>
   </div>
@@ -733,6 +699,10 @@
     </div>
     <div class="modal-footer">
       <button type="submit" form="tdForm" class="btn btn-primary" id="tdRunBtn">Start Capture</button>
+      <div id="tdSaveGroup" style="display:none;gap:4px;">
+        <button type="button" class="btn btn-ghost" onclick="saveTrafficDump('pcap')">Save .pcap</button>
+        <button type="button" class="btn btn-ghost" onclick="saveTrafficDump('txt')">Save .txt</button>
+      </div>
       <button type="button" class="btn btn-ghost" onclick="closeTrafficDumpModal()">Cancel</button>
     </div>
   </div>
@@ -752,6 +722,7 @@
     </div>
     <div class="modal-footer">
       <button type="button" class="btn btn-primary" onclick="loadSystemInfo()">Refresh</button>
+      <button type="button" class="btn btn-ghost" id="siSaveBtn" style="display:none;" onclick="saveSystemInfo()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeSystemInfoModal()">Close</button>
     </div>
   </div>
@@ -850,6 +821,18 @@
 {% block scripts %}
 <script src="/static/js/index.js"></script>
 <script>
+/* ── Global result storage for save/download ──────── */
+var _lastAuthProbe = null;
+var _lastHostDiscovery = null;
+var _lastWordlist = null;
+var _lastPortProbe = null;
+var _lastSslAudit = null;
+var _lastSecHeaders = null;
+var _lastDnsResolve = null;
+var _lastWifiScan = null;
+var _lastTrafficDump = null;
+var _lastSystemInfo = null;
+
 var _selectedReportType = 'full';
 var _reportPid = null;
 
@@ -1017,6 +1000,8 @@ function runAuthProbe(e) {
     panel.style.display = 'block';
 
     if (data.ok && data.result) {
+      _lastAuthProbe = data;
+      document.getElementById('apSaveBtn').style.display = '';
       var r = data.result;
       var lines = [];
       if (r.target) lines.push('Target:     ' + r.target);
@@ -1089,6 +1074,8 @@ function runHostDiscovery(e) {
     var panel = document.getElementById('hdResultsPanel'), content = document.getElementById('hdResultsContent');
     panel.style.display = 'block';
     if (data.ok && data.hosts) {
+      _lastHostDiscovery = data;
+      document.getElementById('hdSaveGroup').style.display = 'flex';
       var alive = data.hosts.filter(function(h){return h.status==='up';});
       var html = '<div style="margin-bottom:10px;font-weight:600;">' + data.alive + ' of ' + data.total + ' hosts alive</div>';
       if (data.command) {
@@ -1130,6 +1117,8 @@ function runWordlist(e) {
     var panel = document.getElementById('wlResultsPanel'), content = document.getElementById('wlResultsContent');
     panel.style.display = 'block';
     if (data.ok) {
+      _lastWordlist = data;
+      document.getElementById('wlSaveBtn').style.display = '';
       var lines = ['Wordlist generated successfully!', '', 'File: ' + data.path, 'Entries: ' + data.count.toLocaleString()];
       if (data.logs && data.logs.length) { lines.push(''); data.logs.forEach(function(l){lines.push(l);}); }
       content.textContent = lines.join('\n');
@@ -1158,6 +1147,8 @@ function runPortProbe(e) {
     var panel = document.getElementById('ppResultsPanel'), content = document.getElementById('ppResultsContent');
     panel.style.display = 'block';
     if (data.ok && data.hosts) {
+      _lastPortProbe = data;
+      document.getElementById('ppSaveGroup').style.display = 'flex';
       var html = '';
       if (data.command) {
         html += '<div style="margin-bottom:10px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:8px 10px;font-family:var(--font-mono);font-size:0.74rem;word-break:break-all;color:var(--text-muted);"><span style="color:var(--text-secondary);font-weight:600;">$</span> ' + _esc(data.command) + '</div>';
@@ -1194,6 +1185,8 @@ function runSslAudit(e) {
     btn.disabled = false; btn.textContent = orig;
     document.getElementById('saResultsPanel').style.display = 'block';
     if (data.ok) {
+      _lastSslAudit = data;
+      document.getElementById('saSaveBtn').style.display = '';
       document.getElementById('saToolUsed').textContent = '(via ' + data.tool_used + ')';
       document.getElementById('saResultsContent').textContent = data.output;
     } else {
@@ -1220,6 +1213,8 @@ function runSecHeaders(e) {
     var panel = document.getElementById('shResultsPanel'), content = document.getElementById('shResultsContent');
     panel.style.display = 'block';
     if (data.ok) {
+      _lastSecHeaders = data;
+      document.getElementById('shSaveBtn').style.display = '';
       var gc = {A:'#22c55e',B:'#3b82f6',C:'#eab308',D:'#f97316',F:'#ef4444'};
       var html = '<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">';
       html += '<div style="width:56px;height:56px;border-radius:var(--radius-sm);background:'+(gc[data.grade]||'#666')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:700;">'+data.grade+'</div>';
@@ -1259,6 +1254,8 @@ function runDnsResolve(e) {
     var panel = document.getElementById('drResultsPanel'), content = document.getElementById('drResultsContent');
     panel.style.display = 'block';
     if (data.ok) {
+      _lastDnsResolve = data;
+      document.getElementById('drSaveBtn').style.display = '';
       var lines = ['Target: ' + data.target, ''];
       if (data.records) {
         Object.keys(data.records).forEach(function(rtype){
@@ -1313,6 +1310,8 @@ function runWifiScan() {
     var panel = document.getElementById('wsResultsPanel'), content = document.getElementById('wsResultsContent');
     panel.style.display = 'block';
     if (data.networks && data.networks.length) {
+      _lastWifiScan = data;
+      document.getElementById('wsSaveBtn').style.display = '';
       var html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:4px 8px;">SSID</th><th style="text-align:left;padding:4px 8px;">BSSID</th><th style="text-align:center;padding:4px 8px;">Ch</th><th style="text-align:center;padding:4px 8px;">Signal</th><th style="text-align:left;padding:4px 8px;">Security</th></tr></thead><tbody>';
       data.networks.forEach(function(n){
         html += '<tr><td style="padding:3px 8px;font-weight:500;">' + _esc(n.ssid||'(hidden)') + '</td><td style="padding:3px 8px;font-family:var(--font-mono);font-size:0.76rem;">' + _esc(n.bssid||'') + '</td><td style="padding:3px 8px;text-align:center;">' + (n.channel||'') + '</td><td style="padding:3px 8px;text-align:center;">' + _esc(n.signal||n.quality||'') + '</td><td style="padding:3px 8px;">' + _esc(n.encryption||n.security||'') + '</td></tr>';
@@ -1363,6 +1362,8 @@ function runTrafficDump(e) {
     var panel = document.getElementById('tdResultsPanel'), content = document.getElementById('tdResultsContent');
     panel.style.display = 'block';
     if (data.ok) {
+      _lastTrafficDump = data;
+      document.getElementById('tdSaveGroup').style.display = 'flex';
       var html = '';
       html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">';
       html += '<div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:10px;text-align:center;"><div style="font-size:1.1rem;font-weight:700;">'+data.packets.toLocaleString()+'</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">Packets</div></div>';
@@ -1431,6 +1432,8 @@ function loadSystemInfo() {
   fetch('/api/standalone/system-info')
   .then(function(r){return r.json();}).then(function(data){
     if (!data.ok) { content.innerHTML = '<span style="color:var(--status-error)">'+_esc(data.error||'Failed to collect info')+'</span>'; return; }
+    _lastSystemInfo = data;
+    document.getElementById('siSaveBtn').style.display = '';
     var html = '';
     var s = data.system || {};
     var hw = data.hardware || {};
@@ -1541,6 +1544,276 @@ function loadSystemInfo() {
 }
 function _siRow(label, value) {
   return '<span style="color:var(--text-muted);font-weight:500;">'+_esc(label)+'</span><span style="font-family:var(--font-mono);font-size:0.8rem;word-break:break-all;">'+_esc(String(value||''))+'</span>';
+}
+
+/* ── Quick Tools dropdown dispatcher ───────────────── */
+function runQuickTool() {
+  var val = document.getElementById('quickToolSelect').value;
+  if (!val) return;
+  var h = {
+    'authprobe': openAuthProbeModal,
+    'dns-resolve': openDnsResolveModal,
+    'encoder': function(){ window.open('/tools/encoder','_blank'); },
+    'host-discovery': openHostDiscoveryModal,
+    'merger': function(){ window.location.href='/tools/merger'; },
+    'port-probe': openPortProbeModal,
+    'sec-headers': openSecHeadersModal,
+    'ssl-audit': openSslAuditModal,
+    'system-info': openSystemInfoModal,
+    'traffic-dump': openTrafficDumpModal,
+    'wifi-scan': openWifiScanModal,
+    'wordlist': openWordlistModal,
+  };
+  if (h[val]) h[val]();
+}
+
+/* ── Download helper ──────────────────────────────── */
+function _downloadBlob(content, filename, mimeType) {
+  var blob = new Blob([content], {type: mimeType || 'text/plain'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function _downloadServerFile(path, filename) {
+  var a = document.createElement('a');
+  a.href = '/api/standalone/download?path=' + encodeURIComponent(path);
+  if (filename) a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+}
+function _ts() { return new Date().toISOString().replace(/[T:]/g,'-').slice(0,19); }
+
+/* ── Save functions ───────────────────────────────── */
+function saveAuthProbe() {
+  if (!_lastAuthProbe || !_lastAuthProbe.result) return;
+  var r = _lastAuthProbe.result;
+  var lines = ['AuthProbe Results', '=================', 'Date: ' + new Date().toISOString(), ''];
+  if (r.target) lines.push('Target:     ' + r.target);
+  if (r.url_type) lines.push('URL Type:   ' + r.url_type);
+  if (r.software && r.software.length) {
+    lines.push('', '== Software Fingerprints ==');
+    r.software.forEach(function(s){ lines.push('  ' + s.product + (s.version ? ' ' + s.version : '') + (s.confidence ? ' (' + s.confidence + '%)' : '')); });
+  }
+  if (r.auth_methods && r.auth_methods.length) {
+    lines.push('', '== Detected Auth Methods ==');
+    r.auth_methods.forEach(function(m){ lines.push('  ' + m.method + (m.confidence ? ' (' + m.confidence + '%)' : '') + (m.details ? ' — ' + m.details : '')); });
+  }
+  if (r.well_known && r.well_known.length) {
+    lines.push('', '== Well-Known Endpoints ==');
+    r.well_known.forEach(function(w){ lines.push('  ' + w.url + ' [' + w.status + ']' + (w.type ? ' — ' + w.type : '')); });
+  }
+  if (r.login_endpoints && r.login_endpoints.length) {
+    lines.push('', '== Login Endpoints ==');
+    r.login_endpoints.forEach(function(ep){ lines.push('  ' + ep.url + (ep.method ? ' (' + ep.method + ')' : '')); });
+  }
+  if (r.findings && r.findings.length) {
+    lines.push('', '== Findings (' + r.findings.length + ') ==');
+    r.findings.forEach(function(f){ lines.push('  [' + f.risk + '] ' + f.title + (f.description ? '\n    ' + f.description : '')); });
+  }
+  if (r.credential_validation) {
+    lines.push('', '== Credential Validation ==');
+    lines.push('  Result: ' + (r.credential_validation.valid ? 'VALID' : 'INVALID'));
+    if (r.credential_validation.message) lines.push('  ' + r.credential_validation.message);
+  }
+  if (r.recommendations && r.recommendations.length) {
+    lines.push('', '== Recommendations ==');
+    r.recommendations.forEach(function(rec){ lines.push('  - ' + rec); });
+  }
+  _downloadBlob(lines.join('\n'), 'authprobe_' + _ts() + '.txt');
+}
+
+function saveHostDiscovery(fmt) {
+  if (!_lastHostDiscovery) return;
+  var d = _lastHostDiscovery;
+  if (fmt === 'xml' && d.raw_xml) {
+    _downloadBlob(d.raw_xml, 'host_discovery_' + _ts() + '.xml', 'application/xml');
+  } else if (fmt === 'gnmap' && d.raw_gnmap) {
+    _downloadBlob(d.raw_gnmap, 'host_discovery_' + _ts() + '.gnmap', 'text/plain');
+  }
+}
+
+function saveWordlist() {
+  if (!_lastWordlist || !_lastWordlist.path) return;
+  _downloadServerFile(_lastWordlist.path, 'wordlist_' + _ts() + '.txt');
+}
+
+function savePortProbe(fmt) {
+  if (!_lastPortProbe) return;
+  var d = _lastPortProbe;
+  if (fmt === 'xml' && d.raw_xml) {
+    _downloadBlob(d.raw_xml, 'port_probe_' + _ts() + '.xml', 'application/xml');
+  } else if (fmt === 'gnmap' && d.raw_gnmap) {
+    _downloadBlob(d.raw_gnmap, 'port_probe_' + _ts() + '.gnmap', 'text/plain');
+  }
+}
+
+function saveSslAudit() {
+  if (!_lastSslAudit) return;
+  var lines = ['SSL/TLS Audit Results', '=====================', 'Date: ' + new Date().toISOString(), 'Tool: ' + (_lastSslAudit.tool_used || 'unknown'), '', _lastSslAudit.output || ''];
+  _downloadBlob(lines.join('\n'), 'ssl_audit_' + _ts() + '.txt');
+}
+
+function saveSecHeaders() {
+  if (!_lastSecHeaders) return;
+  var d = _lastSecHeaders;
+  var lines = ['Security Headers Analysis', '========================', 'Date: ' + new Date().toISOString(), 'URL:  ' + d.url, 'HTTP: ' + d.status_code, '', 'Grade: ' + d.grade + ' (' + d.score + '% — ' + d.passed + '/' + d.total + ' passed)', ''];
+  if (d.server) lines.push('Server: ' + d.server);
+  if (d.powered_by) lines.push('X-Powered-By: ' + d.powered_by);
+  lines.push('', 'Header                              Present  Pass  Value');
+  lines.push('----------------------------------  -------  ----  -----');
+  (d.headers||[]).forEach(function(h){
+    var name = (h.name + '                                    ').slice(0,36);
+    var present = h.present ? 'Yes    ' : 'No     ';
+    var pass = h.pass ? 'PASS' : 'FAIL';
+    lines.push(name + present + '  ' + pass + '  ' + (h.value || '—'));
+    lines.push('  → ' + h.note);
+  });
+  _downloadBlob(lines.join('\n'), 'security_headers_' + _ts() + '.txt');
+}
+
+function saveDnsResolve() {
+  if (!_lastDnsResolve) return;
+  if (_lastDnsResolve.raw_output) {
+    _downloadBlob(_lastDnsResolve.raw_output, 'dns_resolve_' + _ts() + '.txt');
+  }
+}
+
+function saveWifiScan() {
+  if (!_lastWifiScan || !_lastWifiScan.networks) return;
+  var lines = ['WiFi Scanner Results', '====================', 'Date: ' + new Date().toISOString(), 'Networks: ' + _lastWifiScan.networks.length, ''];
+  lines.push('SSID                              BSSID              Ch   Signal  Security');
+  lines.push('--------------------------------  -----------------  ---  ------  --------');
+  _lastWifiScan.networks.forEach(function(n){
+    var ssid = ((n.ssid || '(hidden)') + '                                  ').slice(0,34);
+    var bssid = ((n.bssid || '') + '                   ').slice(0,19);
+    var ch = (String(n.channel || '') + '   ').slice(0,5);
+    var sig = (String(n.signal || n.quality || '') + '      ').slice(0,8);
+    lines.push(ssid + bssid + ch + sig + (n.encryption || n.security || ''));
+  });
+  _downloadBlob(lines.join('\n'), 'wifi_scan_' + _ts() + '.txt');
+}
+
+function saveTrafficDump(fmt) {
+  if (!_lastTrafficDump) return;
+  var d = _lastTrafficDump;
+  if (fmt === 'pcap' && d.capture_file) {
+    _downloadServerFile(d.capture_file, 'capture_' + _ts() + '.pcap');
+    return;
+  }
+  if (fmt === 'txt') {
+    var lines = ['Traffic Dump Analysis', '====================', 'Date: ' + new Date().toISOString(), 'Tool: ' + d.tool_used, 'Duration: ' + d.duration + 's', 'Packets: ' + d.packets, ''];
+    lines.push('Internal IPs (' + d.internal_ips.length + '):');
+    d.internal_ips.forEach(function(ip){
+      var cnt = ''; d.top_talkers.forEach(function(t){ if(t.ip===ip) cnt=' (' + t.packets + ' pkts)'; });
+      lines.push('  ' + ip + cnt);
+    });
+    lines.push('');
+    lines.push('External IPs (' + d.external_ips.length + '):');
+    d.external_ips.forEach(function(ip){
+      var cnt = ''; d.top_talkers.forEach(function(t){ if(t.ip===ip) cnt=' (' + t.packets + ' pkts)'; });
+      lines.push('  ' + ip + cnt);
+    });
+    lines.push('');
+    lines.push('Top Talkers:');
+    d.top_talkers.forEach(function(t){
+      var isInt = d.internal_ips.indexOf(t.ip) !== -1;
+      lines.push('  ' + t.ip + ' — ' + t.packets + ' pkts (' + (isInt ? 'internal' : 'external') + ')');
+    });
+    lines.push('');
+    lines.push('Protocol Breakdown:');
+    var totalP = 0; d.protocols.forEach(function(p){ totalP += p.packets; });
+    d.protocols.forEach(function(p){
+      var pct = totalP ? (p.packets / totalP * 100).toFixed(1) : '0.0';
+      lines.push('  ' + p.protocol + ': ' + p.packets + ' pkts (' + pct + '%)');
+    });
+    _downloadBlob(lines.join('\n'), 'traffic_analysis_' + _ts() + '.txt');
+  }
+}
+
+function saveSystemInfo() {
+  if (!_lastSystemInfo) return;
+  var d = _lastSystemInfo;
+  var s = d.system || {};
+  var hw = d.hardware || {};
+  var lu = d.last_update || {};
+  var u = d.users || {};
+  var net = d.network || {};
+  var lines = ['System Information', '==================', 'Date: ' + new Date().toISOString(), ''];
+
+  lines.push('== System ==');
+  lines.push('Hostname:      ' + s.hostname);
+  if (s.fqdn) lines.push('FQDN:          ' + s.fqdn);
+  lines.push('OS:            ' + s.os);
+  lines.push('Kernel:        ' + s.kernel);
+  lines.push('Architecture:  ' + s.architecture);
+  lines.push('Uptime:        ' + s.uptime);
+  lines.push('Python:        ' + s.python);
+
+  lines.push('', '== Hardware ==');
+  lines.push('CPU:           ' + (hw.cpu_model || hw.cpu_cores + ' cores'));
+  lines.push('Cores:         ' + hw.cpu_cores);
+  lines.push('Memory:        ' + hw.memory_total);
+  if (hw.memory_detail) lines.push('Usage:         ' + hw.memory_detail);
+  lines.push('GPU:           ' + (hw.gpu || 'N/A'));
+
+  if (lu.manager) {
+    lines.push('', '== Last Package Update ==');
+    lines.push('Manager:       ' + lu.manager);
+    lines.push('Last Update:   ' + lu.timestamp);
+  }
+
+  lines.push('', '== Users ==');
+  lines.push('System Users:  ' + ((u.all||[]).join(', ') || 'N/A'));
+  if (u.active && u.active.length) {
+    lines.push('', 'Active Sessions:');
+    u.active.forEach(function(a){ lines.push('  ' + a.user + '  ' + a.terminal + '  ' + a.details); });
+  }
+  if (u.ssh_sessions && u.ssh_sessions.length) {
+    lines.push('', 'SSH Sessions:');
+    u.ssh_sessions.forEach(function(ss){ lines.push('  ' + ss.user + '  ' + ss.terminal + '  from ' + ss.from); });
+  }
+
+  lines.push('', '== Network ==');
+  if (net.gateway) lines.push('Gateway:       ' + net.gateway);
+  if (net.dns && net.dns.length) lines.push('DNS:           ' + net.dns.join(', '));
+  if (net.interfaces && net.interfaces.length) {
+    lines.push('', 'Interfaces:');
+    net.interfaces.forEach(function(iface){
+      var ipv4s = (iface.ipv4||[]).map(function(a){ return a.address + (a.netmask ? ' / ' + a.netmask : ''); }).join(', ');
+      lines.push('  ' + iface.name + '  IPv4: ' + (ipv4s || 'N/A') + '  MAC: ' + (iface.mac || 'N/A') + '  Status: ' + (iface.status || 'N/A'));
+      if (iface.ipv6 && iface.ipv6.length) lines.push('    IPv6: ' + iface.ipv6.join(', '));
+    });
+  }
+
+  if (d.listeners && d.listeners.length) {
+    lines.push('', '== Listening Ports ==');
+    lines.push('Port       Address          Process');
+    lines.push('---------  ---------------  -------');
+    d.listeners.forEach(function(l){
+      var port = (l.port + '/' + l.protocol + '         ').slice(0,11);
+      var addr = (l.address + '                 ').slice(0,17);
+      lines.push(port + addr + l.process);
+    });
+  }
+
+  if (d.disk && d.disk.length) {
+    lines.push('', '== Disk Usage ==');
+    lines.push('Mount              Filesystem          Size   Used   Avail  Use%');
+    lines.push('-----------------  ------------------  -----  -----  -----  ----');
+    d.disk.forEach(function(dk){
+      var mount = (dk.mount + '                   ').slice(0,19);
+      var fs = (dk.filesystem + '                    ').slice(0,20);
+      var sz = (dk.size + '      ').slice(0,7);
+      var used = (dk.used + '      ').slice(0,7);
+      var avail = (dk.available + '      ').slice(0,7);
+      lines.push(mount + fs + sz + used + avail + dk.percent);
+    });
+  }
+
+  _downloadBlob(lines.join('\n'), 'system_info_' + _ts() + '.txt');
 }
 
 /* ── Shared HTML-escape helper ──────────────────────── */
