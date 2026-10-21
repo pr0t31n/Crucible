@@ -10261,6 +10261,6 @@ window._pauseAll = _pauseAll;
 window._resumeAll = _resumeAll;
 window._saveEngagementHours = _saveEngagementHours;
 window._scheduleEngagement = _scheduleEngagement;
-window._removeSchedule = _removeSchedule;
+window._removeScheduledStart = _removeScheduledStart;
 
 })();
