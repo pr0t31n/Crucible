@@ -52,6 +52,19 @@ EXIT_PAUSED = 42
 _SENTINEL_NAME = "_pause_requested"
 
 
+def _read_tool_version(tool_id: str) -> str:
+    """Read the VERSION file for a pr0t31n tool. Returns 'unknown' on failure."""
+    tool_cfg = TOOLS.get(tool_id, {})
+    script = tool_cfg.get("script")
+    if script:
+        vf = Path(script).resolve().parent / "VERSION"
+        try:
+            return vf.read_text().strip()
+        except (OSError, ValueError):
+            pass
+    return "unknown"
+
+
 def _pkey(project_id: str, tool_id: str) -> str:
     """Composite key for answer-queue / pending-prompt dicts."""
     return f"{project_id}:{tool_id}"
@@ -223,6 +236,48 @@ class ProcessManager:
         except OSError:
             log.exception("Failed to save OOM snapshot")
 
+    # ── Tool version helpers ──────────────────────────────────────────
+
+    def get_tool_version(self, project_id, tool_key):
+        """Return the version for a tool: live metadata → history → VERSION file."""
+        base_tid = tool_key.split(":")[0] if ":" in tool_key else tool_key
+        with self._lock:
+            meta = (self._tool_metadata.get(project_id) or {}).get(tool_key, {})
+            if meta.get("tool_version"):
+                return meta["tool_version"]
+        proj_dir = self._resolve_project_dir(project_id)
+        if proj_dir:
+            try:
+                fp = self._history_path(proj_dir)
+                if fp.exists():
+                    history = json.loads(fp.read_text())
+                    entry = history.get(tool_key, {})
+                    if entry.get("tool_version"):
+                        return entry["tool_version"]
+            except (json.JSONDecodeError, OSError):
+                pass
+        return _read_tool_version(base_tid)
+
+    def get_all_tool_versions(self, project_id):
+        """Return {tool_key: version} for every tool that has run or is running."""
+        result = {}
+        with self._lock:
+            for tk, meta in (self._tool_metadata.get(project_id) or {}).items():
+                if meta.get("tool_version"):
+                    result[tk] = meta["tool_version"]
+        proj_dir = self._resolve_project_dir(project_id)
+        if proj_dir:
+            try:
+                fp = self._history_path(proj_dir)
+                if fp.exists():
+                    history = json.loads(fp.read_text())
+                    for tk, entry in history.items():
+                        if tk not in result and entry.get("tool_version"):
+                            result[tk] = entry["tool_version"]
+            except (json.JSONDecodeError, OSError):
+                pass
+        return result
+
     # ── History persistence ─────────────────────────────────────────
 
     @staticmethod
@@ -268,6 +323,7 @@ class ProcessManager:
                 "pids": pids,
                 "scope": scope,
                 "base_tool": base_tool,
+                "tool_version": meta.get("tool_version", ""),
                 "command": meta.get("command", ""),
                 "console": last_lines,
             }
@@ -297,6 +353,7 @@ class ProcessManager:
                 statuses = self._tool_status.setdefault(project_id, {})
                 buffers = self._console_buffers.setdefault(project_id, {})
                 pid_hist = self._pid_history.setdefault(project_id, {})
+                meta_store = self._tool_metadata.setdefault(project_id, {})
                 for tid, entry in history.items():
                     loaded_tids.add(tid)
                     if tid not in statuses:
@@ -309,6 +366,12 @@ class ProcessManager:
                         elif entry.get("pid"):
                             pid_hist[tid] = [{"pid": entry["pid"],
                                               "started_at": entry.get("started_at", "")}]
+                    if tid not in meta_store:
+                        meta_store[tid] = {
+                            "started_at": entry.get("started_at", ""),
+                            "pid": entry.get("pid"),
+                            "tool_version": entry.get("tool_version", ""),
+                        }
         self._load_scan_logs_fallback(project_id, proj, proj_dir, loaded_tids)
 
     def _load_scan_logs_fallback(self, project_id: str, proj: dict,
@@ -937,6 +1000,7 @@ class ProcessManager:
 
         started_at = _now_iso()
         tool_name = tool_cfg.get("name", tool_id)
+        tool_version = _read_tool_version(tool_id)
         if scope:
             tool_name = f"{tool_name} [{scope}]"
 
@@ -951,6 +1015,7 @@ class ProcessManager:
                 "scope": scope,
                 "base_tool": tool_id,
                 "command": " ".join(str(c) for c in cmd),
+                "tool_version": tool_version,
             }
             self._pid_history.setdefault(project_id, {}).setdefault(tk, []).append(
                 {"pid": proc.pid, "started_at": started_at}
@@ -958,10 +1023,10 @@ class ProcessManager:
 
         self._start_resource_watchdog()
         self._emit_console(project_id, tk,
-                           f"[Crucible] {tool_name} started — PID {proc.pid}",
+                           f"[Crucible] {tool_name} v{tool_version} started — PID {proc.pid}",
                            "system")
         _audit(cwd, "TOOL_LAUNCH", tool=tool_id, scope=scope,
-               pid=proc.pid, resume=resume)
+               pid=proc.pid, resume=resume, tool_version=tool_version)
         try:
             from models.project import record_tool_use
             _proj_dir = project.get("project_dir", "")
@@ -973,7 +1038,8 @@ class ProcessManager:
                            {"project_id": project_id,
                             "tool_id": tk, "status": "running",
                             "pid": proc.pid, "started_at": started_at,
-                            "scope": scope},
+                            "scope": scope,
+                            "tool_version": tool_version},
                            room=_room(project_id))
 
         self._persist_history(project_id, tk, "running", -1)
@@ -1384,6 +1450,8 @@ class ProcessManager:
                     entry["started_at"] = meta["started_at"]
                 if meta.get("pid"):
                     entry["pid"] = meta["pid"]
+                if meta.get("tool_version"):
+                    entry["tool_version"] = meta["tool_version"]
                 if ":" in tid:
                     result[tid] = entry
                     base = tid.split(":")[0]

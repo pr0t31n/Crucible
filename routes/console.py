@@ -280,20 +280,41 @@ def api_console_instance(project_id, tool_key):
                 break
 
     pids = []
+    tool_version = ""
     pm = _pm()
     if pm:
         pids = pm.get_pid_history(project_id, tool_key)
+        tool_version = pm.get_tool_version(project_id, tool_key)
 
     tool_cfg = TOOLS.get(base_tid, {})
     return jsonify({
         "tool_key": tool_key,
         "base_tool": base_tid,
         "tool_name": tool_cfg.get("name", base_tid),
+        "tool_version": tool_version,
         "scope": scope_display or scope or "",
         "is_oos": is_oos,
         "targets": targets,
         "pids": pids,
     })
+
+
+@console_bp.route("/api/console/versions/<project_id>")
+def api_console_versions(project_id):
+    """Return tool versions used in this project (launched or current)."""
+    require_project(project_id)
+    pm = _pm()
+    versions = pm.get_all_tool_versions(project_id) if pm else {}
+    rows = []
+    for tk, ver in sorted(versions.items()):
+        base = tk.split(":")[0] if ":" in tk else tk
+        cfg = TOOLS.get(base, {})
+        rows.append({
+            "tool_key": tk,
+            "tool_name": cfg.get("name", base),
+            "tool_version": ver,
+        })
+    return jsonify({"versions": rows})
 
 
 def _find_checkpoint_candidates(project, tool_id):

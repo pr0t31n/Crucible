@@ -894,10 +894,13 @@ function _buildFeedItem(tid, clickable) {
     item.className = 'feed-item' + (clickable && tid === selectedTool ? ' active' : '');
     item.setAttribute('data-tool', tid);
 
+    var ver = st.tool_version || '';
     item.innerHTML =
         '<div class="feed-item-icon tool-badge ' + cssClass + '">' + esc(key) + '</div>' +
         '<div class="feed-item-body">' +
-            '<div class="feed-item-name">' + esc(displayName) + '</div>' +
+            '<div class="feed-item-name">' + esc(displayName) +
+                (ver ? ' <span style="font-size:0.8em;color:var(--text-muted);font-weight:400">v' + esc(ver) + '</span>' : '') +
+            '</div>' +
             '<div class="feed-item-preview">' + esc(phase || status) + '</div>' +
         '</div>' +
         '<div class="feed-item-actions">' +
@@ -1238,6 +1241,9 @@ function openInstanceDetail(tid) {
         .then(function(d) {
             var html = '<table class="detail-table">';
             html += '<tr><th>Tool</th><td>' + esc(d.tool_name || baseTid) + '</td></tr>';
+            if (d.tool_version) {
+                html += '<tr><th>Version</th><td><code>' + esc(d.tool_version) + '</code></td></tr>';
+            }
             html += '<tr><th>Scope</th><td>' + esc(d.scope || 'default') + '</td></tr>';
             html += '<tr><th>Type</th><td>' +
                 (d.is_oos
