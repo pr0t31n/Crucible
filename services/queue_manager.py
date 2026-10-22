@@ -258,7 +258,9 @@ class QueueManager:
             if ok:
                 launched_any = True
             else:
-                self.enqueue(project_id, tool_id, scope=scope, **kwargs)
+                log.warning("Dropped queued %s:%s — launch failed "
+                            "(validation or missing config)",
+                            tool_id, scope or "")
 
         if not launched_any and self.queue_size(project_id) > 0:
             self._schedule_dequeue_retry(project_id)
