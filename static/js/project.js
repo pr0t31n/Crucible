@@ -4792,7 +4792,7 @@ var _scopeToolsMap = {};
 
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
-    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['screenshots','{scope} Screenshots']],
+    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['net-hostname-env','Environment Map'],['net-hostname-apps','Application Inventory'],['net-hostname-hw','Hardware Inventory'],['screenshots','{scope} Screenshots']],
     fracture: [['status','WebApp Status'],['webapp-intel','Web Application Intelligence'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
     siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['cookies','API Cookies'],['api','API Inventory']],
     osift:    [['status','OSINT Status'],['osint-domains','OSINT Domains'],['osint-dns','OSINT DNS'],['osint-certs','OSINT Certificates'],['osint-emails','OSINT Emails'],['osint-people','OSINT People'],['osint-breaches','OSINT Data Breaches'],['osint-wayback','OSINT Wayback URLs'],['osint-typosquat','OSINT Typosquatting']],
@@ -5281,6 +5281,9 @@ function loadIntelPanel(panel, tool) {
         'net-software': '/api/intel/net-software/' + PID,
         'net-ports': '/api/intel/net-ports/' + PID,
         'net-roles': '/api/intel/net-roles/' + PID,
+        'net-hostname-env': '/api/intel/net-hostname-env/' + PID,
+        'net-hostname-apps': '/api/intel/net-hostname-apps/' + PID,
+        'net-hostname-hw': '/api/intel/net-hostname-hw/' + PID,
         'osint-domains': '/api/intel/osint-domains/' + PID,
         'osint-dns': '/api/intel/osint-dns/' + PID,
         'osint-certs': '/api/intel/osint-certs/' + PID,
@@ -8108,6 +8111,92 @@ function _renderWebappIntel(data) {
     return h || '<div class="empty-state"><div class="empty-state-text">No data available.</div></div>';
 }
 
+/* ── Hostname Intelligence Renderers ──────────────────────────── */
+function _renderHostnameEnv(data) {
+    var payload = data;
+    if (!payload || !payload.hosts) return _renderIntelGeneric(data);
+    var hosts = payload.hosts.filter(function(h) { return h.environment; });
+    if (!hosts.length) return '<div class="empty-state"><div class="empty-state-text">No environment tiers inferred from hostnames.</div></div>';
+    var summary = payload.summary && payload.summary.environments ? payload.summary.environments : {};
+    var cards = Object.keys(summary).map(function(env) {
+        var clr = env === 'Production' ? 'var(--clr-critical,#e53935)' : env === 'Disaster Recovery' ? 'var(--clr-high,#fb8c00)' : env === 'Pre-Production' ? 'var(--clr-medium,#fdd835)' : env === 'Test' || env === 'QA' || env === 'UAT' ? 'var(--clr-low,#43a047)' : 'var(--accent,#4a9eff)';
+        return '<span style="display:inline-block;padding:6px 14px;margin:2px 4px;border-radius:6px;background:' + clr + ';color:#fff;font-size:0.9em;font-weight:600;white-space:nowrap">' + esc(env) + ' <strong>(' + summary[env] + ')</strong></span>';
+    }).join('');
+    var rows = hosts.map(function(h) {
+        var envClr = h.environment === 'Production' ? 'var(--clr-critical,#e53935)' : h.environment === 'Disaster Recovery' ? 'var(--clr-high,#fb8c00)' : h.environment === 'Pre-Production' ? 'var(--clr-medium,#fdd835)' : 'var(--clr-low,#43a047)';
+        return [
+            '<span style="color:' + envClr + ';font-weight:600">' + esc(h.environment) + '</span>',
+            '<span style="font-family:var(--font-mono);white-space:nowrap">' + esc(h.ip) + '</span>',
+            '<span style="white-space:nowrap">' + esc(h.hostname) + '</span>',
+            '<span style="font-size:0.9em">' + esc(h.environment_evidence || '') + '</span>',
+            esc(h.domain || '')
+        ];
+    });
+    return '<div style="margin-bottom:8px;font-weight:600">Environment Map (' + hosts.length + ' hosts classified)</div>' +
+        '<div style="margin-bottom:12px">' + cards + '</div>' +
+        '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto"><table class="tool-table" style="width:100%;min-width:700px"><thead><tr>' +
+        '<th>Environment</th><th>IP</th><th>Hostname</th><th>Evidence</th><th>Domain</th></tr></thead><tbody>' +
+        rows.map(function(r) { return '<tr>' + r.map(function(c) { return '<td>' + (c||'') + '</td>'; }).join('') + '</tr>'; }).join('') +
+        '</tbody></table></div>';
+}
+
+function _renderHostnameApps(data) {
+    var payload = data;
+    if (!payload || !payload.hosts) return _renderIntelGeneric(data);
+    var hosts = payload.hosts.filter(function(h) { return h.applications && h.applications.length; });
+    if (!hosts.length) return '<div class="empty-state"><div class="empty-state-text">No applications identified from hostnames.</div></div>';
+    var summary = payload.summary && payload.summary.applications ? payload.summary.applications : {};
+    var cards = Object.keys(summary).map(function(app) {
+        return '<span style="display:inline-block;padding:4px 10px;margin:2px 4px;border-radius:4px;background:var(--accent,#4a9eff);color:#fff;font-size:0.85em;white-space:nowrap">' + esc(app) + ' <strong>(' + summary[app] + ')</strong></span>';
+    }).join('');
+    var rows = [];
+    hosts.forEach(function(h) {
+        h.applications.forEach(function(a) {
+            rows.push([
+                '<strong style="white-space:nowrap">' + esc(a.name) + '</strong>',
+                '<span style="white-space:nowrap;color:var(--text-secondary)">' + esc(a.category) + '</span>',
+                '<span style="font-family:var(--font-mono);white-space:nowrap">' + esc(h.ip) + '</span>',
+                '<span style="white-space:nowrap">' + esc(h.hostname) + '</span>',
+                esc(h.environment || ''),
+                '<span style="font-size:0.9em">' + esc(a.evidence || '') + '</span>'
+            ]);
+        });
+    });
+    return '<div style="margin-bottom:8px;font-weight:600">Application Inventory (' + rows.length + ' detections across ' + Object.keys(summary).length + ' products)</div>' +
+        '<div style="margin-bottom:12px">' + cards + '</div>' +
+        '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto"><table class="tool-table" style="width:100%;min-width:800px"><thead><tr>' +
+        '<th>Application</th><th>Category</th><th>IP</th><th>Hostname</th><th>Environment</th><th>Evidence</th></tr></thead><tbody>' +
+        rows.map(function(r) { return '<tr>' + r.map(function(c) { return '<td>' + (c||'') + '</td>'; }).join('') + '</tr>'; }).join('') +
+        '</tbody></table></div>';
+}
+
+function _renderHostnameHw(data) {
+    var payload = data;
+    if (!payload || !payload.hosts) return _renderIntelGeneric(data);
+    var hosts = payload.hosts.filter(function(h) { return h.hardware; });
+    if (!hosts.length) return '<div class="empty-state"><div class="empty-state-text">No hardware models identified from hostnames.</div></div>';
+    var summary = payload.summary && payload.summary.hardware_models ? payload.summary.hardware_models : {};
+    var cards = Object.keys(summary).map(function(hw) {
+        return '<span style="display:inline-block;padding:4px 10px;margin:2px 4px;border-radius:4px;background:var(--accent,#4a9eff);color:#fff;font-size:0.85em;white-space:nowrap">' + esc(hw) + ' <strong>(' + summary[hw] + ')</strong></span>';
+    }).join('');
+    var rows = hosts.map(function(h) {
+        return [
+            '<strong style="white-space:nowrap">' + esc(h.hardware.model) + '</strong>',
+            '<span style="white-space:nowrap">' + esc(h.hardware.manufacturer) + '</span>',
+            '<span style="font-family:var(--font-mono);white-space:nowrap">' + esc(h.ip) + '</span>',
+            '<span style="white-space:nowrap">' + esc(h.hostname) + '</span>',
+            esc(h.environment || ''),
+            '<span style="font-size:0.9em">' + esc(h.hardware.evidence || '') + '</span>'
+        ];
+    });
+    return '<div style="margin-bottom:8px;font-weight:600">Hardware Inventory (' + hosts.length + ' hosts with identified hardware)</div>' +
+        '<div style="margin-bottom:12px">' + cards + '</div>' +
+        '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto"><table class="tool-table" style="width:100%;min-width:800px"><thead><tr>' +
+        '<th>Model</th><th>Manufacturer</th><th>IP</th><th>Hostname</th><th>Environment</th><th>Evidence</th></tr></thead><tbody>' +
+        rows.map(function(r) { return '<tr>' + r.map(function(c) { return '<td>' + (c||'') + '</td>'; }).join('') + '</tr>'; }).join('') +
+        '</tbody></table></div>';
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8115,6 +8204,9 @@ var _INTEL_RENDERERS = {
     'net-software': _renderNetSoftware,
     'net-ports': _renderNetPorts,
     'net-roles': _renderNetRoles,
+    'net-hostname-env': _renderHostnameEnv,
+    'net-hostname-apps': _renderHostnameApps,
+    'net-hostname-hw': _renderHostnameHw,
     'osint-domains': _renderOsintDomains,
     'osint-dns': _renderOsintDns,
     'osint-certs': _renderOsintCerts,
