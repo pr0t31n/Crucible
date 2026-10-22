@@ -2,6 +2,7 @@
 
 import ssl
 import sys
+import signal
 import logging
 import traceback
 from datetime import timedelta
@@ -212,6 +213,10 @@ def main():
         self.server_name = host or "localhost"
         self.server_port = port
     _hs.HTTPServer.server_bind = _fast_server_bind
+
+    def _sigterm(signum, frame):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, _sigterm)
 
     print(f"\n  Crucible v{VERSION}")
     print(f"  https://0.0.0.0:{config.PORT}\n")
