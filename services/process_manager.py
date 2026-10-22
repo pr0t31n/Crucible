@@ -970,6 +970,22 @@ class ProcessManager:
             if extra_args:
                 cmd.extend(extra_args)
 
+        # -- Fixup sudo env: env_reset in sudoers strips -E on most distros.
+        # Replace  sudo [-S] [-E] <cmd>  with  sudo -S env K=V ... <cmd>
+        # so PATH and CRUCIBLE_* vars survive into the tool process.
+        if cmd and cmd[0] == "sudo":
+            _base_env = dict(os.environ)
+            _sudo_env = [f"{k}={v}" for k, v in env.items()
+                         if v and (k not in _base_env or _base_env[k] != v)]
+            _rest = []
+            _skip = True
+            for _tok in cmd:
+                if _skip and _tok in ("sudo", "-S", "-E"):
+                    continue
+                _skip = False
+                _rest.append(_tok)
+            cmd = ["sudo", "-S", "env"] + _sudo_env + _rest
+
         # -- Working directory ------------------------------------------------
         # Use tool output dir as CWD so tool-created files (ferox state,
         # technologies.json, etc.) land in the right place, not project root.
