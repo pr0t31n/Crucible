@@ -380,6 +380,9 @@ def api_clear_project(project_id):
     pm = get_ext("process_manager")
     if pm:
         pm.clear_project_buffers(project_id)
+    qm = get_ext("queue_manager")
+    if qm:
+        qm.clear_queue(project_id)
     fe = get_ext("findings_engine")
     if fe:
         fe.invalidate(project_id)

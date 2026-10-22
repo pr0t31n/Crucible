@@ -1539,10 +1539,12 @@ class ProcessManager:
             return []
 
     def clear_project_buffers(self, project_id: str) -> None:
-        """Wipe all in-memory buffers for a project (console, status, prompts)."""
+        """Wipe all in-memory buffers for a project (console, status, prompts,
+        tool metadata).  Called by clear-scan-data."""
         with self._lock:
             self._console_buffers.pop(project_id, None)
             self._tool_status.pop(project_id, None)
+            self._tool_metadata.pop(project_id, None)
             self._phase_cache.pop(project_id, None)
             self._pending_prompts.pop(project_id, None)
             self._answer_queues.pop(project_id, None)
