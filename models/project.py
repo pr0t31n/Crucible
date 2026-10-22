@@ -787,9 +787,17 @@ def clear_project(project_id):
     # After a run with auto-queued tools, their directories persist on disk even
     # though the project metadata is restored to original_tools.
     _keep_abs = {str(Path(d).resolve()) for d in keep_dirs if d}
-    if eng_dir.exists() and eng_dir != proj_dir:
+    if eng_dir.exists():
         for scope_dir in eng_dir.iterdir():
             if not scope_dir.is_dir() or scope_dir.name.startswith("."):
+                continue
+            # Only descend into known scope directories (internal, external, etc.)
+            # to avoid accidentally removing non-tool content from the project root.
+            if scope_dir.name not in ("internal", "external", "multi",
+                                      "wifi", "bluetooth", "zigbee", "uwb",
+                                      "endpoint", "webapp", "api", "osint",
+                                      "database", "pcap", "cloud", "mobile",
+                                      "firewall", "file"):
                 continue
             for child in list(scope_dir.iterdir()):
                 if not child.is_dir():
