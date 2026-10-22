@@ -218,6 +218,13 @@ _TITLE_RENAMES = [
     (re.compile(r'^LDAP Server Allows Cleartext Authentication$', re.IGNORECASE), 'LDAP: Cleartext Authentication Permitted'),
     (re.compile(r'^Enumeration: LDAP Anonymous Enumeration\b.*', re.IGNORECASE), 'LDAP: Anonymous Enumeration'),
     (re.compile(r'^Enumeration: LDAP Domain Users$', re.IGNORECASE), 'LDAP: Domain User Enumeration'),
+    # ── enum4linux / SMB enumeration ────────────────────────────────────
+    (re.compile(r'^Domain\s*/\s*Workgroup Name Identified$', re.IGNORECASE), 'Discovery: Domain / Workgroup Name'),
+    (re.compile(r'^Domain SID Identified$', re.IGNORECASE), 'Discovery: Domain SID'),
+    (re.compile(r'^Domain/Local Users Enumerated$', re.IGNORECASE), 'Enumeration: Domain/Local Users'),
+    (re.compile(r'^Administrators Group Members Identified$', re.IGNORECASE), 'Enumeration: Administrators Group Members'),
+    (re.compile(r'^SMB Shares Enumerated$', re.IGNORECASE), 'Enumeration: SMB Shares'),
+    (re.compile(r'^RID Cycling Successful$', re.IGNORECASE), 'Enumeration: RID Cycling'),
     # ── RPC ──────────────────────────────────────────────────────────────
     (re.compile(r'^RPC Null Session Permitted$', re.IGNORECASE), 'RPC: Null Session Permitted'),
     (re.compile(r'^RPC portmapper \(TCP\)$', re.IGNORECASE), 'RPC: Portmapper Exposed'),
