@@ -728,10 +728,23 @@ def clear_project(project_id):
                 continue
             for ai_file in scope_dir.rglob("action_items.json"):
                 ai_file.unlink(missing_ok=True)
+            for _scope_file in scope_dir.iterdir():
+                if _scope_file.is_file() and _scope_file.name not in _PRESERVE_ON_CLEAR:
+                    _scope_file.unlink(missing_ok=True)
 
     try:
         from models.action_items import _store as _ai_store
         _ai_store.invalidate(str(proj_dir))
+    except Exception:
+        pass
+    try:
+        from flask import current_app
+        fe = current_app.extensions.get("findings_engine")
+        if fe:
+            fe.invalidate(project_id)
+        pm = current_app.extensions.get("process_manager")
+        if pm:
+            pm._live_targets_clear(project_id)
     except Exception:
         pass
 
