@@ -3325,7 +3325,7 @@ function _loadIntelTargets(body, empty) {
         });
 }
 
-var _bogusOS = /^(bad gateway|not found|redirect|moved|error|ok|forbidden|unauthorized|n\/a)$/i;
+var _bogusOS = /^(bad gateway|not found|redirect|moved|error|ok|forbidden|unauthorized|n\/a|ssdp\/upnp|uses vnc|soap|java console|upnp|ssdp|protocol \d|none)$/i;
 function _cleanOS(v) { return (v && !_bogusOS.test(v.trim())) ? v : ''; }
 function _isConfirmedPort(p) {
     if (typeof p !== 'object') return true;
@@ -4792,7 +4792,7 @@ var _scopeToolsMap = {};
 
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
-    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['screenshots','{scope} Screenshots']],
+    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['screenshots','{scope} Screenshots']],
     fracture: [['status','WebApp Status'],['webapp-intel','Web Application Intelligence'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
     siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['cookies','API Cookies'],['api','API Inventory']],
     osift:    [['status','OSINT Status'],['osint-domains','OSINT Domains'],['osint-dns','OSINT DNS'],['osint-certs','OSINT Certificates'],['osint-emails','OSINT Emails'],['osint-people','OSINT People'],['osint-breaches','OSINT Data Breaches'],['osint-wayback','OSINT Wayback URLs'],['osint-typosquat','OSINT Typosquatting']],
@@ -5280,6 +5280,7 @@ function loadIntelPanel(panel, tool) {
         'net-services': '/api/intel/net-services/' + PID,
         'net-software': '/api/intel/net-software/' + PID,
         'net-ports': '/api/intel/net-ports/' + PID,
+        'net-roles': '/api/intel/net-roles/' + PID,
         'osint-domains': '/api/intel/osint-domains/' + PID,
         'osint-dns': '/api/intel/osint-dns/' + PID,
         'osint-certs': '/api/intel/osint-certs/' + PID,
@@ -5623,6 +5624,44 @@ function _renderNetSoftware(data) {
         '</tr></thead><tbody>' +
         rows.map(function(row) {
             return '<tr>' + row.map(function(cell, ci) {
+                return '<td>' + (cell || '') + '</td>';
+            }).join('') + '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+}
+
+function _renderNetRoles(data) {
+    var payload = data.net_roles || data;
+    if (!payload) return _renderIntelGeneric(data);
+    var items = Array.isArray(payload) ? payload : (payload.items || []);
+    if (!items.length) return _renderIntelGeneric(data);
+    var roleCounts = {};
+    items.forEach(function(r) {
+        var role = r.role || 'Unknown';
+        roleCounts[role] = (roleCounts[role] || 0) + 1;
+    });
+    var summaryCards = Object.keys(roleCounts).sort().map(function(role) {
+        return '<span style="display:inline-block;padding:4px 10px;margin:2px 4px;' +
+            'border-radius:4px;background:var(--accent,#4a9eff);color:#fff;' +
+            'font-size:0.85em;white-space:nowrap">' +
+            esc(role) + ' <strong>(' + roleCounts[role] + ')</strong></span>';
+    }).join('');
+    var rows = items.map(function(r) {
+        return [
+            '<strong style="white-space:nowrap">' + esc(r.role || '') + '</strong>',
+            '<span style="white-space:nowrap;font-family:var(--font-mono)">' + esc(r.ip || '') + '</span>',
+            '<span style="white-space:nowrap">' + esc(r.hostname || '') + '</span>',
+            '<span style="white-space:nowrap">' + esc(r.os || '') + '</span>',
+            '<span style="font-size:0.9em">' + esc(r.evidence || '') + '</span>'
+        ];
+    });
+    return '<div style="margin-bottom:8px;font-weight:600">Server Roles (' + items.length + ' assignments across ' + Object.keys(roleCounts).length + ' role types)</div>' +
+        '<div style="margin-bottom:12px">' + summaryCards + '</div>' +
+        '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto"><table class="tool-table" style="width:100%;min-width:800px"><thead><tr>' +
+        '<th style="min-width:140px">Role</th><th style="min-width:120px">IP</th><th style="min-width:140px">Hostname</th><th style="min-width:140px">OS</th><th style="min-width:200px">Evidence</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function(row) {
+            return '<tr>' + row.map(function(cell) {
                 return '<td>' + (cell || '') + '</td>';
             }).join('') + '</tr>';
         }).join('') +
@@ -8075,6 +8114,7 @@ var _INTEL_RENDERERS = {
     'net-services': _renderNetServices,
     'net-software': _renderNetSoftware,
     'net-ports': _renderNetPorts,
+    'net-roles': _renderNetRoles,
     'osint-domains': _renderOsintDomains,
     'osint-dns': _renderOsintDns,
     'osint-certs': _renderOsintCerts,

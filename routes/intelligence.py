@@ -720,6 +720,7 @@ _PANEL_MAP = {
     "net-services": ("ss3", ["inventory/services.json", "services.json", "correlated.json", "results.json", "targets.json"]),
     "net-software": ("ss3", ["inventory/software.json", "software_inventory.json"]),
     "net-ports":    ("ss3", ["port_matrix.json", "ports.json", "correlated.json", "inventory/hosts.json", "hosts.json", "targets.json"]),
+    "net-roles":    ("ss3", ["server_roles.json"]),
     # OSift (OSINT) — first tries pre-built files, falls back to aggregation
     "osint-domains": ("osift", ["domains.json", "discovered_domains.json", "targets_osint.json"]),
     "osint-dns":     ("osift", ["dns_records.json", "dns.json"]),
@@ -2070,6 +2071,7 @@ _SCOPE_SUBTAB_MAP = {
     "ss3": [
         ("net-hosts", "Host Map"), ("net-services", "Service Matrix"),
         ("net-software", "Software Inventory"), ("net-ports", "Port Heatmap"),
+        ("net-roles", "Server Roles"),
     ],
     "fracture": [
         ("fr-structure", "WebApp Structure"), ("fr-access", "WebApp Access"),
