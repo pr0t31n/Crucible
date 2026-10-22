@@ -225,6 +225,15 @@ _TITLE_RENAMES = [
     (re.compile(r'^Administrators Group Members Identified$', re.IGNORECASE), 'Enumeration: Administrators Group Members'),
     (re.compile(r'^SMB Shares Enumerated$', re.IGNORECASE), 'Enumeration: SMB Shares'),
     (re.compile(r'^RID Cycling Successful$', re.IGNORECASE), 'Enumeration: RID Cycling'),
+    # ── Management interface discovery (was Info Disclosure: … Exposed) ──
+    (re.compile(r'^Information Disclosure: VMware ESXi Management Interface Exposed$', re.IGNORECASE), 'Discovery: VMware ESXi Management Interface'),
+    (re.compile(r'^Information Disclosure: Jenkins CI/CD Server Exposed$', re.IGNORECASE), 'Discovery: Jenkins CI/CD Server'),
+    (re.compile(r'^Information Disclosure: System Management Console \(Cockpit\) Exposed$', re.IGNORECASE), 'Discovery: System Management Console (Cockpit)'),
+    (re.compile(r'^Information Disclosure: Oracle EM Agent Exposed$', re.IGNORECASE), 'Discovery: Oracle EM Agent'),
+    (re.compile(r'^Information Disclosure: License Server Exposed \(Sentinel\)$', re.IGNORECASE), 'Discovery: License Server (Sentinel)'),
+    (re.compile(r'^Information Disclosure: Sentinel License Server$', re.IGNORECASE), 'Discovery: License Server (Sentinel)'),
+    # ── Login page title normalization ──
+    (re.compile(r'^Login Page Identified$', re.IGNORECASE), 'Discovery: Login Page'),
     # ── RPC ──────────────────────────────────────────────────────────────
     (re.compile(r'^RPC Null Session Permitted$', re.IGNORECASE), 'RPC: Null Session Permitted'),
     (re.compile(r'^RPC portmapper \(TCP\)$', re.IGNORECASE), 'RPC: Portmapper Exposed'),
