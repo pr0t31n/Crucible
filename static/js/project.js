@@ -3190,7 +3190,7 @@ document.getElementById('btnFPConfirm').addEventListener('click', function() {
         })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            if (d.ok) { toast('success', 'Finding marked as FP.'); loadFindings(); closeFPModal(); }
+            if (d.ok) { toast('success', 'Finding marked as FP.'); loadFindings(); _refreshActiveIntel(); closeFPModal(); }
             else toast('error', d.error || 'Failed.');
         });
         return;
@@ -3218,6 +3218,7 @@ document.getElementById('btnFPConfirm').addEventListener('click', function() {
                 : selected.length + ' affected locations marked as FP.';
             toast('success', msg);
             loadFindings();
+            _refreshActiveIntel();
             closeFPModal();
         } else {
             toast('error', d.error || 'Failed.');
@@ -3238,6 +3239,7 @@ function recoverFP(f) {
             toast('success', 'Finding recovered.');
             fpFindings = fpFindings.filter(function(fp) { return fp.id !== f.id; });
             loadFindings();
+            _refreshActiveIntel();
         } else {
             toast('error', d.error || 'Recovery failed.');
         }
@@ -3270,7 +3272,7 @@ document.getElementById('btnRiskOverrideSave').addEventListener('click', functio
     })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-        if (d.ok) { toast('success', 'Risk overridden.'); loadFindings(); closeRiskOverride(); }
+        if (d.ok) { toast('success', 'Risk overridden.'); loadFindings(); _refreshActiveIntel(); closeRiskOverride(); }
         else toast('error', d.error || 'Failed.');
     });
 });
@@ -5245,6 +5247,10 @@ document.getElementById('btnExportIntel').addEventListener('click', function() {
     if (!_activeScope) return;
     window.location.href = '/api/export-intel/' + PID + '?scope=' + encodeURIComponent(_activeScope);
 });
+
+function _refreshActiveIntel() {
+    if (_activeIntelPanel) loadIntelPanel(_activeIntelPanel, _activeIntelTool);
+}
 
 function loadIntelPanel(panel, tool) {
     var body = document.getElementById('intelBody');
