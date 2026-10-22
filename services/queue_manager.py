@@ -44,6 +44,7 @@ class QueueManager:
         self._sudo_passwords: dict[str, str] = {}
         self._retry_timers: dict[str, threading.Timer] = {}
         self._paused: dict[str, dict] = {}  # project_id → {reason, ts, …}
+        self._launching: dict[str, set[str]] = {}  # project_id → {tool_id …}
         self._lock = threading.Lock()
         self._load_persisted_queue()
 
@@ -81,6 +82,8 @@ class QueueManager:
             return True, ""
 
         running = self._get_running_tools(project_id)
+        with self._lock:
+            running |= self._launching.get(project_id, set())
         if not running:
             return True, ""
 
@@ -242,25 +245,35 @@ class QueueManager:
             if result is None:
                 break
             tool_id, scope, kwargs = result
-            from models.settings import load_settings
-            proj_dir = project.get("project_dir", "")
-            settings = kwargs.get("settings") or (
-                load_settings(proj_dir, tool_id, scope=scope) if proj_dir else {})
-            ok = pm.launch(
-                project_id, tool_id,
-                project=project,
-                settings=settings,
-                resume=kwargs.get("resume", False),
-                sudo_password=kwargs.get("sudo_password"),
-                scope=scope,
-                extra_args=kwargs.get("extra_args"),
-            )
-            if ok:
-                launched_any = True
-            else:
-                log.warning("Dropped queued %s:%s — launch failed "
-                            "(validation or missing config)",
-                            tool_id, scope or "")
+            with self._lock:
+                self._launching.setdefault(project_id, set()).add(tool_id)
+            try:
+                from models.settings import load_settings
+                proj_dir = project.get("project_dir", "")
+                settings = kwargs.get("settings") or (
+                    load_settings(proj_dir, tool_id, scope=scope) if proj_dir else {})
+                ok = pm.launch(
+                    project_id, tool_id,
+                    project=project,
+                    settings=settings,
+                    resume=kwargs.get("resume", False),
+                    sudo_password=kwargs.get("sudo_password"),
+                    scope=scope,
+                    extra_args=kwargs.get("extra_args"),
+                )
+                if ok:
+                    launched_any = True
+                else:
+                    log.warning("Dropped queued %s:%s — launch failed "
+                                "(validation or missing config)",
+                                tool_id, scope or "")
+            finally:
+                with self._lock:
+                    s = self._launching.get(project_id)
+                    if s:
+                        s.discard(tool_id)
+                        if not s:
+                            self._launching.pop(project_id, None)
 
         if not launched_any and self.queue_size(project_id) > 0:
             self._schedule_dequeue_retry(project_id)
