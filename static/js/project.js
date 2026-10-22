@@ -1934,11 +1934,11 @@ function renderCategoryView() {
                 aff.split('\n').forEach(function(line) {
                     var s = line.trim();
                     if (!s) return;
-                    var host = s.replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
-                    if (host) targetSet[host] = true;
+                    var key = s.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+                    if (key) targetSet[key] = true;
                 });
             } else {
-                var tgt = f.ip || f.hostname;
+                var tgt = (f.ip || f.hostname || '') + (f.port ? ':' + f.port : '');
                 if (tgt) targetSet[tgt] = true;
             }
         });
