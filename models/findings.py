@@ -192,6 +192,7 @@ _TITLE_RENAMES = [
     (re.compile(r'^Software Version Disclosed:\s*(.+)', re.IGNORECASE), r'Software Version Detected: \1'),
     (re.compile(r'^Retrieved access-control-allow-origin header.*', re.IGNORECASE), 'Permissive Security Header: Access-Control-Allow-Origin'),
     (re.compile(r'^CORS Misconfiguration Allowing Credential Leakage$', re.IGNORECASE), 'Permissive Security Header: Cross-Origin Resource Sharing'),
+    (re.compile(r'^Missing Security Headers$', re.IGNORECASE), 'Missing Security Header: Strict-Transport-Security'),
     # Nuclei/OSINT title normalization
     (re.compile(r'^ACME DNS Challenge\s*[-—]\s*Detect$', re.IGNORECASE), 'DNS Information: ACME Challenge'),
     (re.compile(r'^DNS SaaS Service Detection$', re.IGNORECASE), 'DNS Information: SaaS Service'),
