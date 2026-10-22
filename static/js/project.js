@@ -1929,14 +1929,20 @@ function renderCategoryView() {
 
         var targetSet = {};
         findings.forEach(function(f) {
-            var tgt = f.ip || f.hostname || _findingTarget(f);
-            if (tgt) targetSet[tgt] = true;
+            var aff = (f.affected || '').trim();
+            if (aff) {
+                aff.split('\n').forEach(function(line) {
+                    var s = line.trim();
+                    if (!s) return;
+                    var host = s.replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
+                    if (host) targetSet[host] = true;
+                });
+            } else {
+                var tgt = f.ip || f.hostname;
+                if (tgt) targetSet[tgt] = true;
+            }
         });
         var targetCount = Object.keys(targetSet).length;
-
-        var titleSet = {};
-        findings.forEach(function(f) { titleSet[f.title || 'Untitled'] = true; });
-        var titleCount = Object.keys(titleSet).length;
 
         var riskCounts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
         findings.forEach(function(f) { var r = (f.risk||'INFO').toUpperCase(); if (riskCounts[r] !== undefined) riskCounts[r]++; });
@@ -1957,7 +1963,6 @@ function renderCategoryView() {
         html += '<span class="risk-badge ' + riskCls + '">' + bestRisk + '</span>';
         html += riskBreakdown;
         html += '<span class="cat-count" title="Findings">' + findings.length + ' finding' + (findings.length !== 1 ? 's' : '') + '</span>';
-        html += '<span class="cat-count" title="Distinct finding types">' + titleCount + ' type' + (titleCount !== 1 ? 's' : '') + '</span>';
         html += '<span class="cat-count" title="Affected targets">' + targetCount + ' target' + (targetCount !== 1 ? 's' : '') + '</span>';
         html += '</span>';
         html += '</div>';
