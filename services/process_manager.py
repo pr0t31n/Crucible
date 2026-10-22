@@ -2554,6 +2554,9 @@ class ProcessManager:
                 final_status = "paused"
             elif rc == 0:
                 final_status = "complete"
+            elif rc is not None and rc < 0:
+                # Negative rc = killed by signal (OOM, external kill -9, etc.)
+                final_status = "killed"
             else:
                 final_status = "failed"
 
@@ -2605,7 +2608,7 @@ class ProcessManager:
             with self._lock:
                 self._rerun_created.discard(rerun_key)
 
-        if final_status == "paused":
+        if final_status in ("paused", "killed", "failed"):
             self._emit_checkpoint_status(project_id, tool_id)
 
         app = getattr(self._queue_manager, "_app", None) if self._queue_manager else None

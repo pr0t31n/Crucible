@@ -563,6 +563,16 @@ socket.on('tool_done', function(data) {
     if (allActionItems._loaded) loadActionItems();
     _populateEngagementTiming({engagement_start_time: null, engagement_end_time: new Date().toISOString()});
     _fetchQueueData();
+    if (data.status === 'killed' || data.status === 'failed') {
+        fetch('/api/checkpoint/' + PID + '/' + data.tool_id, {credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                toolCheckpoints[data.tool_id] = !!d.exists;
+                _updatePauseAllButtons();
+                if (data.tool_id === selectedTool) updateConsoleHeader();
+            })
+            .catch(function() { toolCheckpoints[data.tool_id] = false; });
+    }
 });
 
 socket.on('tool_started', function(data) {
