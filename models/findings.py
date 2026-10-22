@@ -234,6 +234,10 @@ _TITLE_RENAMES = [
     (re.compile(r'^Information Disclosure: Sentinel License Server$', re.IGNORECASE), 'Discovery: License Server (Sentinel)'),
     # ── Login page title normalization ──
     (re.compile(r'^Login Page Identified$', re.IGNORECASE), 'Discovery: Login Page'),
+    # ── testssl cert finding normalization ──
+    (re.compile(r'^SSL/TLS Vulnerability: cert_signatureAlgorithm$', re.IGNORECASE), 'SSL/TLS Certificate: Weak Signature Algorithm'),
+    (re.compile(r'^SSL/TLS Vulnerability: intermediate_cert_expiration(?:\s*<#\d+>)?$', re.IGNORECASE), 'SSL/TLS Certificate: Intermediate Certificate Expired'),
+    (re.compile(r'^SSL/TLS Vulnerability: intermediate_cert_notAfter(?:\s*<#\d+>)?$', re.IGNORECASE), 'SSL/TLS Certificate: Intermediate Certificate Expired'),
     # ── RPC ──────────────────────────────────────────────────────────────
     (re.compile(r'^RPC Null Session Permitted$', re.IGNORECASE), 'RPC: Null Session Permitted'),
     (re.compile(r'^RPC portmapper \(TCP\)$', re.IGNORECASE), 'RPC: Portmapper Exposed'),

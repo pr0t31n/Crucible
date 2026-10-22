@@ -851,6 +851,7 @@ class ProcessManager:
         _launch_project = dict(project)
         if scope:
             _launch_project["_launch_scope"] = scope
+            env["CRUCIBLE_SCOPE"] = scope
 
         # -- Validate prerequisites --------------------------------------------
         if adapter and not (custom_command and custom_command.strip()):
