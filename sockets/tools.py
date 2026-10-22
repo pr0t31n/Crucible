@@ -1,6 +1,7 @@
 """SocketIO tool control events — start, kill, input."""
 
 import logging
+import traceback
 
 from flask_socketio import emit
 
@@ -21,42 +22,47 @@ def register_tool_events(socketio, process_manager, queue_manager):
         if not pid:
             return
 
-        settings = data.get("settings")
-        resume = data.get("resume", False)
-        sudo_password = data.get("sudo_password")
-        scope = data.get("scope")
+        try:
+            settings = data.get("settings")
+            resume = data.get("resume", False)
+            sudo_password = data.get("sudo_password")
+            scope = data.get("scope")
 
-        from models.settings import load_settings
-        proj_dir = proj.get("project_dir", "")
-        if not settings and proj_dir:
-            settings = load_settings(proj_dir, tid, scope=scope)
-            from routes.settings import _backfill_from_project
-            _backfill_from_project(settings, proj, tid)
+            from models.settings import load_settings
+            proj_dir = proj.get("project_dir", "")
+            if not settings and proj_dir:
+                settings = load_settings(proj_dir, tid, scope=scope)
+                from routes.settings import _backfill_from_project
+                _backfill_from_project(settings, proj, tid)
 
-        can, reason = queue_manager.can_launch(pid, tid)
-        if can:
-            ok = process_manager.launch(
-                pid, tid,
-                project=proj,
-                settings=settings or {},
-                resume=resume,
-                sudo_password=sudo_password,
-                scope=scope,
-            )
-            if ok:
-                log.info("Launched %s for project %s", tid, pid)
-                emit("tool_started", {"project_id": pid, "tool_id": tid},
-                     to=_room(pid))
+            can, reason = queue_manager.can_launch(pid, tid)
+            if can:
+                ok = process_manager.launch(
+                    pid, tid,
+                    project=proj,
+                    settings=settings or {},
+                    resume=resume,
+                    sudo_password=sudo_password,
+                    scope=scope,
+                )
+                if ok:
+                    log.info("Launched %s for project %s", tid, pid)
+                    emit("tool_started", {"project_id": pid, "tool_id": tid},
+                         to=_room(pid))
+                else:
+                    emit("error", {"project_id": pid, "tool_id": tid,
+                                   "message": "Already running or launch failed"})
             else:
-                emit("error", {"project_id": pid, "tool_id": tid,
-                               "message": "Already running or launch failed"})
-        else:
-            queue_manager.enqueue(pid, tid, scope=scope, settings=settings,
-                                 resume=resume, sudo_password=sudo_password)
-            log.info("Queued %s for project %s: %s", tid, pid, reason)
-            emit("tool_queued", {"project_id": pid, "tool_id": tid,
-                                 "reason": reason},
-                 to=_room(pid))
+                queue_manager.enqueue(pid, tid, scope=scope, settings=settings,
+                                     resume=resume, sudo_password=sudo_password)
+                log.info("Queued %s for project %s: %s", tid, pid, reason)
+                emit("tool_queued", {"project_id": pid, "tool_id": tid,
+                                     "reason": reason},
+                     to=_room(pid))
+        except Exception as exc:
+            log.error("on_tool_start crashed: %s\n%s", exc, traceback.format_exc())
+            emit("error", {"project_id": pid, "tool_id": tid,
+                           "message": f"Launch error: {exc}"})
 
     @socketio.on("tool_kill")
     def on_tool_kill(data):

@@ -712,6 +712,14 @@ def clear_project(project_id):
         f.unlink(missing_ok=True)
     for f in proj_dir.glob("console_*.log"):
         f.unlink(missing_ok=True)
+    for _stale_name in ("tool_versions.json", "system_info.json",
+                        "audit.log", "audit.log.jsonl",
+                        "falsePositives.json", "falsePositives.csv",
+                        "false_positives.json", "false_positives.csv"):
+        (proj_dir / _stale_name).unlink(missing_ok=True)
+    _snap_dir = proj_dir / "network_snapshots"
+    if _snap_dir.is_dir():
+        shutil.rmtree(_snap_dir, ignore_errors=True)
 
     if eng_dir.exists():
         for scope_dir in eng_dir.iterdir():
@@ -774,6 +782,20 @@ def clear_project(project_id):
 
     for d in keep_dirs:
         Path(d).mkdir(parents=True, exist_ok=True)
+
+    # Remove stale tool directories that are no longer in the restored tool set.
+    # After a run with auto-queued tools, their directories persist on disk even
+    # though the project metadata is restored to original_tools.
+    _keep_abs = {str(Path(d).resolve()) for d in keep_dirs if d}
+    if eng_dir.exists() and eng_dir != proj_dir:
+        for scope_dir in eng_dir.iterdir():
+            if not scope_dir.is_dir() or scope_dir.name.startswith("."):
+                continue
+            for child in list(scope_dir.iterdir()):
+                if not child.is_dir():
+                    continue
+                if str(child.resolve()) not in _keep_abs and str(child) not in cleared:
+                    shutil.rmtree(child, ignore_errors=True)
 
     reset_tool_tracking(str(proj_dir))
 
