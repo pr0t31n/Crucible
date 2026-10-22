@@ -1039,6 +1039,77 @@ def _write_fp_csv(project_dir, fps):
 
 # ── Risk Override + Accept/Unaccept + Notes ──────────────────
 
+_OVERRIDES_FILE = "risk_overrides.json"
+
+
+def _overrides_path(project):
+    pd = project.get("project_dir", "")
+    return Path(pd) / _OVERRIDES_FILE if pd else None
+
+
+def load_risk_overrides(project):
+    """Load saved risk overrides — {title: {risk, reason, original_risk}}."""
+    fp = _overrides_path(project)
+    if not fp or not fp.exists():
+        return {}
+    try:
+        with open(fp) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_risk_override(project, title, new_risk, reason="", original_risk=""):
+    """Persist a risk override to the project-level overrides file."""
+    fp = _overrides_path(project)
+    if not fp:
+        return
+    overrides = load_risk_overrides(project)
+    overrides[title] = {
+        "risk": new_risk.upper(),
+        "reason": reason,
+        "original_risk": original_risk,
+        "datetime": datetime.now().isoformat(),
+    }
+    try:
+        with open(fp, "w") as fh:
+            json.dump(overrides, fh, indent=2)
+    except Exception:
+        pass
+
+
+def remove_risk_override(project, title):
+    """Remove a saved risk override (e.g. when resetting to original)."""
+    fp = _overrides_path(project)
+    if not fp or not fp.exists():
+        return
+    overrides = load_risk_overrides(project)
+    if title in overrides:
+        del overrides[title]
+        try:
+            with open(fp, "w") as fh:
+                json.dump(overrides, fh, indent=2)
+        except Exception:
+            pass
+
+
+def apply_risk_overrides(findings_list, project):
+    """Apply saved risk overrides to a findings list (by title match)."""
+    overrides = load_risk_overrides(project)
+    if not overrides:
+        return findings_list
+    for f in findings_list:
+        title = f.get("title") or ""
+        if title in overrides:
+            ov = overrides[title]
+            f["original_risk"] = ov.get("original_risk") or f.get("risk", "INFO")
+            f["risk"] = ov["risk"]
+            if ov.get("reason"):
+                f["risk_override_reason"] = ov["reason"]
+    return findings_list
+
+
 def override_risk(findings_list, finding_id, new_risk, reason=""):
     """Override a finding's risk level. Returns updated list."""
     for f in findings_list:
@@ -1050,9 +1121,11 @@ def override_risk(findings_list, finding_id, new_risk, reason=""):
     return findings_list
 
 
-def persist_risk_override(findings_list, finding_id, new_risk, project):
-    """Write a risk override back to the source findings file(s).
-    Matches by finding title across ALL findings files in the project."""
+def persist_risk_override(findings_list, finding_id, new_risk, project,
+                          reason=""):
+    """Write a risk override to the project-level overrides file AND
+    back to the source findings file(s) (best-effort — the tool may
+    overwrite them, but the overrides file survives)."""
     target = None
     for f in findings_list:
         if f.get("id") == finding_id:
@@ -1063,6 +1136,9 @@ def persist_risk_override(findings_list, finding_id, new_risk, project):
     title = target.get("title") or ""
     if not title:
         return
+    original = target.get("original_risk") or target.get("risk", "INFO")
+    save_risk_override(project, title, new_risk, reason=reason,
+                       original_risk=original)
     source_files = set()
     _all_tdirs = list(project.get("tool_dirs", {}).values())
     for scope_dirs in project.get("scope_tool_dirs", {}).values():

@@ -11,6 +11,7 @@ from models.findings import (
     load_all_findings, load_false_positives, mark_false_positive,
     mark_partial_fp as _mark_partial_fp,
     recover_false_positive, override_risk, persist_risk_override,
+    apply_risk_overrides,
     accept_finding, unaccept_finding, add_note, get_risk_summary,
     get_tool_breakdown, deduplicate, _risk_sort_key,
 )
@@ -408,6 +409,7 @@ class FindingsEngine:
                     f["scope"] = tsm[tid]
         self._enrich_from_catalogue(active)
         self._apply_oos_flags(active, project)
+        apply_risk_overrides(active, project)
         with self._lock:
             self._cache[project_id] = active
             self._fp_cache[project_id] = fps
@@ -448,6 +450,8 @@ class FindingsEngine:
             except RuntimeError:
                 pass
         self._enrich_from_catalogue([finding])
+        if project:
+            apply_risk_overrides([finding], project)
         with self._lock:
             cached = self._cache.get(project_id)
             if cached is None:
@@ -455,7 +459,10 @@ class FindingsEngine:
             else:
                 merged = list(cached)
                 merged.append(finding)
-                self._cache[project_id] = deduplicate(merged)
+                deduped = deduplicate(merged)
+                if project:
+                    apply_risk_overrides(deduped, project)
+                self._cache[project_id] = deduped
         if self._action_engine and project:
             project_dir = project.get("project_dir", "")
             if project_dir:
@@ -541,7 +548,8 @@ class FindingsEngine:
             self._cache[project_id] = override_risk(cached, finding_id,
                                                      new_risk, reason)
             if project:
-                persist_risk_override(cached, finding_id, new_risk, project)
+                persist_risk_override(cached, finding_id, new_risk, project,
+                                      reason=reason)
         if not project_dir and project:
             project_dir = project.get("project_dir", "")
         _audit(project_dir, "RISK_OVERRIDE", finding_id=finding_id,

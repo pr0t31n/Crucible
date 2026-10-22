@@ -715,7 +715,8 @@ def clear_project(project_id):
     for _stale_name in ("tool_versions.json", "system_info.json",
                         "audit.log", "audit.log.jsonl",
                         "falsePositives.json", "falsePositives.csv",
-                        "false_positives.json", "false_positives.csv"):
+                        "false_positives.json", "false_positives.csv",
+                        "risk_overrides.json"):
         (proj_dir / _stale_name).unlink(missing_ok=True)
     _snap_dir = proj_dir / "network_snapshots"
     if _snap_dir.is_dir():
