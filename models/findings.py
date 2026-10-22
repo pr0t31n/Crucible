@@ -283,6 +283,24 @@ _TITLE_RENAMES = [
     (re.compile(r'^IKE Aggressive Mode Enabled$', re.IGNORECASE), 'IKE: Aggressive Mode Enabled'),
     (re.compile(r'^IKE VPN:\s*Weak Cryptographic Parameters$', re.IGNORECASE), 'IKE: Weak Cryptographic Parameters'),
     (re.compile(r'^IKE/ISAKMP VPN Endpoint Detected$', re.IGNORECASE), 'Discovery: IKE/VPN Endpoint'),
+    # ── SSL/TLS named attacks — strip testssl suffixes (parenthetical + underscore) ──
+    (re.compile(r'^SSL/TLS Vulnerability:\s*BEAST[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: BEAST'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*CRIME[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: CRIME'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*BREACH[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: BREACH'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*POODLE[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: POODLE'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*SWEET32[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: SWEET32'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*LUCKY13[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: LUCKY13'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*ROBOT[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: ROBOT'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*DROWN[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: DROWN'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*FREAK[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: FREAK'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*LOGJAM[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: LOGJAM'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*Heartbleed[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: Heartbleed'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*TICKETBLEED[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: TICKETBLEED'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*CCS[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: CCS'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*Secure Renegotiation[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: Secure Renegotiation'),
+    (re.compile(r'^SSL/TLS Vulnerability:\s*Secure Client-Initiated Renegotiation[_\s(].*$', re.IGNORECASE), 'SSL/TLS Vulnerability: Secure Client-Initiated Renegotiation'),
+    # ── HSTS Short Duration: header exists but max-age is insufficient ──
+    (re.compile(r'^Missing Security Header:\s*Strict-Transport-Security\s*\(Short Duration\)$', re.IGNORECASE), 'Misconfigured Security Header: HSTS Short Duration'),
     # ── SSL/TLS (bare titles) ────────────────────────────────────────────
     (re.compile(r'^TLS Certificate Hostname Mismatch$', re.IGNORECASE), 'SSL/TLS Certificate: Hostname Mismatch'),
     (re.compile(r'^CBC Mode Cipher Suites Accepted$', re.IGNORECASE), 'SSL/TLS Ciphers: CBC Mode Cipher Suites'),
@@ -474,6 +492,8 @@ _TITLE_NORM_SUBS = _TITLE_RENAMES + [
     (re.compile(r'^/[^:]*:\s+'), ''),
     (re.compile(r'\s*<hostCert#\d+>'), ''),
     (re.compile(r'^(Typosquatting Domain Detected):?\s+.*', re.IGNORECASE), r'\1'),
+    (re.compile(r'\s+httpd\b', re.IGNORECASE), ''),
+    (re.compile(r'(Software Version Detected:\s*\S*)-(\S)', re.IGNORECASE), r'\1 \2'),
 ]
 
 
@@ -665,11 +685,19 @@ def _dedup_affected_set(aff_set):
     return result - to_remove
 
 
+_TOOL_ALIAS = {
+    "ss3": "scattershot3", "scattershot": "scattershot3",
+    "fr": "fracture", "si": "siphon",
+    "ae": "aether", "ae_b": "aether_b", "ae_z": "aether_z", "ae_u": "aether_u",
+    "gb": "gearbox",
+}
+
 def _dedup_key(finding):
     ntitle = _normalize_title(
         finding.get("title") or finding.get("detail") or ""
     )
     tool = (finding.get("tool") or "").split(":")[0].lower()
+    tool = _TOOL_ALIAS.get(tool, tool)
     scope = (finding.get("scope") or finding.get("_scope") or "").lower()
     oos = "oos" if finding.get("oos") else ""
     return (ntitle, tool, scope, oos)

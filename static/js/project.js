@@ -96,6 +96,8 @@ var _multiTargetState = {};     /* tool_id → {targets:[], activeTarget:'', per
 var _mtActiveTarget = {};       /* tool_id → currently selected target URL for display */
 var _findingsRefreshTimer = null;
 var _activeToolCount = 0;
+var _findingsDebouncePending = false;
+var _findingsDebounceTimer = null;
 
 
 /* ══════════════════════════════════════════════════════════════════
@@ -416,10 +418,18 @@ socket.on('tool_finding', function(data) {
     allFindings.push(data);
     var pill = document.getElementById('findingsPill');
     if (pill) pill.textContent = allFindings.length || '';
-    if (document.querySelector('.tab-content[data-tab="findings"].active')) {
-        applyFindingsFilter();
+    _findingsDebouncePending = true;
+    if (!_findingsDebounceTimer) {
+        _findingsDebounceTimer = setTimeout(function() {
+            _findingsDebounceTimer = null;
+            if (!_findingsDebouncePending) return;
+            _findingsDebouncePending = false;
+            if (document.querySelector('.tab-content[data-tab="findings"].active')) {
+                applyFindingsFilter();
+            }
+            updateRiskOverview();
+        }, 2000);
     }
-    updateRiskOverview();
 });
 
 /* ── action item pill: count only non-complete/non-dismissed ────── */
@@ -1867,7 +1877,23 @@ function renderFindingsTable() {
     }
 }
 
+function _getExpandedCategories() {
+    var expanded = {};
+    document.querySelectorAll('#findingsCategoryView .cat-header.open').forEach(function(el) {
+        expanded[el.getAttribute('data-cat')] = true;
+    });
+    return expanded;
+}
+
+function _restoreExpandedCategories(expanded) {
+    if (!expanded) return;
+    document.querySelectorAll('#findingsCategoryView .cat-header').forEach(function(el) {
+        if (expanded[el.getAttribute('data-cat')]) el.classList.add('open');
+    });
+}
+
 function renderCategoryView() {
+    var expanded = _getExpandedCategories();
     var wrap = document.getElementById('findingsCategoryView');
     var tableWrap = document.getElementById('findingsTable').parentElement;
     var empty = document.getElementById('findingsEmpty');
@@ -2017,6 +2043,7 @@ function renderCategoryView() {
     });
 
     wrap.innerHTML = html;
+    _restoreExpandedCategories(expanded);
 }
 
 /* ── Findings event listeners ──────────────────────────────────── */

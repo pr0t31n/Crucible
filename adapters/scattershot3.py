@@ -263,7 +263,7 @@ class Scattershot3Adapter(ToolAdapter):
             items = (data if isinstance(data, list)
                      else data.get("findings", []))
             for finding in items:
-                finding.setdefault("tool", "scattershot3")
+                finding["tool"] = "scattershot3"
                 findings.append(finding)
         return findings
 
