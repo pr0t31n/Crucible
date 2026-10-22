@@ -4805,7 +4805,7 @@ var _scopeToolsMap = {};
 
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
-    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['net-hostname-env','Environment Map'],['net-hostname-apps','Application Inventory'],['net-hostname-hw','Hardware Inventory'],['screenshots','{scope} Screenshots']],
+    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['net-hostname-env','Environment Map'],['net-hostname-apps','Application Inventory'],['net-hostname-hw','Hardware Inventory'],['net-posture','Network Posture'],['screenshots','{scope} Screenshots']],
     fracture: [['status','WebApp Status'],['webapp-intel','Web Application Intelligence'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
     siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['cookies','API Cookies'],['api','API Inventory']],
     osift:    [['status','OSINT Status'],['osint-domains','OSINT Domains'],['osint-dns','OSINT DNS'],['osint-certs','OSINT Certificates'],['osint-emails','OSINT Emails'],['osint-people','OSINT People'],['osint-breaches','OSINT Data Breaches'],['osint-wayback','OSINT Wayback URLs'],['osint-typosquat','OSINT Typosquatting']],
@@ -5301,6 +5301,7 @@ function loadIntelPanel(panel, tool) {
         'net-hostname-env': '/api/intel/net-hostname-env/' + PID,
         'net-hostname-apps': '/api/intel/net-hostname-apps/' + PID,
         'net-hostname-hw': '/api/intel/net-hostname-hw/' + PID,
+        'net-posture': '/api/intel/net-posture/' + PID,
         'osint-domains': '/api/intel/osint-domains/' + PID,
         'osint-dns': '/api/intel/osint-dns/' + PID,
         'osint-certs': '/api/intel/osint-certs/' + PID,
@@ -8214,6 +8215,54 @@ function _renderHostnameHw(data) {
         '</tbody></table></div>';
 }
 
+function _renderNetPosture(data) {
+    if (!data || !data.subnets || !data.subnets.length) return '<div class="empty-state"><div class="empty-state-text">No network posture data available. Port scan results with state breakdowns are required.</div></div>';
+    var segCount = data.segmented_count || 0;
+    var subCount = data.subnet_count || 0;
+    var summaryCards = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">' +
+        '<span style="display:inline-block;padding:6px 14px;border-radius:6px;background:var(--accent,#4a9eff);color:#fff;font-weight:600">' + subCount + ' Subnet' + (subCount !== 1 ? 's' : '') + '</span>';
+    if (segCount > 0) {
+        summaryCards += '<span style="display:inline-block;padding:6px 14px;border-radius:6px;background:var(--clr-high,#fb8c00);color:#fff;font-weight:600">' + segCount + ' Segmented</span>';
+    }
+    summaryCards += '</div>';
+    var subnetBlocks = data.subnets.map(function(s) {
+        var segBadge = s.segmented ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:var(--clr-high,#fb8c00);color:#fff;font-size:0.8em;margin-left:8px">SEGMENTED</span>' : '';
+        var barTotal = s.host_count || 1;
+        var openPct = (s.open_hosts / barTotal * 100).toFixed(0);
+        var filtPct = (s.filtered_hosts / barTotal * 100).toFixed(0);
+        var closedPct = (s.closed_hosts / barTotal * 100).toFixed(0);
+        var bar = '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin:6px 0 10px">' +
+            (s.open_hosts ? '<div style="width:' + openPct + '%;background:var(--clr-low,#43a047)" title="Open: ' + s.open_hosts + '"></div>' : '') +
+            (s.closed_hosts ? '<div style="width:' + closedPct + '%;background:var(--accent,#4a9eff)" title="Closed: ' + s.closed_hosts + '"></div>' : '') +
+            (s.filtered_hosts ? '<div style="width:' + filtPct + '%;background:var(--clr-high,#fb8c00)" title="Filtered: ' + s.filtered_hosts + '"></div>' : '') +
+            '</div>';
+        var legend = '<div style="display:flex;gap:12px;font-size:0.85em;margin-bottom:6px">' +
+            '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--clr-low,#43a047);vertical-align:middle;margin-right:4px"></span>Open: ' + s.open_hosts + '</span>' +
+            '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent,#4a9eff);vertical-align:middle;margin-right:4px"></span>Closed: ' + s.closed_hosts + '</span>' +
+            '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--clr-high,#fb8c00);vertical-align:middle;margin-right:4px"></span>Filtered: ' + s.filtered_hosts + '</span>' +
+            '</div>';
+        var rows = (s.hosts || []).map(function(h) {
+            var pClr = h.posture === 'filtered' ? 'var(--clr-high,#fb8c00)' : h.posture === 'open' ? 'var(--clr-low,#43a047)' : 'var(--accent,#4a9eff)';
+            var pLabel = h.posture === 'filtered' ? 'Filtered' : h.posture === 'open' ? 'Open (' + h.open_port_count + ' svc)' : 'Closed';
+            return '<tr>' +
+                '<td style="font-family:var(--font-mono);white-space:nowrap">' + esc(h.ip) + '</td>' +
+                '<td style="white-space:nowrap">' + esc(h.hostname || '') + '</td>' +
+                '<td><span style="color:' + pClr + ';font-weight:600">' + pLabel + '</span></td>' +
+                '<td style="text-align:right">' + h.open + '</td>' +
+                '<td style="text-align:right">' + h.closed + '</td>' +
+                '<td style="text-align:right">' + h.filtered + '</td>' +
+                '<td style="text-align:right">' + h.scanned + '</td></tr>';
+        }).join('');
+        return '<div style="border:1px solid var(--border,#333);border-radius:8px;padding:12px;margin-bottom:12px">' +
+            '<div style="font-weight:700;font-size:1.05em;font-family:var(--font-mono)">' + esc(s.cidr) + ' <span style="font-weight:400;font-size:0.9em;color:var(--text-secondary)">(' + s.host_count + ' host' + (s.host_count !== 1 ? 's' : '') + ')</span>' + segBadge + '</div>' +
+            bar + legend +
+            '<div style="overflow-x:auto"><table class="tool-table" style="width:100%;min-width:600px"><thead><tr>' +
+            '<th>IP</th><th>Hostname</th><th>Posture</th><th style="text-align:right">Open</th><th style="text-align:right">Closed</th><th style="text-align:right">Filtered</th><th style="text-align:right">Scanned</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div></div>';
+    }).join('');
+    return '<div style="margin-bottom:8px;font-weight:600">Network Posture</div>' + summaryCards + subnetBlocks;
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8224,6 +8273,7 @@ var _INTEL_RENDERERS = {
     'net-hostname-env': _renderHostnameEnv,
     'net-hostname-apps': _renderHostnameApps,
     'net-hostname-hw': _renderHostnameHw,
+    'net-posture': _renderNetPosture,
     'osint-domains': _renderOsintDomains,
     'osint-dns': _renderOsintDns,
     'osint-certs': _renderOsintCerts,

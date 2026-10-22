@@ -724,6 +724,7 @@ _PANEL_MAP = {
     "net-hostname-env":  ("ss3", ["hostname_intelligence.json"]),
     "net-hostname-apps": ("ss3", ["hostname_intelligence.json"]),
     "net-hostname-hw":   ("ss3", ["hostname_intelligence.json"]),
+    "net-posture":       ("ss3", ["network_posture.json"]),
     # OSift (OSINT) — first tries pre-built files, falls back to aggregation
     "osint-domains": ("osift", ["domains.json", "discovered_domains.json", "targets_osint.json"]),
     "osint-dns":     ("osift", ["dns_records.json", "dns.json"]),
@@ -2078,6 +2079,7 @@ _SCOPE_SUBTAB_MAP = {
         ("net-hostname-env", "Environment Map"),
         ("net-hostname-apps", "Application Inventory"),
         ("net-hostname-hw", "Hardware Inventory"),
+        ("net-posture", "Network Posture"),
     ],
     "fracture": [
         ("fr-structure", "WebApp Structure"), ("fr-access", "WebApp Access"),
