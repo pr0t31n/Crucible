@@ -2429,6 +2429,8 @@ class ProcessManager:
         data["project_id"] = project_id
         data["tool_id"] = tool_id
         title = data.get("title", data.get("message", ""))
+        if not title or not title.strip():
+            return
         risk = data.get("risk", "INFO")
         self._emit_console(project_id, tool_id,
                            f"[FINDING/{risk}] {title}", "stdout")
