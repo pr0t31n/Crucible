@@ -2030,48 +2030,56 @@ def api_screenshots(project_id):
 @intelligence_bp.route("/api/webapp-intel/<project_id>")
 def api_webapp_intel(project_id):
     """Return web application intelligence data (DNS resolution, infrastructure)."""
-    project = require_project(project_id)
-    fr_dir = _resolve_tool_dir(project, "fracture")
-    result = {"dns": None, "target_profile": None, "infrastructure": {}}
-    if not fr_dir:
+    try:
+        project = require_project(project_id)
+        fr_dir = _resolve_tool_dir(project, "fracture")
+        result = {"dns": None, "target_profile": None, "infrastructure": {}}
+        if not fr_dir:
+            return jsonify(result)
+        fr_dir = Path(fr_dir)
+        dns_path = fr_dir / "dns_resolution.json"
+        if dns_path.exists():
+            try:
+                result["dns"] = json.loads(dns_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+        tp_path = fr_dir / "target_profile.json"
+        if tp_path.exists():
+            try:
+                result["target_profile"] = json.loads(tp_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+        tp = result.get("target_profile") or {}
+        dns = result.get("dns") or {}
+        infra = {}
+        if tp.get("waf"):
+            infra["waf"] = tp["waf"]
+        if tp.get("edge_security"):
+            infra["edge_security"] = tp["edge_security"]
+        if tp.get("cdn"):
+            infra["cdn"] = tp["cdn"]
+        if dns.get("load_balancer_detected"):
+            infra["load_balancer"] = True
+            infra["backend_ips"] = dns.get("total_unique_ips", 0)
+        if tp.get("tls_enabled") is not None:
+            infra["tls_enabled"] = tp["tls_enabled"]
+        if tp.get("protocols"):
+            infra["tls_protocols"] = tp["protocols"]
+        if tp.get("cert_issuer"):
+            infra["cert_issuer"] = tp["cert_issuer"]
+        if tp.get("cert_expiry"):
+            infra["cert_expiry"] = tp["cert_expiry"]
+        if tp.get("cert_subject"):
+            infra["cert_subject"] = tp["cert_subject"]
+        result["infrastructure"] = infra
         return jsonify(result)
-    fr_dir = Path(fr_dir)
-    dns_path = fr_dir / "dns_resolution.json"
-    if dns_path.exists():
-        try:
-            result["dns"] = json.loads(dns_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    tp_path = fr_dir / "target_profile.json"
-    if tp_path.exists():
-        try:
-            result["target_profile"] = json.loads(tp_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    tp = result.get("target_profile") or {}
-    dns = result.get("dns") or {}
-    infra = {}
-    if tp.get("waf"):
-        infra["waf"] = tp["waf"]
-    if tp.get("edge_security"):
-        infra["edge_security"] = tp["edge_security"]
-    if tp.get("cdn"):
-        infra["cdn"] = tp["cdn"]
-    if dns.get("load_balancer_detected"):
-        infra["load_balancer"] = True
-        infra["backend_ips"] = dns.get("total_unique_ips", 0)
-    if tp.get("tls_enabled") is not None:
-        infra["tls_enabled"] = tp["tls_enabled"]
-    if tp.get("protocols"):
-        infra["tls_protocols"] = tp["protocols"]
-    if tp.get("cert_issuer"):
-        infra["cert_issuer"] = tp["cert_issuer"]
-    if tp.get("cert_expiry"):
-        infra["cert_expiry"] = tp["cert_expiry"]
-    if tp.get("cert_subject"):
-        infra["cert_subject"] = tp["cert_subject"]
-    result["infrastructure"] = infra
-    return jsonify(result)
+    except Exception as _wi_exc:
+        import traceback as _tb
+        return jsonify({
+            "error": str(_wi_exc),
+            "traceback": _tb.format_exc(),
+            "fr_dir": str(fr_dir) if 'fr_dir' in dir() else None,
+        }), 500
 
 
 _SCOPE_SUBTAB_MAP = {
