@@ -6546,10 +6546,11 @@ function _loadScreenshotsPanel(body, empty, tool) {
                 else if (dl.indexOf('directory') !== -1 || dl.indexOf('error') !== -1) descClass = ' style="color:var(--clr-medium)"';
                 else if (dl.indexOf('restricted') !== -1 || dl.indexOf('admin') !== -1) descClass = ' style="color:var(--clr-critical)"';
                 else if (dl.indexOf('landing') !== -1 || dl.indexOf('interesting') !== -1) descClass = ' style="color:var(--clr-info);font-weight:600"';
-                var _ipCell = _isWebApp ? (s.url ? s.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : esc(s.ip)) : esc(s.ip);
-                h += '<tr style="cursor:pointer" onclick="_openScreenshot(\'' + esc(s.screenshot_path).replace(/'/g, "\\'") + '\',\'' + esc(s.url).replace(/'/g, "\\'") + '\',\'' + esc(s.description).replace(/'/g, "\\'") + '\',\'' + esc(s.ip).replace(/'/g, "\\'") + '\',' + s.port + ',\'' + esc(s.server || '').replace(/'/g, "\\'") + '\')">' +
+                var _sUrl = (s.url || '').split(/[\r\n]/)[0].trim();
+                var _ipCell = _isWebApp ? (_sUrl ? _sUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : esc(s.ip)) : esc(s.ip);
+                h += '<tr style="cursor:pointer" data-ss-path="' + esc(s.screenshot_path) + '" data-ss-url="' + esc(_sUrl) + '" data-ss-desc="' + esc((s.description || '').replace(/[\r\n]+/g, ' ')) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
                     '<td>' + (i + 1) + '</td>' +
-                    '<td style="font-family:var(--font-mono);font-size:0.8rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.url) + '">' + esc(s.url) + '</td>' +
+                    '<td style="font-family:var(--font-mono);font-size:0.8rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(_sUrl) + '">' + esc(_sUrl) + '</td>' +
                     '<td style="font-family:var(--font-mono);font-size:0.85rem">' + esc(_ipCell) + '</td>' +
                     '<td>' + s.port + '</td>' +
                     '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.title || '') + '">' + esc(s.title || '—') + '</td>' +
@@ -6560,6 +6561,18 @@ function _loadScreenshotsPanel(body, empty, tool) {
             }
             h += '</tbody></table></div>';
             body.innerHTML = h;
+            body.querySelectorAll('tr[data-ss-path]').forEach(function(tr) {
+                tr.addEventListener('click', function() {
+                    _openScreenshot(
+                        tr.getAttribute('data-ss-path'),
+                        tr.getAttribute('data-ss-url'),
+                        tr.getAttribute('data-ss-desc'),
+                        tr.getAttribute('data-ss-ip'),
+                        parseInt(tr.getAttribute('data-ss-port'), 10) || 0,
+                        tr.getAttribute('data-ss-server')
+                    );
+                });
+            });
         })
         .catch(function() {
             body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load screenshots.</div></div>';

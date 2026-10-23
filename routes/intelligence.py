@@ -1855,7 +1855,8 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                 port = meta.get("port", 0)
                 hostname = meta.get("hostname", "")
                 scheme = meta.get("scheme", "https" if port == 443 else "http")
-                url = meta.get("url", "")
+                _raw_url = meta.get("url", "")
+                url = _raw_url.split("\n")[0].strip() if _raw_url else ""
                 if not url and (hostname or ip):
                     hp = hostname or ip
                     if (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
@@ -1932,7 +1933,8 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                             f_ip = f.get("ip", "")
                             f_port = f.get("port", 0)
                             f_hn = f.get("hostname", "")
-                            f_aff = f.get("affected", "")
+                            _raw_aff = f.get("affected", "")
+                            f_aff = _raw_aff.split("\n")[0].strip() if _raw_aff else ""
                             hp = f_hn or f_ip
                             sc = "https" if f_port == 443 else "http"
                             if not f_aff and hp:
