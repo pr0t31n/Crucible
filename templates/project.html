@@ -924,7 +924,7 @@
         </button>
       </div>
       <div id="evidenceDualControls" hidden style="padding:8px 16px;border-bottom:1px solid var(--border-color)">
-        <label class="form-label" style="margin-right:8px;display:inline">Affected Location:</label>
+        <label class="form-label" for="evidenceLocationSelect" style="margin-right:8px;display:inline">Affected Location:</label>
         <select id="evidenceLocationSelect" class="form-control" style="max-width:400px;display:inline-block"></select>
       </div>
       <div id="evidenceHighlightBar" hidden style="padding:4px 12px;display:flex;align-items:center;gap:8px;font-size:0.75rem;background:var(--bg-card);border-bottom:1px solid var(--border-color)">
@@ -1169,13 +1169,13 @@
     </div>
     <div class="modal-body">
       <div class="form-group mb-12">
-        <label class="form-label">Report Type</label>
+        <span class="form-label">Report Type</span>
         <div id="reportTypeList" style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
           <div style="text-align:center;padding:20px;color:var(--text-secondary)">Loading report types...</div>
         </div>
       </div>
       <div class="form-group mb-12">
-        <label class="form-label">Format</label>
+        <span class="form-label">Format</span>
         <div style="display:flex;gap:12px;margin-top:4px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="radio" name="reportFormat" value="pdf" checked>
@@ -1283,7 +1283,7 @@
     </div>
     <div class="modal-body">
       <div class="form-group mb-12">
-        <label class="form-label">Format</label>
+        <span class="form-label">Format</span>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:6px;transition:border-color .15s" class="export-format-option">
             <input type="radio" name="exportFormat" value="csv_merged" checked style="margin-top:3px">
@@ -1353,7 +1353,7 @@
         <tr><td class="detail-label">Dest Dir</td><td id="idDestDir" style="word-break:break-all;font-size:0.78rem">—</td></tr>
       </table>
       <div id="idErrorWrap" style="display:none;margin-top:12px">
-        <label class="form-label" style="color:var(--red-600)">Error</label>
+        <span class="form-label" style="color:var(--red-600)">Error</span>
         <pre id="idError" style="background:var(--bg-subtle);padding:8px 12px;border-radius:6px;font-size:0.78rem;max-height:160px;overflow:auto;white-space:pre-wrap;color:var(--red-700)"></pre>
       </div>
     </div>
