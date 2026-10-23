@@ -2035,6 +2035,7 @@ def api_webapp_intel(project_id):
     result = {"dns": None, "target_profile": None, "infrastructure": {}}
     if not fr_dir:
         return jsonify(result)
+    fr_dir = Path(fr_dir)
     dns_path = fr_dir / "dns_resolution.json"
     if dns_path.exists():
         try:
