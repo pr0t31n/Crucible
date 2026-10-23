@@ -45,6 +45,7 @@ class QueueManager:
         self._retry_timers: dict[str, threading.Timer] = {}
         self._paused: dict[str, dict] = {}  # project_id → {reason, ts, …}
         self._launching: dict[str, set[str]] = {}  # project_id → {tool_id …}
+        self._clearing: set[str] = set()  # projects currently being cleared
         self._lock = threading.Lock()
         self._load_persisted_queue()
 
@@ -211,10 +212,17 @@ class QueueManager:
         Returns the number of entries removed.
         """
         with self._lock:
+            self._clearing.add(project_id)
             q = self._queue.pop(project_id, [])
             count = len(q)
+            self._launching.pop(project_id, None)
+            self._sudo_passwords.pop(project_id, None)
+            timer = self._retry_timers.pop(project_id, None)
+            if timer:
+                timer.cancel()
             if count:
                 self._persist_queue()
+            self._clearing.discard(project_id)
             return count
 
     def queue_size(self, project_id: str) -> int:
@@ -230,7 +238,7 @@ class QueueManager:
         when the project is paused.
         """
         with self._lock:
-            if project_id in self._paused:
+            if project_id in self._paused or project_id in self._clearing:
                 return
         pm = self.process_manager
         if not pm:
@@ -295,6 +303,8 @@ class QueueManager:
     def _dequeue_retry_cb(self, project_id: str) -> None:
         """Timer callback — attempt to launch queued jobs."""
         self._retry_timers.pop(project_id, None)
+        if project_id in self._clearing:
+            return
         if self.queue_size(project_id) == 0:
             return
         log.info("Dequeue retry firing for %s", project_id)
@@ -329,6 +339,8 @@ class QueueManager:
         Returns the number of jobs enqueued.
         """
         if not project.get("auto_queue"):
+            return 0
+        if project_id in self._clearing:
             return 0
 
         pm = self.process_manager

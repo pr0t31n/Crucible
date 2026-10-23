@@ -365,18 +365,6 @@ def api_delete_project(project_id):
     if project:
         audit(project.get("project_dir", ""), "PROJECT_DELETE",
               project_id=project_id, delete_files=request.args.get("files") == "1")
-    delete_files = request.args.get("files") == "1"
-    ok = delete_project(project_id, delete_files=delete_files)
-    if not ok:
-        return jsonify({"error": "Not found"}), 404
-    return jsonify({"ok": True})
-
-
-@project_bp.route("/api/clear_project/<project_id>", methods=["POST"])
-def api_clear_project(project_id):
-    ok = clear_project(project_id)
-    if not ok:
-        return jsonify({"error": "Not found"}), 404
     pm = get_ext("process_manager")
     if pm:
         pm.clear_project_buffers(project_id)
@@ -386,6 +374,27 @@ def api_clear_project(project_id):
     fe = get_ext("findings_engine")
     if fe:
         fe.invalidate(project_id)
+    delete_files = request.args.get("files") == "1"
+    ok = delete_project(project_id, delete_files=delete_files)
+    if not ok:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({"ok": True})
+
+
+@project_bp.route("/api/clear_project/<project_id>", methods=["POST"])
+def api_clear_project(project_id):
+    qm = get_ext("queue_manager")
+    if qm:
+        qm.clear_queue(project_id)
+    pm = get_ext("process_manager")
+    if pm:
+        pm.clear_project_buffers(project_id)
+    fe = get_ext("findings_engine")
+    if fe:
+        fe.invalidate(project_id)
+    ok = clear_project(project_id)
+    if not ok:
+        return jsonify({"error": "Not found"}), 404
     return jsonify({"ok": True})
 
 
