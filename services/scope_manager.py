@@ -144,8 +144,8 @@ class ScopeManager:
             for net in scope["exclusion_networks"]:
                 if addr in net:
                     return True
-        except ValueError as exc:
-            log.debug("is_excluded target not IP: %s", exc)
+        except ValueError:
+            pass
 
         # Check hostname / URL host
         host = target.lower().strip()
@@ -218,8 +218,8 @@ class ScopeManager:
             for net in scope["networks"]:
                 if addr in net:
                     return True
-        except ValueError as exc:
-            log.debug("is_url_in_scope host not IP: %s", exc)
+        except ValueError:
+            pass
 
         return False
 
@@ -238,8 +238,8 @@ class ScopeManager:
         try:
             ipaddress.ip_address(target)
             return self.is_ip_in_scope(project, target)
-        except ValueError as exc:
-            log.debug("is_in_scope target not IP: %s", exc)
+        except ValueError:
+            pass
 
         # Try as URL
         if "://" in target or "/" in target:

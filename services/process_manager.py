@@ -1928,6 +1928,14 @@ class ProcessManager:
     def _stdout_reader(self, project_id: str, tool_id: str,
                        pipe, proc: subprocess.Popen) -> None:
         """Daemon thread: read stdout line by line, parse tokens, emit."""
+        from services.engagement_log_handler import set_engagement_context as _sec
+        try:
+            from models.project import get_project as _gp
+            _prj = _gp(project_id)
+            if _prj and _prj.get("project_dir"):
+                _sec(project_id, _prj["project_dir"], tool_id)
+        except Exception:
+            pass
         try:
             for raw_line in pipe:
                 try:
@@ -2506,6 +2514,14 @@ class ProcessManager:
         detected (which may not end with a newline), immediately emits a
         ``tool_prompt`` event and blocks until the UI answers.
         """
+        from services.engagement_log_handler import set_engagement_context as _sec
+        try:
+            from models.project import get_project as _gp
+            _prj = _gp(project_id)
+            if _prj and _prj.get("project_dir"):
+                _sec(project_id, _prj["project_dir"], tool_id)
+        except Exception:
+            pass
         buf = ""
         try:
             while True:
@@ -2654,6 +2670,14 @@ class ProcessManager:
     def _wait_proc(self, project_id: str, tool_id: str,
                    proc: subprocess.Popen) -> None:
         """Daemon thread: wait for process exit and update state."""
+        from services.engagement_log_handler import set_engagement_context as _sec
+        try:
+            from models.project import get_project as _gp
+            _prj = _gp(project_id)
+            if _prj and _prj.get("project_dir"):
+                _sec(project_id, _prj["project_dir"], tool_id)
+        except Exception:
+            pass
         try:
             self._wait_proc_inner(project_id, tool_id, proc)
         except Exception:

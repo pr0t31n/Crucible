@@ -585,6 +585,20 @@ class ActionEngine:
         if rt and rt != rt.lower():
             item_data["recommended_tool"] = rt.lower()
 
+        if not item_data.get("scope"):
+            _rt = item_data.get("recommended_tool") or item_data.get("source_tool") or ""
+            _SCOPE_FALLBACK = {
+                "fracture": "webapp", "siphon": "api",
+                "ss3": "int", "osift": "ext",
+                "aether": "wireless", "aether-b": "wireless",
+                "aether-z": "wireless", "aether-u": "wireless",
+                "gearbox": "int", "bastion": "int",
+                "forge": "webapp", "auger": "int",
+                "isotope": "int", "quill": "int",
+                "trawler": "int",
+            }
+            item_data["scope"] = _SCOPE_FALLBACK.get(_rt.lower(), "")
+
         ip = (item_data.get("ip")
               or (item_data.get("metadata") or {}).get("ip")
               or "")

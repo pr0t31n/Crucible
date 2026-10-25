@@ -46,7 +46,7 @@ class QueueManager:
         self._paused: dict[str, dict] = {}  # project_id → {reason, ts, …}
         self._launching: dict[str, set[str]] = {}  # project_id → {tool_id …}
         self._clearing: set[str] = set()  # projects currently being cleared
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._load_persisted_queue()
 
     # ── public API ───────────────────────────────────────────────────────
