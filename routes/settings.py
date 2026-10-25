@@ -368,6 +368,54 @@ def api_test_connection(tool_id):
         return jsonify({"ok": False, "error": str(e)})
 
 
+@settings_bp.route("/api/fingerprint-auth", methods=["POST"])
+def api_fingerprint_auth():
+    """Launch fingerprint_auth.py to record an auth flow via MITM browser."""
+    data = request.get_json(silent=True) or {}
+    target = data.get("target", "")
+    if not target:
+        return jsonify({"error": "Target URL required"}), 400
+
+    output_dir = data.get("output_dir", "")
+    if not output_dir:
+        output_dir = str(Path(tempfile.mkdtemp(prefix="fp_auth_out_")))
+
+    script = str(TOOL_DIR / "Fracture" / "fingerprint_auth.py")
+    if not Path(script).exists():
+        return jsonify({"ok": False, "error": "fingerprint_auth.py not found"}), 500
+
+    cmd = [
+        PYTHON3, script,
+        "--target-url", target,
+        "--output-dir", output_dir,
+        "--no-control-page",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        )
+        fp_path = Path(output_dir) / "auth_fingerprint.json"
+        fingerprint = None
+        if fp_path.exists():
+            try:
+                fingerprint = json.loads(fp_path.read_text())
+            except Exception:
+                pass
+        return jsonify({
+            "ok": result.returncode == 0 and fingerprint is not None,
+            "fingerprint": fingerprint,
+            "stdout": result.stdout[-2000:] if result.stdout else "",
+            "stderr": result.stderr[-1000:] if result.stderr else "",
+            "output_dir": output_dir,
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "Fingerprint recording timed out (5m)"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @settings_bp.route("/api/authprobe", methods=["POST"])
 def api_authprobe():
     """Run AuthProbe against a target URL with full CLI options."""

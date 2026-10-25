@@ -658,6 +658,19 @@
                 </div>
                 <pre id="stcResultBody" style="max-height:200px;overflow:auto;font-size:0.78rem;margin:0"></pre>
               </div>
+              <!-- ── Fingerprint Auth ────────────────────────── -->
+              <div id="stcFingerprintArea" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)" hidden>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <button type="button" class="btn btn-secondary btn-xs" id="btnStcFingerprint" disabled title="Run Test Connection first">Fingerprint Auth</button>
+                  <span class="form-hint" id="stcFpStatus"></span>
+                </div>
+                <div id="stcFpResultArea" hidden style="margin-top:8px">
+                  <pre id="stcFpResultBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                  <div id="stcFpReminder" hidden style="margin-top:6px;padding:6px 10px;border-radius:6px;background:var(--bg-2);border:1px solid var(--accent);font-size:0.85em">
+                    &#9432; Fingerprint saved. <strong>Re-run Test Connection</strong> to verify it works.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

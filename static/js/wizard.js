@@ -1012,12 +1012,22 @@
             : (d.stdout||'')+(d.stderr?'\n--- stderr ---\n'+d.stderr:'')+(d.error?'\nError: '+d.error:'');
           var saveArea = document.getElementById(prefix + 'TcSaveArea');
           if (saveArea) saveArea.hidden = !d.ok;
+          // Enable fingerprint button on test-connection failure (FR only)
+          if (!d.ok && prefix === 'fr') {
+            var fpBtn = document.getElementById('btnFrFingerprint');
+            if (fpBtn) { fpBtn.disabled = false; fpBtn.title = 'Record auth flow via a real browser'; }
+          }
         })
         .catch(function(e) {
           var area = document.getElementById(prefix + 'TcResultArea'); area.hidden = false;
           document.getElementById(prefix + 'TcResultTitle').textContent = 'Error';
           document.getElementById(prefix + 'TcResultBadge').innerHTML = '<span class="status-badge" style="background:var(--status-error);color:#fff">ERR</span>';
           document.getElementById(prefix + 'TcResultBody').textContent = e.message || 'Request failed';
+          // Enable fingerprint button on error too (FR only)
+          if (prefix === 'fr') {
+            var fpBtn = document.getElementById('btnFrFingerprint');
+            if (fpBtn) { fpBtn.disabled = false; fpBtn.title = 'Record auth flow via a real browser'; }
+          }
         })
         .finally(function(){ btn.disabled = false; btn.textContent = 'Test Connection'; });
       });
@@ -1036,6 +1046,79 @@
 
   setupTestConn('fr', 'fracture');
   setupTestConn('si', 'siphon');
+
+  /* ── Fingerprint Auth (FR only) ───────────────────────── */
+  (function() {
+    var fpBtn = document.getElementById('btnFrFingerprint');
+    if (!fpBtn) return;
+    fpBtn.addEventListener('click', function() {
+      var target = valOf('frTcTarget');
+      if (!target) { alert('Enter a target URL first.'); return; }
+      fpBtn.disabled = true; fpBtn.textContent = 'Launching...';
+      var statusEl = document.getElementById('frFpStatus');
+      if (statusEl) statusEl.textContent = 'Starting fingerprint browser...';
+      fetch('/api/fingerprint-auth', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({target: target})
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var area = document.getElementById('frFpResultArea'); area.hidden = false;
+        if (d.ok) {
+          document.getElementById('frFpResultTitle').textContent = 'Fingerprint Captured';
+          document.getElementById('frFpResultBadge').innerHTML =
+            '<span class="status-badge" style="background:var(--status-running);color:#fff">OK</span>';
+          document.getElementById('frFpResultBody').textContent = JSON.stringify(d.fingerprint, null, 2);
+          var reminder = document.getElementById('frFpReminderArea');
+          if (reminder) reminder.hidden = false;
+          if (statusEl) statusEl.textContent = '';
+          // Auto-populate auth fields from fingerprint
+          if (d.fingerprint && d.fingerprint.fracture_auth_config) {
+            var fc = d.fingerprint.fracture_auth_config;
+            var methodEl = document.getElementById('frTcAuthMethod');
+            if (methodEl && fc.method) {
+              methodEl.value = fc.method;
+              renderTcAuthFields('fr');
+              setTimeout(function() {
+                if (fc.login_url) {
+                  var lu = document.querySelector('#frTcAuthFields [data-key="login_url"]');
+                  if (lu) lu.value = fc.login_url;
+                }
+                if (fc.username_field) {
+                  var uf = document.querySelector('#frTcAuthFields [data-key="login_username_field"]');
+                  if (uf) uf.value = fc.username_field;
+                }
+                if (fc.password_field) {
+                  var pf = document.querySelector('#frTcAuthFields [data-key="login_password_field"]');
+                  if (pf) pf.value = fc.password_field;
+                }
+                if (fc.login_mode) {
+                  var lm = document.querySelector('#frTcAuthFields [data-key="login_mode"]');
+                  if (lm) lm.value = fc.login_mode;
+                }
+              }, 100);
+            }
+          }
+        } else {
+          document.getElementById('frFpResultTitle').textContent = 'Fingerprint Failed';
+          document.getElementById('frFpResultBadge').innerHTML =
+            '<span class="status-badge" style="background:var(--status-error);color:#fff">FAIL</span>';
+          document.getElementById('frFpResultBody').textContent = d.error || d.stderr || 'Unknown error';
+          if (statusEl) statusEl.textContent = '';
+        }
+      })
+      .catch(function(e) {
+        var area = document.getElementById('frFpResultArea'); area.hidden = false;
+        document.getElementById('frFpResultTitle').textContent = 'Error';
+        document.getElementById('frFpResultBadge').innerHTML =
+          '<span class="status-badge" style="background:var(--status-error);color:#fff">ERR</span>';
+        document.getElementById('frFpResultBody').textContent = e.message || 'Request failed';
+        if (statusEl) statusEl.textContent = '';
+      })
+      .finally(function() { fpBtn.disabled = false; fpBtn.textContent = 'Fingerprint Auth'; });
+    });
+  })();
 
   /* ── OOS Handling — confirmation modal ────────────────── */
   var _oosRadios = document.querySelectorAll('input[name="oosHandling"]');

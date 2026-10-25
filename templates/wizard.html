@@ -378,6 +378,32 @@
               <span class="form-hint" id="frTcSaveStatus" style="margin-left:8px;"></span>
             </div>
           </div>
+          <!-- ── Fingerprint Auth ──────────────────────────────── -->
+          <div id="frFingerprintArea" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <span class="form-label">Auth Fingerprint</span>
+            <span class="form-hint">If Test Connection cannot identify the login flow, use the fingerprint recorder to capture it manually via a real browser.</span>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnFrFingerprint" disabled title="Run Test Connection first — fingerprinting is available after a failed test">Fingerprint Auth</button>
+              <span class="form-hint" id="frFpStatus"></span>
+            </div>
+            <div id="frFpResultArea" hidden style="margin-top:8px">
+              <div class="panel">
+                <div class="panel-header">
+                  <span class="panel-title" id="frFpResultTitle">Fingerprint Result</span>
+                  <span id="frFpResultBadge"></span>
+                </div>
+                <div class="panel-body">
+                  <pre id="frFpResultBody" style="max-height:200px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                </div>
+              </div>
+              <div id="frFpReminderArea" hidden style="margin-top:8px">
+                <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;background:var(--bg-2);border:1px solid var(--accent)">
+                  <span style="font-size:1.2em">&#9432;</span>
+                  <span>Fingerprint saved. <strong>Re-run Test Connection</strong> to verify it works, then save the auth config.</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

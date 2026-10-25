@@ -9594,6 +9594,10 @@ function updateSettingsTestConn() {
     var panel = document.getElementById('settingsTestConn');
     panel.hidden = !settingsActiveTool || !STC_TOOLS.has(settingsActiveTool);
     document.getElementById('settingsTestConnResult').hidden = true;
+    document.getElementById('stcFingerprintArea').hidden = true;
+    document.getElementById('btnStcFingerprint').disabled = true;
+    document.getElementById('stcFpResultArea').hidden = true;
+    document.getElementById('stcFpReminder').hidden = true;
 }
 
 var _origLoadToolSettings = loadToolSettings;
@@ -9687,6 +9691,11 @@ document.getElementById('btnSettingsTestConn').addEventListener('click', functio
         } else {
             label.textContent = 'Connection Failed';
             badge.innerHTML = '<span class="status-badge" style="background:var(--status-error);color:#fff">FAIL</span>';
+            if (settingsActiveTool === 'fracture') {
+                document.getElementById('stcFingerprintArea').hidden = false;
+                document.getElementById('btnStcFingerprint').disabled = false;
+                document.getElementById('btnStcFingerprint').title = 'Record auth flow via monitored browser';
+            }
         }
 
         if (d.result) {
@@ -9701,10 +9710,73 @@ document.getElementById('btnSettingsTestConn').addEventListener('click', functio
         document.getElementById('stcResultLabel').textContent = 'Error';
         document.getElementById('stcResultBadge').innerHTML = '<span class="status-badge" style="background:var(--status-error);color:#fff">ERR</span>';
         document.getElementById('stcResultBody').textContent = e.message || 'Request failed';
+        if (settingsActiveTool === 'fracture') {
+            document.getElementById('stcFingerprintArea').hidden = false;
+            document.getElementById('btnStcFingerprint').disabled = false;
+            document.getElementById('btnStcFingerprint').title = 'Record auth flow via monitored browser';
+        }
     })
     .finally(function() {
         btn.disabled = false;
         btn.textContent = 'Run Test';
+    });
+});
+
+/* ── Settings tab: Fingerprint Auth button ──────────────────────── */
+document.getElementById('btnStcFingerprint').addEventListener('click', function() {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Recording…';
+    document.getElementById('stcFpStatus').textContent = 'Starting monitored browser…';
+    document.getElementById('stcFpResultArea').hidden = true;
+    document.getElementById('stcFpReminder').hidden = true;
+
+    var inputs = document.getElementById('settingsFields').querySelectorAll('[name]');
+    var formData = {};
+    inputs.forEach(function(el) {
+        if (el.type === 'checkbox') formData[el.name] = el.checked;
+        else formData[el.name] = el.value;
+    });
+
+    var target = formData.target_url || '';
+    if (!target) {
+        document.getElementById('stcFpStatus').textContent = 'No target URL configured.';
+        btn.disabled = false;
+        btn.textContent = 'Fingerprint Auth';
+        return;
+    }
+
+    fetch('/api/fingerprint-auth', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, target_url: target})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        document.getElementById('stcFpResultArea').hidden = false;
+        var body = document.getElementById('stcFpResultBody');
+        if (d.ok && d.fingerprint) {
+            document.getElementById('stcFpStatus').textContent = 'Fingerprint recorded';
+            body.textContent = JSON.stringify(d.fingerprint, null, 2);
+            document.getElementById('stcFpReminder').hidden = false;
+            if (d.fingerprint.fracture_auth_config) {
+                var ac = d.fingerprint.fracture_auth_config;
+                var authSel = document.querySelector('#settingsFields [name="auth"]');
+                if (authSel && ac.auth_method) authSel.value = ac.auth_method;
+            }
+        } else {
+            document.getElementById('stcFpStatus').textContent = 'Fingerprint failed';
+            body.textContent = (d.stdout || '') + (d.stderr ? '\n--- stderr ---\n' + d.stderr : '') + (d.error || '');
+        }
+    })
+    .catch(function(e) {
+        document.getElementById('stcFpResultArea').hidden = false;
+        document.getElementById('stcFpStatus').textContent = 'Error';
+        document.getElementById('stcFpResultBody').textContent = e.message || 'Request failed';
+    })
+    .finally(function() {
+        btn.disabled = false;
+        btn.textContent = 'Fingerprint Auth';
     });
 });
 
