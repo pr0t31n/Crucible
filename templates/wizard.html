@@ -260,6 +260,27 @@
         </div>
       </div>
 
+      <div class="form-section" style="margin-top:24px">
+        <h3 class="form-section-title">Status Server</h3>
+        <span class="form-hint" style="display:block;margin-bottom:12px;">Push live engagement status to a Beacon server for centralised monitoring.</span>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:240px">
+            <span class="text-xs">Beacon URL</span>
+            <input type="text" id="wizBeaconUrl" class="form-control" placeholder="https://beacon.local:9443"
+                   value="{% if project %}{{ project.beacon_url|default('') }}{% endif %}">
+          </label>
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
+            <span class="text-xs">Token</span>
+            <input type="password" id="wizBeaconToken" class="form-control" placeholder="Pre-shared token"
+                   value="{% if project %}{{ project.beacon_token|default('') }}{% endif %}">
+          </label>
+          <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
+            <span class="text-xs">Enable</span>
+            <input type="checkbox" id="wizBeaconEnabled" {% if project and project.beacon_enabled %}checked{% endif %}>
+          </label>
+        </div>
+      </div>
+
     </div><!-- /step2 -->
 
 

@@ -152,6 +152,16 @@ def create_app():
 
     pm.startup_recovery(app)
 
+    from services.beacon_client import start_beacon as _start_beacon
+    from models.project import list_projects
+    try:
+        for proj in list_projects():
+            pid = proj.get("id")
+            if pid and proj.get("beacon_enabled") and proj.get("beacon_url") and proj.get("beacon_token"):
+                _start_beacon(pid, app)
+    except Exception as exc:
+        log.debug("beacon startup: %s", exc)
+
     from sockets.connection import register_connection_events
     from sockets.tools import register_tool_events
     from sockets.prompts import register_prompt_events

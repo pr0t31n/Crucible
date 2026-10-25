@@ -359,7 +359,24 @@ def api_update_project(project_id):
     project = get_project(project_id)
     if project:
         _apply_wizard_scheduling(project_id, project, data)
+    if any(k in data for k in ("beacon_url", "beacon_token", "beacon_enabled")):
+        _sync_beacon(project_id)
     return jsonify({"ok": True, "project_id": project_id})
+
+
+def _sync_beacon(project_id):
+    """Start or stop the beacon client based on current project settings."""
+    try:
+        from services.beacon_client import start_beacon, stop_beacon
+        project = get_project(project_id)
+        if not project:
+            return
+        if project.get("beacon_enabled") and project.get("beacon_url") and project.get("beacon_token"):
+            start_beacon(project_id, current_app._get_current_object())
+        else:
+            stop_beacon(project_id)
+    except Exception as exc:
+        log.debug("beacon sync failed for %s: %s", project_id[:8], exc)
 
 
 @project_bp.route("/api/delete_project/<project_id>", methods=["DELETE"])
@@ -369,6 +386,11 @@ def api_delete_project(project_id):
     if project:
         audit(project.get("project_dir", ""), "PROJECT_DELETE",
               project_id=project_id, delete_files=request.args.get("files") == "1")
+    try:
+        from services.beacon_client import stop_beacon
+        stop_beacon(project_id)
+    except Exception:
+        pass
     pm = get_ext("process_manager")
     if pm:
         pm.clear_project_buffers(project_id)

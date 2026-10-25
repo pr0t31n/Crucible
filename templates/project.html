@@ -619,6 +619,32 @@
               </div>
               <div id="seExcludedIpsList"></div>
             </div>
+            <div class="form-section" style="grid-column:1/-1">
+              <h3 class="form-section-title">Status Server</h3>
+              <span class="form-hint" style="display:block;margin-bottom:12px;">Push engagement status to a remote Beacon server every 60 seconds.</span>
+              <div class="form-grid" style="gap:12px 24px">
+                <div class="form-group">
+                  <label class="form-label" for="seBeaconUrl">Server URL</label>
+                  <input type="text" class="form-control" id="seBeaconUrl" placeholder="https://host:9443" value="{{ project.beacon_url|default('', true) }}">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="seBeaconToken">Token</label>
+                  <input type="password" class="form-control" id="seBeaconToken" placeholder="Pre-shared token" value="{{ project.beacon_token|default('', true) }}">
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:12px">
+                  <label class="toggle">
+                    <input type="checkbox" id="seBeaconEnabled" {% if project and project.beacon_enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <span class="form-label" style="margin:0">Enable</span>
+                  <span id="seBeaconStatus" class="text-muted" style="font-size:0.82rem;margin-left:8px"></span>
+                </div>
+                <div class="form-group">
+                  <button type="button" class="btn btn-xs btn-secondary" id="btnBeaconTest">Test Connection</button>
+                  <span id="seBeaconTestResult" style="margin-left:8px;font-size:0.82rem"></span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

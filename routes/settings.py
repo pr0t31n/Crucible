@@ -512,3 +512,37 @@ def api_wifi_fix():
     interface = data.get("interface", "wlan0")
     ok, message = fix_interface(interface)
     return jsonify({"ok": ok, "message": message})
+
+
+@settings_bp.route("/api/beacon/test", methods=["POST"])
+def api_beacon_test():
+    """Test connectivity to a Beacon status server."""
+    import requests as _req
+    import urllib3 as _u3
+    _u3.disable_warnings(_u3.exceptions.InsecureRequestWarning)
+
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip().rstrip("/")
+    token = data.get("token", "")
+    if not url or not token:
+        return jsonify({"ok": False, "error": "URL and token are required"}), 400
+    try:
+        r = _req.post(
+            f"{url}/api/ping",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+            verify=False,
+            timeout=8,
+        )
+        if r.status_code == 200:
+            return jsonify({"ok": True})
+        elif r.status_code == 401:
+            return jsonify({"ok": False, "error": "Authentication failed"})
+        else:
+            return jsonify({"ok": False, "error": f"HTTP {r.status_code}"})
+    except _req.exceptions.ConnectionError:
+        return jsonify({"ok": False, "error": "Connection refused"})
+    except _req.exceptions.Timeout:
+        return jsonify({"ok": False, "error": "Connection timed out"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
