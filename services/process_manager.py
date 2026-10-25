@@ -60,8 +60,8 @@ def _read_tool_version(tool_id: str) -> str:
         vf = Path(script).resolve().parent / "VERSION"
         try:
             return vf.read_text().strip()
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            log.debug("_read_tool_version(%s): %s", tool_id, exc)
     return "unknown"
 
 
@@ -147,14 +147,14 @@ class ProcessManager:
                         for child in p.children(recursive=True):
                             try:
                                 tree_rss += child.memory_info().rss
-                            except (psutil.NoSuchProcess, OSError):
-                                pass
+                            except (psutil.NoSuchProcess, OSError) as exc:
+                                log.debug("OOM watchdog: child memory read: %s", exc)
                         if tree_rss > biggest_rss:
                             biggest_rss = tree_rss
                             biggest_pid = pid
                             biggest_key = (proj_id, tk)
-                    except (psutil.NoSuchProcess, OSError):
-                        pass
+                    except (psutil.NoSuchProcess, OSError) as exc:
+                        log.debug("OOM watchdog: process memory read: %s", exc)
                 if biggest_pid and biggest_key and biggest_rss > 512 * 1024 * 1024:
                     proj_id, tk = biggest_key
                     mb = biggest_rss // (1024 * 1024)
@@ -211,8 +211,8 @@ class ProcessManager:
                         lines.append(
                             f"  └─ PID {child.pid}  RSS {ci.rss // (1024**2)} MB  "
                             f"cmd: {ccmd[:200]}")
-                    except (psutil.NoSuchProcess, OSError):
-                        pass
+                    except (psutil.NoSuchProcess, OSError) as exc:
+                        log.debug("OOM snapshot: child info: %s", exc)
             except (psutil.NoSuchProcess, OSError):
                 lines.append(f"[{tk}] PID {pid}  (exited before snapshot)")
         lines.append("")
@@ -254,8 +254,9 @@ class ProcessManager:
                     entry = history.get(tool_key, {})
                     if entry.get("tool_version"):
                         return entry["tool_version"]
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("get_tool_version: history read for %s: %s",
+                            tool_key, exc)
         return _read_tool_version(base_tid)
 
     def get_all_tool_versions(self, project_id):
@@ -274,8 +275,8 @@ class ProcessManager:
                     for tk, entry in history.items():
                         if tk not in result and entry.get("tool_version"):
                             result[tk] = entry["tool_version"]
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("get_all_tool_versions: history read: %s", exc)
         return result
 
     # ── History persistence ─────────────────────────────────────────
@@ -305,8 +306,8 @@ class ProcessManager:
             if fp.exists():
                 try:
                     history = json.loads(fp.read_text())
-                except (json.JSONDecodeError, OSError):
-                    pass
+                except (json.JSONDecodeError, OSError) as exc:
+                    log.warning("_persist_history: read existing: %s", exc)
             with self._lock:
                 buf = (self._console_buffers.get(project_id) or {}).get(tool_id, [])
                 last_lines = list(buf[-500:]) if buf else []
@@ -329,8 +330,9 @@ class ProcessManager:
             }
             fp.parent.mkdir(parents=True, exist_ok=True)
             fp.write_text(json.dumps(history, indent=2))
-        except OSError:
-            pass
+        except OSError as exc:
+            log.warning("_persist_history: write failed for %s/%s: %s",
+                        project_id[:8], tool_id, exc)
 
     def _load_history(self, project_id: str) -> None:
         if project_id in self._history_loaded:
@@ -347,7 +349,9 @@ class ProcessManager:
         if fp.exists():
             try:
                 history = json.loads(fp.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("_load_history: read failed for %s: %s",
+                            project_id[:8], exc)
                 history = {}
             with self._lock:
                 statuses = self._tool_status.setdefault(project_id, {})
@@ -453,7 +457,8 @@ class ProcessManager:
         for logfile, scope in candidates:
             try:
                 text = logfile.read_text(errors="replace")
-            except OSError:
+            except OSError as exc:
+                log.warning("_read_scan_log_lines: %s: %s", logfile, exc)
                 continue
             prefix = f"[{scope.upper()}] " if scope else ""
             for line in text.splitlines()[-2000:]:
@@ -524,7 +529,9 @@ class ProcessManager:
                 continue
             try:
                 history = json.loads(fp.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("startup_recovery: history read for %s: %s",
+                            pid[:8], exc)
                 continue
 
             for tid, entry in history.items():
@@ -564,8 +571,9 @@ class ProcessManager:
                 sched = current_app.extensions.get("scheduler")
                 if sched:
                     sched.load_project_config(pid, proj_dir)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("startup_recovery: scheduler config load "
+                            "for %s: %s", pid[:8], exc)
 
         if recovered or monitored:
             log.info("Startup recovery: %d tool(s) recovered, "
@@ -576,7 +584,8 @@ class ProcessManager:
         try:
             os.kill(int(pid), 0)
             return True
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError) as exc:
+            log.debug("_is_pid_alive(%s): %s", pid, exc)
             return False
 
     def _recover_completed_tool(self, project_id, tool_id, entry,
@@ -604,7 +613,8 @@ class ProcessManager:
                     if not ended_at or mtime > ended_at:
                         has_newer = True
                         break
-                except OSError:
+                except OSError as exc:
+                    log.debug("_recover_completed_tool: stat %s: %s", fp, exc)
                     continue
 
         if not has_newer and entry.get("status") != "running":
@@ -641,8 +651,9 @@ class ProcessManager:
                 all_history = json.loads(fp.read_text())
             all_history[tool_id] = entry
             fp.write_text(json.dumps(all_history, indent=2))
-        except OSError:
-            pass
+        except OSError as exc:
+            log.warning("_recover_completed_tool: history write for "
+                        "%s: %s", tool_id, exc)
 
         return True
 
@@ -665,10 +676,14 @@ class ProcessManager:
 
     def _orphan_poll_loop(self, project_id, tool_id, pid, project):
         """Poll an orphaned process until it exits, then run recovery."""
-        while True:
-            time.sleep(5)
-            if not self._is_pid_alive(pid):
-                break
+        try:
+            while True:
+                time.sleep(5)
+                if not self._is_pid_alive(pid):
+                    break
+        except Exception:
+            log.exception("_orphan_poll_loop: poll loop crashed for "
+                          "%s/%s (PID %s)", project_id[:8], tool_id, pid)
 
         with self._lock:
             orphans = self._orphan_pids.get(project_id)
@@ -679,7 +694,8 @@ class ProcessManager:
 
         try:
             rc = os.waitpid(pid, os.WNOHANG)[1] >> 8
-        except (ChildProcessError, OSError):
+        except (ChildProcessError, OSError) as exc:
+            log.debug("_orphan_poll_loop: waitpid for PID %s: %s", pid, exc)
             rc = -1
 
         if rc == 0:
@@ -687,20 +703,24 @@ class ProcessManager:
         else:
             final_status = "failed"
 
-        with self._lock:
-            self._tool_status.setdefault(project_id, {})[tool_id] = final_status
+        try:
+            with self._lock:
+                self._tool_status.setdefault(project_id, {})[tool_id] = final_status
 
-        tool_name = TOOLS.get(base_tool, {}).get("name", tool_id)
-        self._emit_console(project_id, tool_id,
-                           f"[Crucible] {tool_name} (orphan PID {pid}) exited — "
-                           f"status: {final_status}",
-                           "system")
+            tool_name = TOOLS.get(base_tool, {}).get("name", tool_id)
+            self._emit_console(project_id, tool_id,
+                               f"[Crucible] {tool_name} (orphan PID {pid}) exited — "
+                               f"status: {final_status}",
+                               "system")
 
-        self._persist_history(project_id, tool_id, final_status, rc)
+            self._persist_history(project_id, tool_id, final_status, rc)
 
-        proj_dir = project.get("project_dir", "")
-        if proj_dir:
-            self._repair_stale_action_items(project_id, proj_dir)
+            proj_dir = project.get("project_dir", "")
+            if proj_dir:
+                self._repair_stale_action_items(project_id, proj_dir)
+        except Exception:
+            log.exception("_orphan_poll_loop: recovery failed for "
+                          "%s/%s (PID %s)", project_id[:8], tool_id, pid)
 
         app = getattr(self._queue_manager, "_app", None) \
             if self._queue_manager else None
@@ -742,7 +762,8 @@ class ProcessManager:
         try:
             from models.project import get_project
             return get_project(project_id)
-        except Exception:
+        except Exception as exc:
+            log.warning("_resolve_project(%s): %s", project_id[:8], exc)
             return None
 
     def _resolve_project_dir(self, project_id):
@@ -781,8 +802,8 @@ class ProcessManager:
                 if tool_id == "osift":
                     for _sd in self._OSIFT_SUBDIRS:
                         (Path(td) / _sd).mkdir(exist_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                log.warning("_ensure_tool_dir: mkdir %s: %s", td, exc)
             return
 
         eng_dir = project.get("engagement_dir", project.get("project_dir", ""))
@@ -802,8 +823,8 @@ class ProcessManager:
                 if tool_id == "osift":
                     for _sd in self._OSIFT_SUBDIRS:
                         (Path(td) / _sd).mkdir(exist_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                log.warning("_ensure_tool_dir: mkdir new %s: %s", td, exc)
 
         new_tool_dirs = dict(tool_dirs)
         new_tool_dirs[tool_id] = td
@@ -1048,8 +1069,8 @@ class ProcessManager:
             _proj_dir = project.get("project_dir", "")
             if _proj_dir:
                 record_tool_use(_proj_dir, tool_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("launch: record_tool_use for %s: %s", tool_id, exc)
         self.socketio.emit("tool_status",
                            {"project_id": project_id,
                             "tool_id": tk, "status": "running",
@@ -1132,16 +1153,18 @@ class ProcessManager:
                 for child in parent.children(recursive=True):
                     try:
                         child.send_signal(signal.SIGTERM)
-                    except (psutil.NoSuchProcess, OSError):
-                        pass
+                    except (psutil.NoSuchProcess, OSError) as exc:
+                        log.debug("kill: orphan child SIGTERM: %s", exc)
                 if not children_only:
                     parent.send_signal(signal.SIGTERM)
-            except Exception:
+            except Exception as exc:
+                log.warning("kill: psutil orphan SIGTERM for PID %s: %s",
+                            orphan_pid, exc)
                 if not children_only:
                     try:
                         os.kill(orphan_pid, signal.SIGTERM)
-                    except (ProcessLookupError, PermissionError, OSError):
-                        pass
+                    except (ProcessLookupError, PermissionError, OSError) as exc2:
+                        log.debug("kill: os.kill orphan SIGTERM: %s", exc2)
             if not children_only:
                 with self._lock:
                     orphans = self._orphan_pids.get(project_id)
@@ -1154,16 +1177,18 @@ class ProcessManager:
                 for child in parent.children(recursive=True):
                     try:
                         child.send_signal(signal.SIGTERM)
-                    except (psutil.NoSuchProcess, OSError):
-                        pass
+                    except (psutil.NoSuchProcess, OSError) as exc:
+                        log.debug("kill: child SIGTERM: %s", exc)
                 if not children_only:
                     parent.send_signal(signal.SIGTERM)
-            except Exception:
+            except Exception as exc:
+                log.warning("kill: psutil SIGTERM for PID %s: %s",
+                            proc.pid if proc else "?", exc)
                 if not children_only:
                     try:
                         proc.terminate()
-                    except OSError:
-                        pass
+                    except OSError as exc2:
+                        log.debug("kill: proc.terminate: %s", exc2)
 
         if children_only:
             self._emit_console(
@@ -1206,24 +1231,25 @@ class ProcessManager:
                         for child in psutil.Process(_pid).children(recursive=True):
                             try:
                                 child.send_signal(signal.SIGKILL)
-                            except (psutil.NoSuchProcess, OSError):
-                                pass
-                except Exception:
-                    pass
+                            except (psutil.NoSuchProcess, OSError) as exc:
+                                log.debug("force_kill: child SIGKILL: %s", exc)
+                except Exception as exc:
+                    log.warning("force_kill: psutil children SIGKILL: %s", exc)
                 return
             if proc and proc.poll() is None:
                 try:
                     os.killpg(proc.pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError):
+                except (ProcessLookupError, PermissionError, OSError) as exc:
+                    log.debug("force_kill: killpg: %s", exc)
                     try:
                         proc.kill()
-                    except OSError:
-                        pass
+                    except OSError as exc2:
+                        log.debug("force_kill: proc.kill: %s", exc2)
             elif _kill_pid and self._is_pid_alive(_kill_pid):
                 try:
                     os.kill(_kill_pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError):
-                    pass
+                except (ProcessLookupError, PermissionError, OSError) as exc:
+                    log.debug("force_kill: os.kill(%s): %s", _kill_pid, exc)
 
         threading.Thread(target=_force_kill, daemon=True).start()
         return True
@@ -1511,8 +1537,8 @@ class ProcessManager:
                         _seen.add(p)
                         result.append({"pid": p,
                                        "started_at": entry.get("ts", "")})
-                except (ValueError, IndexError):
-                    pass
+                except (ValueError, IndexError) as exc:
+                    log.debug("PID parse from history line: %s", exc)
             elif "(orphan PID " in txt:
                 try:
                     p = int(txt.split("orphan PID ", 1)[1].split(")")[0])
@@ -1520,8 +1546,8 @@ class ProcessManager:
                         _seen.add(p)
                         result.append({"pid": p,
                                        "started_at": entry.get("ts", "")})
-                except (ValueError, IndexError):
-                    pass
+                except (ValueError, IndexError) as exc:
+                    log.debug("orphan PID parse from history line: %s", exc)
         return result
 
     def get_console(self, project_id: str, tool_id: str, *,
@@ -1651,10 +1677,11 @@ class ProcessManager:
                 archive = cl.with_name(cl.stem + f"_{ts}" + cl.suffix)
                 try:
                     cl.rename(archive)
-                except OSError:
-                    pass
-        except Exception:
-            pass
+                except OSError as exc:
+                    log.warning("reset_for_new_run: archive rename: %s", exc)
+        except Exception as exc:
+            log.warning("reset_for_new_run: console archive for %s: %s",
+                        tool_id, exc)
         hp = self._history_path(self._resolve_project_dir(project_id) or "")
         if hp.exists():
             try:
@@ -1663,8 +1690,9 @@ class ProcessManager:
                     prev = history.pop(tool_id)
                     history[f"{tool_id}:{prev.get('ended_at', 'prev')}"] = prev
                     hp.write_text(json.dumps(history, indent=2))
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("reset_for_new_run: history rotate for %s: %s",
+                            tool_id, exc)
         with self._lock:
             bufs = self._console_buffers.get(project_id)
             if bufs and tool_id in bufs:
@@ -1711,8 +1739,9 @@ class ProcessManager:
                         for k in keys:
                             history.pop(k, None)
                         hf.write_text(json.dumps(history, indent=2))
-                    except (json.JSONDecodeError, OSError):
-                        pass
+                    except (json.JSONDecodeError, OSError) as exc:
+                        log.warning("remove_tool_session: history "
+                                    "update for %s: %s", tool_id, exc)
 
     # ── internal helpers ─────────────────────────────────────────────────
 
@@ -1774,8 +1803,8 @@ class ProcessManager:
             line = f"[{ts}] {text}" if ts else text
             with open(cl, "a", errors="replace") as fh:
                 fh.write(line + "\n")
-        except OSError:
-            pass
+        except OSError as exc:
+            log.debug("_persist_console_line: write %s: %s", cl, exc)
 
     def _update_system_info(self, project):
         """Write/update system_info.json in the project directory."""
@@ -1784,8 +1813,8 @@ class ProcessManager:
             proj_dir = project.get("project_dir", "")
             if proj_dir:
                 _persist_system_info(proj_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_update_system_info: %s", exc)
 
     def _emit_console(self, project_id: str, tool_id: str, text: str,
                       stream: str = "stdout") -> None:
@@ -1801,8 +1830,8 @@ class ProcessManager:
         try:
             self.socketio.emit("console_line", entry,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_emit_console: socketio emit failed: %s", exc)
         if stream in ("system", "stderr"):
             self._persist_log_entry(project_id, tool_id, text, stream)
 
@@ -1831,8 +1860,8 @@ class ProcessManager:
             append_log(proj_dir, log_entry)
             if level in ("ERROR", "EXCEPTION", "TOOL_ERROR", "FATAL", "CRITICAL"):
                 append_error(proj_dir, log_entry)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_persist_log_entry: %s", exc)
 
     def _emit_error(self, project_id: str, tool_id: str, msg: str) -> None:
         """Emit an ERROR-level entry to the Errors tab."""
@@ -1847,8 +1876,8 @@ class ProcessManager:
                 "message": msg,
                 "source": "crucible",
             }, room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_emit_error: socketio emit failed: %s", exc)
 
     def _create_rerun_action_item(self, project_id: str, tool_id: str,
                                    scope: str | None, reason: str,
@@ -1888,10 +1917,11 @@ class ProcessManager:
             if proc.stdin and not proc.stdin.closed:
                 proc.stdin.write(text + "\n")
                 proc.stdin.flush()
-        except (BrokenPipeError, OSError):
-            pass
-        except Exception:
-            pass
+        except (BrokenPipeError, OSError) as exc:
+            log.debug("_write_stdin: pipe write for %s: %s", tool_id, exc)
+        except Exception as exc:
+            log.warning("_write_stdin: unexpected error for %s: %s",
+                        tool_id, exc)
 
     # ── reader threads ───────────────────────────────────────────────────
 
@@ -1911,15 +1941,17 @@ class ProcessManager:
                                            f"[Crucible] stdout reader error: {exc}",
                                            "system")
                     except Exception:
-                        pass
-        except (ValueError, OSError):
-            # Pipe closed / process gone — expected on exit.
-            pass
+                        log.debug("stdout reader: _emit_console fallback "
+                                  "failed for %s/%s", project_id[:8], tool_id)
+        except (ValueError, OSError) as exc:
+            log.debug("stdout reader: pipe closed for %s/%s: %s",
+                      project_id[:8], tool_id, exc)
         finally:
             try:
                 pipe.close()
-            except (BrokenPipeError, OSError):
-                pass
+            except (BrokenPipeError, OSError) as exc:
+                log.debug("stdout reader: pipe.close for %s/%s: %s",
+                          project_id[:8], tool_id, exc)
 
     def _process_stdout_line(self, project_id: str, tool_id: str,
                              line: str, proc: subprocess.Popen) -> None:
@@ -1974,8 +2006,8 @@ class ProcessManager:
         try:
             self.socketio.emit("tool_log", data,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_log: socketio emit failed: %s", exc)
         msg_lower = (msg or "").lower()
         if tool_id == "ss3" and "route" in msg_lower and (
                 "added" in msg_lower or "setup" in msg_lower
@@ -1992,8 +2024,8 @@ class ProcessManager:
                 return
             from models.project import capture_post_route_snapshot
             capture_post_route_snapshot(eng_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_capture_post_route_snapshot: %s", exc)
 
     def _handle_error(self, project_id: str, tool_id: str, data: dict,
                       raw_line: str) -> None:
@@ -2009,8 +2041,8 @@ class ProcessManager:
         try:
             self.socketio.emit("tool_error", data,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_error: socketio emit failed: %s", exc)
 
     def _handle_status(self, project_id: str, tool_id: str, data: dict,
                        raw_line: str) -> None:
@@ -2082,8 +2114,8 @@ class ProcessManager:
         try:
             self.socketio.emit("tool_status", data,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_status: socketio emit failed: %s", exc)
 
     def _handle_prompt(self, project_id: str, tool_id: str, data: dict,
                        proc: subprocess.Popen) -> None:
@@ -2126,8 +2158,8 @@ class ProcessManager:
                                {"project_id": project_id,
                                 "tool_id": tool_id, "prompt_id": prompt_id},
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_prompt: prompt_resolved emit: %s", exc)
 
     def _handle_action_item(self, project_id: str, tool_id: str,
                             data: dict) -> None:
@@ -2150,8 +2182,8 @@ class ProcessManager:
             try:
                 self.socketio.emit("tool_action_item", saved,
                                    room=_room(project_id))
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("_handle_action_item: socketio emit: %s", exc)
 
     # ── Live targets cache + disk persistence ──────────────────────────
 
@@ -2247,8 +2279,8 @@ class ProcessManager:
             try:
                 if not cur or self._RISK_ORDER.index(risk) < self._RISK_ORDER.index(cur):
                     ent["top_risk"] = risk
-            except ValueError:
-                pass
+            except ValueError as exc:
+                log.debug("_live_record_finding: unknown risk %r: %s", risk, exc)
             port = fdata.get("port")
             if port is not None:
                 try:
@@ -2262,8 +2294,9 @@ class ProcessManager:
                 try:
                     if not pcur or self._RISK_ORDER.index(risk) < self._RISK_ORDER.index(pcur):
                         pent["risk"] = risk
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    log.debug("_live_record_finding: unknown port risk %r: %s",
+                              risk, exc)
 
     def _schedule_live_flush(self, project_id, tool_id):
         key = _pkey(project_id, tool_id)
@@ -2391,8 +2424,8 @@ class ProcessManager:
         try:
             self.socketio.emit("tool_target", data,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_target: socketio emit: %s", exc)
 
     def _handle_port(self, project_id: str, tool_id: str,
                      data: dict) -> None:
@@ -2420,8 +2453,8 @@ class ProcessManager:
         try:
             self.socketio.emit("tool_port", data,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_port: socketio emit: %s", exc)
 
     def _handle_finding(self, project_id: str, tool_id: str,
                         data: dict) -> None:
@@ -2450,8 +2483,8 @@ class ProcessManager:
         try:
             self.socketio.emit("tool_finding", data,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_finding: socketio emit: %s", exc)
         if self._action_engine:
             try:
                 proj_dir = self._resolve_project_dir(project_id)
@@ -2497,13 +2530,15 @@ class ProcessManager:
                         self._handle_sudo_prompt(project_id, tool_id,
                                                  buf.strip(), proc)
                         buf = ""
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("stderr reader: unexpected error for %s/%s: %s",
+                        project_id[:8], tool_id, exc)
         finally:
             try:
                 pipe.close()
-            except (BrokenPipeError, OSError):
-                pass
+            except (BrokenPipeError, OSError) as exc:
+                log.debug("stderr reader: pipe.close for %s/%s: %s",
+                          project_id[:8], tool_id, exc)
 
     def _process_stderr_line(self, project_id: str, tool_id: str,
                              line: str, proc=None) -> None:
@@ -2537,8 +2572,9 @@ class ProcessManager:
         try:
             self.socketio.emit("console_line", entry,
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_process_stderr_line: emit failed for %s/%s: %s",
+                        project_id[:8], tool_id, exc)
 
         key = _pkey(project_id, tool_id)
         with self._lock:
@@ -2572,8 +2608,9 @@ class ProcessManager:
                 "message": merged,
                 "stream": "stderr",
             }, room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_flush_stderr: emit failed for %s/%s: %s",
+                        project_id[:8], tool_id, exc)
 
     def _handle_sudo_prompt(self, project_id: str, tool_id: str,
                             prompt_text: str,
@@ -2595,8 +2632,9 @@ class ProcessManager:
                                {"project_id": project_id,
                                 "tool_id": tool_id, "payload": payload},
                                room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_handle_sudo_prompt: emit failed for %s/%s: %s",
+                        project_id[:8], tool_id, exc)
 
         with self._lock:
             q = (self._answer_queues.get(project_id) or {}).get(tool_id)
@@ -2616,6 +2654,44 @@ class ProcessManager:
     def _wait_proc(self, project_id: str, tool_id: str,
                    proc: subprocess.Popen) -> None:
         """Daemon thread: wait for process exit and update state."""
+        try:
+            self._wait_proc_inner(project_id, tool_id, proc)
+        except Exception:
+            log.exception("_wait_proc crashed for %s/%s — "
+                          "setting status to failed as safety net",
+                          project_id[:8], tool_id)
+            try:
+                with self._lock:
+                    self._tool_status.setdefault(
+                        project_id, {})[tool_id] = "failed"
+                    self._procs.setdefault(
+                        project_id, {})[tool_id] = None
+            except Exception:
+                log.warning("_wait_proc: failed to set status for %s/%s",
+                            project_id[:8], tool_id)
+            try:
+                self.socketio.emit("tool_status", {
+                    "project_id": project_id,
+                    "tool_id": tool_id,
+                    "status": "failed",
+                }, room=_room(project_id))
+            except Exception:
+                log.warning("_wait_proc: socketio emit failed for %s/%s",
+                            project_id[:8], tool_id)
+            try:
+                self._emit_console(
+                    project_id, tool_id,
+                    f"[Crucible] INTERNAL ERROR: wait thread crashed — "
+                    f"tool marked as failed. Check system logs.",
+                    "system")
+            except Exception:
+                log.debug("_wait_proc: _emit_console fallback failed for %s/%s",
+                          project_id[:8], tool_id)
+
+    def _wait_proc_inner(self, project_id: str, tool_id: str,
+                         proc: subprocess.Popen) -> None:
+        """Inner body of _wait_proc — separated so the outer method
+        can catch any unhandled exception."""
         rc = proc.wait()
 
         # Close any remaining pipes.
@@ -2623,8 +2699,9 @@ class ProcessManager:
             if pipe is not None:
                 try:
                     pipe.close()
-                except (BrokenPipeError, OSError):
-                    pass
+                except (BrokenPipeError, OSError) as exc:
+                    log.debug("_wait_proc: pipe close for %s: %s",
+                              tool_id, exc)
 
         # Flush any remaining buffered stderr lines.
         key = _pkey(project_id, tool_id)
@@ -2721,8 +2798,9 @@ class ProcessManager:
             try:
                 from services.wireless import force_radio_cleanup
                 force_radio_cleanup()
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("force_radio_cleanup failed for %s: %s",
+                            tool_id, exc)
 
         self._emit_checkpoint_status(project_id, tool_id)
 
@@ -2821,12 +2899,15 @@ class ProcessManager:
                              "tool_id": tool_id, **info},
                             room=_room(project_id))
                         return
-                    except Exception:
+                    except Exception as exc:
+                        log.debug("checkpoint parse failed for %s: %s",
+                                  cp_file, exc)
                         continue
             self.socketio.emit(
                 "checkpoint_status",
                 {"project_id": project_id, "tool_id": tool_id,
                  "exists": False, "has_checkpoint": False, "resumable": False},
                 room=_room(project_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_emit_checkpoint_status failed for %s/%s: %s",
+                        project_id[:8], tool_id, exc)

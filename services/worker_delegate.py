@@ -154,8 +154,8 @@ class WorkerDelegate:
         try:
             requests.post(url, json={"delegation_id": delegation_id},
                          verify=False, timeout=10)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("recall_delegation request failed: %s", exc)
 
         with self._lock:
             delegation["status"] = "recalled"

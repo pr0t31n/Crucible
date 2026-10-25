@@ -8,7 +8,11 @@ import threading
 from pathlib import Path
 from datetime import datetime
 
+import logging
+
 from config import TOOL_OUTPUT_DIRS
+
+log = logging.getLogger("crucible.models.findings")
 
 _findings_lock = threading.Lock()
 
@@ -45,8 +49,8 @@ def _has_findings_content(dirpath):
                 for fn in _FINDINGS_FILENAMES:
                     if (sub / fn).exists():
                         return True
-    except OSError:
-        pass
+    except OSError as exc:
+        log.debug("iterdir failed for %s: %s", p, exc)
     return False
 
 
@@ -95,8 +99,8 @@ def _build_ip_fqdn_map(project):
                         if fqdn:
                             ip_to_fqdns.setdefault(ip, set()).add(fqdn.strip())
                 break
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("load ip-fqdn map from %s: %s", candidate, exc)
     return ip_to_fqdns
 
 
@@ -133,7 +137,8 @@ def load_all_findings(project):
                     _excl_addrs.add(str(_net.network_address))
                 else:
                     _excl_nets.append(_net)
-            except ValueError:
+            except ValueError as exc:
+                log.debug("exclusion not a CIDR %r: %s", _ex, exc)
                 _excl_addrs.add(_ex)
         def _ip_excluded(ip_str):
             if not ip_str:
@@ -143,7 +148,8 @@ def load_all_findings(project):
             try:
                 _a = _ipa.ip_address(ip_str)
                 return any(_a in _n for _n in _excl_nets)
-            except ValueError:
+            except ValueError as exc:
+                log.debug("exclusion ip parse %r: %s", ip_str, exc)
                 return ip_str in _excl_addrs
         all_findings = [f for f in all_findings
                         if not _ip_excluded(f.get("ip", ""))]
@@ -621,7 +627,8 @@ def _prefix_relative_affected(affected_str, hostname, ip, port):
         return affected_str
     try:
         port_num = int(port) if port else 0
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
+        log.debug("parse port %r: %s", port, exc)
         port_num = 0
     if port_num == 443 or port_num == 0:
         base = "https://" + host
@@ -665,8 +672,8 @@ def _dedup_affected_set(aff_set):
                 url_hosts.add(h + ":443")
             elif e.startswith("http://") and ":" not in hp:
                 url_hosts.add(h + ":80")
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("dedup affected URL parse: %s", exc)
     for e in list(result):
         if "://" in e:
             continue
@@ -680,8 +687,8 @@ def _dedup_affected_set(aff_set):
             int(parts[1])
             if parts[0] in (result - to_remove):
                 to_remove.add(parts[0])
-        except ValueError:
-            pass
+        except ValueError as exc:
+            log.debug("dedup port parse: %s", exc)
     return result - to_remove
 
 
@@ -746,8 +753,8 @@ def _try_parse_json_array(val):
             parsed = json.loads(s)
             if isinstance(parsed, list):
                 return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
+        except (json.JSONDecodeError, ValueError) as exc:
+            log.debug("parse JSON array: %s", exc)
     return None
 
 
@@ -912,8 +919,8 @@ def _preserve_fp_evidence(project_dir, finding):
                             paths.append(v)
                 elif isinstance(item, str):
                     paths.append(item)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        except (json.JSONDecodeError, TypeError) as exc:
+            log.debug("parse evidence paths: %s", exc)
     if not paths:
         for sep in ("\n", ","):
             if sep in raw:
@@ -932,8 +939,8 @@ def _preserve_fp_evidence(project_dir, finding):
             try:
                 shutil.copy2(src, target)
                 copied += 1
-            except OSError:
-                pass
+            except OSError as exc:
+                log.debug("copy FP evidence %s: %s", src, exc)
     if copied:
         finding["_fp_evidence_dir"] = str(dest.relative_to(pd))
 
@@ -1025,7 +1032,8 @@ def _persist_partial_fp_update(project_dir, finding_id, new_affected):
                 else:
                     data["findings"] = items
                     fj.write_text(json.dumps(data, indent=2, default=str))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("partial FP update %s: %s", fj, exc)
             continue
 
 
@@ -1084,7 +1092,8 @@ def load_risk_overrides(project):
         with open(fp) as fh:
             data = json.load(fh)
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except Exception as exc:
+        log.warning("load risk overrides: %s", exc)
         return {}
 
 
@@ -1103,8 +1112,8 @@ def save_risk_override(project, title, new_risk, reason="", original_risk=""):
     try:
         with open(fp, "w") as fh:
             json.dump(overrides, fh, indent=2)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("save risk override: %s", exc)
 
 
 def remove_risk_override(project, title):
@@ -1118,8 +1127,8 @@ def remove_risk_override(project, title):
         try:
             with open(fp, "w") as fh:
                 json.dump(overrides, fh, indent=2)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("remove risk override: %s", exc)
 
 
 def apply_risk_overrides(findings_list, project):
@@ -1186,8 +1195,8 @@ def persist_risk_override(findings_list, finding_id, new_risk, project,
                     fp = sub / "findings.json"
                     if fp.exists():
                         source_files.add(str(fp))
-        except OSError:
-            pass
+        except OSError as exc:
+            log.debug("iterdir tool dir %s: %s", td_path, exc)
     nr = new_risk.upper()
     for sf_path in source_files:
         try:
@@ -1205,7 +1214,8 @@ def persist_risk_override(findings_list, finding_id, new_risk, project,
             if changed:
                 with open(fp, "w") as fh:
                     json.dump(data, fh, indent=2)
-        except Exception:
+        except Exception as exc:
+            log.warning("persist risk override to %s: %s", sf_path, exc)
             continue
 
 

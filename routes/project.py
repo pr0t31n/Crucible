@@ -2,10 +2,13 @@
 
 import io
 import json
+import logging
 import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("crucible.routes.project")
 
 from flask import Blueprint, render_template, request, jsonify, send_file, session, current_app
 
@@ -110,7 +113,8 @@ def _repair_multi_layout(project):
     try:
         with open(meta_file) as f:
             meta = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.debug("repair_multi_layout read meta: %s", exc)
         return
 
     meta_eng_dir = meta.get("engagement_dir", "")
@@ -227,8 +231,8 @@ def _repair_multi_layout(project):
     try:
         with open(meta_file, "w") as f:
             json.dump(meta, f, indent=2)
-    except OSError:
-        pass
+    except OSError as exc:
+        log.debug("repair_multi_layout write meta: %s", exc)
 
     _repair_tool_settings(str(ed), tool_dirs, scope_tool_dirs,
                           old_eng_dir=meta_eng_dir)
@@ -273,8 +277,8 @@ def _repair_tool_settings(eng_dir, tool_dirs, scope_tool_dirs,
                     cfg.setdefault("scan", {})["scope_output_dirs"] = ss3_scope_dirs
             with open(sf, "w") as f:
                 json.dump(cfg, f, indent=2)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("repair_tool_settings root %s: %s", tid, exc)
 
     _TOOL_SETTINGS = {
         "fracture": "fr_settings_ext.json",
@@ -299,8 +303,8 @@ def _repair_tool_settings(eng_dir, tool_dirs, scope_tool_dirs,
                 cfg = json.loads(rewritten)
                 with open(sf, "w") as f:
                     json.dump(cfg, f, indent=2)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("repair_tool_settings %s: %s", tid, exc)
 
 
 @project_bp.route("/api/project/<project_id>")
@@ -412,8 +416,8 @@ def api_purge_tool(project_id, tool_id):
         for f in tp.glob("*_settings*.json"):
             try:
                 saved[f.name] = f.read_text()
-            except OSError:
-                pass
+            except OSError as exc:
+                log.debug("purge_tool save settings: %s", exc)
         shutil.rmtree(td, ignore_errors=True)
         tp.mkdir(parents=True, exist_ok=True)
         for name, content in saved.items():
@@ -429,7 +433,8 @@ def _relativize_findings_json(findings_path, eng_dir):
     """Rewrite absolute output_file paths to relative for export portability."""
     try:
         data = json.loads(findings_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.debug("relativize_findings read: %s", exc)
         return findings_path.read_text()
     if not isinstance(data, list):
         return json.dumps(data, indent=2)
@@ -618,8 +623,8 @@ def api_device_ips():
             addr = info[4][0].split("%")[0]
             if addr and not addr.startswith("127.") and addr != "::1" and not addr.startswith("fe80"):
                 ips.add(addr)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("device_ips getaddrinfo: %s", exc)
     try:
         import netifaces
         for iface in netifaces.interfaces():
@@ -638,8 +643,8 @@ def api_device_ips():
                 addr = m.group(1).split("%")[0]
                 if addr and not addr.startswith("127.") and addr != "::1" and not addr.startswith("fe80"):
                     ips.add(addr)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("device_ips ifconfig fallback: %s", exc)
     return jsonify({"ips": sorted(ips)})
 
 
@@ -722,8 +727,8 @@ def api_engagement_summary(project_id):
             r = (f.get("risk") or "INFO").upper()
             if r in risk_counts:
                 risk_counts[r] += 1
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("engagement_summary findings count: %s", exc)
 
     return jsonify({
         "project_id": project_id,
@@ -980,7 +985,8 @@ def _get_engagement_timing(proj_dir: str) -> dict:
         return {"engagement_start_time": None, "engagement_end_time": None}
     try:
         history = json.loads(hist_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.debug("engagement_timing read history: %s", exc)
         return {"engagement_start_time": None, "engagement_end_time": None}
     earliest = None
     latest = None
@@ -1057,7 +1063,8 @@ def api_exclude_ip(project_id):
                     with open(fj, "w") as f:
                         json.dump(findings, f, indent=2)
                     removed_findings += before - after
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("exclude_ip findings.json: %s", exc)
                 continue
 
         # ── Walk all targets.json files and remove host entries ──
@@ -1083,7 +1090,8 @@ def api_exclude_ip(project_id):
                 if changed:
                     with open(tj, "w") as f:
                         json.dump(tdata, f, indent=2)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("exclude_ip targets.json: %s", exc)
                 continue
 
         # ── Modify Nessus XML files to remove ReportHost for this IP ──
@@ -1106,7 +1114,8 @@ def api_exclude_ip(project_id):
                     tree.write(str(nf), xml_declaration=True,
                                encoding="utf-8")
                     modified_nessus += 1
-            except (ET.ParseError, OSError):
+            except (ET.ParseError, OSError) as exc:
+                log.debug("exclude_ip nessus xml: %s", exc)
                 continue
 
     # Invalidate caches so retroactive exclusion filtering takes effect

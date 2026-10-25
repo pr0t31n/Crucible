@@ -169,7 +169,43 @@ def create_app():
     return app
 
 
+def _setup_logging():
+    """Configure logging infrastructure — file + console.
+
+    Without this, every log.info/debug/warning call is invisible because
+    the root logger defaults to WARNING with no handlers.
+    """
+    from logging.handlers import RotatingFileHandler
+
+    log_dir = APP_DIR / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "crucible.log"
+
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S")
+
+    fh = RotatingFileHandler(
+        str(log_file), maxBytes=10 * 1024 * 1024, backupCount=5,
+        encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(fmt)
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.WARNING)
+    ch.setFormatter(fmt)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.addHandler(fh)
+    root.addHandler(ch)
+
+    logging.getLogger("engineio").setLevel(logging.WARNING)
+    logging.getLogger("socketio").setLevel(logging.WARNING)
+
+
 def main():
+    _setup_logging()
     app = create_app()
     log = logging.getLogger("werkzeug")
     log.setLevel(logging.WARNING)

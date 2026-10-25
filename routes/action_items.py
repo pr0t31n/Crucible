@@ -128,7 +128,8 @@ def _forward_fracture_creds(si_auth, fr_path, project, scope):
             try:
                 fr_settings = json.loads(cp.read_text())
                 break
-            except Exception:
+            except Exception as exc:
+                log.warning("fracture creds read failed %s: %s", cp, exc)
                 continue
     if not fr_settings:
         return
@@ -162,7 +163,8 @@ def _forward_fracture_settings(settings, fr_path, project, scope):
             try:
                 fr_settings = json.loads(cp.read_text())
                 break
-            except Exception:
+            except Exception as exc:
+                log.warning("fracture settings read failed %s: %s", cp, exc)
                 continue
     if not fr_settings:
         return
@@ -565,16 +567,16 @@ def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
         try:
             with open(fp) as f:
                 existing = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("settings read failed %s: %s", fp, exc)
     elif td:
         legacy_fp = Path(proj_dir) / fname
         if legacy_fp.exists():
             try:
                 with open(legacy_fp) as f:
                     existing = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("legacy settings read failed %s: %s", legacy_fp, exc)
 
     if tool_id == "fracture":
         scan = existing.setdefault("scan", {})
@@ -1003,8 +1005,8 @@ def _cleanup_tool_session(project, project_id, tool_id):
             try:
                 log_file.unlink()
                 cleaned = True
-            except OSError:
-                pass
+            except OSError as exc:
+                log.debug("console log unlink failed %s: %s", log_file, exc)
 
         from config import TOOL_SETTINGS_PREFIX
         prefix = TOOL_SETTINGS_PREFIX.get(tool_id, tool_id)
@@ -1012,15 +1014,15 @@ def _cleanup_tool_session(project, project_id, tool_id):
             try:
                 sf.unlink()
                 cleaned = True
-            except OSError:
-                pass
+            except OSError as exc:
+                log.debug("settings file unlink failed %s: %s", sf, exc)
         plain = td / f"{prefix}_settings.json"
         if plain.exists():
             try:
                 plain.unlink()
                 cleaned = True
-            except OSError:
-                pass
+            except OSError as exc:
+                log.debug("settings file unlink failed %s: %s", plain, exc)
 
     # Fully remove in-memory session (all scope-qualified keys)
     pm = get_ext("process_manager")

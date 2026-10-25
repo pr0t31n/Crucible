@@ -63,7 +63,8 @@ class NessusClient:
                 m = _fallback.search(_text[:200000])
                 if m:
                     return m.group(1)
-            except Exception:
+            except Exception as exc:
+                log.debug("JS fetch %s failed: %s", _js_path, exc)
                 continue
         try:
             html_r = sess.get(f"{base_url}/", timeout=10)
@@ -72,8 +73,8 @@ class NessusClient:
                     m = pat.search(html_r.text[:200000])
                     if m:
                         return m.group(1)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("HTML API token fetch failed: %s", exc)
         return None
 
     @classmethod
@@ -386,15 +387,15 @@ class NessusClient:
                         elif tag == "cvss3_base_score":
                             try:
                                 cvss_score = float(text)
-                            except (ValueError, TypeError):
-                                pass
+                            except (ValueError, TypeError) as exc:
+                                log.debug("cvss3 score parse failed: %s", exc)
                         elif tag == "cvss3_vector":
                             cvss_vector = text
                         elif tag == "cvss_base_score" and cvss_score is None:
                             try:
                                 cvss_score = float(text)
-                            except (ValueError, TypeError):
-                                pass
+                            except (ValueError, TypeError) as exc:
+                                log.debug("cvss2 score parse failed: %s", exc)
                         elif tag == "cvss_vector" and not cvss_vector:
                             cvss_vector = text
                         elif tag == "exploit_available":

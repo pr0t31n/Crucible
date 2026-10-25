@@ -52,15 +52,16 @@ def register_shell_events(socketio):
                     if r:
                         try:
                             chunk = os.read(master_fd, 4096)
-                        except OSError:
+                        except OSError as exc:
+                            _log.debug("shell read: %s", exc)
                             break
                         if not chunk:
                             break
                         socketio.emit("shell_output",
                                       {"data": chunk.decode("utf-8", errors="replace")},
                                       to=sid)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning("shell reader: %s", exc)
             finally:
                 socketio.emit("shell_exit", {}, to=sid)
                 _cleanup(sid)
@@ -84,8 +85,8 @@ def register_shell_events(socketio):
         if text:
             try:
                 os.write(info["master_fd"], text.encode("utf-8"))
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("shell write: %s", exc)
 
     @socketio.on("shell_resize")
     def on_shell_resize(data):
@@ -100,8 +101,8 @@ def register_shell_events(socketio):
         try:
             winsize = struct.pack("HHHH", rows, cols, 0, 0)
             fcntl.ioctl(info["master_fd"], termios.TIOCSWINSZ, winsize)
-        except (OSError, Exception):
-            pass
+        except (OSError, Exception) as exc:
+            _log.debug("shell resize: %s", exc)
 
     @socketio.on("shell_close")
     def on_shell_close(data=None):
@@ -122,18 +123,18 @@ def _cleanup(sid):
     _log.info("Shell closed: sid=%s pid=%s", sid[:8], info["proc"].pid)
     try:
         os.close(info["master_fd"])
-    except OSError:
-        pass
+    except OSError as exc:
+        _log.debug("close master fd: %s", exc)
     proc = info["proc"]
     if proc.poll() is None:
         try:
             proc.terminate()
-        except OSError:
-            pass
+        except OSError as exc:
+            _log.debug("terminate shell proc: %s", exc)
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             try:
                 proc.kill()
-            except OSError:
-                pass
+            except OSError as exc:
+                _log.debug("kill shell proc: %s", exc)

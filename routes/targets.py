@@ -1,8 +1,12 @@
 """Targets API routes — network hosts + OSINT assets."""
 
+import logging
+
 from flask import Blueprint, jsonify
 from routes._helpers import require_project
 from models.targets import load_all_targets, get_target_summary
+
+log = logging.getLogger("crucible.routes.targets")
 
 targets_bp = Blueprint("targets", __name__)
 
@@ -34,8 +38,8 @@ def api_targets(project_id):
                             if isinstance(lp, dict) and lp.get("port") not in disk_ports:
                                 dh.setdefault("ports", []).append(lp)
                 targets["network"] = disk_hosts
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("targets live overlay: %s", exc)
     summary = get_target_summary(project)
     return jsonify({"targets": targets, "summary": summary})
 
@@ -57,8 +61,8 @@ def api_topology(project_id):
                     if lh["ip"] not in by_ip:
                         disk_hosts.append(lh)
                 targets["network"] = disk_hosts
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("topology live overlay: %s", exc)
 
     def _esc_mermaid(s):
         return str(s).replace('"', '#quot;').replace('[', '#91;').replace(']', '#93;').replace('-->', '— >')

@@ -72,15 +72,20 @@ def register_tool_events(socketio, process_manager, queue_manager):
         if not pid:
             return
 
-        scope = (data or {}).get("scope")
-        ok = process_manager.kill(pid, tid, scope=scope)
-        if ok:
-            log.info("Killed %s for project %s", tid, pid)
-            emit("tool_killed", {"project_id": pid, "tool_id": tid},
-                 to=_room(pid))
-        else:
+        try:
+            scope = (data or {}).get("scope")
+            ok = process_manager.kill(pid, tid, scope=scope)
+            if ok:
+                log.info("Killed %s for project %s", tid, pid)
+                emit("tool_killed", {"project_id": pid, "tool_id": tid},
+                     to=_room(pid))
+            else:
+                emit("error", {"project_id": pid, "tool_id": tid,
+                               "message": "Tool not running or kill failed"})
+        except Exception as exc:
+            log.error("on_tool_kill crashed: %s\n%s", exc, traceback.format_exc())
             emit("error", {"project_id": pid, "tool_id": tid,
-                           "message": "Tool not running or kill failed"})
+                           "message": f"Kill error: {exc}"})
 
     @socketio.on("tool_pause")
     def on_tool_pause(data):
@@ -90,14 +95,19 @@ def register_tool_events(socketio, process_manager, queue_manager):
         if not pid:
             return
 
-        scope = (data or {}).get("scope")
-        reason = (data or {}).get("reason", "paused_user")
-        ok = process_manager.pause(pid, tid, scope=scope, reason=reason)
-        if ok:
-            log.info("Pause requested for %s in project %s", tid, pid)
-        else:
+        try:
+            scope = (data or {}).get("scope")
+            reason = (data or {}).get("reason", "paused_user")
+            ok = process_manager.pause(pid, tid, scope=scope, reason=reason)
+            if ok:
+                log.info("Pause requested for %s in project %s", tid, pid)
+            else:
+                emit("error", {"project_id": pid, "tool_id": tid,
+                               "message": "Tool not running or pause failed"})
+        except Exception as exc:
+            log.error("on_tool_pause crashed: %s\n%s", exc, traceback.format_exc())
             emit("error", {"project_id": pid, "tool_id": tid,
-                           "message": "Tool not running or pause failed"})
+                           "message": f"Pause error: {exc}"})
 
     @socketio.on("tool_input")
     def on_tool_input(data):
@@ -107,8 +117,13 @@ def register_tool_events(socketio, process_manager, queue_manager):
         if not pid:
             return
 
-        text = (data or {}).get("text", "")
-        process_manager.send_input(pid, tid, text)
+        try:
+            text = (data or {}).get("text", "")
+            process_manager.send_input(pid, tid, text)
+        except Exception as exc:
+            log.error("on_tool_input crashed: %s\n%s", exc, traceback.format_exc())
+            emit("error", {"project_id": pid, "tool_id": tid,
+                           "message": f"Input error: {exc}"})
 
     @socketio.on("get_console")
     def on_get_console(data):
@@ -118,24 +133,29 @@ def register_tool_events(socketio, process_manager, queue_manager):
         if not pid:
             return
 
-        scope = (data or {}).get("scope")
-        base_tid = tid
-        if ":" in tid and not scope:
-            base_tid = tid.split(":")[0]
-            scope = tid.split(":", 1)[1]
+        try:
+            scope = (data or {}).get("scope")
+            base_tid = tid
+            if ":" in tid and not scope:
+                base_tid = tid.split(":")[0]
+                scope = tid.split(":", 1)[1]
 
-        if process_manager.is_running(pid, base_tid, scope=scope):
-            buf = process_manager.get_console(pid, base_tid, scope=scope)
-        else:
-            from routes.console import _load_full_console
-            buf = _load_full_console(pid, base_tid, scope=scope)
-            if not buf:
+            if process_manager.is_running(pid, base_tid, scope=scope):
                 buf = process_manager.get_console(pid, base_tid, scope=scope)
-        tail = (data or {}).get("tail")
-        if tail and isinstance(tail, int) and tail > 0 and len(buf) > tail:
-            buf = buf[-tail:]
-        emit("console_buffer", {"project_id": pid, "tool_id": tid,
-                                "lines": buf})
+            else:
+                from routes.console import _load_full_console
+                buf = _load_full_console(pid, base_tid, scope=scope)
+                if not buf:
+                    buf = process_manager.get_console(pid, base_tid, scope=scope)
+            tail = (data or {}).get("tail")
+            if tail and isinstance(tail, int) and tail > 0 and len(buf) > tail:
+                buf = buf[-tail:]
+            emit("console_buffer", {"project_id": pid, "tool_id": tid,
+                                    "lines": buf})
+        except Exception as exc:
+            log.error("on_get_console crashed: %s\n%s", exc, traceback.format_exc())
+            emit("error", {"project_id": pid, "tool_id": tid,
+                           "message": f"Console error: {exc}"})
 
     @socketio.on("get_status")
     def on_get_status(data):
@@ -150,16 +170,21 @@ def register_tool_events(socketio, process_manager, queue_manager):
             emit("error", {"message": f"Project not found: {pid}"})
             return
 
-        statuses = process_manager.get_all_status(pid)
-        if "nessus" not in statuses:
-            td = (proj.get("tool_dirs") or {}).get("nessus")
-            if td:
-                from pathlib import Path
-                nd = Path(td)
-                if (nd / "nessus_findings.json").exists() or \
-                   (nd / "nessus_results.nessus").exists():
-                    statuses["nessus"] = {"status": "complete",
-                                          "last_line": "Nessus results imported"}
-        phase_cache = process_manager.get_phase_cache(pid)
-        emit("all_status", {"project_id": pid, "tools": statuses,
-                            "phases": phase_cache})
+        try:
+            statuses = process_manager.get_all_status(pid)
+            if "nessus" not in statuses:
+                td = (proj.get("tool_dirs") or {}).get("nessus")
+                if td:
+                    from pathlib import Path
+                    nd = Path(td)
+                    if (nd / "nessus_findings.json").exists() or \
+                       (nd / "nessus_results.nessus").exists():
+                        statuses["nessus"] = {"status": "complete",
+                                              "last_line": "Nessus results imported"}
+            phase_cache = process_manager.get_phase_cache(pid)
+            emit("all_status", {"project_id": pid, "tools": statuses,
+                                "phases": phase_cache})
+        except Exception as exc:
+            log.error("on_get_status crashed: %s\n%s", exc, traceback.format_exc())
+            emit("error", {"project_id": pid,
+                           "message": f"Status error: {exc}"})

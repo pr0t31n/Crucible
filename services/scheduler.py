@@ -135,7 +135,8 @@ class SchedulerService:
         try:
             import zoneinfo
             tz = zoneinfo.ZoneInfo(eh.get("timezone", "UTC"))
-        except Exception:
+        except Exception as exc:
+            log.debug("timezone parse failed: %s", exc)
             tz = timezone.utc
 
         now = datetime.now(tz)
@@ -198,7 +199,8 @@ class SchedulerService:
                         entry["scheduled_at"].replace("Z", "+00:00"))
                     if sched_dt.tzinfo is None:
                         sched_dt = sched_dt.replace(tzinfo=timezone.utc)
-                except (ValueError, KeyError):
+                except (ValueError, KeyError) as exc:
+                    log.debug("scheduled_at parse: %s", exc)
                     continue
                 if now >= sched_dt:
                     within = self.is_within_engagement_hours(project_id)
@@ -302,8 +304,8 @@ class SchedulerService:
                      "launched": launched, "queued": queued,
                      "skipped": skipped},
                     to=_room(project_id))
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("socketio emit engagement_started failed: %s", exc)
 
     def _check_engagement_hours(self) -> None:
         for project_id, eh in list(self._engagement_hours.items()):
@@ -426,8 +428,8 @@ class SchedulerService:
                 proj_dir = proj.get("project_dir", "")
                 if proj_dir:
                     self.load_project_config(project_id, proj_dir)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("_ensure_loaded failed for %s: %s", project_id, exc)
         self._loaded_projects.add(project_id)
 
     def load_project_config(self, project_id: str, proj_dir: str) -> None:
@@ -438,8 +440,8 @@ class SchedulerService:
                 data = json.loads(sched_file.read_text())
                 if isinstance(data, list):
                     self._schedules[project_id] = data
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("load schedule.json failed for %s: %s", project_id, exc)
 
         eh_file = Path(proj_dir) / _ENGAGEMENT_FILE
         if eh_file.exists():
@@ -450,7 +452,7 @@ class SchedulerService:
                     self._engagement_hours[project_id] = data
                     if was_paused:
                         self._paused_by_engagement[project_id] = True
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("load engagement_hours.json failed for %s: %s", project_id, exc)
 
         self._loaded_projects.add(project_id)

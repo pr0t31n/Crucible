@@ -75,7 +75,7 @@ class QueueManager:
                                f"({mem.available // (1024*1024)} MB free) — "
                                f"waiting for running tools to free memory")
         except ImportError:
-            pass
+            log.debug("psutil not available — skipping RAM check")
 
         group = self._get_group(tool_id)
 
@@ -236,6 +236,13 @@ class QueueManager:
         If jobs remain but can't launch (RAM pressure, cross-group block),
         schedules a retry after ``_DEQUEUE_RETRY_SECONDS``.  Does nothing
         when the project is paused.
+
+        Every failure path is wrapped so an error in one tool's launch
+        cannot leave Crucible in a crippled state.  On failure:
+        - Server-side ``_tool_status`` is set to ``"failed"``
+        - Action items are reverted from ``queued`` → ``pending``
+        - A console message is emitted so the user sees the error
+        - The loop continues to attempt remaining queued tools
         """
         with self._lock:
             if project_id in self._paused or project_id in self._clearing:
@@ -249,7 +256,11 @@ class QueueManager:
             return
         launched_any = False
         while True:
-            result = self.dequeue_next(project_id)
+            try:
+                result = self.dequeue_next(project_id)
+            except Exception as exc:
+                log.exception("auto_dequeue: dequeue_next failed")
+                break
             if result is None:
                 break
             tool_id, scope, kwargs = result
@@ -272,19 +283,17 @@ class QueueManager:
                 if ok:
                     launched_any = True
                 else:
-                    log.warning("Dropped queued %s:%s — launch failed "
-                                "(validation or missing config)",
-                                tool_id, scope or "")
-                    self._emit_launch_failure(
-                        pm, project_id, tool_id, scope, proj_dir,
-                        "Launch failed (validation or missing config)")
+                    self._recover_failed_launch(
+                        pm, project_id, tool_id, scope,
+                        proj_dir,
+                        "Launch returned False (validation or missing config)")
             except Exception as exc:
                 log.exception("auto_dequeue launch error for %s:%s",
                               tool_id, scope or "")
-                self._emit_launch_failure(
+                self._recover_failed_launch(
                     pm, project_id, tool_id, scope,
                     project.get("project_dir", ""),
-                    f"Launch error: {exc}")
+                    f"Launch exception: {exc}")
             finally:
                 with self._lock:
                     s = self._launching.get(project_id)
@@ -296,34 +305,64 @@ class QueueManager:
         if not launched_any and self.queue_size(project_id) > 0:
             self._schedule_dequeue_retry(project_id)
 
-    def _emit_launch_failure(self, pm, project_id, tool_id, scope,
-                             proj_dir, reason):
-        """Emit a console error and revert action items on auto-dequeue
-        launch failure so the user sees what happened."""
+    def _recover_failed_launch(self, pm, project_id, tool_id, scope,
+                               proj_dir, reason):
+        """Clean up server state after a failed auto-launch so Crucible
+        is never left crippled.  Every step is independently wrapped —
+        if one cleanup step fails the others still run.
+
+        1. Set server-side ``_tool_status`` to ``"failed"`` (fixes clear
+           scan data for registered-but-never-launched tools)
+        2. Emit ``tool_status`` socket event so the sidebar updates
+        3. Revert action items from ``queued`` → ``pending`` so the user
+           can manually re-launch
+        4. Emit a console message with the full error reason
+        """
         from config import TOOLS
-        name = TOOLS.get(tool_id, {}).get("name", tool_id)
+        try:
+            name = TOOLS.get(tool_id, {}).get("name", tool_id)
+        except Exception:
+            name = tool_id
         scope_tag = f" [{scope}]" if scope else ""
-        msg = f"[Crucible] Auto-dequeue: {name}{scope_tag} — {reason}"
-        if pm:
-            pm._emit_console(project_id, tool_id, msg, "system")
-            try:
+
+        # 1+2. Server-side status + socket event
+        try:
+            if pm:
+                with pm._lock:
+                    pm._tool_status.setdefault(
+                        project_id, {})[tool_id] = "failed"
                 pm.socketio.emit("tool_status", {
                     "project_id": project_id,
                     "tool_id": tool_id,
                     "status": "failed",
                 }, room=f"project_{project_id}")
-            except Exception:
-                pass
-        if proj_dir:
-            try:
+        except Exception as exc:
+            log.warning("_recover_failed_launch: status update failed "
+                        "for %s: %s", tool_id, exc)
+
+        # 3. Revert action items
+        try:
+            if proj_dir:
                 from models.action_items import update_tool_action_items_status
                 update_tool_action_items_status(
                     proj_dir, tool_id,
                     from_statuses={"queued"},
                     new_status="pending")
-            except Exception as exc:
-                log.warning("Failed to revert action items for %s: %s",
-                            tool_id, exc)
+        except Exception as exc:
+            log.warning("_recover_failed_launch: action item revert failed "
+                        "for %s: %s", tool_id, exc)
+
+        # 4. Console message
+        try:
+            if pm:
+                pm._emit_console(
+                    project_id, tool_id,
+                    f"[Crucible] Auto-launch failed: {name}{scope_tag}"
+                    f" — {reason}. Action items reverted to pending.",
+                    "system")
+        except Exception as exc:
+            log.warning("_recover_failed_launch: console emit failed "
+                        "for %s: %s", tool_id, exc)
 
     def _schedule_dequeue_retry(self, project_id: str) -> None:
         """Schedule a deferred retry for queued jobs that couldn't launch."""
@@ -364,7 +403,9 @@ class QueueManager:
             cfg = json.loads(settings_path.read_text())
             return bool(cfg.get("access_key") and cfg.get("secret_key")
                         and (cfg.get("host") or cfg.get("server")))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            log.warning("Failed to read Nessus settings %s: %s",
+                        settings_path, exc)
             return False
 
     def process_auto_queue(self, project_id: str, project: dict) -> int:
@@ -499,8 +540,9 @@ class QueueManager:
                     "reason": f"Auto-queued{oos_tag} ({len(targets)} targets)",
                     "oos": is_oos,
                 }, room=f"project_{project_id}")
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Failed to emit auto_queued event for %s: %s",
+                            tool, exc)
 
         if enqueued:
             self.auto_dequeue(project_id)
@@ -527,8 +569,9 @@ class QueueManager:
         if base_settings_path.exists():
             try:
                 settings = json.loads(base_settings_path.read_text())
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.warning("Failed to read base settings %s: %s",
+                            base_settings_path, exc)
 
         creds = meta["credentials"]
         username = creds.get("username", "")
@@ -698,8 +741,9 @@ class QueueManager:
                              "findings": len(findings),
                              "source": "auto_queue_import"},
                             room=f"project_{project_id}")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log.warning("Failed to emit nessus_done event: %s",
+                                    exc)
             Path(tmp_path).unlink(missing_ok=True)
         except Exception as exc:
             log.warning("Nessus auto-import failed: %s", exc)
@@ -720,7 +764,9 @@ class QueueManager:
         try:
             raw = self.process_manager.running_tools(project_id)
             return {tid.split(":")[0] for tid in raw}
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to get running tools for %s: %s",
+                        project_id, exc)
             return set()
 
     def _get_running_keys(self, project_id: str) -> set[str]:
@@ -729,7 +775,9 @@ class QueueManager:
             return set()
         try:
             return set(self.process_manager.running_tools(project_id))
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to get running tool keys for %s: %s",
+                        project_id, exc)
             return set()
 
     def _get_running_groups_from_tools(self, running: set[str]) -> set[str]:
@@ -785,8 +833,8 @@ class QueueManager:
             tmp = EXECUTE_QUEUE_FILE.with_suffix(".tmp")
             tmp.write_text(json.dumps(data, indent=2, default=str))
             tmp.replace(EXECUTE_QUEUE_FILE)
-        except OSError:
-            pass  # best-effort — don't crash the server
+        except OSError as exc:
+            log.warning("Failed to persist queue to disk: %s", exc)
 
     def _load_persisted_queue(self):
         """Load queue from disk on startup."""
@@ -802,5 +850,6 @@ class QueueManager:
                         e for e in entries
                         if isinstance(e, dict) and "tool_id" in e
                     ]
-        except (json.JSONDecodeError, OSError):
-            pass  # corrupt file — start fresh
+        except (json.JSONDecodeError, OSError) as exc:
+            log.warning("Failed to load persisted queue (starting fresh): %s",
+                        exc)

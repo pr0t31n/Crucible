@@ -1,7 +1,10 @@
 """Settings model — per-tool settings read/write with defaults."""
 
 import json
+import logging
 from pathlib import Path
+
+log = logging.getLogger("crucible.models.settings")
 
 
 def get_tool_defaults(tool_id):
@@ -56,8 +59,8 @@ def save_settings(project_dir, tool_id, settings):
         try:
             with open(fp) as f:
                 existing = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("read existing settings %s: %s", fp, exc)
     _deep_merge(existing, tool_data)
     with open(fp, "w") as f:
         json.dump(existing, f, indent=2)

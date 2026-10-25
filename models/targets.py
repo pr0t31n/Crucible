@@ -1,9 +1,12 @@
 """Targets model — host/port/OSINT target aggregation from tool outputs."""
 
 import json
+import logging
 from pathlib import Path
 
 from config import TOOL_OUTPUT_DIRS
+
+log = logging.getLogger("crucible.models.targets")
 
 
 def load_network_targets(tool_output_dir):
@@ -47,7 +50,8 @@ def _parse_host_file(fp):
     try:
         with open(fp) as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.debug("parse host file %s: %s", fp, exc)
         return []
     if isinstance(data, list):
         return [_normalise_host(h) for h in data if isinstance(h, dict)]
@@ -94,7 +98,8 @@ def load_osint_targets(tool_output_dir):
             try:
                 with open(candidate) as f:
                     data = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("load osint targets %s: %s", candidate, exc)
                 continue
             primary = data.get("domain", "")
             all_domains = [primary] if primary else []

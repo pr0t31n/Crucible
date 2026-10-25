@@ -6,5 +6,6 @@ ssl.crt
 ssl.key
 __pycache__/
 *.pyc
+logs/
 execute_queue.json
 projects.json.bak

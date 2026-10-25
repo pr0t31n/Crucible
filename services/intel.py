@@ -130,7 +130,8 @@ class IntelService:
             if candidate.exists():
                 try:
                     data = json.loads(candidate.read_text())
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError) as exc:
+                    log.debug("get_osint_targets load failed: %s", exc)
                     continue
                 primary = data.get("domain", "")
                 all_domains = [primary] if primary else []
@@ -317,8 +318,8 @@ class IntelService:
                                 "file": filename,
                                 "size_bytes": fp.stat().st_size,
                             }
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            log.debug("intel_summary stat failed: %s", exc)
                         break
 
         return summary

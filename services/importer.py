@@ -248,8 +248,8 @@ class ImporterService:
                 if project_dir:
                     try:
                         rel = str(Path(dest_paths[0]).relative_to(project_dir))
-                    except ValueError:
-                        pass
+                    except ValueError as exc:
+                        log.debug("relative_to for output_file: %s", exc)
                 for f in job["_findings"]:
                     f.setdefault("output_file", rel)
                 self._persist_findings(job, project, project_id, dest_paths)
@@ -403,8 +403,8 @@ class ImporterService:
                 parent = p.parent
                 if parent.name == "_import_staging" and not any(parent.iterdir()):
                     parent.rmdir()
-        except OSError:
-            pass
+        except OSError as exc:
+            log.debug("cleanup_staging failed: %s", exc)
 
     # ── Duplicate detection ─────────────────────────────────────
 
@@ -427,8 +427,8 @@ class ImporterService:
                         t2 = datetime.fromisoformat(j_created)
                         if abs((t2 - t1).total_seconds()) > 3600:
                             continue
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as exc:
+                        log.debug("check_duplicate datetime parse: %s", exc)
                 return existing
         return None
 
@@ -510,7 +510,8 @@ class ImporterService:
                         existing = json.load(f)
                     if not isinstance(existing, list):
                         existing = existing.get("findings", [])
-                except Exception:
+                except Exception as exc:
+                    log.warning("persist_findings JSON load failed: %s", exc)
                     existing = []
             if tool_id == "nessus":
                 self._write_nessus_evidence(findings, tool_dir)

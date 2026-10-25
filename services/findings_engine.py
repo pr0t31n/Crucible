@@ -397,8 +397,8 @@ class FindingsEngine:
                 if excluded:
                     log.info("Excluded %d findings for project %s (exclusion list)",
                              excluded, project_id)
-        except RuntimeError:
-            pass  # outside flask app context
+        except RuntimeError as exc:
+            log.debug("scope exclusion outside flask context: %s", exc)
 
         tsm = self._build_tool_scope_map(project)
         if tsm:
@@ -447,8 +447,8 @@ class FindingsEngine:
                 sm = current_app.extensions.get("scope_manager")
                 if sm and self._is_finding_excluded(finding, sm, project):
                     return
-            except RuntimeError:
-                pass
+            except RuntimeError as exc:
+                log.debug("scope check outside app context: %s", exc)
         self._enrich_from_catalogue([finding])
         if project:
             apply_risk_overrides([finding], project)

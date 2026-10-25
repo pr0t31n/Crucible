@@ -96,7 +96,8 @@ def _is_private_ip(ip_str):
     """Return True if ip_str is an RFC-1918 private address."""
     try:
         addr = ipaddress.ip_address(ip_str.strip())
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError) as exc:
+        log.debug("_is_private_ip parse failed: %s", exc)
         return False
     return any(addr in net for net in _RFC1918)
 
@@ -1473,7 +1474,8 @@ class ActionEngine:
                 continue
             try:
                 data = _json.loads(candidate.read_text())
-            except (ValueError, OSError):
+            except (ValueError, OSError) as exc:
+                log.debug("action engine data load: %s", exc)
                 continue
             generated = 0
             for ip_rec in data.get("ips", []):

@@ -1,11 +1,14 @@
 """Settings API routes — tool settings, test connection, AuthProbe, wireless."""
 
 import json
+import logging
 import os
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("crucible.routes.settings")
 
 from flask import Blueprint, request, jsonify, current_app
 
@@ -58,8 +61,8 @@ def _backfill_osift_api_keys(settings):
                         elif isinstance(raw.get("shodan_key"), str):
                             _osift_global_cache = raw
                             break
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("osift global settings read failed: %s", exc)
     for crucible_key, osift_key in _OSIFT_KEY_MAP.items():
         if not settings.get(crucible_key):
             val = _osift_global_cache.get(osift_key, "")
@@ -172,8 +175,8 @@ def _queue_rescan(project_id, project, tool_id):
         qm = current_app.extensions.get("queue_manager")
         if qm:
             qm.enqueue(project_id, tool_id, project)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("queue rescan failed: %s", exc)
 
 
 @settings_bp.route("/api/settings/<project_id>/<tool_id>", methods=["GET", "POST"])
@@ -353,8 +356,8 @@ def api_test_connection(tool_id):
         if result.stdout.strip():
             try:
                 parsed = json.loads(result.stdout)
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                log.debug("test-connection stdout not JSON: %s", exc)
         return jsonify({
             "ok": result.returncode == 0,
             "result": parsed,
@@ -401,8 +404,8 @@ def api_fingerprint_auth():
         if fp_path.exists():
             try:
                 fingerprint = json.loads(fp_path.read_text())
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("fingerprint JSON parse failed: %s", exc)
         return jsonify({
             "ok": result.returncode == 0 and fingerprint is not None,
             "fingerprint": fingerprint,

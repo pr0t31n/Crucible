@@ -99,7 +99,8 @@ def api_findings_count(project_id):
         project = require_project(project_id)
         findings = _engine().get_findings(project_id, project)
         return jsonify({"count": len(findings)})
-    except Exception:
+    except Exception as exc:
+        log.warning("findings_count: %s", exc)
         return jsonify({"count": 0})
 
 
@@ -328,7 +329,8 @@ def api_attach_evidence(project_id):
 
     try:
         rel = str(dest.relative_to(project_dir))
-    except ValueError:
+    except ValueError as exc:
+        log.debug("evidence relative_to: %s", exc)
         rel = str(dest)
 
     fe = _engine()
@@ -377,7 +379,8 @@ def _persist_evidence_update(project_dir, finding_id, new_path):
                 else:
                     data["findings"] = items
                     fj.write_text(json.dumps(data, indent=2, default=str))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("persist_evidence_update: %s", exc)
             continue
 
 
@@ -487,7 +490,8 @@ def api_list_snapshots(project_id):
             try:
                 data = json.loads(fp.read_text())
                 count = len(data) if isinstance(data, list) else 0
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("snapshot count read: %s", exc)
                 count = 0
             snapshots.append({
                 "id": fp.stem,
@@ -770,7 +774,8 @@ def _add_nessus_csv_sheets(wb, nessus_dir, scope_key, seen_names, header_font,
                 ws.column_dimensions[
                     ws.cell(row=1, column=col_idx).column_letter
                 ].width = 18
-        except (OSError, csv.Error):
+        except (OSError, csv.Error) as exc:
+            log.debug("xlsx csv sheet: %s", exc)
             continue
 
 

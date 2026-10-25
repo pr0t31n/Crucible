@@ -69,8 +69,8 @@ class ScopeManager:
                 domains.add(host.lower())
                 try:
                     scope_ips.add(ipaddress.ip_address(host))
-                except ValueError:
-                    pass  # hostname, not IP
+                except ValueError as exc:
+                    log.debug("scope URL host not IP: %s", exc)
 
         # OSINT domains
         for d in scope_def.get("domains", []):
@@ -144,8 +144,8 @@ class ScopeManager:
             for net in scope["exclusion_networks"]:
                 if addr in net:
                     return True
-        except ValueError:
-            pass
+        except ValueError as exc:
+            log.debug("is_excluded target not IP: %s", exc)
 
         # Check hostname / URL host
         host = target.lower().strip()
@@ -218,8 +218,8 @@ class ScopeManager:
             for net in scope["networks"]:
                 if addr in net:
                     return True
-        except ValueError:
-            pass
+        except ValueError as exc:
+            log.debug("is_url_in_scope host not IP: %s", exc)
 
         return False
 
@@ -238,8 +238,8 @@ class ScopeManager:
         try:
             ipaddress.ip_address(target)
             return self.is_ip_in_scope(project, target)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            log.debug("is_in_scope target not IP: %s", exc)
 
         # Try as URL
         if "://" in target or "/" in target:
@@ -310,8 +310,8 @@ class ScopeManager:
                 for net in scope["networks"]:
                     if addr in net:
                         return True
-            except ValueError:
-                pass
+            except ValueError as exc:
+                log.debug("is_oos_eligible ip not valid: %s", exc)
 
         return False
 
@@ -333,7 +333,8 @@ class ScopeManager:
                     targets = json.load(f)
             else:
                 targets = []
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("add_dynamic_target load failed: %s", exc)
             targets = []
 
         # Dedup by (ip, port) or (ssid) or (url)
@@ -374,5 +375,6 @@ class ScopeManager:
         try:
             with open(fp) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            log.debug("get_discovered_targets load failed: %s", exc)
             return []

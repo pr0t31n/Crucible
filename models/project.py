@@ -1,11 +1,14 @@
 """Project model — CRUD, discovery, metadata for engagements."""
 
 import json
+import logging
 import sys
 import uuid
 import threading
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("crucible.models.project")
 
 from config import APP_DIR, CLIENTS_BASE, TOOLS, TOOL_OUTPUT_DIRS, TOOL_SETTINGS_PREFIX
 
@@ -13,7 +16,8 @@ try:
     if "/opt/pr0t31n/shared" not in sys.path:
         sys.path.insert(0, "/opt/pr0t31n/shared")
     import pr0t31n_schema as _us
-except ImportError:
+except ImportError as exc:
+    log.debug("pr0t31n_schema not available: %s", exc)
     _us = None
 
 _projects_lock = threading.RLock()
@@ -42,7 +46,8 @@ def _load_meta_file(projects, meta_file):
     try:
         with open(meta_file, "r") as f:
             meta = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.debug("load meta %s: %s", meta_file, exc)
         return
     pid = meta.pop("id", None)
     if not pid or pid in projects:
@@ -60,7 +65,8 @@ def _migrate_legacy_projects_json():
     try:
         with open(legacy, "r") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as exc:
+        log.debug("read legacy projects.json: %s", exc)
         return
     for pid, entry in data.items():
         proj_dir = Path(entry.get("project_dir", entry.get("engagement_dir", "")))
@@ -72,8 +78,8 @@ def _migrate_legacy_projects_json():
                 json.dump({"id": pid, **entry}, f, indent=2)
     try:
         legacy.rename(legacy.with_suffix(".json.bak"))
-    except OSError:
-        pass
+    except OSError as exc:
+        log.debug("rename legacy projects.json: %s", exc)
 
 
 def _load_projects():
@@ -107,8 +113,8 @@ def _persist_system_info(project_dir):
         si_path = Path(project_dir) / "system_info.json"
         with open(si_path, "w") as f:
             json.dump(info, f, indent=2, default=str)
-    except (ImportError, OSError):
-        pass
+    except (ImportError, OSError) as exc:
+        log.debug("persist system info: %s", exc)
     _persist_network_snapshots(project_dir)
 
 
@@ -136,8 +142,8 @@ def _persist_network_snapshots(project_dir):
                 "type": "ifconfig", "file": "ifconfig_at_creation.txt",
                 "timestamp": now, "command": " ".join(ifconfig_cmd),
             })
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("ifconfig snapshot: %s", exc)
 
         try:
             r = subprocess.run(route_cmd, capture_output=True,
@@ -148,14 +154,14 @@ def _persist_network_snapshots(project_dir):
                 "type": "ip_route", "file": "ip_route_at_creation.txt",
                 "timestamp": now, "command": " ".join(route_cmd),
             })
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("ip route snapshot: %s", exc)
 
         manifest = {"created_at": now, "snapshots": snapshots}
         with open(snap_dir / "manifest.json", "w") as f:
             json.dump(manifest, f, indent=2)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("network snapshots: %s", exc)
 
 
 def capture_post_route_snapshot(eng_dir):
@@ -181,7 +187,8 @@ def capture_post_route_snapshot(eng_dir):
             try:
                 with open(manifest_path) as f:
                     manifest = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("load snapshot manifest: %s", exc)
                 manifest = {"created_at": now, "snapshots": []}
         else:
             manifest = {"created_at": now, "snapshots": []}
@@ -193,8 +200,8 @@ def capture_post_route_snapshot(eng_dir):
         })
         with open(manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("post-route snapshot: %s", exc)
 
 
 # ── Tool version tracking ──────────────────────────────────────────────
@@ -212,8 +219,8 @@ def _read_tool_version(tool_id):
         ver_file = Path(script).resolve().parent / "VERSION"
         try:
             return ver_file.read_text().strip()
-        except OSError:
-            pass
+        except OSError as exc:
+            log.debug("read VERSION for %s: %s", tool_id, exc)
     return None
 
 
@@ -241,8 +248,8 @@ def record_tool_use(project_dir, tool_id, tool_name=None, version=None):
         })
         with open(fp, "w") as f:
             json.dump(entries, f, indent=2)
-    except OSError:
-        pass
+    except OSError as exc:
+        log.debug("record tool use: %s", exc)
 
 
 def reset_tool_tracking(project_dir):
@@ -259,8 +266,8 @@ def reset_tool_tracking(project_dir):
     try:
         with open(fp, "w") as f:
             json.dump(entries, f, indent=2)
-    except OSError:
-        pass
+    except OSError as exc:
+        log.debug("reset tool tracking: %s", exc)
 
 
 def reload_projects():
@@ -464,8 +471,8 @@ def _write_default_settings(project_dir, tools, form_data=None,
         if settings_file.exists():
             try:
                 existing = json.loads(settings_file.read_text())
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("read existing settings %s: %s", settings_file, exc)
         adapter = get_adapter(tool_id)
         defaults = adapter.default_settings() if adapter else {}
         settings = dict(defaults)
@@ -645,8 +652,8 @@ def _save_settings_files(dirpath):
         for f in dp.glob("*_settings*.json"):
             try:
                 saved[f.name] = f.read_text()
-            except OSError:
-                pass
+            except OSError as exc:
+                log.debug("save settings file %s: %s", f, exc)
     return saved
 
 
@@ -735,8 +742,8 @@ def clear_project(project_id):
     try:
         from models.action_items import _store as _ai_store
         _ai_store.invalidate(str(proj_dir))
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("invalidate action items cache: %s", exc)
     try:
         from flask import current_app
         fe = current_app.extensions.get("findings_engine")
@@ -745,8 +752,8 @@ def clear_project(project_id):
         pm = current_app.extensions.get("process_manager")
         if pm:
             pm._live_targets_clear(project_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("invalidate findings/targets cache: %s", exc)
 
     orig_tools = meta.get("original_tools")
     orig_scope_tools = meta.get("original_scope_tools")

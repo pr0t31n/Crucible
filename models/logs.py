@@ -1,8 +1,11 @@
 """Logs model — log/error entry management with time-range filtering."""
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger("crucible.models.logs")
 
 # Error levels that count for pill badges (per CLAUDE.md §14g)
 ERROR_LEVELS = {"ERROR", "EXCEPTION", "TOOL_ERROR", "FATAL", "CRITICAL"}
@@ -78,8 +81,8 @@ def _load_jsonl(file_path):
             if line:
                 try:
                     entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as exc:
+                    log.debug("malformed log line in %s: %s", file_path, exc)
     return entries
 
 
@@ -100,7 +103,8 @@ def _apply_time_filter(entries, from_dt, to_dt):
             continue
         try:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            log.debug("parse log timestamp: %s", exc)
             filtered.append(e)
             continue
         if from_dt and ts < from_dt:
@@ -118,5 +122,6 @@ def parse_dt_arg(dt_str):
         return None
     try:
         return datetime.fromisoformat(dt_str)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as exc:
+        log.debug("parse datetime arg %r: %s", dt_str, exc)
         return None

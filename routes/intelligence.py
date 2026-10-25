@@ -457,7 +457,8 @@ def _aggregate_cookie_intelligence(project, tool_filter=None):
                 data = json.loads(ci_path.read_text())
                 if data:
                     return data
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("cookie_inventory load: %s", exc)
                 pass
         for sub in sorted(td.iterdir()) if td.is_dir() else []:
             if sub.is_dir() and (sub / "authentication_status.json").exists():
@@ -466,7 +467,8 @@ def _aggregate_cookie_intelligence(project, tool_filter=None):
                         (sub / "authentication_status.json").read_text())
                     if isinstance(entries, list):
                         auth_entries.extend(entries)
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError) as exc:
+                    _intel_log.debug("auth_status subdir load: %s", exc)
                     pass
         root_as = td / "authentication_status.json"
         if root_as.exists():
@@ -474,7 +476,8 @@ def _aggregate_cookie_intelligence(project, tool_filter=None):
                 entries = json.loads(root_as.read_text())
                 if isinstance(entries, list):
                     auth_entries.extend(entries)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("auth_status root load: %s", exc)
                 pass
         if auth_entries:
             break
@@ -639,7 +642,8 @@ def _build_profile_from_ss3(ss3_dir):
                 continue
             try:
                 data = json.loads(fp.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("ss3 profile load: %s", exc)
                 continue
             hosts = data if isinstance(data, list) else (
                 data.get("hosts") or data.get("targets") or data.get("_items") or [])
@@ -789,7 +793,8 @@ def _aggregate_osift_domains(td):
             try:
                 data = json.loads(candidate.read_text())
                 break
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift targets_osint load: %s", exc)
                 pass
     if data is None:
         return None
@@ -825,7 +830,8 @@ def _aggregate_osift_domains(td):
                                 "privacy_emails":  wd.get("privacy_emails") or [],
                             })
                         break
-                    except (json.JSONDecodeError, OSError):
+                    except (json.JSONDecodeError, OSError) as exc:
+                        _intel_log.debug("osift whois load: %s", exc)
                         pass
         if whois_entries:
             data["whois"] = whois_entries
@@ -850,7 +856,8 @@ def _aggregate_osift_dns(td):
                 data = json.loads(rf.read_text())
                 result[domain] = data
                 break
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift dns records load: %s", exc)
                 pass
     return result if result else None
 
@@ -874,7 +881,8 @@ def _aggregate_osift_certs(td):
                     certs.append(data)
                 elif isinstance(data, list):
                     certs.extend(data)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift parsed certs load: %s", exc)
                 pass
         if certs:
             return certs
@@ -886,7 +894,8 @@ def _aggregate_osift_certs(td):
                 rc = report.get("certificates")
                 if rc and isinstance(rc, list):
                     return rc
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift final_report certs load: %s", exc)
                 pass
 
     for tp in (td / "reports" / "targets_osint.json", td / "targets_osint.json"):
@@ -901,7 +910,8 @@ def _aggregate_osift_certs(td):
                         certs.append(c)
                 if certs:
                     return certs
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift targets_osint certs load: %s", exc)
                 pass
 
     # crt.sh CT log data — transform into renderer-compatible format
@@ -936,7 +946,8 @@ def _aggregate_osift_certs(td):
                     "san": names,
                     "_host": cn,
                 })
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            _intel_log.debug("osift crtsh load: %s", exc)
             pass
     if certs:
         return certs
@@ -976,7 +987,8 @@ def _aggregate_osift_emails(td):
                         else:
                             em["in_scope"] = False
                     return {"emails": emails, "root_domains": root_domains}
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift emails load: %s", exc)
                 pass
     return None
 
@@ -993,7 +1005,8 @@ def _aggregate_osift_breaches(td):
                 results = data if isinstance(data, list) else data.get("results", [])
                 if results:
                     return {"breaches": results}
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift breaches load: %s", exc)
                 pass
     return None
 
@@ -1015,7 +1028,8 @@ def _aggregate_osift_people(td):
                             seen_names.add(key)
                             employees.append(e)
                 break
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift employees load: %s", exc)
                 pass
     for candidate in (td / "reports" / "targets_osint.json",
                       td / "targets_osint.json"):
@@ -1054,7 +1068,8 @@ def _aggregate_osift_people(td):
                                 "source": em.get("source", ""),
                             })
                 break
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift people targets_osint load: %s", exc)
                 pass
     for candidate in (td / "company" / "people_dorking" / "discovered_people.json",
                       td / "discovered_people.json"):
@@ -1081,7 +1096,8 @@ def _aggregate_osift_people(td):
                         if phone and phone not in phones:
                             phones.append(phone)
                 break
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift discovered_people load: %s", exc)
                 pass
     if not employees and not phones:
         return None
@@ -1105,7 +1121,8 @@ def _aggregate_osift_phones(td):
                 for d in data.get("domains", []):
                     if d:
                         root_domains.add(d.lower())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift phones domain load: %s", exc)
                 pass
             break
     domains_dir = td / "domains"
@@ -1202,7 +1219,8 @@ def _aggregate_osift_typosquat(td):
                         "_risk": risk,
                         "_source_domain": domain_dir.name,
                     })
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("osift dnstwist load: %s", exc)
                 pass
     if not results:
         return None
@@ -1227,7 +1245,8 @@ def _aggregate_osift_wayback(td):
                 try:
                     urls = [u.strip() for u in uf.read_text().splitlines()
                             if u.strip() and u.strip().startswith(("http://", "https://"))]
-                except OSError:
+                except OSError as exc:
+                    _intel_log.debug("wayback urls read: %s", exc)
                     continue
                 if not urls:
                     continue
@@ -1240,7 +1259,8 @@ def _aggregate_osift_wayback(td):
             for ef in sorted(wb_dir.glob("wayback_endpoints_*.txt")):
                 try:
                     endpoints = [e.strip() for e in ef.read_text().splitlines() if e.strip()]
-                except OSError:
+                except OSError as exc:
+                    _intel_log.debug("wayback endpoints read: %s", exc)
                     continue
                 for r in results:
                     if r["domain"] == domain_name:
@@ -1274,7 +1294,8 @@ def _aggregate_osift_wayback(td):
                     "url_count": len(urls),
                     "urls": urls,
                 })
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            _intel_log.debug("osift wayback final_report load: %s", exc)
             pass
     if not results:
         return None
@@ -1329,7 +1350,8 @@ def _people_from_findings(project_id, project):
         if not employees:
             return None
         return {"employees": employees, "phone_numbers": []}
-    except Exception:
+    except Exception as exc:
+        _intel_log.warning("people_from_findings: %s", exc)
         return None
 
 
@@ -1340,7 +1362,8 @@ def _get_live_targets(project_id, tool_key):
         pm = current_app.extensions.get("process_manager")
         if pm and tool_key == "ss3":
             return pm.get_live_targets(project_id)
-    except Exception:
+    except Exception as exc:
+        _intel_log.warning("get_live_targets: %s", exc)
         pass
     return None
 
@@ -1409,7 +1432,8 @@ def api_intel_panel(panel, project_id):
                                         if isinstance(e, dict):
                                             e["_source_file"] = sub.name
                                 agg.append(entry)
-                            except (json.JSONDecodeError, OSError):
+                            except (json.JSONDecodeError, OSError) as exc:
+                                _intel_log.debug("isotope analysis load: %s", exc)
                                 pass
                             break
             if agg:
@@ -1436,7 +1460,8 @@ def api_intel_panel(panel, project_id):
                                     if resp.content_length else -1)
                             return resp
                         file_data = data
-                    except (json.JSONDecodeError, OSError):
+                    except (json.JSONDecodeError, OSError) as exc:
+                        _intel_log.debug("panel json load: %s", exc)
                         pass
         aggregator = _OSIFT_AGGREGATORS.get(key)
         if aggregator and tool_key == "osift":
@@ -1582,7 +1607,8 @@ def _extract_web_meta_from_files(port_dir, ip_dirname, port):
         if "_curl_" in f.name and f.suffix == ".txt" and not f.name.endswith(".log"):
             try:
                 txt = f.read_text(errors="replace")[:8192]
-            except OSError:
+            except OSError as exc:
+                _intel_log.debug("curl output read: %s", exc)
                 continue
             m = _RE_CURL_STATUS.search(txt)
             if m:
@@ -1608,7 +1634,8 @@ def _extract_web_meta_from_files(port_dir, ip_dirname, port):
             m = _RE_HTML_TITLE.search(html)
             if m:
                 meta["title"] = m.group(1).strip()
-        except OSError:
+        except OSError as exc:
+            _intel_log.debug("index.html read: %s", exc)
             pass
     return meta
 
@@ -1744,7 +1771,8 @@ def _scan_ss3_screenshots(project, scope_filter):
                                     break
                         if web and web.get("responds") is not False and pnum:
                             web_meta[(ip, pnum)] = web
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("ss3 correlated load: %s", exc)
                 pass
         try:
             rel_prefix = str(scope_root.relative_to(base_dir))
@@ -1884,7 +1912,8 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                         if url:
                             try:
                                 _fr_url_path = urllib.parse.urlparse(url).path or "/"
-                            except Exception:
+                            except Exception as exc:
+                                _intel_log.warning("fracture url parse: %s", exc)
                                 pass
                         _fr_desc = _classify_web_page_by_path(_fr_url_path)
                 _fr_page_title_display = meta.get("page_title", "")
@@ -1952,7 +1981,8 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                                 if _fb_url:
                                     try:
                                         _fb_path = urllib.parse.urlparse(_fb_url).path or "/"
-                                    except Exception:
+                                    except Exception as exc:
+                                        _intel_log.warning("fracture fallback url parse: %s", exc)
                                         pass
                                 desc = _classify_web_page_by_path(_fb_path) if _fb_path else "Web Page Captured"
                             results.append({
@@ -1968,7 +1998,8 @@ def _scan_fracture_screenshots(project, scope_filter=None):
                                 "screenshot_path": p,
                                 "tool": "fracture",
                             })
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, OSError) as exc:
+                    _intel_log.debug("fracture findings load: %s", exc)
                     pass
 
     return results
@@ -2015,7 +2046,8 @@ def api_screenshots(project_id):
             if _su:
                 try:
                     _uh = urllib.parse.urlparse(_su).hostname or ""
-                except Exception:
+                except Exception as exc:
+                    _intel_log.warning("screenshot url parse: %s", exc)
                     pass
             _in_scope = any(
                 h.lower() in scope_targets
@@ -2041,13 +2073,15 @@ def api_webapp_intel(project_id):
         if dns_path.exists():
             try:
                 result["dns"] = json.loads(dns_path.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("dns_resolution load: %s", exc)
                 pass
         tp_path = fr_dir / "target_profile.json"
         if tp_path.exists():
             try:
                 result["target_profile"] = json.loads(tp_path.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("target_profile load: %s", exc)
                 pass
         tp = result.get("target_profile") or {}
         dns = result.get("dns") or {}
@@ -2164,7 +2198,8 @@ def _fetch_panel_data(panel_key, project, project_id):
                     try:
                         with open(fp) as f:
                             return json.load(f)
-                    except (json.JSONDecodeError, OSError):
+                    except (json.JSONDecodeError, OSError) as exc:
+                        _intel_log.debug("panel data load: %s", exc)
                         pass
         if tool_key in ("fracture", "siphon") and filenames:
             merged = {}
@@ -2177,7 +2212,8 @@ def _fetch_panel_data(panel_key, project, project_id):
                         try:
                             with open(fp) as f:
                                 merged[sub.name] = json.load(f)
-                        except (json.JSONDecodeError, OSError):
+                        except (json.JSONDecodeError, OSError) as exc:
+                            _intel_log.debug("panel subdir load: %s", exc)
                             pass
                         break
             if merged:
@@ -2223,7 +2259,8 @@ def _aggregate_ss3_services(project, project_id):
                 continue
             try:
                 data = json.loads(fp.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("ss3 services load: %s", exc)
                 continue
             hosts = data.get("hosts", data) if isinstance(data, dict) else data
             if isinstance(hosts, dict):
@@ -2295,7 +2332,8 @@ def _aggregate_ss3_software(project, project_id):
                     if not isinstance(item, dict):
                         continue
                     software.append(item)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("ss3 software load: %s", exc)
                 pass
         for fn in ("correlated.json", "inventory/hosts.json"):
             fp = base / fn
@@ -2303,7 +2341,8 @@ def _aggregate_ss3_software(project, project_id):
                 continue
             try:
                 data = json.loads(fp.read_text())
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError) as exc:
+                _intel_log.debug("ss3 software hosts load: %s", exc)
                 continue
             hosts = data.get("hosts", data) if isinstance(data, dict) else data
             if isinstance(hosts, dict):

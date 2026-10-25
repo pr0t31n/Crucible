@@ -1,5 +1,6 @@
 """Console API routes — history, activity feed, health checks, subprocesses."""
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -7,6 +8,8 @@ from flask import Blueprint, request, jsonify
 
 from config import TOOLS
 from routes._helpers import require_project, get_ext
+
+log = logging.getLogger("crucible.routes.console")
 
 console_bp = Blueprint("console", __name__)
 
@@ -79,7 +82,8 @@ def _load_full_console(project_id, tool_id, scope=None):
                     "text": content,
                 })
             return entries if entries else None
-        except OSError:
+        except OSError as exc:
+            log.debug("read console log: %s", exc)
             return None
 
     td = project.get("tool_dirs", {}).get(tool_id)
@@ -133,8 +137,8 @@ def _load_full_console(project_id, tool_id, scope=None):
                     try:
                         cfg = _json.loads(settings_path.read_text())
                         scan_proj = cfg.get("scan", {}).get("project", "output")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        log.warning("read settings for console: %s", exc)
                     break
             candidate = proj_dir / scan_proj
             if candidate.is_dir():
@@ -157,7 +161,8 @@ def _load_full_console(project_id, tool_id, scope=None):
     for logfile, log_scope in candidates:
         try:
             text = logfile.read_text(errors="replace")
-        except OSError:
+        except OSError as exc:
+            log.debug("read scan.log: %s", exc)
             continue
         pfx = f"[{log_scope.upper()}] " if log_scope else ""
         for line in text.splitlines():
@@ -275,8 +280,8 @@ def api_console_instance(project_id, tool_key):
                         if host and not targets:
                             port = scan.get("port") or cfg.get("port")
                             targets = [f"{host}:{port}" if port else host]
-                except (OSError, _json.JSONDecodeError, ValueError):
-                    pass
+                except (OSError, _json.JSONDecodeError, ValueError) as exc:
+                    log.debug("instance settings read: %s", exc)
                 break
 
     pids = []
@@ -350,8 +355,8 @@ def _find_checkpoint_candidates(project, tool_id):
             try:
                 cfg = _json.loads(settings_path.read_text())
                 scan_proj = cfg.get("scan", {}).get("project", "output")
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("checkpoint settings read: %s", exc)
         candidates.append(proj_dir / scan_proj / "checkpoint.json")
 
     return candidates
@@ -368,7 +373,8 @@ def api_checkpoint(project_id, tool_id):
             try:
                 with open(cp_file) as f:
                     return jsonify({"exists": True, "checkpoint": json.load(f)})
-            except Exception:
+            except Exception as exc:
+                log.warning("checkpoint read: %s", exc)
                 continue
     return jsonify({"exists": False, "checkpoint": None})
 
