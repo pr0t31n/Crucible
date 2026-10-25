@@ -275,6 +275,16 @@ class QueueManager:
                     log.warning("Dropped queued %s:%s — launch failed "
                                 "(validation or missing config)",
                                 tool_id, scope or "")
+                    self._emit_launch_failure(
+                        pm, project_id, tool_id, scope, proj_dir,
+                        "Launch failed (validation or missing config)")
+            except Exception as exc:
+                log.exception("auto_dequeue launch error for %s:%s",
+                              tool_id, scope or "")
+                self._emit_launch_failure(
+                    pm, project_id, tool_id, scope,
+                    project.get("project_dir", ""),
+                    f"Launch error: {exc}")
             finally:
                 with self._lock:
                     s = self._launching.get(project_id)
@@ -285,6 +295,35 @@ class QueueManager:
 
         if not launched_any and self.queue_size(project_id) > 0:
             self._schedule_dequeue_retry(project_id)
+
+    def _emit_launch_failure(self, pm, project_id, tool_id, scope,
+                             proj_dir, reason):
+        """Emit a console error and revert action items on auto-dequeue
+        launch failure so the user sees what happened."""
+        from config import TOOLS
+        name = TOOLS.get(tool_id, {}).get("name", tool_id)
+        scope_tag = f" [{scope}]" if scope else ""
+        msg = f"[Crucible] Auto-dequeue: {name}{scope_tag} — {reason}"
+        if pm:
+            pm._emit_console(project_id, tool_id, msg, "system")
+            try:
+                pm.socketio.emit("tool_status", {
+                    "project_id": project_id,
+                    "tool_id": tool_id,
+                    "status": "failed",
+                }, room=f"project_{project_id}")
+            except Exception:
+                pass
+        if proj_dir:
+            try:
+                from models.action_items import update_tool_action_items_status
+                update_tool_action_items_status(
+                    proj_dir, tool_id,
+                    from_statuses={"queued"},
+                    new_status="pending")
+            except Exception as exc:
+                log.warning("Failed to revert action items for %s: %s",
+                            tool_id, exc)
 
     def _schedule_dequeue_retry(self, project_id: str) -> None:
         """Schedule a deferred retry for queued jobs that couldn't launch."""

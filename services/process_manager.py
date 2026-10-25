@@ -2786,10 +2786,14 @@ class ProcessManager:
                             "system")
             except Exception as exc:
                 log.warning("Auto-queue error for %s: %s", project_id, exc)
+                self._emit_console(project_id, tool_id,
+                    f"[Crucible] Auto-queue error: {exc}", "system")
             try:
                 self._queue_manager.auto_dequeue(project_id)
             except Exception as exc:
                 log.warning("Auto-dequeue error for %s: %s", project_id, exc)
+                self._emit_console(project_id, tool_id,
+                    f"[Crucible] Auto-dequeue error: {exc}", "system")
 
     def _emit_checkpoint_status(self, project_id: str, tool_id: str) -> None:
         """Notify frontend whether a checkpoint exists for resume."""
