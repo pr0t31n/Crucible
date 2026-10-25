@@ -51,6 +51,143 @@ def _backfill_launch_settings(settings, project, tool_id):
             save_settings(proj_dir, tool_id, settings)
 
 
+def _forward_fracture_auth(settings, meta, project, scope):
+    """Forward Fracture's auth recipe + credentials to Siphon settings.
+
+    Copies auth_fingerprint.json from Fracture's output dir to Siphon's
+    tool dir and configures Siphon to use the "fingerprint" auth method.
+    This gives Siphon the auth flow mechanics (SSO recipe) and lets it
+    re-authenticate with fresh credentials — forwarding expired cookies
+    would be useless since tokens expire before Siphon runs.
+
+    Also forwards the Fracture settings' username/password to Siphon's
+    auth config so the user doesn't have to re-enter credentials.
+    """
+    import shutil
+    fr_dir = meta.get("fracture_tool_dir", "")
+    if not fr_dir:
+        td = (project.get("tool_dirs") or {}).get("fracture", "")
+        if td:
+            fr_dir = td
+    if not fr_dir:
+        return
+
+    fr_path = Path(fr_dir)
+    fp_file = fr_path / "auth_fingerprint.json"
+    if not fp_file.is_file():
+        # No fingerprint — try to forward Fracture's auth settings directly
+        _forward_fracture_settings(settings, fr_path, project, scope)
+        return
+
+    # Copy auth_fingerprint.json to Siphon's tool dir
+    si_dir = (project.get("tool_dirs") or {}).get("siphon", "")
+    if not si_dir:
+        return
+    si_path = Path(si_dir)
+    si_path.mkdir(parents=True, exist_ok=True)
+    dest = si_path / "auth_fingerprint.json"
+    try:
+        shutil.copy2(str(fp_file), str(dest))
+    except Exception:
+        log.exception("Failed to copy auth_fingerprint.json to Siphon dir")
+        return
+
+    # Configure Siphon to use fingerprint auth
+    scan = settings.setdefault("scan", {})
+    auth = scan.setdefault("auth", {})
+    if auth.get("enabled") and auth.get("method") not in ("", "bearer", "fingerprint"):
+        return
+    auth["enabled"] = True
+    auth["method"] = "fingerprint"
+    auth["fingerprint_file"] = str(dest)
+
+    # Forward credentials from Fracture's settings
+    _forward_fracture_creds(auth, fr_path, project, scope)
+
+    log.info("Forwarded Fracture fingerprint auth to Siphon: %s", dest)
+
+
+def _forward_fracture_creds(si_auth, fr_path, project, scope):
+    """Copy username/password from Fracture's settings into Siphon's auth."""
+    from config import TOOL_SETTINGS_PREFIX
+    prefix = TOOL_SETTINGS_PREFIX.get("fracture", "fr")
+    fname = f"{prefix}_settings_{scope}.json" if scope else f"{prefix}_settings.json"
+
+    fr_td = (project.get("tool_dirs") or {}).get("fracture", "")
+    candidates = []
+    if fr_td:
+        candidates.append(Path(fr_td) / fname)
+    candidates.append(fr_path / fname)
+    proj_dir = project.get("project_dir", "")
+    if proj_dir:
+        candidates.append(Path(proj_dir) / fname)
+
+    fr_settings = {}
+    for cp in candidates:
+        if cp.is_file():
+            try:
+                fr_settings = json.loads(cp.read_text())
+                break
+            except Exception:
+                continue
+    if not fr_settings:
+        return
+    fr_auth = fr_settings.get("scan", fr_settings).get("auth", {})
+    if fr_auth.get("username") and not si_auth.get("username"):
+        si_auth["username"] = fr_auth["username"]
+    if fr_auth.get("password") and not si_auth.get("password"):
+        si_auth["password"] = fr_auth["password"]
+    if fr_auth.get("login_url") and not si_auth.get("login_url"):
+        si_auth["login_url"] = fr_auth["login_url"]
+
+
+def _forward_fracture_settings(settings, fr_path, project, scope):
+    """Fallback: forward Fracture auth config when no fingerprint exists."""
+    from config import TOOL_SETTINGS_PREFIX
+    prefix = TOOL_SETTINGS_PREFIX.get("fracture", "fr")
+    fname = f"{prefix}_settings_{scope}.json" if scope else f"{prefix}_settings.json"
+
+    fr_td = (project.get("tool_dirs") or {}).get("fracture", "")
+    candidates = []
+    if fr_td:
+        candidates.append(Path(fr_td) / fname)
+    candidates.append(fr_path / fname)
+    proj_dir = project.get("project_dir", "")
+    if proj_dir:
+        candidates.append(Path(proj_dir) / fname)
+
+    fr_settings = {}
+    for cp in candidates:
+        if cp.is_file():
+            try:
+                fr_settings = json.loads(cp.read_text())
+                break
+            except Exception:
+                continue
+    if not fr_settings:
+        return
+    fr_auth = fr_settings.get("scan", fr_settings).get("auth", {})
+    if not fr_auth.get("method"):
+        return
+    scan = settings.setdefault("scan", {})
+    si_auth = scan.setdefault("auth", {})
+    if si_auth.get("enabled") and si_auth.get("method") not in ("", "bearer"):
+        return
+    # Map Fracture auth fields that Siphon understands
+    for key in ("method", "username", "password", "login_url",
+                "login_username_field", "login_password_field",
+                "login_mode", "login_data", "login_content_type",
+                "login_token_path", "csrf_field", "csrf_header",
+                "auth_token", "token_type", "api_key", "api_key_header",
+                "oauth_token_url", "oauth_client_id", "oauth_client_secret",
+                "oauth_scope"):
+        if fr_auth.get(key) and not si_auth.get(key):
+            si_auth[key] = fr_auth[key]
+    si_auth["enabled"] = True
+    log.info("Forwarded Fracture auth settings to Siphon: method=%s",
+             si_auth.get("method", ""))
+
+
 def _is_excluded_item(item, sm, project):
     """Check if an action item's target IP is in the exclusion list."""
     ip = item.get("ip", "")
@@ -176,13 +313,13 @@ def _resolve_isotope_targets(item, project):
 
 _TOOL_GENERATORS = {
     "fracture": ["osift", "ss3"],
-    "siphon":   ["osift", "ss3"],
+    "siphon":   ["osift", "ss3", "fracture"],
     "auger":    ["ss3", "fracture"],
     "ss3":      ["osift"],
 }
 
 
-_SCOPE_ALIASES = {"ext": "external", "int": "internal"}
+_SCOPE_ALIASES = {"ext": "external", "int": "internal", "web": "webapp"}
 
 
 def _ensure_tool_registered(project_id, project, tool_id, item_scope=None):
@@ -263,7 +400,7 @@ def _ensure_tool_registered(project_id, project, tool_id, item_scope=None):
     active = project.get("active_scopes") or []
 
     target_scope = None
-    _USER_SCOPES = {"external", "internal", "osint"}
+    _USER_SCOPES = {"external", "internal", "osint", "webapp", "api"}
 
     if item_scope and item_scope in _USER_SCOPES \
             and item_scope in active and item_scope in scope_tools:
@@ -657,6 +794,11 @@ def api_execute_action():
                             scope=scope)
         extra_args = None
         meta = item.get("metadata", {})
+
+        # ── Forward Fracture auth to Siphon ──────────────────────────
+        if tool_id == "siphon" and meta.get("auth_status_file"):
+            _forward_fracture_auth(settings, meta, project, scope)
+
         if meta.get("credentialled_scan") and meta.get("credentials") and qm:
             extra_args = qm._prepare_credentialled_launch(project, tool_id, meta)
 

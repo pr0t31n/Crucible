@@ -3648,7 +3648,36 @@ function _openLaunchModal(idx) {
         });
 }
 
+function _mergeItemDefaults(item) {
+    if (!item) return;
+    var tid = _launchToolId;
+    var t = item.target || '';
+    var meta = item.metadata || {};
+    if (tid === 'siphon') {
+        if (!_launchSettings.api_base_url && t) _launchSettings.api_base_url = t;
+        if (!_launchSettings.environment) _launchSettings.environment = 'non-production';
+    } else if (tid === 'fracture') {
+        if (!_launchSettings.target_url && t) _launchSettings.target_url = t;
+    } else if (tid === 'auger') {
+        if (!_launchSettings.host && t) {
+            if (item.port && t.indexOf(':') === -1) {
+                _launchSettings.host = t + ':' + item.port;
+            } else {
+                _launchSettings.host = t;
+            }
+        }
+    } else if (tid === 'ss3' || tid === 'osift') {
+        if (!_launchSettings.targets && t) _launchSettings.targets = t;
+    }
+    if (meta.auth_state === 'authenticated' && tid === 'siphon') {
+        if (!_launchSettings.auth || !_launchSettings.auth.enabled) {
+            _launchSettings._auth_hint = 'Source scan was authenticated — configure auth before launching.';
+        }
+    }
+}
+
 function _renderLaunchForm(item) {
+    _mergeItemDefaults(item);
     var body = document.getElementById('actionLaunchBody');
     var html = '<div style="margin-bottom:16px">' +
         '<div class="text-sm" style="margin-bottom:4px"><strong>Target:</strong> <code>' + esc(item.target || '--') + '</code></div>' +
@@ -3685,6 +3714,11 @@ function _renderLaunchForm(item) {
             html += '</div>';
         });
         html += '</div>';
+        if (_launchSettings._auth_hint) {
+            html += '<div style="margin-top:12px;padding:10px 14px;background:var(--warn-bg, #fef3cd);border:1px solid var(--warn-border, #ffc107);border-radius:6px;font-size:0.85rem">' +
+                '<strong>⚠ Auth Required:</strong> ' + esc(_launchSettings._auth_hint) +
+                '</div>';
+        }
     } else if (!_launchIsExternal) {
         html += '<p class="text-muted text-sm">No configurable settings for this tool.</p>';
     }
