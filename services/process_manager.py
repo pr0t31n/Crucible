@@ -2787,6 +2787,25 @@ class ProcessManager:
             if ctx:
                 ctx.__exit__(None, None, None)
 
+        with self._lock:
+            post_status = (self._tool_status.get(project_id) or {}).get(tool_id)
+        if post_status != final_status:
+            log.warning("_wait_proc: status for %s changed during "
+                        "_post_completion: expected %s, found %s — "
+                        "restoring", tool_id, final_status, post_status)
+            self._emit_console(project_id, tool_id,
+                f"[DIAG] Status changed during post-completion! "
+                f"Expected {final_status}, found {post_status}. Restoring.",
+                "system")
+            with self._lock:
+                self._tool_status.setdefault(project_id, {})[tool_id] = final_status
+        self.socketio.emit("tool_status",
+                           {"project_id": project_id,
+                            "tool_id": tool_id, "status": final_status,
+                            "returncode": rc,
+                            "_reemit": True},
+                           room=_room(project_id))
+
     def _post_completion(self, project_id, tool_id, base_tool, final_status, rc):
         """Post-completion tasks that need Flask app context."""
         from models.project import get_project
@@ -2856,22 +2875,44 @@ class ProcessManager:
         if self._queue_manager:
             try:
                 if _proj and _proj.get("auto_queue"):
+                    self._emit_console(project_id, tool_id,
+                        f"[DIAG] auto_queue=True, calling process_auto_queue "
+                        f"(tool_id={tool_id}, status={final_status})",
+                        "system")
                     enqueued = self._queue_manager.process_auto_queue(
                         project_id, _proj)
+                    self._emit_console(project_id, tool_id,
+                        f"[DIAG] process_auto_queue returned: {enqueued} enqueued",
+                        "system")
                     if enqueued:
                         self._emit_console(project_id, tool_id,
                             f"[Crucible] Auto-queued {enqueued} tool(s)",
                             "system")
+                else:
+                    self._emit_console(project_id, tool_id,
+                        f"[DIAG] auto_queue={_proj.get('auto_queue') if _proj else 'no_proj'}, "
+                        f"skipping process_auto_queue",
+                        "system")
             except Exception as exc:
                 log.warning("Auto-queue error for %s: %s", project_id, exc)
                 self._emit_console(project_id, tool_id,
                     f"[Crucible] Auto-queue error: {exc}", "system")
             try:
+                self._emit_console(project_id, tool_id,
+                    "[DIAG] calling auto_dequeue", "system")
                 self._queue_manager.auto_dequeue(project_id)
+                self._emit_console(project_id, tool_id,
+                    "[DIAG] auto_dequeue returned", "system")
             except Exception as exc:
                 log.warning("Auto-dequeue error for %s: %s", project_id, exc)
                 self._emit_console(project_id, tool_id,
                     f"[Crucible] Auto-dequeue error: {exc}", "system")
+            with self._lock:
+                _diag_st = (self._tool_status.get(project_id) or {}).get(tool_id)
+            self._emit_console(project_id, tool_id,
+                f"[DIAG] post-completion done. {tool_id} status={_diag_st} "
+                f"(expected {final_status})",
+                "system")
 
     def _emit_checkpoint_status(self, project_id: str, tool_id: str) -> None:
         """Notify frontend whether a checkpoint exists for resume."""

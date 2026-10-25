@@ -255,15 +255,27 @@ class QueueManager:
         if not project:
             return
         launched_any = False
+        _diag_iter = 0
         while True:
+            _diag_iter += 1
             try:
                 result = self.dequeue_next(project_id)
             except Exception as exc:
                 log.exception("auto_dequeue: dequeue_next failed")
                 break
             if result is None:
+                log.info("[DIAG] auto_dequeue: dequeue_next returned None "
+                         "(nothing eligible) after %d iteration(s)", _diag_iter - 1)
                 break
             tool_id, scope, kwargs = result
+            log.info("[DIAG] auto_dequeue: dequeued %s scope=%s (iter %d)",
+                     tool_id, scope or "none", _diag_iter)
+            if pm:
+                pm._emit_console(
+                    project_id, tool_id,
+                    f"[DIAG] auto_dequeue: attempting launch "
+                    f"tool={tool_id} scope={scope or 'none'}",
+                    "system")
             with self._lock:
                 self._launching.setdefault(project_id, set()).add(tool_id)
             try:
@@ -271,6 +283,15 @@ class QueueManager:
                 proj_dir = project.get("project_dir", "")
                 settings = kwargs.get("settings") or (
                     load_settings(proj_dir, tool_id, scope=scope) if proj_dir else {})
+                can, reason = self.can_launch(project_id, tool_id, scope=scope)
+                if not can:
+                    log.info("[DIAG] auto_dequeue: can_launch denied %s: %s",
+                             tool_id, reason)
+                    if pm:
+                        pm._emit_console(
+                            project_id, tool_id,
+                            f"[DIAG] can_launch denied: {reason}",
+                            "system")
                 ok = pm.launch(
                     project_id, tool_id,
                     project=project,
@@ -280,6 +301,13 @@ class QueueManager:
                     scope=scope,
                     extra_args=kwargs.get("extra_args"),
                 )
+                log.info("[DIAG] auto_dequeue: launch(%s, scope=%s) returned %s",
+                         tool_id, scope or "none", ok)
+                if pm:
+                    pm._emit_console(
+                        project_id, tool_id,
+                        f"[DIAG] launch returned: {ok}",
+                        "system")
                 if ok:
                     launched_any = True
                 else:
@@ -290,6 +318,11 @@ class QueueManager:
             except Exception as exc:
                 log.exception("auto_dequeue launch error for %s:%s",
                               tool_id, scope or "")
+                if pm:
+                    pm._emit_console(
+                        project_id, tool_id,
+                        f"[DIAG] launch exception: {exc}",
+                        "system")
                 self._recover_failed_launch(
                     pm, project_id, tool_id, scope,
                     project.get("project_dir", ""),
@@ -303,6 +336,8 @@ class QueueManager:
                             self._launching.pop(project_id, None)
 
         if not launched_any and self.queue_size(project_id) > 0:
+            log.info("[DIAG] auto_dequeue: nothing launched but queue has %d "
+                     "items — scheduling retry", self.queue_size(project_id))
             self._schedule_dequeue_retry(project_id)
 
     def _recover_failed_launch(self, pm, project_id, tool_id, scope,
@@ -326,14 +361,17 @@ class QueueManager:
         scope_tag = f" [{scope}]" if scope else ""
 
         # 1+2. Server-side status + socket event
+        # Use scope-qualified key when scope is provided, matching launch()
+        from services.process_manager import _tkey
+        _tk = _tkey(tool_id, scope)
         try:
             if pm:
                 with pm._lock:
                     pm._tool_status.setdefault(
-                        project_id, {})[tool_id] = "failed"
+                        project_id, {})[_tk] = "failed"
                 pm.socketio.emit("tool_status", {
                     "project_id": project_id,
-                    "tool_id": tool_id,
+                    "tool_id": _tk,
                     "status": "failed",
                 }, room=f"project_{project_id}")
         except Exception as exc:
@@ -437,11 +475,15 @@ class QueueManager:
                                          bulk_update_status)
         pending = get_action_items_by_status(proj_dir, "pending")
         if not pending:
+            log.info("[DIAG] process_auto_queue: no pending action items")
             return 0
 
         nessus_ok = self._nessus_is_configured(project)
         running = self._get_running_tools(project_id)
         running_keys = self._get_running_keys(project_id)
+        log.info("[DIAG] process_auto_queue: %d pending items, "
+                 "running=%s, running_keys=%s",
+                 len(pending), running, running_keys)
 
         # Only process items whose originating tool has finished.
         # During SS3/OSift execution, live findings generate action
@@ -478,7 +520,13 @@ class QueueManager:
                 tool_groups.setdefault((tool, is_oos), []).append(item)
 
         if not tool_groups:
+            log.info("[DIAG] process_auto_queue: no eligible tool groups "
+                     "(filtered %d pending items to 0)", len(pending))
             return 0
+
+        log.info("[DIAG] process_auto_queue: tool_groups=%s",
+                 {f"{t}{'(oos)' if o else ''}": len(v)
+                  for (t, o), v in tool_groups.items()})
 
         from routes.action_items import _inject_targets, _ensure_tool_registered
         enqueued = 0
@@ -490,7 +538,16 @@ class QueueManager:
             # Queue dedup key includes OOS flag
             queue_key = f"{tool}:{settings_scope}" if settings_scope else tool
             running_key = f"{tool}:{settings_scope}" if settings_scope else tool
+            log.info("[DIAG] process_auto_queue: tool=%s oos=%s "
+                     "item_scope=%s settings_scope=%s queue_key=%s "
+                     "running_key=%s items=%d",
+                     tool, is_oos, item_scope, settings_scope,
+                     queue_key, running_key, len(items))
             if running_key in running_keys or queue_key in queued_tools:
+                log.info("[DIAG] process_auto_queue: SKIP %s "
+                         "(running_key_hit=%s, queued_hit=%s)",
+                         tool, running_key in running_keys,
+                         queue_key in queued_tools)
                 continue
 
             # Handle Nessus items individually (import-or-scan logic)

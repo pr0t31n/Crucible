@@ -222,6 +222,18 @@ CATEGORIES = {
         "approval_tier": "confirm",
         "description": "Windows endpoint discovered with remote access — run Dredge",
     },
+    "file_analysis": {
+        "recommended_tool": "isotope",
+        "priority": "HIGH",
+        "approval_tier": "confirm",
+        "description": "Downloaded file available for deep binary analysis — run Isotope",
+    },
+    "scan_timeout": {
+        "recommended_tool": None,
+        "priority": "MEDIUM",
+        "approval_tier": "confirm",
+        "description": "Tool timed out — re-run with adjusted settings",
+    },
 }
 
 # ── Credential discovery patterns ──────────────────────────────────────
@@ -591,7 +603,7 @@ class ActionEngine:
                      ip)
             return None
 
-        if project and self.scope_manager:
+        if project and self.scope_manager and item_data.get("in_scope") is None:
             sm = self.scope_manager
             hostname = (item_data.get("metadata") or {}).get(
                 "hostname", "")

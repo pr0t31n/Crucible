@@ -318,6 +318,7 @@ _TOOL_GENERATORS = {
     "siphon":   ["osift", "ss3", "fracture"],
     "auger":    ["ss3", "fracture"],
     "ss3":      ["osift"],
+    "isotope":  ["fracture", "ss3"],
 }
 
 
