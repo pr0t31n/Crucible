@@ -210,6 +210,11 @@ def _setup_logging():
     root.addHandler(fh)
     root.addHandler(ch)
 
+    from services.engagement_log_handler import EngagementLogHandler
+    eh = EngagementLogHandler(level=logging.INFO)
+    eh.setFormatter(fmt)
+    root.addHandler(eh)
+
     logging.getLogger("engineio").setLevel(logging.WARNING)
     logging.getLogger("socketio").setLevel(logging.WARNING)
 
