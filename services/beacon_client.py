@@ -25,6 +25,8 @@ _PUSH_INTERVAL = 60
 _clients: dict[str, "BeaconClient"] = {}
 _clients_lock = threading.Lock()
 
+_TERMINAL_STATES = frozenset(("complete", "failed", "error", "killed"))
+
 
 class BeaconClient:
 
@@ -82,17 +84,32 @@ class BeaconClient:
 
         tool_statuses = self.pm.get_all_status(self.project_id)
         tools = {}
+        started_times = []
+        ended_times = []
+        all_terminal = True
+        any_started = False
+
         for tid, info in tool_statuses.items():
             if info.get("resolved_key"):
                 continue
+            status = info.get("status", "idle")
             tools[tid] = {
-                "status": info.get("status", "idle"),
+                "status": status,
                 "started_at": info.get("started_at"),
                 "ended_at": info.get("ended_at"),
                 "returncode": info.get("returncode"),
                 "tool_version": info.get("tool_version", ""),
                 "scope": info.get("scope", ""),
             }
+            sa = info.get("started_at")
+            ea = info.get("ended_at")
+            if sa:
+                any_started = True
+                started_times.append(sa)
+            if ea:
+                ended_times.append(ea)
+            if status != "idle" and status not in _TERMINAL_STATES:
+                all_terminal = False
 
         queue = []
         for entry in self.qm.get_queue(self.project_id):
@@ -103,6 +120,12 @@ class BeaconClient:
                 "scope": entry.get("scope", ""),
             })
 
+        start_date = min(started_times) if started_times else ""
+        if any_started and all_terminal and not queue and ended_times:
+            end_date = max(ended_times)
+        else:
+            end_date = ""
+
         findings_list = self.fe.get_findings(self.project_id, project)
         risk_summary = get_risk_summary(findings_list)
         total = sum(risk_summary.values())
@@ -111,8 +134,8 @@ class BeaconClient:
             "engagement_id": self.project_id,
             "name": project.get("name", ""),
             "client_name": project.get("client_name", ""),
-            "start_date": project.get("start_date", ""),
-            "end_date": project.get("end_date", ""),
+            "start_date": start_date,
+            "end_date": end_date,
             "scopes": project.get("active_scopes", []),
             "tools": tools,
             "queue": queue,
