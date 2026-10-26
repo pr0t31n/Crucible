@@ -1,14 +1,16 @@
 """BeaconClient — push engagement status to a Beacon server.
 
-Runs a daemon timer that builds a snapshot from the current project state
-and POSTs it every 60 seconds.  Best-effort: push failures are logged but
-never crash Crucible.
+Activity-driven: the push loop runs only while tools are active (running,
+queued, or paused).  After the last tool reaches a terminal state and the
+queue drains, pushes continue for a 5-minute cooldown window then stop.
+Any new tool launch wakes the client back up.
 """
 from __future__ import annotations
 
 import json
 import logging
 import threading
+import time
 from datetime import datetime
 
 import requests
@@ -22,10 +24,12 @@ log = logging.getLogger("crucible.beacon_client")
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _PUSH_INTERVAL = 60
+_COOLDOWN = 300
 _clients: dict[str, "BeaconClient"] = {}
 _clients_lock = threading.Lock()
 
 _TERMINAL_STATES = frozenset(("complete", "failed", "error", "killed"))
+_ACTIVE_STATES = frozenset(("running", "paused"))
 
 
 class BeaconClient:
@@ -39,19 +43,47 @@ class BeaconClient:
         self.fe = findings_engine
         self._timer: threading.Timer | None = None
         self._running = False
+        self._registered = False
+        self._idle_since: float | None = None
 
     def start(self):
-        self._running = True
-        log.info("beacon: starting push to %s for project %s",
-                 self.url, self.project_id[:8])
-        self._push()
+        """Register the client.  Starts pushing only if tools are already active."""
+        self._registered = True
+        log.info("beacon: registered for %s → %s", self.project_id[:8], self.url)
+        if self._has_activity():
+            self._wake()
 
     def stop(self):
+        """Full shutdown — unregister and stop push loop."""
+        self._registered = False
         self._running = False
         if self._timer:
             self._timer.cancel()
             self._timer = None
-        log.info("beacon: stopped push for project %s", self.project_id[:8])
+        log.info("beacon: stopped for %s", self.project_id[:8])
+
+    def notify_activity(self):
+        """Wake the push loop when a tool launches, queues, or resumes."""
+        if not self._registered:
+            return
+        self._idle_since = None
+        if not self._running:
+            self._wake()
+
+    def _wake(self):
+        self._idle_since = None
+        if self._running:
+            return
+        self._running = True
+        log.info("beacon: push loop active for %s", self.project_id[:8])
+        self._push()
+
+    def _go_dormant(self):
+        self._running = False
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+        log.info("beacon: dormant for %s (cooldown elapsed)", self.project_id[:8])
 
     def _schedule_next(self):
         if not self._running:
@@ -59,6 +91,20 @@ class BeaconClient:
         self._timer = threading.Timer(_PUSH_INTERVAL, self._push)
         self._timer.daemon = True
         self._timer.start()
+
+    def _has_activity(self) -> bool:
+        try:
+            statuses = self.pm.get_all_status(self.project_id)
+            for info in statuses.values():
+                if info.get("resolved_key"):
+                    continue
+                if info.get("status", "idle") in _ACTIVE_STATES:
+                    return True
+            if self.qm.get_queue(self.project_id):
+                return True
+        except Exception:
+            pass
+        return False
 
     def _push(self):
         if not self._running:
@@ -75,7 +121,26 @@ class BeaconClient:
                 )
         except Exception as exc:
             log.debug("beacon push failed for %s: %s", self.project_id[:8], exc)
+
+        if self._check_idle():
+            return
         self._schedule_next()
+
+    def _check_idle(self) -> bool:
+        """Returns True if the client just went dormant."""
+        if self._has_activity():
+            self._idle_since = None
+            return False
+
+        now = time.monotonic()
+        if self._idle_since is None:
+            self._idle_since = now
+            return False
+
+        if now - self._idle_since >= _COOLDOWN:
+            self._go_dormant()
+            return True
+        return False
 
     def _build_snapshot(self) -> dict | None:
         project = get_project(self.project_id)
@@ -175,6 +240,14 @@ def stop_beacon(project_id: str):
         client = _clients.pop(project_id, None)
     if client:
         client.stop()
+
+
+def notify_beacon_activity(project_id: str):
+    """Wake the beacon push loop when a tool starts, queues, or resumes."""
+    with _clients_lock:
+        client = _clients.get(project_id)
+    if client:
+        client.notify_activity()
 
 
 def is_beacon_active(project_id: str) -> bool:

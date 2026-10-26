@@ -1085,6 +1085,12 @@ class ProcessManager:
                             "tool_version": tool_version},
                            room=_room(project_id))
 
+        try:
+            from services.beacon_client import notify_beacon_activity
+            notify_beacon_activity(project_id)
+        except Exception:
+            pass
+
         self._persist_history(project_id, tk, "running", -1)
 
         if sudo_password and tool_cfg.get("sudo"):
