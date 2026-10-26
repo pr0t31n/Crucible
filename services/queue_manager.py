@@ -531,8 +531,31 @@ class QueueManager:
         from routes.action_items import _inject_targets, _ensure_tool_registered
         enqueued = 0
 
+        # Map action-item scopes to the engagement's active scopes so
+        # tools launched by the auto-queue inherit the configured scope,
+        # not whatever the generating tool guessed from runtime content.
+        active_scopes = project.get("active_scopes") or []
+        _primary_scope = active_scopes[0] if active_scopes else ""
+        _scope_norm = {
+            "api": "webapp", "int": "internal", "ext": "external",
+            "web": "webapp", "osint": "osint", "file": "file",
+        }
+
         for (tool, is_oos), items in tool_groups.items():
-            item_scope = items[0].get("scope") or ""
+            raw_scope = items[0].get("scope") or ""
+            # Remap action-item scopes to the engagement's configured scope.
+            # If the item scope (or its alias) is one of the active scopes,
+            # use it; otherwise fall back to the engagement's primary scope.
+            mapped = _scope_norm.get(raw_scope, raw_scope)
+            if mapped in active_scopes:
+                item_scope = mapped
+            elif raw_scope in active_scopes:
+                item_scope = raw_scope
+            else:
+                item_scope = _primary_scope
+                log.info("[scope-fix] Remapped item_scope %r → %r "
+                         "(active_scopes=%s)", raw_scope, item_scope,
+                         active_scopes)
             # OOS runs use scope suffix so settings file is separate
             settings_scope = f"{item_scope}_oos" if is_oos else item_scope
             # Queue dedup key includes OOS flag
@@ -591,12 +614,13 @@ class QueueManager:
                      tool, oos_tag, project_id, len(targets))
             try:
                 from app import socketio
-                socketio.emit("tool_queued", {
-                    "project_id": project_id,
-                    "tool_id": tool,
-                    "reason": f"Auto-queued{oos_tag} ({len(targets)} targets)",
-                    "oos": is_oos,
-                }, room=f"project_{project_id}")
+                if socketio is not None:
+                    socketio.emit("tool_queued", {
+                        "project_id": project_id,
+                        "tool_id": tool,
+                        "reason": f"Auto-queued{oos_tag} ({len(targets)} targets)",
+                        "oos": is_oos,
+                    }, room=f"project_{project_id}")
             except Exception as exc:
                 log.warning("Failed to emit auto_queued event for %s: %s",
                             tool, exc)

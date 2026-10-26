@@ -269,15 +269,14 @@
             <input type="text" id="wizBeaconUrl" class="form-control" placeholder="https://beacon.local:9443"
                    value="{% if project %}{{ project.beacon_url|default('') }}{% endif %}">
           </label>
-          <label class="form-label" style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
-            <span class="text-xs">Token</span>
-            <input type="password" id="wizBeaconToken" class="form-control" placeholder="Pre-shared token"
-                   value="{% if project %}{{ project.beacon_token|default('') }}{% endif %}">
-          </label>
           <label class="form-label" style="display:flex;flex-direction:column;gap:4px">
             <span class="text-xs">Enable</span>
             <input type="checkbox" id="wizBeaconEnabled" {% if project and project.beacon_enabled %}checked{% endif %}>
           </label>
+          <div style="display:flex;flex-direction:column;gap:4px;justify-content:flex-end">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnBeaconTest" onclick="testBeaconConnection()">Test Connection</button>
+            <span class="form-hint" id="beaconTestResult" style="font-size:.75rem"></span>
+          </div>
         </div>
       </div>
 

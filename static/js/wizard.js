@@ -759,7 +759,6 @@
       tools: getSelectedTools(),
       auto_queue: document.getElementById('autoQueue').checked,
       beacon_url: valOf('wizBeaconUrl'),
-      beacon_token: valOf('wizBeaconToken'),
       beacon_enabled: document.getElementById('wizBeaconEnabled') ? document.getElementById('wizBeaconEnabled').checked : false,
       oos_handling: (document.querySelector('input[name="oosHandling"]:checked') || {}).value || 'explicit',
       consultant: {name:valOf('consultName'),title:valOf('consultTitle'),email:valOf('consultEmail')},
@@ -1204,4 +1203,19 @@
 
   /* ── Expose addRoleRow globally (called from onclick in template) ── */
   window.addRoleRow = addRoleRow;
+
+  /* ── Beacon test connection ── */
+  window.testBeaconConnection = function() {
+    var url = (document.getElementById('wizBeaconUrl').value || '').trim();
+    var result = document.getElementById('beaconTestResult');
+    if (!url) { result.textContent = 'Enter a Beacon URL first'; result.style.color = 'var(--status-error)'; return; }
+    result.textContent = 'Testing…'; result.style.color = 'var(--text-muted)';
+    fetch('/api/beacon_test', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if (d.ok) { result.textContent = '✓ Connected'; result.style.color = 'var(--status-running)'; }
+        else { result.textContent = d.error || 'Connection failed'; result.style.color = 'var(--status-error)'; }
+      })
+      .catch(function(){ result.textContent = 'Request failed'; result.style.color = 'var(--status-error)'; });
+  };
 })();

@@ -416,6 +416,9 @@ def create_project(form_data):
         "project_dir": str(project_dir),
         "original_tools": list(tools),
         "original_scope_tools": {k: list(v) for k, v in scope_tools.items()},
+        "beacon_url": form_data.get("beacon_url", ""),
+        "beacon_token": form_data.get("beacon_token", ""),
+        "beacon_enabled": bool(form_data.get("beacon_enabled", False)),
     }
 
     _save_project_meta(pid, meta)

@@ -161,7 +161,7 @@ class BeaconClient:
             tools[tid] = {
                 "status": status,
                 "started_at": info.get("started_at"),
-                "ended_at": info.get("ended_at"),
+                "ended_at": info.get("ended_at") if status in _TERMINAL_STATES else None,
                 "returncode": info.get("returncode"),
                 "tool_version": info.get("tool_version", ""),
                 "scope": info.get("scope", ""),

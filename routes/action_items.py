@@ -2,6 +2,7 @@
 
 import json
 import logging
+import urllib.parse
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 from routes._helpers import require_project, get_ext
@@ -504,6 +505,16 @@ _ASN_REJECT_RE = _re_ai.compile(r'^AS\d+$', _re_ai.IGNORECASE)
 del _re_ai
 
 
+_SCOPE_SHORT = {"internal": "int", "external": "ext", "webapp": "ext"}
+
+_NON_WEB_PORTS = frozenset({
+    22, 23, 25, 53, 69, 110, 111, 123, 135, 137, 138, 139, 143, 161,
+    162, 389, 445, 464, 465, 514, 515, 587, 636, 873, 993, 995, 1433,
+    1521, 1723, 2049, 3306, 3389, 5432, 5900, 5901, 5902, 6379, 6667,
+    11211, 27017, 27018,
+})
+
+
 def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
                     scope=None):
     """Write action-item targets into the tool's settings file AND the
@@ -521,9 +532,14 @@ def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
 
     When *scope* is provided, writes to a scope-qualified settings file
     (e.g. ``fr_settings_ext.json``) to prevent clobbering across scopes.
+    The scope is normalised to its short form (ext/int) so the filename
+    matches what the tool adapter looks for.
 
     ASN targets (e.g. AS22843) are rejected — tools cannot expand them.
     """
+    # Normalise scope to short form so filenames match what adapters expect
+    if scope:
+        scope = _SCOPE_SHORT.get(scope, scope)
     if not targets:
         return
 
@@ -580,6 +596,38 @@ def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
                 log.debug("legacy settings read failed %s: %s", legacy_fp, exc)
 
     if tool_id == "fracture":
+        # Filter out non-HTTP targets (SSH, SMTP, etc.) — Fracture is a web
+        # scanner and cannot meaningfully test non-web services.
+        web_targets = []
+        for _ft in targets:
+            try:
+                _fp = urllib.parse.urlparse(
+                    _ft if "://" in _ft else "http://" + _ft)
+                _fport = _fp.port or (443 if _fp.scheme == "https" else 80)
+                if _fport in _NON_WEB_PORTS:
+                    log.info("Filtered non-web target for fracture: %s "
+                             "(port %d)", _ft, _fport)
+                    continue
+            except Exception:
+                pass
+            web_targets.append(_ft)
+        if not web_targets:
+            log.warning("All targets filtered for fracture (non-web ports)")
+            return
+        targets = web_targets
+        # Merge adapter defaults into the settings file so auto-queued
+        # Fracture runs have auth, threads, phases, etc.
+        from adapters import get_adapter
+        _fr_adapter = get_adapter("fracture")
+        if _fr_adapter:
+            _fr_defaults = _fr_adapter.default_settings()
+            for _dk, _dv in _fr_defaults.items():
+                if isinstance(_dv, dict):
+                    existing.setdefault(_dk, {})
+                    for _sk, _sv in _dv.items():
+                        existing[_dk].setdefault(_sk, _sv)
+                else:
+                    existing.setdefault(_dk, _dv)
         scan = existing.setdefault("scan", {})
         scan["target_url"] = _ensure_url_scheme(targets[0])
         scan["target_urls"] = [_ensure_url_scheme(t) for t in targets] \
@@ -676,8 +724,16 @@ def _inject_targets(proj_dir, tool_id, targets, settings, project=None,
         if project:
             existing["client"] = project.get("client_short", "trawler")
     elif tool_id == "isotope":
+        # Isotope is a static file analyzer — only accept file paths,
+        # not URLs.  Action items from Fracture/Siphon may pass URLs.
+        file_targets = [t for t in targets
+                        if not t.startswith(("http://", "https://"))]
+        if not file_targets and targets:
+            log.warning("Isotope: all %d targets were URLs (not file paths) "
+                        "— skipping", len(targets))
+            return
         scan = existing.setdefault("scan", {})
-        scan["files"] = targets
+        scan["files"] = file_targets or targets
         if project:
             td_out = (project.get("tool_dirs") or {}).get(tool_id)
             if td_out:

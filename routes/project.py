@@ -341,6 +341,8 @@ def api_create_project():
     audit(meta.get("project_dir", ""), "PROJECT_CREATE",
           project_id=pid, name=meta.get("name", ""))
     _apply_wizard_scheduling(pid, meta, data)
+    if meta.get("beacon_enabled") and meta.get("beacon_url"):
+        _sync_beacon(pid)
     return jsonify({"ok": True, "project_id": pid, "project": meta})
 
 
@@ -377,6 +379,24 @@ def _sync_beacon(project_id):
             stop_beacon(project_id)
     except Exception as exc:
         log.debug("beacon sync failed for %s: %s", project_id[:8], exc)
+
+
+@project_bp.route("/api/beacon_test", methods=["POST"])
+def api_beacon_test():
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").rstrip("/")
+    if not url:
+        return jsonify({"ok": False, "error": "No URL provided"}), 400
+    try:
+        import requests as _req
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        r = _req.get(f"{url}/api/engagements", verify=False, timeout=5)
+        if r.status_code in (200, 401, 403):
+            return jsonify({"ok": True, "status": r.status_code})
+        return jsonify({"ok": False, "error": f"HTTP {r.status_code}"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
 
 
 @project_bp.route("/api/delete_project/<project_id>", methods=["DELETE"])
