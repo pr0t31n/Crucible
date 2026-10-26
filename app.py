@@ -157,7 +157,7 @@ def create_app():
     try:
         for proj in list_projects():
             pid = proj.get("id")
-            if pid and proj.get("beacon_enabled") and proj.get("beacon_url") and proj.get("beacon_token"):
+            if pid and proj.get("beacon_enabled") and proj.get("beacon_url"):
                 _start_beacon(pid, app)
     except Exception as exc:
         log.debug("beacon startup: %s", exc)
