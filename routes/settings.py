@@ -523,9 +523,10 @@ def api_beacon_test():
 
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip().rstrip("/")
-    token = data.get("token", "")
-    if not url or not token:
-        return jsonify({"ok": False, "error": "URL and token are required"}), 400
+    pid = data.get("project_id", "")
+    if not url:
+        return jsonify({"ok": False, "error": "URL is required"}), 400
+    token = pid or "test"
     try:
         r = _req.post(
             f"{url}/api/ping",

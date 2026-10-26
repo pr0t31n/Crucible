@@ -8982,10 +8982,8 @@ function showEngagementPanel() {
     document.getElementById('seAutoQueue').checked = !!p.auto_queue;
 
     var _beaconUrl = document.getElementById('seBeaconUrl');
-    var _beaconToken = document.getElementById('seBeaconToken');
     var _beaconEnabled = document.getElementById('seBeaconEnabled');
     if (_beaconUrl) _beaconUrl.value = p.beacon_url || '';
-    if (_beaconToken) _beaconToken.value = p.beacon_token || '';
     if (_beaconEnabled) _beaconEnabled.checked = !!p.beacon_enabled;
 
     var oosVal = p.oos_handling || 'explicit';
@@ -9480,18 +9478,16 @@ document.getElementById('seAutoQueue').addEventListener('change', function() {
 (function() {
     function _saveBeacon() {
         var url = (document.getElementById('seBeaconUrl') || {}).value || '';
-        var token = (document.getElementById('seBeaconToken') || {}).value || '';
         var enabled = !!(document.getElementById('seBeaconEnabled') || {}).checked;
         fetch('/api/update_project/' + PID, {
             method: 'POST', credentials: 'same-origin',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({beacon_url: url, beacon_token: token, beacon_enabled: enabled})
+            body: JSON.stringify({beacon_url: url, beacon_enabled: enabled})
         })
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.ok) {
                 PROJECT.beacon_url = url;
-                PROJECT.beacon_token = token;
                 PROJECT.beacon_enabled = enabled;
                 toast('success', 'Status server settings saved.');
             } else {
@@ -9501,26 +9497,23 @@ document.getElementById('seAutoQueue').addEventListener('change', function() {
         .catch(function() { toast('error', 'Network error saving status server settings.'); });
     }
     var _bUrl = document.getElementById('seBeaconUrl');
-    var _bToken = document.getElementById('seBeaconToken');
     var _bEnabled = document.getElementById('seBeaconEnabled');
     if (_bUrl) _bUrl.addEventListener('change', _saveBeacon);
-    if (_bToken) _bToken.addEventListener('change', _saveBeacon);
     if (_bEnabled) _bEnabled.addEventListener('change', _saveBeacon);
 
     var _bTest = document.getElementById('btnBeaconTest');
     if (_bTest) _bTest.addEventListener('click', function() {
         var url = (document.getElementById('seBeaconUrl') || {}).value || '';
-        var token = (document.getElementById('seBeaconToken') || {}).value || '';
         var result = document.getElementById('seBeaconTestResult');
-        if (!url || !token) {
-            if (result) result.innerHTML = '<span style="color:var(--risk-high)">URL and token required</span>';
+        if (!url) {
+            if (result) result.innerHTML = '<span style="color:var(--risk-high)">URL is required</span>';
             return;
         }
         if (result) result.innerHTML = '<span class="text-muted">Testing...</span>';
         fetch('/api/beacon/test', {
             method: 'POST', credentials: 'same-origin',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url: url, token: token})
+            body: JSON.stringify({url: url, project_id: PID})
         })
         .then(function(r) { return r.json(); })
         .then(function(d) {
@@ -10206,6 +10199,14 @@ function buildTimeParams(fromId, toId) {
 }
 
 /* Populate tool filter dropdown from data */
+function _toolDisplayName(tid) {
+    if (TOOLS_CFG[tid]) return TOOLS_CFG[tid].name;
+    var base = tid.split(':')[0];
+    var scope = tid.indexOf(':') >= 0 ? tid.split(':').slice(1).join(':') : '';
+    var name = TOOLS_CFG[base] ? TOOLS_CFG[base].name : base;
+    return scope ? name + ' [' + scope + ']' : name;
+}
+
 function populateToolFilter(selectId, entries) {
     var sel = document.getElementById(selectId);
     var existing = new Set();
@@ -10216,7 +10217,7 @@ function populateToolFilter(selectId, entries) {
             existing.add(t);
             var o = document.createElement('option');
             o.value = t;
-            o.textContent = TOOLS_CFG[t] ? TOOLS_CFG[t].name : t;
+            o.textContent = _toolDisplayName(t);
             sel.appendChild(o);
         }
     });

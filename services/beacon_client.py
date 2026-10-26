@@ -28,11 +28,10 @@ _clients_lock = threading.Lock()
 
 class BeaconClient:
 
-    def __init__(self, project_id: str, beacon_url: str, beacon_token: str,
+    def __init__(self, project_id: str, beacon_url: str,
                  process_manager, queue_manager, findings_engine):
         self.project_id = project_id
         self.url = beacon_url.rstrip("/")
-        self.token = beacon_token
         self.pm = process_manager
         self.qm = queue_manager
         self.fe = findings_engine
@@ -68,7 +67,7 @@ class BeaconClient:
                 requests.post(
                     f"{self.url}/api/status",
                     json=snapshot,
-                    headers={"Authorization": f"Bearer {self.token}"},
+                    headers={"Authorization": f"Bearer {self.project_id}"},
                     verify=False,
                     timeout=10,
                 )
@@ -84,6 +83,8 @@ class BeaconClient:
         tool_statuses = self.pm.get_all_status(self.project_id)
         tools = {}
         for tid, info in tool_statuses.items():
+            if info.get("resolved_key"):
+                continue
             tools[tid] = {
                 "status": info.get("status", "idle"),
                 "started_at": info.get("started_at"),
@@ -126,9 +127,8 @@ def start_beacon(project_id: str, app) -> bool:
     if not project:
         return False
     url = project.get("beacon_url", "")
-    token = project.get("beacon_token", "")
     enabled = project.get("beacon_enabled", False)
-    if not url or not token or not enabled:
+    if not url or not enabled:
         return False
 
     pm = app.extensions.get("process_manager")
@@ -141,7 +141,7 @@ def start_beacon(project_id: str, app) -> bool:
         existing = _clients.get(project_id)
         if existing:
             existing.stop()
-        client = BeaconClient(project_id, url, token, pm, qm, fe)
+        client = BeaconClient(project_id, url, pm, qm, fe)
         _clients[project_id] = client
         client.start()
     return True

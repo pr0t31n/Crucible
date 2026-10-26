@@ -359,7 +359,7 @@ def api_update_project(project_id):
     project = get_project(project_id)
     if project:
         _apply_wizard_scheduling(project_id, project, data)
-    if any(k in data for k in ("beacon_url", "beacon_token", "beacon_enabled")):
+    if any(k in data for k in ("beacon_url", "beacon_enabled")):
         _sync_beacon(project_id)
     return jsonify({"ok": True, "project_id": project_id})
 
@@ -371,7 +371,7 @@ def _sync_beacon(project_id):
         project = get_project(project_id)
         if not project:
             return
-        if project.get("beacon_enabled") and project.get("beacon_url") and project.get("beacon_token"):
+        if project.get("beacon_enabled") and project.get("beacon_url"):
             start_beacon(project_id, current_app._get_current_object())
         else:
             stop_beacon(project_id)
