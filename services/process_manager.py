@@ -2857,6 +2857,14 @@ class ProcessManager:
 
         if self._findings_engine:
             self._findings_engine.invalidate(project_id)
+            if _proj:
+                try:
+                    self._findings_engine.refresh(project_id, _proj)
+                except Exception as exc:
+                    log.warning("post-completion findings refresh: %s", exc)
+            self.socketio.emit("findings_updated",
+                               {"project_id": project_id},
+                               room=_room(project_id))
 
         # Update action items that launched this tool
         proj_dir = _proj.get("project_dir", "") if _proj else ""
@@ -2897,6 +2905,9 @@ class ProcessManager:
                             room=_room(project_id))
             except Exception as exc:
                 log.warning("Post-completion action generation error: %s", exc)
+            self.socketio.emit("action_items_updated",
+                               {"project_id": project_id},
+                               room=_room(project_id))
 
         # NOTE: No late sweep or cross-tool sweep here.
         # The first sweep (above) marks items for the completing tool.

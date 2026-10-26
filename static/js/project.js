@@ -462,6 +462,12 @@ socket.on('tool_action_item', function(data) {
     }
 });
 
+/* ── findings_updated: server-side cache refreshed ─────────────── */
+socket.on('findings_updated', function(data) {
+    if (data.project_id !== PID) return;
+    loadFindings(true);
+});
+
 /* ── action_items_updated: bulk generation (post-completion) ───── */
 socket.on('action_items_updated', function(data) {
     if (data.project_id !== PID) return;
