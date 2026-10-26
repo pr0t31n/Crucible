@@ -315,10 +315,15 @@ class ProcessManager:
                 pids = list((self._pid_history.get(project_id) or {}).get(tool_id, []))
             base_tool = tool_id.split(":")[0] if ":" in tool_id else tool_id
             scope = tool_id.split(":", 1)[1] if ":" in tool_id else ""
+            ended_now = _now_iso()
+            with self._lock:
+                ms = self._tool_metadata.setdefault(project_id, {})
+                if tool_id in ms:
+                    ms[tool_id]["ended_at"] = ended_now
             history[tool_id] = {
                 "status": final_status,
                 "returncode": returncode,
-                "ended_at": _now_iso(),
+                "ended_at": ended_now,
                 "started_at": meta.get("started_at", ""),
                 "pid": meta.get("pid"),
                 "pids": pids,
@@ -373,6 +378,7 @@ class ProcessManager:
                     if tid not in meta_store:
                         meta_store[tid] = {
                             "started_at": entry.get("started_at", ""),
+                            "ended_at": entry.get("ended_at", ""),
                             "pid": entry.get("pid"),
                             "tool_version": entry.get("tool_version", ""),
                         }
@@ -1490,6 +1496,8 @@ class ProcessManager:
                 entry = {"status": st, "last_line": last}
                 if meta.get("started_at"):
                     entry["started_at"] = meta["started_at"]
+                if meta.get("ended_at"):
+                    entry["ended_at"] = meta["ended_at"]
                 if meta.get("pid"):
                     entry["pid"] = meta["pid"]
                 if meta.get("tool_version"):
