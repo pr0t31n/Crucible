@@ -1046,8 +1046,6 @@ function renderFeed(containerId, clickable) {
     });
     Object.keys(toolStatuses).sort().forEach(function(tid) {
         if (tid.indexOf(':') === -1) return;
-        var _base = tid.substring(0, tid.indexOf(':'));
-        if (!_SCOPE_DYNAMIC[_base]) return;
         if (allTids.indexOf(tid) !== -1) return;
         var st = (toolStatuses[tid] || {}).status || 'idle';
         if (st === 'idle') return;

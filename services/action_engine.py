@@ -960,6 +960,7 @@ class ActionEngine:
         "non-standard port for", "open port",
         "hostname identified", "web page identified",
         "software version detected", "ip address identified",
+        "eol software", "os end-of-life",
         "missing caa", "missing spf", "missing dmarc", "missing dkim",
         "dmarc policy", "spf soft fail", "dnssec not enabled",
         "zone transfer", "missing caa issuewild",
@@ -983,6 +984,28 @@ class ActionEngine:
         "CRITICAL": "CRITICAL", "HIGH": "HIGH",
         "MEDIUM": "MEDIUM", "LOW": "LOW", "INFO": "LOW",
     }
+
+    _WEB_PORTS = frozenset({80, 443, 8080, 8443, 8000, 8888, 8008, 8081,
+                            8082, 8090, 9443, 3000, 5000, 5500, 8880, 9000,
+                            9090, 9200, 4443, 4430})
+
+    def _deeper_tool_for_finding(self, source_tool, finding):
+        """Return the deeper tool for action items, or None if the finding's
+        service/port is not compatible with the deeper tool (e.g. don't
+        recommend Fracture for SSH findings from SS3)."""
+        deeper = self._TOOL_DEEPER_MAP.get(source_tool, {}).get("deeper")
+        if deeper in ("fracture", "siphon"):
+            port = int(finding.get("port") or 0)
+            svc = (finding.get("service") or "").lower()
+            _non_web = {"ssh", "ftp", "smtp", "snmp", "rdp", "telnet",
+                        "smb", "nfs", "dns", "imap", "pop3", "vnc",
+                        "mysql", "postgres", "mssql", "oracle", "redis",
+                        "mongodb", "ldap", "kerberos"}
+            if svc in _non_web:
+                return None
+            if port and port not in self._WEB_PORTS and svc not in ("http", "https"):
+                return None
+        return deeper
 
     def _classify_finding(self, title):
         """Match a finding title against known vulnerability types.
@@ -1244,8 +1267,8 @@ class ActionEngine:
                 ])
             item = self._add_or_collect(project_dir, {
                 "source_tool": source_tool,
-                "recommended_tool": self._TOOL_DEEPER_MAP.get(
-                    source_tool, {}).get("deeper"),
+                "recommended_tool": self._deeper_tool_for_finding(
+                    source_tool, finding),
                 "category": "manual_validation",
                 "title": f"Validate: {title}",
                 "target": target,
@@ -1265,10 +1288,10 @@ class ActionEngine:
                 items.append(item)
 
         if risk == "MEDIUM" and (cves or type_rec) and not is_self_validated:
+            _deeper = self._deeper_tool_for_finding(source_tool, finding)
             item = self._add_or_collect(project_dir, {
                 "source_tool": source_tool,
-                "recommended_tool": self._TOOL_DEEPER_MAP.get(
-                    source_tool, {}).get("deeper") or source_tool,
+                "recommended_tool": _deeper or source_tool,
                 "category": "deeper_scan",
                 "title": f"Deep scan: {title}",
                 "target": target,
