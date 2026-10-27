@@ -3974,11 +3974,30 @@ document.getElementById('actionTableBody').addEventListener('click', function(e)
     }
 });
 
+function _fmtDesc(text) {
+    var safe = esc(text);
+    var lines = safe.split('\n');
+    var out = '', inOl = false;
+    for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i];
+        var m = ln.match(/^\s*(\d+)\.\s+(.+)/);
+        if (m) {
+            if (!inOl) { out += '<ol style="margin:6px 0 6px 20px;font-size:0.85rem">'; inOl = true; }
+            out += '<li style="margin-bottom:4px">' + m[2] + '</li>';
+        } else {
+            if (inOl) { out += '</ol>'; inOl = false; }
+            if (ln.trim()) out += '<p style="margin:0 0 6px">' + ln + '</p>';
+        }
+    }
+    if (inOl) out += '</ol>';
+    return out;
+}
+
 function _showActionDetail(item) {
     document.getElementById('actionDetailTitle').textContent = item.title || 'Action Item';
     var body = document.getElementById('actionDetailBody');
     var html = '';
-    if (item.description) html += '<p style="margin-bottom:12px">' + esc(item.description) + '</p>';
+    if (item.description) html += '<div style="margin-bottom:12px">' + _fmtDesc(item.description) + '</div>';
     if (item.target) html += '<div class="text-sm" style="margin-bottom:8px"><strong>Target:</strong> <code>' + esc(item.target) + '</code></div>';
     var meta = item.metadata || {};
     var recs = meta.recommendations;
