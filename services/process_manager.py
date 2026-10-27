@@ -1905,6 +1905,20 @@ class ProcessManager:
             proj_dir = proj.get("project_dir", "")
             if not proj_dir:
                 return
+            target = ""
+            original_settings = {}
+            try:
+                from models.settings import load_settings
+                original_settings = load_settings(proj_dir, tool_id, scope=scope)
+                _target_keys = ("target_url", "api_base_url", "targets", "host")
+                for _tk in _target_keys:
+                    if original_settings.get(_tk):
+                        target = original_settings[_tk]
+                        if isinstance(target, list):
+                            target = target[0] if target else ""
+                        break
+            except Exception:
+                pass
             from models.action_items import add_action_item
             add_action_item(proj_dir, {
                 "title": f"Rerun {tool_id}" + (f" [{scope}]" if scope else ""),
@@ -1914,11 +1928,15 @@ class ProcessManager:
                 "source_tool": "crucible",
                 "category": category,
                 "scope": scope or "",
+                "target": target,
                 "priority": "RECOMMENDED",
                 "approval_tier": "confirm",
                 "status": "pending",
                 "in_scope": True,
-                "metadata": {"reason": reason, "source": category},
+                "metadata": {
+                    "reason": reason, "source": category,
+                    "original_settings": original_settings,
+                },
             })
         except Exception:
             log.exception("Failed to create rerun action item for %s", tool_id)
@@ -2797,21 +2815,6 @@ class ProcessManager:
 
         self._persist_history(project_id, tool_id, final_status, rc)
 
-        if final_status in ("killed", "failed"):
-            rerun_key = _pkey(project_id, tool_id)
-            with self._lock:
-                already = rerun_key in self._rerun_created
-            if not already:
-                scope = tool_id.split(":", 1)[1] if ":" in tool_id else None
-                cat = "rerun_killed" if final_status == "killed" else "rerun_failed"
-                reason = (f"{tool_name} was killed (return code {rc})"
-                          if final_status == "killed"
-                          else f"{tool_name} failed with return code {rc}")
-                self._create_rerun_action_item(
-                    project_id, base_tool, scope, reason, category=cat)
-            with self._lock:
-                self._rerun_created.discard(rerun_key)
-
         if final_status in ("paused", "killed", "failed"):
             self._emit_checkpoint_status(project_id, tool_id)
 
@@ -2891,6 +2894,21 @@ class ProcessManager:
                         room=_room(project_id))
             except Exception as exc:
                 log.warning("Action item status update error: %s", exc)
+
+        if final_status in ("killed", "failed"):
+            rerun_key = _pkey(project_id, tool_id)
+            with self._lock:
+                already = rerun_key in self._rerun_created
+            if not already:
+                scope = tool_id.split(":", 1)[1] if ":" in tool_id else None
+                cat = "rerun_killed" if final_status == "killed" else "rerun_failed"
+                reason = (f"{tool_name} was killed (return code {rc})"
+                          if final_status == "killed"
+                          else f"{tool_name} failed with return code {rc}")
+                self._create_rerun_action_item(
+                    project_id, base_tool, scope, reason, category=cat)
+            with self._lock:
+                self._rerun_created.discard(rerun_key)
 
         if self._action_engine:
             try:

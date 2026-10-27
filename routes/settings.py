@@ -132,6 +132,11 @@ def _backfill_from_project(settings, project, tool_id):
             if api_urls:
                 settings["api_base_url"] = api_urls[0]
                 settings["api_base_urls"] = api_urls[1:]
+    elif tool_id == "auger":
+        if not settings.get("host"):
+            db_targets = scope_def.get("db_targets", [])
+            if db_targets:
+                settings["host"] = db_targets[0]
     elif tool_id == "dredge":
         mode = scope_def.get("dredge_mode", "import")
         if mode == "winrm":

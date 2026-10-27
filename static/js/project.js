@@ -3659,6 +3659,20 @@ function _mergeItemDefaults(item) {
     var tid = _launchToolId;
     var t = item.target || '';
     var meta = item.metadata || {};
+    var orig = meta.original_settings || null;
+    if (orig && typeof orig === 'object') {
+        var skip = {'auth': 1, '_auth_hint': 1};
+        Object.keys(orig).forEach(function(k) {
+            if (skip[k]) return;
+            if (_launchSettings[k] === undefined || _launchSettings[k] === null
+                || _launchSettings[k] === '') {
+                _launchSettings[k] = orig[k];
+            }
+        });
+        if (orig.auth && typeof orig.auth === 'object' && orig.auth.enabled) {
+            _launchSettings.auth = orig.auth;
+        }
+    }
     if (tid === 'siphon') {
         if (!_launchSettings.api_base_url && t) _launchSettings.api_base_url = t;
         if (!_launchSettings.environment) _launchSettings.environment = 'non-production';
