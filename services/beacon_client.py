@@ -13,6 +13,8 @@ import threading
 import time
 from datetime import datetime
 
+import socket
+
 import requests
 import urllib3
 
@@ -195,10 +197,16 @@ class BeaconClient:
         risk_summary = get_risk_summary(findings_list)
         total = sum(risk_summary.values())
 
+        try:
+            hostname = socket.gethostname()
+        except Exception:
+            hostname = ""
+
         return {
             "engagement_id": self.project_id,
             "name": project.get("name", ""),
             "client_name": project.get("client_name", ""),
+            "source_hostname": hostname,
             "start_date": start_date,
             "end_date": end_date,
             "scopes": project.get("active_scopes", []),
