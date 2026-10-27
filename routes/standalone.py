@@ -743,6 +743,7 @@ def api_traffic_dump():
     os.close(fd)
 
     tool_used = "tshark" if tshark else "tcpdump"
+    cap_stderr = ""
 
     if tshark:
         cmd = [tshark, "-i", interface, "-a", f"duration:{duration}",
@@ -754,8 +755,10 @@ def api_traffic_dump():
         if os.geteuid() != 0:
             cmd = ["sudo"] + cmd
         try:
-            subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=duration + 30)
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               timeout=duration + 30)
+            if r.returncode != 0 and r.stderr:
+                cap_stderr = r.stderr.strip().splitlines()[-1]
         except subprocess.TimeoutExpired:
             pass
     else:
@@ -776,13 +779,19 @@ def api_traffic_dump():
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        stderr_out = proc.stderr.read().decode("utf-8", errors="replace").strip()
+        if proc.returncode and proc.returncode != 0 and stderr_out:
+            cap_stderr = stderr_out.splitlines()[-1]
 
     if not os.path.exists(capture_file) or os.path.getsize(capture_file) == 0:
         try:
             os.unlink(capture_file)
         except OSError:
             pass
-        return jsonify({"error": "No packets captured — check interface and permissions"}), 500
+        msg = "No packets captured — check interface and permissions"
+        if cap_stderr:
+            msg = f"{tool_used}: {cap_stderr}"
+        return jsonify({"error": msg}), 500
 
     # ── Analysis ──
     all_ips = set()
