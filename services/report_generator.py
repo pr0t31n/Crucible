@@ -222,6 +222,10 @@ REPORT_TYPES = {
     "auger":              {"label": "Database Security Report",             "scope_gate": None,        "description": "Database authentication, privilege escalation, configuration audit, and malicious data access indicators"},
     "bastion":            {"label": "Firewall Assessment Report",           "scope_gate": None,        "description": "Firewall rule analysis, overly permissive rules, malicious forwarding, and compliance gaps"},
     "forge":              {"label": "Cloud Infrastructure Report",          "scope_gate": None,        "description": "IAM misconfigurations, storage exposure, network security groups, and malicious access patterns"},
+    "cloud_pentest":      {"label": "Cloud Penetration Test Assessment",   "scope_gate": None,        "description": "Attack-surface focused cloud assessment covering IAM escalation, network exposure, data exfiltration, and detection gaps"},
+    "cloud_cis":          {"label": "CIS AWS Benchmark Assessment",        "scope_gate": None,        "description": "Findings mapped to CIS Amazon Web Services Foundations Benchmark control families with gap analysis"},
+    "cloud_compliance":   {"label": "Cloud Compliance Report",             "scope_gate": None,        "description": "Multi-framework regulatory compliance mapping (NIST 800-53, PCI DSS 4.0, SOC 2, ISO 27001, HITRUST, GDPR)"},
+    "cloud_exec":         {"label": "Cloud Executive Summary",             "scope_gate": None,        "description": "Non-technical overview of cloud security posture, risk assessment, and strategic recommendations for leadership"},
     "quill":              {"label": "Mobile Application Report",            "scope_gate": None,        "description": "Binary analysis, API extraction, certificate pinning, data storage, and malicious indicator analysis"},
     "isotope":            {"label": "File Analysis Report",                 "scope_gate": None,        "description": "File metadata, malware indicators, embedded content, and malicious link/IP analysis"},
 }
@@ -3392,6 +3396,10 @@ def generate_pdf(project, incomplete=False, report_type="full"):
         "auger":             (gather_auger_data, build_auger_report),
         "bastion":           (gather_bastion_data, build_bastion_report),
         "forge":             (gather_forge_data, build_forge_report),
+        "cloud_pentest":     (gather_cloud_data, build_cloud_pentest_report),
+        "cloud_cis":         (gather_cloud_data, build_cloud_cis_report),
+        "cloud_compliance":  (gather_cloud_data, build_cloud_compliance_report),
+        "cloud_exec":        (gather_cloud_data, build_cloud_exec_report),
         "quill":             (gather_quill_data, build_quill_report),
         "isotope":           (gather_isotope_data, build_isotope_report),
         # Cross-scope universal
@@ -7807,6 +7815,831 @@ could facilitate malicious data exfiltration or unauthorized data access.</p>'''
 </table></div>'''
 
     return _endpoint_doc_wrap("Cloud Configuration Security Report", client_name, body)
+
+
+# ── Cloud Assessment Reports ─────────────────────────────────────────────────
+# Cloud pentest, CIS benchmark, compliance, and executive summary reports
+
+
+def gather_cloud_data(project):
+    """Enhanced cloud gatherer — loads findings + intelligence files."""
+    findings = _load_findings_for_tool(project, "forge")
+    cloud_inventory = []
+    iam_matrix = []
+    service_dashboard = []
+    for scope_dirs in project.get("scope_tool_dirs", {}).values():
+        td = scope_dirs.get("forge")
+        if td:
+            td = Path(td)
+            if td.exists():
+                cloud_inventory = _load_json(td / "cloud_inventory.json") or cloud_inventory
+                iam_matrix = _load_json(td / "iam_matrix.json") or iam_matrix
+                service_dashboard = _load_json(td / "service_dashboard.json") or service_dashboard
+    td = project.get("tool_dirs", {}).get("forge")
+    if td:
+        td = Path(td)
+        if td.exists():
+            cloud_inventory = _load_json(td / "cloud_inventory.json") or cloud_inventory
+            iam_matrix = _load_json(td / "iam_matrix.json") or iam_matrix
+            service_dashboard = _load_json(td / "service_dashboard.json") or service_dashboard
+    return {
+        "forge_findings": findings,
+        "cloud_inventory": cloud_inventory if isinstance(cloud_inventory, list) else [],
+        "iam_matrix": iam_matrix if isinstance(iam_matrix, list) else [],
+        "service_dashboard": service_dashboard if isinstance(service_dashboard, list) else [],
+        "crucible_meta": project,
+    }
+
+
+def _cloud_service_table(service_dashboard):
+    if not service_dashboard:
+        return ""
+    h = '<h2>AWS Service Risk Summary</h2>'
+    h += '<table><tr><th>Service</th><th>Resources</th><th>Findings</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Status</th></tr>'
+    for svc in sorted(service_dashboard, key=lambda s: (s.get("critical", 0) + s.get("high", 0) * 0.5), reverse=True):
+        name = esc(svc.get("service", ""))
+        resources = svc.get("resources", 0)
+        findings = svc.get("findings", 0)
+        if findings == 0:
+            continue
+        crit = svc.get("critical", 0)
+        high = svc.get("high", 0)
+        med = svc.get("medium", 0)
+        low = svc.get("low", 0)
+        status = esc(svc.get("status", ""))
+        h += f'<tr><td><strong>{name}</strong></td><td style="text-align:center">{resources}</td>'
+        h += f'<td style="text-align:center;font-weight:700">{findings}</td>'
+        h += f'<td style="text-align:center;color:#dc2626;font-weight:700">{crit if crit else "-"}</td>'
+        h += f'<td style="text-align:center;color:#ea580c;font-weight:700">{high if high else "-"}</td>'
+        h += f'<td style="text-align:center;color:#d97706;">{med if med else "-"}</td>'
+        h += f'<td style="text-align:center;color:#65a30d;">{low if low else "-"}</td>'
+        h += f'<td style="font-size:8pt">{status}</td></tr>'
+    h += '</table>'
+    return h
+
+
+def _cloud_iam_table(iam_matrix):
+    if not iam_matrix:
+        return ""
+    h = '<h2>IAM User Analysis</h2>'
+    h += '<table><tr><th>User</th><th>MFA</th><th>Access Keys</th><th>Last Login</th><th>Policies</th><th>Risk</th></tr>'
+    for user in sorted(iam_matrix, key=lambda u: RISK_ORDER.get((u.get("risk") or "INFO").upper(), 5)):
+        name = esc(user.get("user", ""))
+        mfa = user.get("mfa_active", "")
+        mfa_icon = '<span style="color:#16a34a">&#10003;</span>' if mfa in ("true", True) else '<span style="color:#dc2626">&#10007;</span>'
+        keys = user.get("active_keys", user.get("access_keys", 0))
+        last = esc((user.get("last_login") or "Never")[:10])
+        policies = esc((user.get("policies") or "")[:80])
+        risk = (user.get("risk") or "INFO").upper()
+        color = RISK_COLORS.get(risk, "#666")
+        h += f'<tr><td><code>{name}</code></td><td style="text-align:center">{mfa_icon}</td>'
+        h += f'<td style="text-align:center">{keys}</td><td style="font-size:8pt">{last}</td>'
+        h += f'<td style="font-size:7.5pt">{policies}</td>'
+        h += f'<td><span class="badge" style="background:{color}">{risk}</span></td></tr>'
+    h += '</table>'
+    return h
+
+
+def build_cloud_pentest_report(data):
+    """Cloud Penetration Test Assessment — attack-surface focused."""
+    meta = data.get("crucible_meta", {})
+    client_name = meta.get("client_name", "Client")
+    incomplete = data.get("incomplete", False)
+    findings = sorted(data.get("forge_findings", []), key=risk_sort)
+    risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
+    service_dashboard = data.get("service_dashboard", [])
+    iam_matrix = data.get("iam_matrix", [])
+    cloud_inventory = data.get("cloud_inventory", [])
+
+    iam_patterns = [
+        "iam", "role", "policy", "permission", "privilege", "access key",
+        "mfa", "root account", "service account", "cross-account",
+        "assume role", "excessive permission", "wildcard", "admin",
+        "credential", "password", "console access",
+    ]
+    network_patterns = [
+        "security group", "nacl", "vpc", "subnet", "public ip",
+        "internet gateway", "nat", "peering", "endpoint", "firewall",
+        "0.0.0.0/0", "ingress", "egress", "load balancer", "cloudfront",
+        "waf", "route table", "elastic ip",
+    ]
+    storage_patterns = [
+        "s3", "bucket", "blob", "storage", "public access",
+        "encryption", "versioning", "lifecycle", "acl",
+        "object storage", "block public", "kms", "key management",
+        "efs", "dynamodb",
+    ]
+    secrets_patterns = [
+        "secret", "key management", "kms", "rotation", "access key",
+        "credential", "password policy", "secrets manager", "ssm parameter",
+        "certificate", "acm", "hardcoded",
+    ]
+    detection_patterns = [
+        "cloudtrail", "cloudwatch", "flow log", "access log",
+        "audit log", "monitoring", "alert", "guardduty", "guard duty",
+        "detective", "security hub", "config", "inspector",
+        "log", "event",
+    ]
+    exfil_patterns = [
+        "malicious", "exposed", "public", "leak", "exfiltration",
+        "data transfer", "cross-region", "suspicious", "anomalous",
+        "unrestricted", "open to internet",
+    ]
+
+    iam_findings = _filter_by_title_patterns(findings, iam_patterns)
+    network_findings = _filter_by_title_patterns(findings, network_patterns)
+    storage_findings = _filter_by_title_patterns(findings, storage_patterns)
+    secrets_findings = _filter_by_title_patterns(findings, secrets_patterns)
+    detection_findings = _filter_by_title_patterns(findings, detection_patterns)
+    exfil_findings = _filter_by_title_patterns(findings, exfil_patterns)
+
+    cover = _build_scope_cover(client_name, "Cloud Penetration Test Assessment",
+                               meta, "Cloud Infrastructure", None, incomplete)
+    body = cover
+
+    body += '<div class="page"><h1>Executive Summary</h1>'
+    body += f'''<p class="section-intro">
+the assessor performed a cloud infrastructure penetration test of {esc(client_name)}'s
+AWS environment. This assessment evaluated the cloud environment from an attacker's
+perspective, identifying misconfiguration-driven attack vectors across identity management,
+network exposure, data storage, secrets handling, and detection capability gaps that
+could be exploited to gain unauthorized access, escalate privileges, exfiltrate data,
+or maintain persistent access.</p>'''
+
+    body += '<div class="stats-row">'
+    body += f'<div class="stat-card"><div class="stat-number">{len(findings)}</div><div class="stat-label">Total Findings</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number" style="color:#dc2626">{risk_counts.get("CRITICAL", 0)}</div><div class="stat-label">Critical</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number" style="color:#ea580c">{risk_counts.get("HIGH", 0)}</div><div class="stat-label">High</div></div>'
+    svc_count = len([s for s in service_dashboard if s.get("findings", 0) > 0])
+    body += f'<div class="stat-card"><div class="stat-number">{svc_count}</div><div class="stat-label">Services Affected</div></div>'
+    body += '</div>'
+    body += _risk_cards_html(risk_counts)
+
+    pie = _build_risk_pie(risk_counts)
+    if pie:
+        body += '<div class="risk-charts-row">'
+        body += f'<div class="risk-chart-col"><h4>Risk Distribution</h4>{pie}</div>'
+        body += '</div>'
+    body += _exec_risk_heatmap(risk_counts, len(findings))
+    body += '</div>'
+
+    if service_dashboard or cloud_inventory:
+        body += '<div class="page"><h1>Attack Surface Overview</h1>'
+        body += f'''<p class="section-intro">The following AWS services were assessed and
+found to contain security findings. Resource counts and risk breakdowns provide
+the attack surface scope for each service.</p>'''
+        body += _cloud_service_table(service_dashboard)
+        if cloud_inventory:
+            regions = set(r.get("region", "unknown") for r in cloud_inventory)
+            body += f'<p style="margin-top:12px;font-size:9pt;color:var(--slate-500);">'
+            body += f'<strong>Regions observed:</strong> {", ".join(sorted(regions))}'
+            body += f' &bull; <strong>Inventoried resources:</strong> {len(cloud_inventory)}</p>'
+        body += '</div>'
+
+    if iam_findings:
+        body += '<div class="page"><h1>IAM &amp; Privilege Escalation</h1>'
+        body += f'''<p class="section-intro">Identity and Access Management findings represent
+the highest-impact attack surface in any cloud environment. An attacker who compromises
+a misconfigured IAM principal can escalate privileges, pivot across accounts, access
+production data, and establish persistent backdoor access. {len(iam_findings)} finding(s)
+were identified in this category.</p>'''
+        body += _cloud_iam_table(iam_matrix)
+        body += _findings_cards(iam_findings)
+        body += '</div>'
+
+    if network_findings:
+        body += '<div class="page"><h1>Network Security &amp; Exposure</h1>'
+        body += f'''<p class="section-intro">Cloud network misconfigurations expose internal
+services to the internet, enable lateral movement between VPCs, and bypass security
+controls. Overly permissive security groups and missing network segmentation are the
+primary attack vectors. {len(network_findings)} finding(s) were identified.</p>'''
+        body += _findings_cards(network_findings)
+        body += '</div>'
+
+    if storage_findings:
+        body += '<div class="page"><h1>Data Protection &amp; Storage Security</h1>'
+        body += f'''<p class="section-intro">Cloud storage services (S3, EFS, DynamoDB) are
+a primary target for data exfiltration. Publicly accessible buckets, missing encryption,
+and overly permissive ACLs allow attackers to access, modify, or exfiltrate sensitive data.
+{len(storage_findings)} finding(s) were identified.</p>'''
+        body += _findings_cards(storage_findings)
+        body += '</div>'
+
+    if secrets_findings:
+        body += '<div class="page"><h1>Secrets &amp; Key Management</h1>'
+        body += f'''<p class="section-intro">Credential and key management weaknesses enable
+attackers to obtain long-lived access tokens, decrypt protected data, or leverage
+exposed secrets for lateral movement. {len(secrets_findings)} finding(s) were identified.</p>'''
+        body += _findings_cards(secrets_findings)
+        body += '</div>'
+
+    if detection_findings:
+        body += '<div class="page"><h1>Detection &amp; Monitoring Gaps</h1>'
+        body += f'''<p class="section-intro">From a penetration testing perspective, gaps in
+logging and monitoring are exploitable — they allow an attacker to operate undetected.
+Missing CloudTrail coverage, disabled GuardDuty, and absent flow logs create blind spots
+where reconnaissance, privilege escalation, and data exfiltration go unnoticed.
+{len(detection_findings)} finding(s) were identified.</p>'''
+        body += _findings_cards(detection_findings)
+        body += '</div>'
+
+    if exfil_findings:
+        body += '<div class="page"><h1>Data Exfiltration &amp; Malicious Access</h1>'
+        body += f'''<p class="section-intro">Configuration gaps that facilitate or fail to
+prevent malicious data exfiltration via cloud APIs, cross-region transfers, and
+publicly accessible resources. {len(exfil_findings)} finding(s) were identified.</p>'''
+        body += _findings_cards(exfil_findings)
+        body += '</div>'
+
+    seen = set(id(f) for f in iam_findings + network_findings + storage_findings +
+               secrets_findings + detection_findings + exfil_findings)
+    remaining = [f for f in findings if id(f) not in seen]
+    if remaining:
+        body += '<div class="page"><h1>Additional Findings</h1>'
+        body += _findings_cards(remaining)
+        body += '</div>'
+
+    crit_high = [f for f in findings if (f.get("risk") or "INFO").upper() in ("CRITICAL", "HIGH")]
+    med = [f for f in findings if (f.get("risk") or "INFO").upper() == "MEDIUM"]
+    body += '<div class="page"><h1>Remediation Roadmap</h1>'
+    body += f'''<p class="section-intro">Prioritized remediation plan based on exploitability and
+business impact. Immediate items should be addressed within 7 days; short-term within 30 days;
+medium-term within 90 days.</p>'''
+    body += '<table><tr><th>Timeline</th><th>Priority</th><th>Action</th><th>Findings Addressed</th></tr>'
+    body += f'''<tr><td><strong>Immediate</strong><br>(0–7 days)</td>
+        <td><span class="badge" style="background:#dc2626">CRITICAL</span></td>
+        <td>Enforce MFA on all IAM users; disable unused access keys; block public S3 access; restrict 0.0.0.0/0 security group rules</td>
+        <td style="text-align:center">{len(crit_high)}</td></tr>'''
+    body += f'''<tr><td><strong>Short-term</strong><br>(7–30 days)</td>
+        <td><span class="badge" style="background:#ea580c">HIGH</span></td>
+        <td>Enable CloudTrail in all regions; enable GuardDuty; implement least-privilege IAM policies; enable default encryption on all storage</td>
+        <td style="text-align:center">{len(med)}</td></tr>'''
+    body += f'''<tr><td><strong>Medium-term</strong><br>(30–90 days)</td>
+        <td><span class="badge" style="background:#d97706">MEDIUM</span></td>
+        <td>Implement VPC flow logging; configure CloudWatch alarms for critical events; establish automated secret rotation; deploy AWS Config rules</td>
+        <td style="text-align:center">{len(findings) - len(crit_high) - len(med)}</td></tr>'''
+    body += '</table></div>'
+
+    return _endpoint_doc_wrap("Cloud Penetration Test Assessment", client_name, body)
+
+
+def build_cloud_cis_report(data):
+    """CIS AWS Foundations Benchmark Assessment."""
+    meta = data.get("crucible_meta", {})
+    client_name = meta.get("client_name", "Client")
+    incomplete = data.get("incomplete", False)
+    findings = sorted(data.get("forge_findings", []), key=risk_sort)
+    risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
+
+    CIS_SECTIONS = {
+        "1. Identity and Access Management": {
+            "patterns": [
+                "iam", "root account", "mfa", "access key", "password policy",
+                "credential", "service account", "console access", "role",
+                "policy", "permission", "privilege", "cross-account", "assume role",
+                "wildcard", "admin",
+            ],
+            "description": "Controls ensuring proper identity management, authentication, and least-privilege access.",
+        },
+        "2. Storage": {
+            "patterns": [
+                "s3", "bucket", "public access", "encryption", "versioning",
+                "lifecycle", "acl", "block public", "object lock", "efs",
+                "dynamodb", "backup", "storage",
+            ],
+            "description": "Controls for securing cloud storage services including S3, EFS, and DynamoDB.",
+        },
+        "3. Logging": {
+            "patterns": [
+                "cloudtrail", "access log", "audit log", "s3 access logging",
+                "flow log", "trail", "log validation", "log file",
+            ],
+            "description": "Controls ensuring comprehensive audit trail and activity logging across all services.",
+        },
+        "4. Monitoring": {
+            "patterns": [
+                "cloudwatch", "alarm", "metric", "alert", "monitoring",
+                "guardduty", "guard duty", "security hub", "config",
+                "detective", "inspector", "event",
+            ],
+            "description": "Controls for real-time detection, alerting, and continuous monitoring of cloud resources.",
+        },
+        "5. Networking": {
+            "patterns": [
+                "security group", "nacl", "vpc", "subnet", "public ip",
+                "internet gateway", "nat", "peering", "endpoint", "firewall",
+                "0.0.0.0/0", "ingress", "egress", "route", "elastic ip",
+                "load balancer", "cloudfront", "waf",
+            ],
+            "description": "Controls for network segmentation, traffic filtering, and restricting access to cloud resources.",
+        },
+        "6. Key Management": {
+            "patterns": [
+                "kms", "key management", "key rotation", "secrets manager",
+                "ssm parameter", "acm", "certificate", "cmk", "encryption key",
+            ],
+            "description": "Controls for managing cryptographic keys and secrets used to protect data.",
+        },
+    }
+
+    section_findings = {}
+    section_risk_counts = {}
+    for section, cfg in CIS_SECTIONS.items():
+        sf = _filter_by_title_patterns(findings, cfg["patterns"])
+        section_findings[section] = sf
+        section_risk_counts[section] = Counter((f.get("risk") or "INFO").upper() for f in sf)
+
+    cover = _build_scope_cover(client_name, "CIS AWS Foundations Benchmark Assessment",
+                               meta, "Cloud Infrastructure", None, incomplete)
+    body = cover
+
+    body += '<div class="page"><h1>Executive Summary</h1>'
+    body += f'''<p class="section-intro">
+This report maps {esc(client_name)}'s cloud infrastructure findings against the
+CIS Amazon Web Services Foundations Benchmark. The CIS Benchmark provides a
+prescriptive set of security configuration recommendations for AWS environments,
+organized by control family. Each finding is mapped to the most relevant CIS
+section to identify gaps in compliance and prioritize hardening efforts.</p>'''
+
+    body += '<div class="stats-row">'
+    body += f'<div class="stat-card"><div class="stat-number">{len(findings)}</div><div class="stat-label">Total Findings</div></div>'
+    sections_with_findings = sum(1 for sf in section_findings.values() if sf)
+    body += f'<div class="stat-card"><div class="stat-number">{sections_with_findings}/{len(CIS_SECTIONS)}</div><div class="stat-label">Sections Impacted</div></div>'
+    mapped_ids = set(id(f) for sf in section_findings.values() for f in sf)
+    body += f'<div class="stat-card"><div class="stat-number">{len(mapped_ids)}</div><div class="stat-label">Mapped Findings</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number">{len(findings) - len(mapped_ids)}</div><div class="stat-label">Unmapped</div></div>'
+    body += '</div>'
+    body += _risk_cards_html(risk_counts)
+    body += '</div>'
+
+    body += '<div class="page"><h1>CIS Section Summary</h1>'
+    body += '<table><tr><th>CIS Section</th><th>Findings</th><th>Critical</th><th>High</th><th>Medium</th><th>Low</th><th>Status</th></tr>'
+    for section in CIS_SECTIONS:
+        sf = section_findings[section]
+        rc = section_risk_counts[section]
+        count = len(sf)
+        if count == 0:
+            body += f'<tr><td>{esc(section)}</td><td style="text-align:center;color:var(--slate-400)">0</td>'
+            body += '<td></td><td></td><td></td><td></td>'
+            body += '<td><span style="color:#16a34a;font-weight:700">&#10003; Pass</span></td></tr>'
+            continue
+        worst = "INFO"
+        for r in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            if rc.get(r, 0) > 0:
+                worst = r
+                break
+        status_color = RISK_COLORS.get(worst, "#666")
+        body += f'<tr><td><strong>{esc(section)}</strong></td>'
+        body += f'<td style="text-align:center;font-weight:700">{count}</td>'
+        for lvl in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            c = rc.get(lvl, 0)
+            color = RISK_COLORS.get(lvl, "#666")
+            body += f'<td style="text-align:center;color:{color};font-weight:700">{c if c else "-"}</td>'
+        body += f'<td><span style="color:{status_color};font-weight:700">&#10007; Fail</span></td></tr>'
+    body += '</table></div>'
+
+    for section, cfg in CIS_SECTIONS.items():
+        sf = section_findings[section]
+        if not sf:
+            continue
+        body += f'<div class="page"><h1>{esc(section)}</h1>'
+        body += f'<p class="section-intro">{esc(cfg["description"])} {len(sf)} finding(s) identified.</p>'
+        body += _findings_cards(sf)
+        body += '</div>'
+
+    unmapped = [f for f in findings if id(f) not in mapped_ids]
+    if unmapped:
+        body += '<div class="page"><h1>Findings Outside CIS Benchmark Scope</h1>'
+        body += f'<p class="section-intro">{len(unmapped)} finding(s) do not map directly to CIS AWS Foundations Benchmark controls but remain relevant to the overall cloud security posture.</p>'
+        body += _findings_cards(unmapped)
+        body += '</div>'
+
+    empty_sections = [s for s in CIS_SECTIONS if not section_findings[s]]
+    body += '<div class="page"><h1>CIS Benchmark Gap Analysis</h1>'
+    if empty_sections:
+        body += f'''<p class="section-intro">The following CIS sections had no findings mapped.
+This may indicate either strong compliance in those areas or limited assessment
+coverage. A dedicated CIS benchmark scan (e.g., Prowler, ScoutSuite) is recommended
+for full control-level coverage.</p>'''
+        body += '<table><tr><th>CIS Section</th><th>Status</th><th>Recommendation</th></tr>'
+        for section in empty_sections:
+            body += f'<tr><td>{esc(section)}</td>'
+            body += '<td><span style="color:#16a34a;font-weight:700">No Findings</span></td>'
+            body += '<td style="font-size:8pt">Verify with dedicated CIS benchmark tooling for full control-level coverage</td></tr>'
+        body += '</table>'
+    else:
+        body += '<p class="section-intro">All CIS sections had findings mapped. Review each section for specific control gaps.</p>'
+    body += '</div>'
+
+    return _endpoint_doc_wrap("CIS AWS Foundations Benchmark Assessment", client_name, body)
+
+
+def build_cloud_compliance_report(data):
+    """Cloud Regulatory Compliance Report — multi-framework gap analysis."""
+    meta = data.get("crucible_meta", {})
+    client_name = meta.get("client_name", "Client")
+    incomplete = data.get("incomplete", False)
+    findings = sorted(data.get("forge_findings", []), key=risk_sort)
+    risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
+
+    frameworks = {
+        "NIST 800-53": {
+            "field": "nist_800_53",
+            "description": "NIST Special Publication 800-53 provides a catalog of security and privacy controls for federal information systems. These controls are widely adopted as a baseline for cloud security governance.",
+        },
+        "NIST CSF 2.0": {
+            "field": "nist_csf2",
+            "description": "The NIST Cybersecurity Framework 2.0 provides outcome-based guidance organized around Govern, Identify, Protect, Detect, Respond, and Recover functions.",
+        },
+        "NIST 800-171": {
+            "field": "nist_800_171",
+            "description": "NIST SP 800-171 protects Controlled Unclassified Information (CUI) in non-federal systems, commonly required for government contractors.",
+        },
+        "PCI DSS 4.0": {
+            "field": "pci_dss_4",
+            "description": "The Payment Card Industry Data Security Standard v4.0 establishes requirements for organizations that store, process, or transmit cardholder data.",
+        },
+        "ISO 27001": {
+            "field": "iso_27001",
+            "description": "ISO/IEC 27001 specifies requirements for establishing, implementing, and continually improving an information security management system (ISMS).",
+        },
+        "ISO 27002": {
+            "field": "iso_27002",
+            "description": "ISO/IEC 27002 provides implementation guidance for information security controls referenced by ISO 27001.",
+        },
+        "SOC 2": {
+            "field": "soc2",
+            "description": "SOC 2 Trust Services Criteria cover security, availability, processing integrity, confidentiality, and privacy for service organizations.",
+        },
+        "HITRUST CSF": {
+            "field": "hitrust",
+            "description": "The HITRUST Common Security Framework integrates healthcare-specific regulatory requirements (HIPAA) with industry standards.",
+        },
+        "GDPR": {
+            "field": "gdpr",
+            "description": "The General Data Protection Regulation governs data protection and privacy for individuals within the European Union.",
+        },
+    }
+
+    framework_findings = {}
+    for fw_label, fw_cfg in frameworks.items():
+        field = fw_cfg["field"]
+        mapped = [f for f in findings if f.get(field)]
+        framework_findings[fw_label] = mapped
+
+    cover = _build_scope_cover(client_name, "Cloud Regulatory Compliance Report",
+                               meta, "Cloud Infrastructure", None, incomplete)
+    body = cover
+
+    body += '<div class="page"><h1>Executive Summary</h1>'
+    body += f'''<p class="section-intro">
+This report maps cloud infrastructure security findings from {esc(client_name)}'s
+AWS environment against major regulatory and compliance frameworks. This cross-reference
+enables compliance, legal, and governance teams to understand the regulatory impact of
+identified cloud misconfigurations and prioritize remediation to satisfy audit requirements.</p>'''
+
+    body += '<div class="stats-row">'
+    body += f'<div class="stat-card"><div class="stat-number">{len(findings)}</div><div class="stat-label">Total Findings</div></div>'
+    fw_with_hits = sum(1 for v in framework_findings.values() if v)
+    body += f'<div class="stat-card"><div class="stat-number">{fw_with_hits}/{len(frameworks)}</div><div class="stat-label">Frameworks Impacted</div></div>'
+    mapped_ids = set(id(f) for fw_f in framework_findings.values() for f in fw_f)
+    body += f'<div class="stat-card"><div class="stat-number">{len(mapped_ids)}</div><div class="stat-label">Mapped Findings</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number">{len(findings) - len(mapped_ids)}</div><div class="stat-label">Unmapped</div></div>'
+    body += '</div>'
+    body += _risk_cards_html(risk_counts)
+    body += '</div>'
+
+    body += '<div class="page"><h1>Framework Coverage Matrix</h1>'
+    body += '<p class="section-intro">Summary of findings mapped to each compliance framework. Frameworks with zero mappings indicate findings have not yet been enriched with that framework\'s control references.</p>'
+    body += '<table><tr><th>Framework</th><th>Findings</th><th>Critical</th><th>High</th><th>Medium</th><th>Controls Hit</th></tr>'
+    for fw_label, fw_cfg in frameworks.items():
+        fw_f = framework_findings[fw_label]
+        field = fw_cfg["field"]
+        if not fw_f:
+            body += f'<tr><td>{esc(fw_label)}</td><td style="text-align:center;color:var(--slate-400)">0</td><td></td><td></td><td></td><td style="text-align:center;color:var(--slate-400)">-</td></tr>'
+            continue
+        rc = Counter((f.get("risk") or "INFO").upper() for f in fw_f)
+        controls = set()
+        for f in fw_f:
+            ctrls = f.get(field, [])
+            if isinstance(ctrls, str):
+                ctrls = [c.strip() for c in ctrls.split(",") if c.strip()]
+            controls.update(ctrls)
+        body += f'<tr><td><strong>{esc(fw_label)}</strong></td>'
+        body += f'<td style="text-align:center;font-weight:700">{len(fw_f)}</td>'
+        for lvl in ("CRITICAL", "HIGH", "MEDIUM"):
+            c = rc.get(lvl, 0)
+            color = RISK_COLORS.get(lvl, "#666")
+            body += f'<td style="text-align:center;color:{color};font-weight:700">{c if c else "-"}</td>'
+        body += f'<td style="text-align:center">{len(controls)}</td></tr>'
+    body += '</table></div>'
+
+    for fw_label, fw_cfg in frameworks.items():
+        fw_f = framework_findings[fw_label]
+        field = fw_cfg["field"]
+        if not fw_f:
+            continue
+        fw_f_sorted = sorted(fw_f, key=risk_sort)
+        control_groups = defaultdict(list)
+        for f in fw_f_sorted:
+            ctrls = f.get(field, [])
+            if isinstance(ctrls, str):
+                ctrls = [c.strip() for c in ctrls.split(",") if c.strip()]
+            for ctrl in ctrls:
+                control_groups[ctrl].append(f)
+
+        body += f'<div class="page"><h1>{esc(fw_label)} Gap Analysis</h1>'
+        body += f'<p class="section-intro">{esc(fw_cfg["description"])}</p>'
+        body += f'<p style="margin-bottom:10px;"><strong>{len(fw_f)}</strong> finding(s) mapped to <strong>{len(control_groups)}</strong> control(s).</p>'
+        body += '<table><tr><th>Control</th><th>Findings</th><th>Highest Risk</th><th>Representative Finding</th></tr>'
+        for ctrl in sorted(control_groups.keys()):
+            ctrl_f = control_groups[ctrl]
+            worst = "INFO"
+            for f in ctrl_f:
+                r = (f.get("risk") or "INFO").upper()
+                if RISK_ORDER.get(r, 5) < RISK_ORDER.get(worst, 5):
+                    worst = r
+            color = RISK_COLORS.get(worst, "#666")
+            rep_title = esc((ctrl_f[0].get("title", ""))[:60])
+            body += f'<tr><td><code>{esc(ctrl)}</code></td>'
+            body += f'<td style="text-align:center">{len(ctrl_f)}</td>'
+            body += f'<td><span class="badge" style="background:{color}">{worst}</span></td>'
+            body += f'<td style="font-size:8pt">{rep_title}</td></tr>'
+        body += '</table></div>'
+
+    # ── OWASP Cloud-Native Application Security Top 10 ──
+    CNAS_CATEGORIES = {
+        "CNAS-1: Insecure Cloud, Container, or Orchestration Configuration": {
+            "patterns": [
+                "s3", "bucket", "public access", "security group", "nacl", "vpc",
+                "encryption", "versioning", "acl", "block public", "0.0.0.0/0",
+                "ingress", "egress", "misconfigur", "default", "permissive",
+                "unrestricted", "open to internet", "iam", "policy", "role",
+                "cloudfront", "waf", "kms", "efs", "dynamodb", "sns", "sqs",
+                "lambda", "ecs", "rds", "ec2",
+            ],
+            "description": "Insecure defaults, overly permissive configurations, and missing security controls across cloud services, containers, and orchestration platforms.",
+        },
+        "CNAS-3: Improper Authentication and Authorization": {
+            "patterns": [
+                "mfa", "root account", "access key", "password policy",
+                "credential", "console access", "privilege", "permission",
+                "wildcard", "admin", "cross-account", "assume role",
+                "service account", "excessive",
+            ],
+            "description": "Weak authentication mechanisms, missing MFA, overly broad IAM policies, and improper authorization boundaries.",
+        },
+        "CNAS-5: Insecure Secrets Management": {
+            "patterns": [
+                "secret", "key management", "kms", "rotation", "access key",
+                "credential", "password", "secrets manager", "ssm parameter",
+                "certificate", "acm", "hardcoded", "plaintext", "exposed key",
+            ],
+            "description": "Secrets stored insecurely, missing rotation, exposed credentials, and inadequate key management practices.",
+        },
+        "CNAS-6: Over-Permissive or Insecure Network Policies": {
+            "patterns": [
+                "security group", "nacl", "vpc", "subnet", "public ip",
+                "internet gateway", "nat", "peering", "firewall",
+                "0.0.0.0/0", "ingress", "egress", "route", "elastic ip",
+                "load balancer", "cloudfront", "endpoint",
+            ],
+            "description": "Network segmentation failures, overly permissive firewall rules, and missing network-level access controls.",
+        },
+        "CNAS-10: Ineffective Logging and Monitoring": {
+            "patterns": [
+                "cloudtrail", "cloudwatch", "flow log", "access log",
+                "audit log", "monitoring", "alert", "guardduty", "guard duty",
+                "detective", "security hub", "config", "inspector",
+                "log", "event",
+            ],
+            "description": "Gaps in audit logging, missing threat detection services, and insufficient monitoring that allow attacks to go undetected.",
+        },
+    }
+    CNAS_NA = {
+        "CNAS-2: Injection Flaws": "Application-layer vulnerability — not assessed by cloud infrastructure audit.",
+        "CNAS-4: CI/CD Pipeline Vulnerabilities": "Build/deploy pipeline security — not assessed by cloud infrastructure audit.",
+        "CNAS-7: Using Components with Known Vulnerabilities": "Software composition analysis — not assessed by cloud infrastructure audit.",
+        "CNAS-8: Improper Assets Management": "Partial overlap with resource inventory; dedicated assessment recommended.",
+        "CNAS-9: Inadequate Compute Resource Quota Limits": "Resource quota/DoS protection — not currently assessed by Forge.",
+    }
+
+    cnas_section_findings = {}
+    for cat, cfg in CNAS_CATEGORIES.items():
+        cnas_section_findings[cat] = _filter_by_title_patterns(findings, cfg["patterns"])
+
+    cnas_mapped_ids = set(id(f) for sf in cnas_section_findings.values() for f in sf)
+    cnas_total_mapped = len(cnas_mapped_ids)
+
+    body += '<div class="page"><h1>OWASP Cloud-Native Application Security Top 10</h1>'
+    body += f'''<p class="section-intro">The OWASP Cloud-Native Application Security (CNAS)
+Top 10 identifies the most critical security risks in cloud-native environments.
+{cnas_total_mapped} finding(s) map to {sum(1 for sf in cnas_section_findings.values() if sf)}
+of the {len(CNAS_CATEGORIES)} applicable CNAS categories. {len(CNAS_NA)} categories are
+outside the scope of a cloud infrastructure configuration audit.</p>'''
+
+    body += '<table><tr><th>CNAS Category</th><th>Findings</th><th>Highest Risk</th><th>Status</th></tr>'
+    for cat in CNAS_CATEGORIES:
+        sf = cnas_section_findings[cat]
+        if not sf:
+            body += f'<tr><td>{esc(cat)}</td><td style="text-align:center;color:var(--slate-400)">0</td><td></td>'
+            body += '<td style="font-size:8pt;color:var(--slate-400)">No findings mapped</td></tr>'
+            continue
+        rc = Counter((f.get("risk") or "INFO").upper() for f in sf)
+        worst = "INFO"
+        for r in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
+            if rc.get(r, 0) > 0:
+                worst = r
+                break
+        color = RISK_COLORS.get(worst, "#666")
+        body += f'<tr><td><strong>{esc(cat)}</strong></td>'
+        body += f'<td style="text-align:center;font-weight:700">{len(sf)}</td>'
+        body += f'<td><span class="badge" style="background:{color}">{worst}</span></td>'
+        body += f'<td><span style="color:{color};font-weight:700">&#10007; Fail</span></td></tr>'
+    for cat, reason in CNAS_NA.items():
+        body += f'<tr><td style="color:var(--slate-400)">{esc(cat)}</td>'
+        body += '<td style="text-align:center;color:var(--slate-400)">—</td><td></td>'
+        body += f'<td style="font-size:7.5pt;color:var(--slate-400)">{esc(reason)}</td></tr>'
+    body += '</table></div>'
+
+    for cat, cfg in CNAS_CATEGORIES.items():
+        sf = cnas_section_findings[cat]
+        if not sf:
+            continue
+        body += f'<div class="page"><h2>{esc(cat)}</h2>'
+        body += f'<p class="section-intro">{esc(cfg["description"])} {len(sf)} finding(s) identified.</p>'
+        body += _findings_cards(sf)
+        body += '</div>'
+
+    # ── Enrichment Note ──
+    unenriched = len(findings) - len(mapped_ids)
+    if unenriched > 0:
+        body += '<div class="page"><h1>Enrichment Coverage Note</h1>'
+        body += f'''<p class="section-intro">
+{unenriched} of {len(findings)} finding(s) have not been mapped to any compliance
+framework. This typically indicates the findings have not yet been processed through
+catalogue-based compliance enrichment. Running the Arbiter enrichment pipeline against
+these findings will populate NIST, PCI DSS, ISO 27001, SOC 2, and other framework
+mappings for more complete compliance coverage.</p>'''
+        body += '<p>Findings without compliance mappings are still included in the pentest and CIS benchmark reports.</p>'
+        body += '</div>'
+
+    return _endpoint_doc_wrap("Cloud Regulatory Compliance Report", client_name, body)
+
+
+def build_cloud_exec_report(data):
+    """Cloud Executive Summary — non-technical leadership overview."""
+    meta = data.get("crucible_meta", {})
+    client_name = meta.get("client_name", "Client")
+    incomplete = data.get("incomplete", False)
+    findings = sorted(data.get("forge_findings", []), key=risk_sort)
+    risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
+    service_dashboard = data.get("service_dashboard", [])
+    iam_matrix = data.get("iam_matrix", [])
+
+    cover = _build_scope_cover(client_name, "Cloud Security Executive Summary",
+                               meta, "Cloud Infrastructure", None, incomplete)
+    body = cover
+
+    body += '<div class="page"><h1>Executive Overview</h1>'
+    crit = risk_counts.get("CRITICAL", 0)
+    high = risk_counts.get("HIGH", 0)
+    med = risk_counts.get("MEDIUM", 0)
+    total = len(findings)
+    svc_affected = len([s for s in service_dashboard if s.get("findings", 0) > 0])
+    users_no_mfa = sum(1 for u in iam_matrix if u.get("mfa_active") in ("false", False))
+
+    body += f'''<p class="section-intro">
+the assessor performed a cloud infrastructure security assessment of {esc(client_name)}'s
+Amazon Web Services (AWS) environment. The assessment identified <strong>{total}
+finding(s)</strong> across <strong>{svc_affected} AWS service(s)</strong>, including
+<strong style="color:#dc2626">{crit} critical</strong> and
+<strong style="color:#ea580c">{high} high</strong> severity issues that require
+immediate attention.</p>'''
+
+    body += '<div class="stats-row">'
+    body += f'<div class="stat-card"><div class="stat-number">{total}</div><div class="stat-label">Total Findings</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number" style="color:#dc2626">{crit}</div><div class="stat-label">Critical</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number" style="color:#ea580c">{high}</div><div class="stat-label">High</div></div>'
+    body += f'<div class="stat-card"><div class="stat-number">{svc_affected}</div><div class="stat-label">Services Affected</div></div>'
+    body += '</div>'
+    body += _risk_cards_html(risk_counts)
+
+    pie = _build_risk_pie(risk_counts)
+    if pie:
+        body += '<div class="risk-charts-row">'
+        body += f'<div class="risk-chart-col"><h4>Risk Distribution</h4>{pie}</div>'
+        body += '</div>'
+    body += _exec_risk_heatmap(risk_counts, total)
+    body += '</div>'
+
+    body += '<div class="page"><h1>Risk Posture Assessment</h1>'
+    if crit > 0:
+        posture = "Critical"
+        posture_color = "#dc2626"
+        posture_text = f'''{esc(client_name)}'s cloud environment is at <strong>critical risk</strong>.
+{crit} critical finding(s) present immediate exploitation opportunities that could result
+in unauthorized access to production data, account compromise, or complete environment takeover.'''
+    elif high > 3:
+        posture = "High"
+        posture_color = "#ea580c"
+        posture_text = f'''{esc(client_name)}'s cloud environment has a <strong>high risk</strong>
+posture. {high} high-severity finding(s) represent significant attack surface that could
+be exploited for data access, privilege escalation, or lateral movement.'''
+    elif high > 0:
+        posture = "Moderate"
+        posture_color = "#d97706"
+        posture_text = f'''{esc(client_name)}'s cloud environment has a <strong>moderate risk</strong>
+posture. While no critical issues were found, {high} high-severity finding(s) warrant
+prompt remediation to reduce the attack surface.'''
+    else:
+        posture = "Low"
+        posture_color = "#16a34a"
+        posture_text = f'''{esc(client_name)}'s cloud environment demonstrates a <strong>low risk</strong>
+posture with primarily medium and low severity findings. Continue maintaining security
+hygiene and address remaining findings on a standard remediation schedule.'''
+
+    body += f'''<div style="background:{posture_color}15;border:2px solid {posture_color};
+border-radius:8px;padding:16px 20px;margin-bottom:16px;">
+<div style="font-size:11pt;font-weight:700;color:{posture_color};margin-bottom:6px;">
+Overall Risk: {posture}</div>
+<p style="font-size:9pt;margin:0;">{posture_text}</p></div>'''
+    body += '</div>'
+
+    if service_dashboard:
+        body += '<div class="page"><h1>AWS Service Impact</h1>'
+        body += '<p class="section-intro">Distribution of findings across AWS services in the assessed environment.</p>'
+        body += '<table><tr><th>AWS Service</th><th>Resources</th><th>Findings</th><th>Highest Severity</th></tr>'
+        for svc in sorted(service_dashboard, key=lambda s: s.get("findings", 0), reverse=True):
+            if svc.get("findings", 0) == 0:
+                continue
+            name = esc(svc.get("service", ""))
+            resources = svc.get("resources", 0)
+            svc_findings = svc.get("findings", 0)
+            if svc.get("critical", 0) > 0:
+                worst = "CRITICAL"
+            elif svc.get("high", 0) > 0:
+                worst = "HIGH"
+            elif svc.get("medium", 0) > 0:
+                worst = "MEDIUM"
+            elif svc.get("low", 0) > 0:
+                worst = "LOW"
+            else:
+                worst = "INFO"
+            color = RISK_COLORS.get(worst, "#666")
+            body += f'<tr><td><strong>{name}</strong></td>'
+            body += f'<td style="text-align:center">{resources}</td>'
+            body += f'<td style="text-align:center;font-weight:700">{svc_findings}</td>'
+            body += f'<td><span class="badge" style="background:{color}">{worst}</span></td></tr>'
+        body += '</table></div>'
+
+    top = findings[:10]
+    if top:
+        body += '<div class="page"><h1>Top Findings</h1>'
+        body += '<p class="section-intro">The most severe findings from the cloud assessment, ranked by risk.</p>'
+        body += '<table><tr><th>#</th><th>Risk</th><th>Finding</th><th>Service</th></tr>'
+        for idx, f in enumerate(top, 1):
+            risk = (f.get("risk") or "INFO").upper()
+            color = RISK_COLORS.get(risk, "#666")
+            title = esc(f.get("title", ""))
+            svc = ""
+            for s in ("S3", "IAM", "EC2", "RDS", "KMS", "Lambda", "VPC", "CloudTrail",
+                       "CloudWatch", "GuardDuty", "Security Hub", "CloudFront", "SNS",
+                       "SQS", "EFS", "ACM", "Secrets Manager", "OpenSearch", "DynamoDB", "ECS"):
+                if s.lower() in title.lower():
+                    svc = s
+                    break
+            body += f'<tr><td>{idx}</td><td><span class="badge" style="background:{color}">{risk}</span></td>'
+            body += f'<td style="font-size:8pt">{title}</td>'
+            body += f'<td style="font-size:8pt">{esc(svc)}</td></tr>'
+        body += '</table></div>'
+
+    body += '<div class="page"><h1>Strategic Recommendations</h1>'
+    body += f'''<p class="section-intro">Based on the cloud security assessment of {esc(client_name)}'s
+AWS environment, the assessor recommends the following strategic actions.</p>'''
+    body += '''<table>
+    <tr><th>Priority</th><th>Recommendation</th><th>Business Impact</th></tr>
+    <tr><td><span class="badge" style="background:#dc2626">IMMEDIATE</span></td>
+        <td>Enforce multi-factor authentication on all IAM users and restrict root account usage</td>
+        <td>Prevents account compromise and unauthorized access to production resources</td></tr>
+    <tr><td><span class="badge" style="background:#dc2626">IMMEDIATE</span></td>
+        <td>Block public access to all S3 buckets and enable default encryption</td>
+        <td>Prevents data exposure, regulatory violations, and reputational damage</td></tr>
+    <tr><td><span class="badge" style="background:#ea580c">HIGH</span></td>
+        <td>Implement comprehensive logging (CloudTrail, VPC Flow Logs, S3 Access Logs)</td>
+        <td>Enables incident detection, forensic investigation, and compliance audit trails</td></tr>
+    <tr><td><span class="badge" style="background:#ea580c">HIGH</span></td>
+        <td>Review and restrict security group rules — eliminate 0.0.0.0/0 ingress</td>
+        <td>Reduces external attack surface and prevents unauthorized network access</td></tr>
+    <tr><td><span class="badge" style="background:#d97706">MEDIUM</span></td>
+        <td>Enable GuardDuty, Security Hub, and AWS Config for continuous monitoring</td>
+        <td>Provides automated threat detection and continuous compliance monitoring</td></tr>
+    <tr><td><span class="badge" style="background:#d97706">MEDIUM</span></td>
+        <td>Implement least-privilege IAM policies with automated access reviews</td>
+        <td>Minimizes blast radius of credential compromise and satisfies compliance requirements</td></tr>
+</table></div>'''
+
+    return _endpoint_doc_wrap("Cloud Security Executive Summary", client_name, body)
 
 
 def build_quill_report(data):
