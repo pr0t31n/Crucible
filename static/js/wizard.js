@@ -137,33 +137,7 @@
     });
   }
 
-  /* ── Mobile app files ────────────────────────────────── */
-  var mobileFiles = [];
-  var mobileAppFile = document.getElementById('mobileAppFile');
-  var mobileAppList = document.getElementById('mobileAppList');
-  var mobileAppCount = document.getElementById('mobileAppCount');
-
-  mobileAppFile.addEventListener('change', function() {
-    for (var i = 0; i < this.files.length; i++) mobileFiles.push(this.files[i]);
-    this.value = '';
-    renderMobileFiles();
-  });
-
-  function renderMobileFiles() {
-    mobileAppList.innerHTML = '';
-    mobileAppCount.textContent = mobileFiles.length ? mobileFiles.length + ' file(s)' : 'No files selected';
-    mobileFiles.forEach(function(f, idx) {
-      var li = document.createElement('li');
-      li.innerHTML = '<span>' + escHtml(f.name) + '</span><span class="form-hint">' + formatBytes(f.size) + '</span><button type="button" class="file-remove" data-idx="' + idx + '">&times;</button>';
-      mobileAppList.appendChild(li);
-    });
-    mobileAppList.querySelectorAll('.file-remove').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        mobileFiles.splice(parseInt(this.dataset.idx), 1);
-        renderMobileFiles();
-      });
-    });
-  }
+  /* ── Mobile app path ──────────────────────────────────── */
 
   /* ── Isotope files ────────────────────────────────────── */
   var isoFiles = [];
