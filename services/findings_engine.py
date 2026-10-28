@@ -86,6 +86,7 @@ class FindingsEngine:
     }
 
     _ENRICH_FIELDS = [
+        ("category", "category"),
         ("cvss_v3_base", "cvss_score"), ("cvss_vector", "cvss_vector"),
         ("cwe", "cwe"), ("kev", "kev"),
         ("owasp_web", "owasp"), ("owasp_api", "owasp_api"),
