@@ -917,6 +917,36 @@ def api_update_scopes(project_id):
     for s in removed:
         scope_tools.pop(s, None)
 
+    tool_settings = dict(project.get("tool_settings", {}))
+    _scope_to_settings = {
+        "quill": {
+            "mobile_platform": ("mobile_platform", "auto"),
+            "mobile_app_path": ("app_files", None),
+            "mobile_dynamic": ("dynamic_analysis", False),
+            "frida_device": ("frida_device", ""),
+        },
+        "forge": {
+            "cloud_provider": ("cloud_provider", "all"),
+            "aws_auth_method": ("aws_auth_method", ""),
+        },
+    }
+    for tid, field_map in _scope_to_settings.items():
+        if tid in existing_tools:
+            ts = tool_settings.get(tid, {})
+            changed = False
+            for scope_key, (settings_key, default) in field_map.items():
+                val = scope_def.get(scope_key)
+                if val is not None:
+                    if settings_key == "app_files" and isinstance(val, str):
+                        if val:
+                            ts["app_files"] = [val]
+                            changed = True
+                    elif ts.get(settings_key) != val:
+                        ts[settings_key] = val
+                        changed = True
+            if changed:
+                tool_settings[tid] = ts
+
     updates = {
         "active_scopes": desired,
         "scope_definition": scope_def,
@@ -924,6 +954,7 @@ def api_update_scopes(project_id):
         "scope_tool_dirs": scope_tool_dirs,
         "tools": existing_tools,
         "tool_dirs": tool_dirs,
+        "tool_settings": tool_settings,
     }
     if len(desired) > 1:
         updates["scope"] = "multi"
