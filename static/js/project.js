@@ -8387,6 +8387,131 @@ function _renderNetPosture(data) {
     return '<div style="margin-bottom:8px;font-weight:600">Network Posture</div>' + summaryCards + subnetBlocks;
 }
 
+/* ── Cloud Intelligence Renderers ─────────────────────────────── */
+
+function _cloudRiskBadge(val) {
+    if (val === null || val === undefined || val === '') return '';
+    var s = String(val).toUpperCase();
+    var m = {CRITICAL:'risk-critical',HIGH:'risk-high',MEDIUM:'risk-medium',LOW:'risk-low',INFO:'risk-info',OK:'risk-low'};
+    if (m[s]) return '<span class="risk-badge ' + m[s] + '">' + esc(s) + '</span>';
+    return esc(String(val));
+}
+
+function _cloudCountCell(val, riskLevel) {
+    var n = parseInt(val, 10);
+    if (isNaN(n) || n === 0) return '<span style="opacity:0.3">0</span>';
+    var m = {critical:'risk-critical',high:'risk-high',medium:'risk-medium',low:'risk-low',info:'risk-info'};
+    var cls = m[riskLevel] || '';
+    return cls ? '<span class="risk-badge ' + cls + '">' + n + '</span>' : esc(String(n));
+}
+
+function _cloudStatusBadge(val) {
+    var s = String(val || '');
+    if (s === 'Issues Found') return '<span style="color:var(--risk-high);font-weight:600">' + esc(s) + '</span>';
+    if (s === 'OK') return '<span style="color:var(--risk-low);font-weight:600">' + esc(s) + '</span>';
+    if (s === 'Access Denied') return '<span style="color:var(--risk-medium);font-weight:600">' + esc(s) + '</span>';
+    if (s === 'No Resources') return '<span style="opacity:0.5">' + esc(s) + '</span>';
+    return esc(s);
+}
+
+function _cloudAccessBadge(val) {
+    var s = String(val || '');
+    if (s === 'Access Denied') return '<span style="color:var(--risk-medium);font-weight:600">' + esc(s) + '</span>';
+    if (s === 'Allowed') return '<span style="color:var(--risk-low)">' + esc(s) + '</span>';
+    return esc(s);
+}
+
+function _cloudTable(headers, colKeys, rows, formatters) {
+    var h = '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto"><table class="tool-table" style="width:100%"><thead><tr>';
+    headers.forEach(function(hd) { h += '<th>' + esc(hd) + '</th>'; });
+    h += '</tr></thead><tbody>';
+    rows.forEach(function(obj) {
+        h += '<tr>';
+        colKeys.forEach(function(k, ci) {
+            var v = obj[k];
+            var fmt = formatters[k];
+            var cell = fmt ? fmt(v, k) : (v != null ? esc(String(v)) : '');
+            var s = ci === 0 ? ' style="font-weight:600;white-space:nowrap"' : '';
+            h += '<td' + s + '>' + cell + '</td>';
+        });
+        h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+}
+
+function _extractCloudPayload(data) {
+    if (Array.isArray(data)) return data;
+    if (typeof data === 'object' && data) {
+        var keys = Object.keys(data).filter(function(k) { return k[0] !== '_' && k !== 'available'; });
+        for (var i = 0; i < keys.length; i++) {
+            if (Array.isArray(data[keys[i]])) return data[keys[i]];
+        }
+    }
+    return null;
+}
+
+function _renderCloudServices(data) {
+    var arr = _extractCloudPayload(data);
+    if (!arr || !arr.length) return '<div class="empty-state"><div class="empty-state-text">No cloud service data available.</div></div>';
+    var headers = ['Service', 'Status', 'Access', 'Findings', 'Resources', 'Critical', 'High', 'Medium', 'Low', 'Info'];
+    var keys =    ['service', 'status', 'access', 'findings', 'resources', 'critical', 'high', 'medium', 'low', 'info'];
+    var fmts = {
+        status: _cloudStatusBadge,
+        access: _cloudAccessBadge,
+        critical: function(v) { return _cloudCountCell(v, 'critical'); },
+        high: function(v) { return _cloudCountCell(v, 'high'); },
+        medium: function(v) { return _cloudCountCell(v, 'medium'); },
+        low: function(v) { return _cloudCountCell(v, 'low'); },
+        info: function(v) { return _cloudCountCell(v, 'info'); },
+        findings: function(v) { var n = parseInt(v,10); return isNaN(n)||n===0 ? '<span style="opacity:0.3">0</span>' : '<strong>'+n+'</strong>'; },
+        resources: function(v) { var n = parseInt(v,10); return isNaN(n)||n===0 ? '<span style="opacity:0.3">0</span>' : String(n); },
+    };
+    return _cloudTable(headers, keys, arr, fmts);
+}
+
+function _renderCloudResources(data) {
+    var arr = _extractCloudPayload(data);
+    if (!arr || !arr.length) return '<div class="empty-state"><div class="empty-state-text">No cloud resource data available.</div></div>';
+    var headers = ['Service', 'Name', 'Type', 'Resource ID', 'Region', 'Status', 'Findings', 'Risk'];
+    var keys =    ['service', 'name', 'resource_type', 'resource_id', 'region', 'status', 'findings', 'risk'];
+    var fmts = {
+        risk: _cloudRiskBadge,
+        findings: function(v) { var n = parseInt(v,10); return isNaN(n)||n===0 ? '<span style="opacity:0.3">0</span>' : '<strong>'+n+'</strong>'; },
+        status: function(v) {
+            var s = String(v||'');
+            if (s === 'running' || s === 'active') return '<span style="color:var(--risk-low)">' + esc(s) + '</span>';
+            if (s === 'stopped' || s === 'terminated') return '<span style="color:var(--risk-medium)">' + esc(s) + '</span>';
+            return esc(s);
+        },
+    };
+    return _cloudTable(headers, keys, arr, fmts);
+}
+
+function _renderCloudIAM(data) {
+    var arr = _extractCloudPayload(data);
+    if (!arr || !arr.length) return '<div class="empty-state"><div class="empty-state-text">No IAM data available.</div></div>';
+    var headers = ['User', 'Password', 'MFA', 'Keys', 'Active Keys', 'Policies', 'Findings', 'Risk', 'Last Login'];
+    var keys =    ['user', 'password_enabled', 'mfa_active', 'access_keys', 'active_keys', 'policies', 'findings', 'risk', 'last_login'];
+    var fmts = {
+        risk: _cloudRiskBadge,
+        findings: function(v) { var n = parseInt(v,10); return isNaN(n)||n===0 ? '<span style="opacity:0.3">0</span>' : '<strong>'+n+'</strong>'; },
+        mfa_active: function(v) {
+            var s = String(v||'').toLowerCase();
+            if (s === 'true') return '<span style="color:var(--risk-low);font-weight:600">true</span>';
+            if (s === 'false') return '<span style="color:var(--risk-high);font-weight:600">false</span>';
+            return esc(String(v||''));
+        },
+        password_enabled: function(v) {
+            var s = String(v||'').toLowerCase();
+            if (s === 'true') return '<span style="font-weight:600">true</span>';
+            if (s === 'false') return '<span style="opacity:0.5">false</span>';
+            return esc(String(v||''));
+        },
+    };
+    return _cloudTable(headers, keys, arr, fmts);
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8426,6 +8551,9 @@ var _INTEL_RENDERERS = {
     'endpoint-nist': _renderEndpointNIST,
     'endpoint-stig': _renderEndpointSTIG,
     'webapp-intel': _renderWebappIntel,
+    'cloud-resources': _renderCloudResources,
+    'cloud-iam': _renderCloudIAM,
+    'cloud-services': _renderCloudServices,
 };
 
 
