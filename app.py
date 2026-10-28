@@ -27,8 +27,11 @@ def create_app():
                 static_folder=str(config.STATIC_DIR),
                 template_folder=str(config.TEMPLATE_DIR))
 
-    app.config["SECRET_KEY"] = _auth.load_secret_key()
-    app.config["SESSION_COOKIE_NAME"] = f"crucible_{config.PORT}"
+    _secret = _auth.load_secret_key()
+    app.config["SECRET_KEY"] = _secret
+    import hashlib as _hl
+    _inst = _hl.sha256(_secret.encode()).hexdigest()[:8]
+    app.config["SESSION_COOKIE_NAME"] = f"crucible_{_inst}"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
