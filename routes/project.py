@@ -361,9 +361,11 @@ _SCOPE_TO_SETTINGS = {
 
 
 def _sync_scope_to_tool_settings(data, project):
+    from models.settings import load_settings, save_settings
     scope_def = data.get("scope_definition", {})
     if not scope_def:
         return
+    proj_dir = project.get("project_dir", "")
     ts = dict(project.get("tool_settings", {}))
     tools = project.get("tools", [])
     changed = False
@@ -371,6 +373,7 @@ def _sync_scope_to_tool_settings(data, project):
         if tid not in tools:
             continue
         tool_ts = dict(ts.get(tid, {}))
+        disk_changed = False
         for scope_key, (settings_key, default) in field_map.items():
             val = scope_def.get(scope_key)
             if val is None:
@@ -379,11 +382,25 @@ def _sync_scope_to_tool_settings(data, project):
                 if val:
                     tool_ts["app_files"] = [val]
                     changed = True
+                    disk_changed = True
             elif tool_ts.get(settings_key) != val:
                 tool_ts[settings_key] = val
                 changed = True
-        if changed:
+                disk_changed = True
+        if disk_changed:
             ts[tid] = tool_ts
+            if proj_dir:
+                disk_settings = load_settings(proj_dir, tid)
+                for scope_key, (settings_key, _) in field_map.items():
+                    val = scope_def.get(scope_key)
+                    if val is None:
+                        continue
+                    if settings_key == "app_files" and isinstance(val, str):
+                        if val:
+                            disk_settings["app_files"] = [val]
+                    else:
+                        disk_settings[settings_key] = val
+                save_settings(proj_dir, tid, disk_settings)
     if changed:
         data["tool_settings"] = ts
 
