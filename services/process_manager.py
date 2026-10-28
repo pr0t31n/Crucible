@@ -2911,9 +2911,9 @@ class ProcessManager:
             if not already:
                 scope = tool_id.split(":", 1)[1] if ":" in tool_id else None
                 cat = "rerun_killed" if final_status == "killed" else "rerun_failed"
-                reason = (f"{tool_name} was killed (return code {rc})"
+                reason = (f"{tool_id} was killed (return code {rc})"
                           if final_status == "killed"
-                          else f"{tool_name} failed with return code {rc}")
+                          else f"{tool_id} failed with return code {rc}")
                 self._create_rerun_action_item(
                     project_id, base_tool, scope, reason, category=cat)
             with self._lock:
