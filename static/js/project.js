@@ -1638,6 +1638,7 @@ function _findingTarget(f) {
 }
 
 function _findingCategory(f) {
+    if (f.category) return f.category;
     var title = f.title || '';
     var idx = title.indexOf(':');
     if (idx > 0) return title.substring(0, idx).trim();
