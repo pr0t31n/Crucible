@@ -335,6 +335,13 @@ socket.on('tool_status', function(data) {
             _mt.perTarget[data.target][data.phase] = _phaseEntry;
             if (!_mtActiveTarget[_baseTool]) _mtActiveTarget[_baseTool] = data.target;
         }
+        var _phSt = (data.status || '').toLowerCase();
+        if (_phSt === 'running' || _phSt === 'pausing') {
+            var _cur = toolStatuses[data.tool_id];
+            if (!_cur || !_cur.status || _cur.status === 'idle') {
+                toolStatuses[data.tool_id] = {status: _phSt, tool_id: data.tool_id, project_id: data.project_id};
+            }
+        }
     } else {
         toolStatuses[data.tool_id] = data;
         if (_sci !== -1) {
@@ -398,6 +405,12 @@ socket.on('console_line', function(data) {
     var maxBuf = _isMobile ? _MOBILE_CONSOLE_TAIL : 5000;
     if (consoleBuffers[tid].length > maxBuf) consoleBuffers[tid].shift();
     if (tid === selectedTool) appendConsoleLine(data);
+    var _clSt = toolStatuses[tid];
+    if (!_clSt || !_clSt.status || _clSt.status === 'idle') {
+        toolStatuses[tid] = {status: 'running', tool_id: tid, project_id: PID};
+        renderToolFeeds();
+        updateConsoleHeader();
+    }
 });
 
 /* ── console_buffer: batch history ─────────────────────────────── */
