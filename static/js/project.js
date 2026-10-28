@@ -9088,7 +9088,7 @@ var SCOPE_REQUIRED_FIELDS = {
     uwb:      [{key:'wireless_ssids',label:'Target Devices',type:'textarea',placeholder:'One device per line'}],
     firewall: [{key:'firewall_vendor',label:'Vendor',type:'select',options:['','palo_alto','cisco','fortigate','checkpoint','juniper','sophos','other']}],
     cloud:    [{key:'cloud_provider',label:'Cloud Provider',type:'select',options:['','aws','azure','gcp']}],
-    mobile:   [{key:'mobile_platform',label:'Platform',type:'select',options:['','android','ios','both']}],
+    mobile:   [{key:'mobile_platform',label:'Platform',type:'select',options:[{value:'',label:'-- Select --'},{value:'auto',label:'Auto-Detect'},{value:'android',label:'Android'},{value:'ios',label:'iOS'}]}],
     file:     []
 };
 
@@ -9620,7 +9620,7 @@ function _showNextScopeModal() {
             group.innerHTML = '<label class="form-label" for="scopeModal_' + f.key + '">' + esc(f.label) + '</label>' +
                 '<textarea class="form-control" id="scopeModal_' + f.key + '" rows="4" placeholder="' + esc(f.placeholder || '') + '"></textarea>';
         } else if (f.type === 'select') {
-            var opts = (f.options || []).map(function(o) { return '<option value="' + esc(o) + '">' + esc(o || '-- Select --') + '</option>'; }).join('');
+            var opts = (f.options || []).map(function(o) { var v=(typeof o==='object'&&o!==null)?(o.value!=null?o.value:''):o; var l=(typeof o==='object'&&o!==null)?(o.label||v):v; return '<option value="' + esc(v) + '">' + esc(l || '-- Select --') + '</option>'; }).join('');
             group.innerHTML = '<label class="form-label" for="scopeModal_' + f.key + '">' + esc(f.label) + '</label>' +
                 '<select class="form-control" id="scopeModal_' + f.key + '">' + opts + '</select>';
         } else {

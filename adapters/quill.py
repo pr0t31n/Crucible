@@ -49,7 +49,11 @@ class QuillAdapter(ToolAdapter):
     def settings_schema(self):
         return {
             "mobile_platform": {"label": "Platform", "type": "select",
-                                "options": ["auto", "android", "ios"]},
+                                "options": [
+                                    {"value": "auto", "label": "Auto-Detect"},
+                                    {"value": "android", "label": "Android"},
+                                    {"value": "ios", "label": "iOS"},
+                                ]},
             "app_files": {"label": "Application Files", "type": "file_list",
                           "hint": "Upload APK, IPA, or AAB files",
                           "accept": ".apk,.ipa,.aab,.xapk"},
