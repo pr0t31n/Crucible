@@ -2665,6 +2665,16 @@ def api_export_intel_xlsx(project_id):
         "external": "External", "internal": "Internal",
         "osint": "OSINT", "webapp": "Web Application",
         "api": "API", "database": "Database",
+        "cloud": "Cloud Infrastructure",
+        "firewall": "Firewall Config Analysis",
+        "mobile": "Mobile Application",
+        "file": "File Analysis",
+        "endpoint": "Endpoint Security",
+        "pcap": "PCAP Analysis",
+        "wifi": "Wi-Fi (802.11)",
+        "bluetooth": "Bluetooth (802.15.1)",
+        "zigbee": "Zigbee (802.15.4)",
+        "uwb": "Ultra-Wideband (UWB) (802.15.4z)",
     }
 
     tool_ids = []
@@ -2767,6 +2777,16 @@ def _save_scope_intel_xlsx(project, project_id, scope_key):
         "external": "External", "internal": "Internal",
         "osint": "OSINT", "webapp": "Web Application",
         "api": "API", "database": "Database",
+        "cloud": "Cloud Infrastructure",
+        "firewall": "Firewall Config Analysis",
+        "mobile": "Mobile Application",
+        "file": "File Analysis",
+        "endpoint": "Endpoint Security",
+        "pcap": "PCAP Analysis",
+        "wifi": "Wi-Fi (802.11)",
+        "bluetooth": "Bluetooth (802.15.1)",
+        "zigbee": "Zigbee (802.15.4)",
+        "uwb": "Ultra-Wideband (UWB) (802.15.4z)",
     }
 
     tool_ids = []
