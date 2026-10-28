@@ -23,6 +23,8 @@ def _backfill_launch_settings(settings, project, tool_id):
     """Inject scope_definition values into settings before launch and persist."""
     settings.pop("_saved_keys", None)
     if tool_id != "ss3":
+        from routes.settings import _backfill_from_project
+        _backfill_from_project(settings, project, tool_id)
         return
     scope_def = project.get("scope_definition") or {}
     from adapters import get_adapter
@@ -831,6 +833,7 @@ def api_execute_action():
         from models.settings import load_settings
         proj_dir = project.get("project_dir", "")
         settings = load_settings(proj_dir, tool_id, scope=scope) if proj_dir else {}
+        _backfill_launch_settings(settings, project, tool_id)
 
         user_settings = data.get("settings")
         if user_settings and isinstance(user_settings, dict):
@@ -1210,6 +1213,7 @@ def api_bulk_launch_tool():
         is_oos = data.get("oos", False)
         launch_scope = f"oos_{scope}" if is_oos and scope else ("oos" if is_oos else scope)
         settings = load_settings(proj_dir, tool_id, scope=scope) if proj_dir else {}
+        _backfill_launch_settings(settings, project, tool_id)
 
         targets = data.get("targets", [])
         if targets and proj_dir:

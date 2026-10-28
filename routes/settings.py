@@ -158,6 +158,55 @@ def _backfill_from_project(settings, project, tool_id):
             settings["vt_api_key"] = scope_def.get("dredge_vt_key", "")
         if not settings.get("abuseipdb_key"):
             settings["abuseipdb_key"] = scope_def.get("dredge_abuseipdb_key", "")
+    elif tool_id == "forge":
+        if not settings.get("cloud_provider"):
+            settings["cloud_provider"] = scope_def.get("cloud_provider", "aws")
+        if not settings.get("aws_profile"):
+            settings["aws_profile"] = scope_def.get("aws_profile", "")
+        if not settings.get("aws_region"):
+            settings["aws_region"] = scope_def.get("aws_region", "")
+        if not settings.get("aws_access_key_id"):
+            settings["aws_access_key_id"] = scope_def.get("aws_access_key_id", "")
+        if not settings.get("aws_secret_key"):
+            settings["aws_secret_key"] = scope_def.get("aws_secret_key", "")
+        if not settings.get("aws_console_url"):
+            settings["aws_console_url"] = scope_def.get("aws_console_url", "")
+        if not settings.get("aws_console_user"):
+            settings["aws_console_user"] = scope_def.get("aws_console_user", "")
+        if not settings.get("aws_console_pass"):
+            settings["aws_console_pass"] = scope_def.get("aws_console_pass", "")
+        if not settings.get("azure_subscription"):
+            settings["azure_subscription"] = scope_def.get("azure_subscription", "")
+        if not settings.get("gcp_project"):
+            settings["gcp_project"] = scope_def.get("gcp_project", "")
+    elif tool_id == "quill":
+        if not settings.get("mobile_platform"):
+            settings["mobile_platform"] = scope_def.get("mobile_platform", "android")
+        if not settings.get("dynamic_analysis"):
+            settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)
+        if not settings.get("frida_device"):
+            settings["frida_device"] = scope_def.get("frida_device", "")
+    elif tool_id == "bastion":
+        if not settings.get("firewall_vendor"):
+            settings["firewall_vendor"] = scope_def.get("firewall_vendor", "palo_alto")
+    elif tool_id == "trawler":
+        if not settings.get("targets"):
+            targets = scope_def.get("trawler_targets", [])
+            if targets:
+                settings["targets"] = targets
+    elif tool_id == "isotope":
+        if not settings.get("modules"):
+            mods = scope_def.get("isotope_modules", [])
+            if mods:
+                settings["modules"] = mods
+        depth = scope_def.get("isotope_archive_depth", 0)
+        if depth and settings.get("archive_depth", 5) == 5:
+            settings["archive_depth"] = depth
+    elif tool_id in ("aether", "aether_b", "aether_z", "aether_u"):
+        if not settings.get("target_ssids"):
+            ssids = scope_def.get("wireless_ssids", [])
+            if ssids:
+                settings["target_ssids"] = ssids
 
 
 def _archive_tool_output(project, tool_id):

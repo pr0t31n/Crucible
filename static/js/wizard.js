@@ -523,6 +523,7 @@
     bastion:'scopeBastionSection', forge:'scopeForgeSection', quill:'scopeQuillSection',
     isotope:'scopeIsotopeSection', dredge:'scopeEndpointSection'
   };
+  var EXCLUSION_TOOLS = ['ss3','osift','trawler','fracture','siphon','auger','dredge'];
   function updateScopeSections() {
     var tools = getSelectedTools();
     var shown = {};
@@ -532,6 +533,8 @@
       var el = document.getElementById(sec);
       if (el) el.hidden = !shown[sec];
     });
+    var exEl = document.getElementById('scopeExclusionsSection');
+    if (exEl) exEl.hidden = !tools.some(function(t){ return EXCLUSION_TOOLS.indexOf(t) !== -1; });
     updateCloudFields();
     updateMobileDynamic();
     updateDredgeMode();
@@ -716,7 +719,7 @@
     }
     if (_sec('scopeForgeSection')) {
       addR(sg,'Cloud Provider',selText('cloudProvider'));
-      if (!document.getElementById('cloudAwsGroup').hidden) {
+      if (!document.getElementById('cloudAwsAuthBlock').hidden) {
         var _akid = valOf('awsAccessKeyId');
         var _curl = valOf('awsConsoleUrl');
         var _prof = valOf('awsProfile');
