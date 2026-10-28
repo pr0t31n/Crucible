@@ -137,7 +137,74 @@
     });
   }
 
-  /* ── Mobile app path ──────────────────────────────────── */
+  /* ── Mobile app file browser ─────────────────────────── */
+  var _maBrowseModal = document.getElementById('maBrowseModal');
+  var _maBrowseList = document.getElementById('maBrowseList');
+  var _maBrowseLoading = document.getElementById('maBrowseLoading');
+  var _maBrowseCrumbs = document.getElementById('maBrowseCrumbs');
+  var _MA_EXT = ['.ipa','.apk','.aab','.xapk'];
+
+  function _maIsApp(name) {
+    var n = name.toLowerCase();
+    return _MA_EXT.some(function(e){ return n.endsWith(e); });
+  }
+
+  function _maOpenBrowse() {
+    if (_maBrowseModal) _maBrowseModal.classList.add('open');
+    var cur = valOf('mobileAppPath');
+    var start = cur ? cur.replace(/\/[^/]*$/, '') || '/' : (navigator.platform.indexOf('Mac') > -1 ? '/Users' : '/');
+    _maBrowseNavigate(start);
+  }
+
+  function _maCloseBrowse() {
+    if (_maBrowseModal) _maBrowseModal.classList.remove('open');
+  }
+
+  function _maBrowseNavigate(folder) {
+    if (_maBrowseLoading) _maBrowseLoading.hidden = false;
+    if (_maBrowseList) _maBrowseList.innerHTML = '';
+    fetch('/api/merger/browse', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:folder})})
+    .then(function(r){return r.json();})
+    .then(function(data) {
+      if (_maBrowseLoading) _maBrowseLoading.hidden = true;
+      if (_maBrowseCrumbs) _maBrowseCrumbs.textContent = data.current;
+      if (!_maBrowseList) return;
+      _maBrowseList.innerHTML = '';
+      if (data.parent) {
+        var pli = document.createElement('li');
+        pli.className = 'dg-browse-parent';
+        pli.innerHTML = '<svg class="dg-browse-icon" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg><span class="dg-browse-name">..</span>';
+        pli.addEventListener('click', function(){ _maBrowseNavigate(data.parent); });
+        _maBrowseList.appendChild(pli);
+      }
+      data.entries.forEach(function(entry) {
+        if (!entry.is_dir && !_maIsApp(entry.name)) return;
+        var li = document.createElement('li');
+        var icon = entry.is_dir
+          ? '<svg class="dg-browse-icon" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>'
+          : '<svg class="dg-browse-icon" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        li.innerHTML = icon + '<span class="dg-browse-name">' + escHtml(entry.name) + '</span>';
+        if (entry.is_dir) {
+          li.addEventListener('click', function(){ _maBrowseNavigate(entry.path); });
+        } else {
+          li.addEventListener('click', function(){
+            document.getElementById('mobileAppPath').value = entry.path;
+            _maCloseBrowse();
+          });
+        }
+        _maBrowseList.appendChild(li);
+      });
+    })
+    .catch(function(err) {
+      if (_maBrowseLoading) { _maBrowseLoading.hidden = false; _maBrowseLoading.textContent = 'Error: ' + err.message; }
+    });
+  }
+
+  var btnMobileBrowse = document.getElementById('btnMobileBrowse');
+  if (btnMobileBrowse) btnMobileBrowse.addEventListener('click', _maOpenBrowse);
+  if (document.getElementById('maBrowseClose')) document.getElementById('maBrowseClose').addEventListener('click', _maCloseBrowse);
+  if (document.getElementById('maBrowseCancel')) document.getElementById('maBrowseCancel').addEventListener('click', _maCloseBrowse);
+  if (_maBrowseModal) _maBrowseModal.addEventListener('click', function(e) { if (e.target === _maBrowseModal) _maCloseBrowse(); });
 
   /* ── Isotope files ────────────────────────────────────── */
   var isoFiles = [];

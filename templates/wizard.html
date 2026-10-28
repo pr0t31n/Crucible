@@ -898,9 +898,15 @@
           </div>
         </div>
         <div class="form-group" style="margin-top:8px">
-          <label class="form-label" for="mobileAppPath">Application Binary Path</label>
-          <input type="text" id="mobileAppPath" class="form-control" placeholder="/path/to/app.ipa">
-          <span class="form-hint">Full path to a .ipa or .apk file on this server.</span>
+          <label class="form-label" for="mobileAppPath">Application Binary</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="mobileAppPath" class="form-control" placeholder="/path/to/app.ipa" style="flex:1">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnMobileBrowse">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+              Browse
+            </button>
+          </div>
+          <span class="form-hint">Full path to a .ipa or .apk on this server.</span>
         </div>
         <div class="form-group" id="mobileFridaGroup" hidden>
           <label class="form-label" for="fridaDevice">Frida Device ID</label>
@@ -1047,6 +1053,27 @@
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary" id="oosModalDeny">Cancel</button>
       <button type="button" class="btn btn-primary" id="oosModalConfirm">I Understand, Enable</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile App File Browser Modal -->
+<div class="modal-overlay" id="maBrowseModal">
+  <div class="modal-box" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h3 class="modal-title">Browse for Application Binary</h3>
+      <button type="button" class="modal-close" id="maBrowseClose">&times;</button>
+    </div>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border-subtle);font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      <span id="maBrowseCrumbs" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    </div>
+    <div class="modal-body" style="flex:1;overflow-y:auto;padding:0;min-height:200px">
+      <div id="maBrowseLoading" style="padding:24px;text-align:center;color:var(--text-muted)">Loading...</div>
+      <ul id="maBrowseList" style="list-style:none;padding:0;margin:0"></ul>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-secondary" id="maBrowseCancel">Cancel</button>
     </div>
   </div>
 </div>
