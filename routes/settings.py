@@ -191,6 +191,10 @@ def _backfill_from_project(settings, project, tool_id):
             settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)
         if not settings.get("frida_device"):
             settings["frida_device"] = scope_def.get("frida_device", "")
+        if not settings.get("app_files"):
+            app_path = scope_def.get("mobile_app_path", "")
+            if app_path:
+                settings["app_files"] = [app_path]
     elif tool_id == "bastion":
         if not settings.get("firewall_vendor"):
             settings["firewall_vendor"] = scope_def.get("firewall_vendor", "palo_alto")

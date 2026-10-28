@@ -237,6 +237,10 @@
     });
   }
 
+  /* ── Mobile app path (pre-populate in edit mode) ──────── */
+  var _mobileAppPathEl = document.getElementById('mobileAppPath');
+  if (_mobileAppPathEl && _cfg.mobileAppPath) _mobileAppPathEl.value = _cfg.mobileAppPath;
+
   /* ── Dredge collection path (file browser) ──────────────── */
   var dgCollectionPath = _cfg.dredgeCollectionPath || '';
   var dgCollectionType = '';
@@ -735,7 +739,7 @@
     if (_sec('scopeQuillSection')) {
       addR(sg,'Platform',selText('mobilePlatform'));
       addR(sg,'Analysis',selText('mobileDynamic'));
-      addR(sg,'App Files',mobileFiles.length ? mobileFiles.map(function(f){return f.name;}).join(', ') : '');
+      addR(sg,'App File', valOf('mobileAppPath') || '(none)');
     }
     if (_sec('scopeIsotopeSection')) {
       addR(sg,'Analysis Files',isoFiles.length ? isoFiles.map(function(f){return f.name;}).join(', ') : '');
@@ -842,7 +846,7 @@
         gcp_project: valOf('gcpProject'),
         mobile_platform: document.getElementById('mobilePlatform').value,
         mobile_dynamic: document.getElementById('mobileDynamic').value === 'both',
-        mobile_apps: mobileFiles.map(function(f){return f.name;}),
+        mobile_app_path: valOf('mobileAppPath'),
         frida_device: valOf('fridaDevice'),
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),

@@ -590,6 +590,13 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         settings["output_dir"] = tool_dirs.get("auger", project_dir)
     elif tool_id == "trawler":
         settings["output_dir"] = tool_dirs.get("trawler", project_dir)
+    elif tool_id == "quill":
+        settings["mobile_platform"] = scope_def.get("mobile_platform", "android")
+        settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)
+        settings["frida_device"] = scope_def.get("frida_device", "")
+        app_path = scope_def.get("mobile_app_path", "")
+        if app_path:
+            settings["app_files"] = [app_path]
 
 
 def update_project(project_id, updates):

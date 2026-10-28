@@ -898,16 +898,9 @@
           </div>
         </div>
         <div class="form-group" style="margin-top:8px">
-          <span class="form-label">Upload Application Binary</span>
-          <div class="file-upload-area" id="mobileAppUpload">
-            <input type="file" id="mobileAppFile" accept=".ipa,.apk" multiple hidden>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('mobileAppFile').click()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Choose Files
-            </button>
-            <span class="form-hint" style="margin-left:10px;" id="mobileAppCount">No files selected</span>
-          </div>
-          <ul class="file-list" id="mobileAppList"></ul>
+          <label class="form-label" for="mobileAppPath">Application Binary Path</label>
+          <input type="text" id="mobileAppPath" class="form-control" placeholder="/path/to/app.ipa">
+          <span class="form-hint">Full path to a .ipa or .apk file on this server.</span>
         </div>
         <div class="form-group" id="mobileFridaGroup" hidden>
           <label class="form-label" for="fridaDevice">Frida Device ID</label>
@@ -1126,7 +1119,7 @@
 
 
 {% block scripts %}
-<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }}}</script>
+<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }},"mobileAppPath":{{ ((project.scope_definition or {}).get('mobile_app_path','') if project else '')|tojson }}}</script>
 <script src="/static/js/wizard.js"></script>
 {% endblock %}
 
