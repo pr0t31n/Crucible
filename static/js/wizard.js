@@ -458,11 +458,22 @@
     var showAws   = prov === 'all' || prov === 'aws';
     var showAzure = prov === 'all' || prov === 'azure';
     var showGcp   = prov === 'all' || prov === 'gcp';
-    document.getElementById('cloudAwsGroup').hidden       = !showAws;
-    document.getElementById('cloudAwsRegionGroup').hidden  = !showAws;
-    document.getElementById('cloudAzureGroup').hidden      = !showAzure;
-    document.getElementById('cloudGcpGroup').hidden        = !showGcp;
+    document.getElementById('cloudAwsAuthBlock').hidden = !showAws;
+    document.getElementById('cloudAzureGroup').hidden   = !showAzure;
+    document.getElementById('cloudGcpGroup').hidden     = !showGcp;
   }
+
+  /* AWS auth method radio toggle */
+  function updateAwsAuthMethod() {
+    var sel = document.querySelector('input[name="awsAuthMethod"]:checked');
+    var method = sel ? sel.value : 'profile';
+    document.getElementById('awsAuthProfile').hidden = method !== 'profile';
+    document.getElementById('awsAuthKeys').hidden    = method !== 'keys';
+    document.getElementById('awsAuthConsole').hidden  = method !== 'console';
+  }
+  document.querySelectorAll('input[name="awsAuthMethod"]').forEach(function(r) {
+    r.addEventListener('change', updateAwsAuthMethod);
+  });
   cloudProviderEl.addEventListener('change', updateCloudFields);
 
   /* ── Mobile dynamic analysis toggle ──────────────────── */
@@ -705,7 +716,15 @@
     }
     if (_sec('scopeForgeSection')) {
       addR(sg,'Cloud Provider',selText('cloudProvider'));
-      if (!document.getElementById('cloudAwsGroup').hidden) addR(sg,'AWS Profile',valOf('awsProfile') || 'default');
+      if (!document.getElementById('cloudAwsGroup').hidden) {
+        var _akid = valOf('awsAccessKeyId');
+        var _curl = valOf('awsConsoleUrl');
+        var _prof = valOf('awsProfile');
+        if (_akid) addR(sg,'AWS Auth','Access Keys (' + _akid.substring(0,8) + '...)');
+        else if (_curl) addR(sg,'AWS Auth','Console Login (' + _curl + ')');
+        else addR(sg,'AWS Auth','CLI Profile (' + (_prof || 'default') + ')');
+        if (valOf('awsRegion')) addR(sg,'AWS Region',valOf('awsRegion'));
+      }
       if (!document.getElementById('cloudAzureGroup').hidden) addR(sg,'Azure Subscription',valOf('azureSubscription'));
       if (!document.getElementById('cloudGcpGroup').hidden) addR(sg,'GCP Project',valOf('gcpProject'));
     }
@@ -809,6 +828,11 @@
         cloud_provider: document.getElementById('cloudProvider').value,
         aws_profile: valOf('awsProfile'),
         aws_region: valOf('awsRegion'),
+        aws_access_key_id: valOf('awsAccessKeyId'),
+        aws_secret_key: valOf('awsSecretKey'),
+        aws_console_url: valOf('awsConsoleUrl'),
+        aws_console_user: valOf('awsConsoleUser'),
+        aws_console_pass: valOf('awsConsolePass'),
         azure_subscription: valOf('azureSubscription'),
         gcp_project: valOf('gcpProject'),
         mobile_platform: document.getElementById('mobilePlatform').value,

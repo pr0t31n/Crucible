@@ -817,13 +817,53 @@
               <option value="gcp">GCP</option>
             </select>
           </div>
-          <div class="form-group" id="cloudAwsGroup">
-            <label class="form-label" for="awsProfile">AWS Profile</label>
-            <input type="text" id="awsProfile" class="form-control" placeholder="default" value="">
-          </div>
-          <div class="form-group" id="cloudAwsRegionGroup">
-            <label class="form-label" for="awsRegion">AWS Region</label>
-            <input type="text" id="awsRegion" class="form-control" placeholder="us-east-1 (leave blank for all)" value="">
+          <div class="form-group form-grid-full" id="cloudAwsAuthBlock">
+            <div class="form-group" style="margin-bottom:8px">
+              <label class="form-label" for="awsRegion">AWS Region</label>
+              <input type="text" id="awsRegion" class="form-control" placeholder="us-east-1 (leave blank for all)" value="">
+            </div>
+            <label class="form-label" style="margin-bottom:6px">AWS Authentication <span style="font-weight:400;color:var(--text-muted)">(choose one)</span></label>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+              <label class="btn btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="awsAuthMethod" value="profile" checked style="margin:0"> CLI Profile</label>
+              <label class="btn btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="awsAuthMethod" value="keys" style="margin:0"> Access Keys</label>
+              <label class="btn btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><input type="radio" name="awsAuthMethod" value="console" style="margin:0"> Console Login</label>
+            </div>
+            <div id="awsAuthProfile" class="form-grid" style="margin-bottom:0">
+              <div class="form-group">
+                <label class="form-label" for="awsProfile">AWS CLI Profile</label>
+                <input type="text" id="awsProfile" class="form-control" placeholder="default" value="">
+                <span class="form-hint">Named profile from ~/.aws/credentials (run: aws configure --profile name)</span>
+              </div>
+            </div>
+            <div id="awsAuthKeys" class="form-grid" hidden style="margin-bottom:0">
+              <div class="form-group">
+                <label class="form-label" for="awsAccessKeyId">Access Key ID</label>
+                <input type="text" id="awsAccessKeyId" class="form-control" placeholder="AKIA..." value="">
+                <span class="form-hint">From IAM &rarr; Users &rarr; Security credentials &rarr; Create access key</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="awsSecretKey">Secret Access Key</label>
+                <input type="password" id="awsSecretKey" class="form-control" placeholder="" value="">
+              </div>
+            </div>
+            <div id="awsAuthConsole" hidden style="margin-bottom:0">
+              <div class="form-grid">
+                <div class="form-group form-grid-full">
+                  <label class="form-label" for="awsConsoleUrl">Sign-In URL</label>
+                  <input type="text" id="awsConsoleUrl" class="form-control" placeholder="https://123456789012.signin.aws.amazon.com/console" value="">
+                  <span class="form-hint">The IAM sign-in URL your client provided</span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="awsConsoleUser">IAM Username</label>
+                  <input type="text" id="awsConsoleUser" class="form-control" placeholder="" value="">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="awsConsolePass">IAM Password</label>
+                  <input type="password" id="awsConsolePass" class="form-control" placeholder="" value="">
+                </div>
+              </div>
+              <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px">Forge will log into the Console, create a temporary access key, run the audit, then delete the key. May not work if CAPTCHA or MFA is required.</div>
+            </div>
           </div>
           <div class="form-group" id="cloudAzureGroup">
             <label class="form-label" for="azureSubscription">Azure Subscription ID</label>
