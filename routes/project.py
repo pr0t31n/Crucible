@@ -349,7 +349,7 @@ def api_create_project():
 _SCOPE_TO_SETTINGS = {
     "quill": {
         "mobile_platform": ("mobile_platform", "auto"),
-        "mobile_app_path": ("app_files", None),
+        "mobile_app_paths": ("app_files", None),
         "mobile_dynamic": ("dynamic_analysis", False),
         "frida_device": ("frida_device", ""),
     },
@@ -360,11 +360,25 @@ _SCOPE_TO_SETTINGS = {
 }
 
 
+def _coerce_app_files(val):
+    """Normalise wizard app-files value to a list."""
+    if isinstance(val, list):
+        return [v for v in val if v]
+    if isinstance(val, str) and val:
+        return [val]
+    return []
+
+
 def _sync_scope_to_tool_settings(data, project):
     from models.settings import load_settings, save_settings
     scope_def = data.get("scope_definition", {})
     if not scope_def:
         return
+    # Backward compat: old wizard sends mobile_app_path (string)
+    if "mobile_app_path" in scope_def and "mobile_app_paths" not in scope_def:
+        v = scope_def.pop("mobile_app_path")
+        if v:
+            scope_def["mobile_app_paths"] = [v]
     proj_dir = project.get("project_dir", "")
     ts = dict(project.get("tool_settings", {}))
     tools = project.get("tools", [])
@@ -378,9 +392,10 @@ def _sync_scope_to_tool_settings(data, project):
             val = scope_def.get(scope_key)
             if val is None:
                 continue
-            if settings_key == "app_files" and isinstance(val, str):
-                if val:
-                    tool_ts["app_files"] = [val]
+            if settings_key == "app_files":
+                coerced = _coerce_app_files(val)
+                if coerced and tool_ts.get("app_files") != coerced:
+                    tool_ts["app_files"] = coerced
                     changed = True
                     disk_changed = True
             elif tool_ts.get(settings_key) != val:
@@ -395,9 +410,10 @@ def _sync_scope_to_tool_settings(data, project):
                     val = scope_def.get(scope_key)
                     if val is None:
                         continue
-                    if settings_key == "app_files" and isinstance(val, str):
-                        if val:
-                            disk_settings["app_files"] = [val]
+                    if settings_key == "app_files":
+                        coerced = _coerce_app_files(val)
+                        if coerced:
+                            disk_settings["app_files"] = coerced
                     else:
                         disk_settings[settings_key] = val
                 save_settings(proj_dir, tid, disk_settings)
@@ -984,7 +1000,7 @@ def api_update_scopes(project_id):
     _scope_to_settings = {
         "quill": {
             "mobile_platform": ("mobile_platform", "auto"),
-            "mobile_app_path": ("app_files", None),
+            "mobile_app_paths": ("app_files", None),
             "mobile_dynamic": ("dynamic_analysis", False),
             "frida_device": ("frida_device", ""),
         },
@@ -993,6 +1009,11 @@ def api_update_scopes(project_id):
             "aws_auth_method": ("aws_auth_method", ""),
         },
     }
+    # Backward compat: old wizard sends mobile_app_path (string)
+    if "mobile_app_path" in scope_def and "mobile_app_paths" not in scope_def:
+        v = scope_def.pop("mobile_app_path")
+        if v:
+            scope_def["mobile_app_paths"] = [v]
     for tid, field_map in _scope_to_settings.items():
         if tid in existing_tools:
             ts = tool_settings.get(tid, {})
@@ -1000,9 +1021,10 @@ def api_update_scopes(project_id):
             for scope_key, (settings_key, default) in field_map.items():
                 val = scope_def.get(scope_key)
                 if val is not None:
-                    if settings_key == "app_files" and isinstance(val, str):
-                        if val:
-                            ts["app_files"] = [val]
+                    if settings_key == "app_files":
+                        coerced = _coerce_app_files(val)
+                        if coerced and ts.get("app_files") != coerced:
+                            ts["app_files"] = coerced
                             changed = True
                     elif ts.get(settings_key) != val:
                         ts[settings_key] = val

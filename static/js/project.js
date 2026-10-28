@@ -6507,12 +6507,33 @@ function _renderCloudOverview(findings, intel, summary) {
 function _renderMobileOverview(findings, intel, summary) {
     var h = '<div style="margin-bottom:20px"><h3 style="margin:0 0 4px 0;font-size:1.1rem">Mobile Application Overview</h3>' +
         '<div style="color:var(--text-secondary);font-size:0.85rem">Mobile app binary analysis and runtime testing results</div></div>';
+
+    if (!findings.length) {
+        return h + '<div class="empty-state"><div class="empty-state-text">No findings for mobile scope yet. Start a Quill scan to populate.</div></div>';
+    }
+
     h += _ovRiskBar(findings);
+
+    var appMap = {};
+    var iosCount = 0, androidCount = 0;
+    findings.forEach(function(f) {
+        var target = f.hostname || f.affected || '';
+        if (!target) return;
+        if (!appMap[target]) appMap[target] = {ios: false, android: false, count: 0};
+        appMap[target].count++;
+        var tl = target.toLowerCase();
+        if (tl.indexOf('.ipa') !== -1) { appMap[target].ios = true; iosCount++; }
+        else if (tl.indexOf('.apk') !== -1 || tl.indexOf('.aab') !== -1 || tl.indexOf('.xapk') !== -1) { appMap[target].android = true; androidCount++; }
+    });
+    var appCount = Object.keys(appMap).length;
+
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">';
     h += _ovCard('Total Findings', findings.length, '', 'var(--clr-accent)');
     var crit = findings.filter(function(f) { return (f.risk||'').toLowerCase() === 'critical'; }).length;
     var high = findings.filter(function(f) { return (f.risk||'').toLowerCase() === 'high'; }).length;
     h += _ovCard('Critical + High', crit + high, crit + ' critical / ' + high + ' high', (crit > 0 ? 'var(--clr-critical)' : high > 0 ? 'var(--clr-high)' : 'var(--clr-accent)'));
+    h += _ovCard('Applications', appCount, (iosCount > 0 ? 'iOS' : '') + (iosCount > 0 && androidCount > 0 ? ' + ' : '') + (androidCount > 0 ? 'Android' : ''), 'var(--clr-hosts)');
+
     var dataFindings = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('data') !== -1 || t.indexOf('storage') !== -1 || t.indexOf('keychain') !== -1 || t.indexOf('shared_prefs') !== -1; });
     h += _ovCard('Data Storage', dataFindings.length, 'insecure storage', 'var(--clr-high)');
     var cryptoFindings = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('crypto') !== -1 || t.indexOf('encrypt') !== -1 || t.indexOf('obfuscat') !== -1; });
@@ -6520,8 +6541,11 @@ function _renderMobileOverview(findings, intel, summary) {
     var permFindings = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('permission') !== -1 || t.indexOf('privilege') !== -1; });
     h += _ovCard('Permissions', permFindings.length, 'excessive access', 'var(--clr-medium)');
     h += '</div>';
+
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px">';
-    h += '<div>' + _ovTopList('Finding Categories', _countBy(findings, 'title'), 10) + '</div>';
+    h += '<div>' + _ovTopList('Finding Categories', _countByFn(findings, _findingCategory), 10) + '</div>';
+    var appList = _countByFn(findings, function(f) { return f.hostname || f.affected || ''; });
+    h += '<div>' + _ovTopList('Affected Applications', appList, 10, 'var(--clr-hosts)') + '</div>';
     h += '</div>';
     return h;
 }
@@ -8513,6 +8537,191 @@ function _renderCloudIAM(data) {
     return _cloudTable(headers, keys, arr, fmts);
 }
 
+/* ── Mobile Intelligence Tab Renderers ────────────────────────── */
+
+function _mobileAppBadge(app) {
+    var p = (app.platform || '').toLowerCase();
+    var color = p === 'ios' ? '#007AFF' : p === 'android' ? '#3DDC84' : 'var(--text-secondary)';
+    var label = p === 'ios' ? 'iOS' : p === 'android' ? 'Android' : (app.platform || 'Unknown');
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;' +
+        'background:' + color + '20;color:' + color + ';margin-left:6px">' + label + '</span>';
+}
+
+function _mobileAppHeader(app) {
+    return '<div style="margin:16px 0 8px;padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);' +
+        'border-radius:8px;display:flex;align-items:center;gap:8px">' +
+        '<span style="font-weight:700;font-size:0.95rem">' + esc(app.name || 'Unknown App') + '</span>' +
+        _mobileAppBadge(app) +
+        (app['package'] ? '<span style="font-size:0.75rem;color:var(--text-secondary);font-family:var(--font-mono);margin-left:auto">' + esc(app['package']) + '</span>' : '') +
+        '</div>';
+}
+
+function _mobileExtractPayload(data, key) {
+    var d = data[key] || data;
+    if (!d) return null;
+    if (d.apps && Array.isArray(d.apps)) return d;
+    if (Array.isArray(d)) return {apps: d};
+    return d;
+}
+
+function _renderMobileComponents(data) {
+    var d = _mobileExtractPayload(data, 'mobile_components');
+    if (!d || !d.apps || !d.apps.length) return '<div class="empty-state"><div class="empty-state-text">No component data available. Run Quill to populate.</div></div>';
+    var h = '';
+    d.apps.forEach(function(app) {
+        h += _mobileAppHeader(app);
+        var flags = app.flags || {};
+        if (Object.keys(flags).length) {
+            var flagItems = [];
+            if (flags.debuggable !== undefined) flagItems.push(['Debuggable', flags.debuggable ? '<span style="color:var(--clr-critical);font-weight:600">true</span>' : '<span style="color:var(--clr-low)">false</span>']);
+            if (flags.allowBackup !== undefined) flagItems.push(['Allow Backup', flags.allowBackup ? '<span style="color:var(--clr-high);font-weight:600">true</span>' : '<span style="color:var(--clr-low)">false</span>']);
+            if (flags.usesCleartextTraffic !== undefined) flagItems.push(['Cleartext Traffic', flags.usesCleartextTraffic ? '<span style="color:var(--clr-high);font-weight:600">true</span>' : '<span style="color:var(--clr-low)">false</span>']);
+            if (flags.networkSecurityConfig !== undefined) flagItems.push(['Network Security Config', flags.networkSecurityConfig ? '<span style="color:var(--clr-low)">' + esc(flags.networkSecurityConfig) + '</span>' : '<span style="color:var(--text-secondary)">none</span>']);
+            if (flags.ats_enabled !== undefined) flagItems.push(['App Transport Security', flags.ats_enabled ? '<span style="color:var(--clr-low)">Configured</span>' : '<span style="color:var(--clr-high);font-weight:600">Not configured</span>']);
+            if (flags.allows_arbitrary_loads !== undefined) flagItems.push(['Allows Arbitrary Loads', flags.allows_arbitrary_loads ? '<span style="color:var(--clr-high);font-weight:600">true</span>' : '<span style="color:var(--clr-low)">false</span>']);
+            if (flags.minSdkVersion) flagItems.push(['Min SDK', esc(String(flags.minSdkVersion))]);
+            if (flags.targetSdkVersion) flagItems.push(['Target SDK', esc(String(flags.targetSdkVersion))]);
+            h += _intelCard('Application Flags', flagItems);
+        }
+        var components = app.components || [];
+        if (components.length) {
+            var exported = components.filter(function(c) { return c.exported; });
+            var unprotected = exported.filter(function(c) { return !c.permission; });
+            h += '<div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px">' + components.length + ' components — <span style="color:var(--clr-medium)">' + exported.length + ' exported</span>' + (unprotected.length ? ' — <span style="color:var(--clr-high)">' + unprotected.length + ' unprotected</span>' : '') + '</div>';
+            var rows = components.map(function(c) {
+                var expCell = c.exported ? (!c.permission ? '<span style="color:var(--clr-high);font-weight:600">Yes (unprotected)</span>' : '<span style="color:var(--clr-medium)">Yes</span>') : '<span style="color:var(--text-secondary)">No</span>';
+                return [esc(c.type || ''), '<span style="font-family:var(--font-mono);font-size:0.8rem">' + esc(c.name || '') + '</span>', expCell, c.permission ? esc(c.permission) : '<span style="color:var(--text-secondary)">—</span>', c.has_intent_filter ? 'Yes' : ''];
+            });
+            h += _intelTable(['Type', 'Name', 'Exported', 'Permission', 'Intent Filter'], rows);
+        } else if ((app.platform || '').toLowerCase() === 'ios') {
+            var ents = app.entitlements || [];
+            if (ents.length) {
+                h += '<div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px">' + ents.length + ' entitlements</div>';
+                var eRows = ents.map(function(e) { return [esc(e)]; });
+                h += _intelTable(['Entitlement Key'], eRows);
+            } else {
+                h += '<div style="color:var(--text-secondary);padding:8px;font-size:0.85rem">No entitlements detected.</div>';
+            }
+        }
+    });
+    return h;
+}
+
+function _renderMobilePerms(data) {
+    var d = _mobileExtractPayload(data, 'mobile_perms');
+    if (!d || !d.apps || !d.apps.length) return '<div class="empty-state"><div class="empty-state-text">No permission data available. Run Quill to populate.</div></div>';
+    var h = '';
+    d.apps.forEach(function(app) {
+        h += _mobileAppHeader(app);
+        var perms = app.permissions || [];
+        var dangerous = app.dangerous_count || 0;
+        var total = app.total || perms.length;
+        var platform = (app.platform || '').toLowerCase();
+        h += '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+        h += _epMetric('Total', total, 'var(--text-primary)');
+        h += _epMetric('Dangerous', dangerous, dangerous > 0 ? 'var(--clr-high)' : 'var(--clr-low)');
+        h += _epMetric('Normal', total - dangerous, 'var(--text-secondary)');
+        h += '</div>';
+        if (perms.length) {
+            var rows = perms.map(function(p) {
+                var name = p.key || p.name || '';
+                var isDangerous = p.dangerous !== undefined ? p.dangerous : (platform === 'ios' && p.key && /Camera|Microphone|Location|Contacts|Calendar|Photo|Health|Motion|FaceID/i.test(p.key));
+                var dangerCell = isDangerous ? '<span style="color:var(--clr-high);font-weight:600">Dangerous</span>' : '<span style="color:var(--text-secondary)">Normal</span>';
+                return ['<span style="font-family:var(--font-mono);font-size:0.8rem">' + esc(name) + '</span>', dangerCell, p.reason ? esc(p.reason) : '<span style="color:var(--text-secondary)">—</span>'];
+            });
+            h += _intelTable(['Permission', 'Classification', 'Reason / Description'], rows);
+        }
+    });
+    return h;
+}
+
+function _renderMobileHardening(data) {
+    var d = _mobileExtractPayload(data, 'mobile_hardening');
+    if (!d || !d.apps || !d.apps.length) return '<div class="empty-state"><div class="empty-state-text">No hardening data available. Run Quill to populate.</div></div>';
+    var h = '';
+    d.apps.forEach(function(app) {
+        h += _mobileAppHeader(app);
+        var checks = app.checks || [];
+        if (!checks.length) { h += '<div style="color:var(--text-secondary);padding:8px;font-size:0.85rem">No binary hardening checks available for this application.</div>'; return; }
+        var pass = 0, fail = 0, skip = 0;
+        checks.forEach(function(c) { var s = (c.status || '').toLowerCase(); if (s === 'pass' || s === 'enabled' || s === 'true' || s === 'yes') pass++; else if (s === 'fail' || s === 'disabled' || s === 'false' || s === 'no' || s === 'missing') fail++; else skip++; });
+        var total = checks.length;
+        h += '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+        h += _epMetric('Pass', pass, 'var(--risk-low,#38a169)');
+        h += _epMetric('Fail', fail, fail > 0 ? 'var(--risk-high,#e53e3e)' : 'var(--text-secondary)');
+        if (skip > 0) h += _epMetric('Skipped', skip, 'var(--text-secondary)');
+        h += '</div>';
+        if (total > 0) {
+            var pPass = Math.round((pass / total) * 100), pFail = Math.round((fail / total) * 100), pSkip = 100 - pPass - pFail;
+            h += '<div style="height:10px;border-radius:5px;overflow:hidden;display:flex;background:var(--border-color,#e2e8f0);margin-bottom:12px">';
+            if (pPass > 0) h += '<div style="width:' + pPass + '%;background:var(--risk-low,#38a169)"></div>';
+            if (pFail > 0) h += '<div style="width:' + pFail + '%;background:var(--risk-high,#e53e3e)"></div>';
+            if (pSkip > 0) h += '<div style="width:' + pSkip + '%;background:var(--text-secondary,#a0aec0)"></div>';
+            h += '</div>';
+        }
+        var rows = checks.map(function(c) {
+            var s = (c.status || '').toLowerCase();
+            var icon = (s === 'pass' || s === 'enabled' || s === 'true' || s === 'yes') ? '<span style="color:var(--risk-low,#38a169);font-weight:600">Pass</span>' : (s === 'fail' || s === 'disabled' || s === 'false' || s === 'no' || s === 'missing') ? '<span style="color:var(--risk-high,#e53e3e);font-weight:600">Fail</span>' : '<span style="color:var(--text-secondary)">' + esc(c.status || 'N/A') + '</span>';
+            return [esc(c.name || ''), icon, c.details ? esc(c.details) : '<span style="color:var(--text-secondary)">—</span>'];
+        });
+        h += _intelTable(['Check', 'Status', 'Details'], rows);
+    });
+    return h;
+}
+
+function _renderMobileData(data) {
+    var d = _mobileExtractPayload(data, 'mobile_data');
+    if (!d || !d.apps || !d.apps.length) return '<div class="empty-state"><div class="empty-state-text">No data flow analysis available. Run Quill to populate.</div></div>';
+    var h = '';
+    d.apps.forEach(function(app) {
+        h += _mobileAppHeader(app);
+        var netCfg = app.network_config || app.network_security_config;
+        if (netCfg && typeof netCfg === 'object') {
+            var cfgItems = [];
+            if (netCfg.cleartextTrafficPermitted !== undefined) cfgItems.push(['Cleartext Permitted', netCfg.cleartextTrafficPermitted ? '<span style="color:var(--clr-high);font-weight:600">Yes</span>' : '<span style="color:var(--clr-low)">No</span>']);
+            if (netCfg.ats_enabled !== undefined) cfgItems.push(['App Transport Security', netCfg.ats_enabled ? '<span style="color:var(--clr-low)">Enabled</span>' : '<span style="color:var(--clr-high);font-weight:600">Disabled</span>']);
+            if (netCfg.allows_arbitrary_loads !== undefined) cfgItems.push(['Allows Arbitrary Loads', netCfg.allows_arbitrary_loads ? '<span style="color:var(--clr-high);font-weight:600">Yes</span>' : '<span style="color:var(--clr-low)">No</span>']);
+            if (netCfg.exception_domains) cfgItems.push(['Exception Domains', esc((netCfg.exception_domains || []).join(', ') || 'none')]);
+            if (netCfg.base_config) cfgItems.push(['Base Config', esc(JSON.stringify(netCfg.base_config))]);
+            if (netCfg.domain_configs) cfgItems.push(['Domain Configs', esc(String(netCfg.domain_configs.length || 0)) + ' rules']);
+            if (netCfg.pin_set) cfgItems.push(['Certificate Pinning', '<span style="color:var(--clr-low)">Configured</span>']);
+            if (cfgItems.length) h += _intelCard('Network Security Configuration', cfgItems);
+        }
+        var deepLinks = app.deep_links || [];
+        if (deepLinks.length) {
+            h += '<div style="font-weight:600;margin:12px 0 6px;font-size:0.9rem">Deep Links (' + deepLinks.length + ')</div>';
+            var dlRows = deepLinks.map(function(dl) {
+                if (typeof dl === 'string') return [esc(dl), '', ''];
+                return ['<span style="font-family:var(--font-mono);font-size:0.8rem">' + esc(dl.scheme || dl.url || dl.host || '') + '</span>', esc(dl.host || ''), esc(dl.path || dl.pathPrefix || dl.pathPattern || '')];
+            });
+            h += _intelTable(['Scheme / URL', 'Host', 'Path'], dlRows);
+        }
+        var firebase = app.firebase;
+        if (firebase && typeof firebase === 'object' && Object.keys(firebase).length) {
+            var fbItems = [];
+            if (firebase.database_url) fbItems.push(['Database URL', '<span style="font-family:var(--font-mono);font-size:0.8rem">' + esc(firebase.database_url) + '</span>']);
+            if (firebase.api_key) fbItems.push(['API Key', '<span style="font-family:var(--font-mono);font-size:0.8rem;color:var(--clr-high)">' + esc(firebase.api_key) + '</span>']);
+            if (firebase.project_id) fbItems.push(['Project ID', esc(firebase.project_id)]);
+            if (firebase.storage_bucket) fbItems.push(['Storage Bucket', esc(firebase.storage_bucket)]);
+            if (firebase.open_database !== undefined) fbItems.push(['Database Open', firebase.open_database ? '<span style="color:var(--clr-critical);font-weight:600">Yes (publicly accessible)</span>' : '<span style="color:var(--clr-low)">No</span>']);
+            if (fbItems.length) h += _intelCard('Firebase Configuration', fbItems);
+        }
+        var trackers = app.trackers || [];
+        if (trackers.length) {
+            h += '<div style="font-weight:600;margin:12px 0 6px;font-size:0.9rem">Trackers / Third-Party SDKs (' + trackers.length + ')</div>';
+            var trRows = trackers.map(function(tr) {
+                if (typeof tr === 'string') return [esc(tr), '', ''];
+                return [esc(tr.name || tr.id || ''), esc(tr.category || ''), tr.url ? '<a href="' + esc(tr.url) + '" target="_blank" rel="noopener">' + esc(tr.url) + '</a>' : ''];
+            });
+            h += _intelTable(['Tracker', 'Category', 'Reference'], trRows);
+        }
+        if (!netCfg && !deepLinks.length && !(firebase && Object.keys(firebase).length) && !trackers.length) {
+            h += '<div style="color:var(--text-secondary);padding:8px;font-size:0.85rem">No data flow analysis results for this application.</div>';
+        }
+    });
+    return h;
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8555,6 +8764,10 @@ var _INTEL_RENDERERS = {
     'cloud-resources': _renderCloudResources,
     'cloud-iam': _renderCloudIAM,
     'cloud-services': _renderCloudServices,
+    'mobile-components': _renderMobileComponents,
+    'mobile-perms': _renderMobilePerms,
+    'mobile-hardening': _renderMobileHardening,
+    'mobile-data': _renderMobileData,
 };
 
 
@@ -9334,13 +9547,47 @@ function renderSettingsFields(container, settings, schema) {
             group.innerHTML =
                 '<span class="form-label">' + esc(label) + '</span>' +
                 '<div class="file-list-widget" data-key="' + esc(key) + '">' +
-                    '<ul class="file-list-items" style="list-style:none;padding:0;margin:0 0 8px 0;font-size:0.82rem">' +
-                        files.map(function(f) { return '<li style="padding:2px 0">' + esc(f) + '</li>'; }).join('') +
-                    '</ul>' +
+                    '<ul class="file-list-items" style="list-style:none;padding:0;margin:0 0 8px 0;font-size:0.82rem"></ul>' +
+                    '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">' +
+                        '<input type="text" class="form-control file-list-path-input" placeholder="Server path" style="flex:1;font-size:0.82rem">' +
+                        '<button type="button" class="btn btn-xs btn-primary file-list-add-path">+ Add</button>' +
+                    '</div>' +
                     '<input type="file" class="file-list-input" multiple accept="' + esc(accept) + '" style="font-size:0.82rem">' +
                     '<button type="button" class="btn btn-sm btn-secondary file-list-upload" style="margin-top:6px">Upload</button>' +
                     '<input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(files)) + '">' +
                 '</div>';
+            (function(k, grp) {
+                var _flFiles = files.slice();
+                var _flHidden = grp.querySelector('input[name="' + k + '"]');
+                var _flUl = grp.querySelector('.file-list-items');
+                function _flRender() {
+                    _flUl.innerHTML = _flFiles.map(function(f, i) {
+                        return '<li style="padding:2px 0;display:flex;align-items:center;gap:6px">' +
+                            '<span style="flex:1;word-break:break-all">' + esc(f) + '</span>' +
+                            '<button type="button" class="file-remove" data-idx="' + i + '" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.9rem;padding:0 4px" title="Remove">&times;</button></li>';
+                    }).join('');
+                    _flHidden.value = JSON.stringify(_flFiles);
+                    _flUl.querySelectorAll('.file-remove').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            _flFiles.splice(parseInt(this.dataset.idx), 1);
+                            _flRender();
+                        });
+                    });
+                }
+                _flRender();
+                var _flAddBtn = grp.querySelector('.file-list-add-path');
+                var _flPathInp = grp.querySelector('.file-list-path-input');
+                if (_flAddBtn && _flPathInp) {
+                    _flAddBtn.addEventListener('click', function() {
+                        var v = _flPathInp.value.trim();
+                        if (v && _flFiles.indexOf(v) === -1) { _flFiles.push(v); _flRender(); }
+                        _flPathInp.value = '';
+                    });
+                    _flPathInp.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') { e.preventDefault(); _flAddBtn.click(); }
+                    });
+                }
+            })(key, group);
         } else if (type === 'multi_check') {
             var opts = fieldSchema.options || [];
             var checked = Array.isArray(val) ? val : [];

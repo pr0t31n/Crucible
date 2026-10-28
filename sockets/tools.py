@@ -35,6 +35,28 @@ def register_tool_events(socketio, process_manager, queue_manager):
                 from routes.settings import _backfill_from_project
                 _backfill_from_project(settings, proj, tid)
 
+            # Multi-file expansion: Quill with multiple app_files queues
+            # one run per file through the queue manager.
+            if tid == "quill" and not resume:
+                from adapters import get_adapter
+                adapter = get_adapter("quill")
+                if adapter and hasattr(adapter, "expand_queue_entries"):
+                    entries = adapter.expand_queue_entries(settings or {})
+                    if entries:
+                        for entry in entries:
+                            queue_manager.enqueue(
+                                pid, tid, scope=entry.get("scope"),
+                                extra_args=entry.get("extra_args"),
+                                sudo_password=sudo_password)
+                        log.info("Expanded %s into %d file-scoped queue entries "
+                                 "for project %s", tid, len(entries), pid)
+                        emit("tool_queued", {
+                            "project_id": pid, "tool_id": tid,
+                            "reason": f"Queued {len(entries)} app files"},
+                            to=_room(pid))
+                        queue_manager.auto_dequeue(pid)
+                        return
+
             can, reason = queue_manager.can_launch(pid, tid)
             if can:
                 ok = process_manager.launch(

@@ -19,17 +19,40 @@ class QuillAdapter(ToolAdapter):
         td = project.get("tool_dirs", {}).get("quill", "")
         if td:
             cmd.extend(["--project", td])
-        app_files = settings.get("app_files", [])
-        for af in app_files:
-            cmd.extend(["--app", af])
+        ea = list(extra_args or [])
+        if "--app" in ea:
+            idx = ea.index("--app")
+            if idx + 1 < len(ea):
+                cmd.extend(["--app", ea[idx + 1]])
+                ea = ea[:idx] + ea[idx + 2:]
+        else:
+            app_files = settings.get("app_files", [])
+            if app_files:
+                cmd.extend(["--app", app_files[0]])
         if settings.get("dynamic_analysis"):
             cmd.append("--dynamic")
         if settings.get("frida_device"):
             cmd.extend(["--frida-device", settings["frida_device"]])
         cmd.extend(["--client-short", project.get("client_short", "")])
-        if extra_args:
-            cmd.extend(extra_args)
+        if ea:
+            cmd.extend(ea)
         return cmd
+
+    def expand_queue_entries(self, settings):
+        """Return per-file queue kwargs when multiple app files are configured."""
+        app_files = settings.get("app_files", [])
+        if len(app_files) <= 1:
+            return None
+        import os
+        entries = []
+        for af in app_files:
+            fname = os.path.basename(af)
+            entries.append({
+                "extra_args": ["--app", af],
+                "scope": f"file:{fname}",
+                "label": fname,
+            })
+        return entries
 
     def default_settings(self):
         return {

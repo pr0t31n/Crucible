@@ -1438,6 +1438,26 @@ def api_intel_panel(panel, project_id):
                             break
             if agg:
                 return jsonify({key: _maybe_filter(agg), "available": True})
+        if tool_key == "quill":
+            agg_apps = []
+            for qtd in all_tool_dirs:
+                qtd_p = Path(qtd)
+                if not qtd_p.is_dir():
+                    continue
+                for fn in filenames:
+                    fp = qtd_p / fn
+                    if fp.exists():
+                        try:
+                            with open(fp) as f:
+                                entry = json.load(f)
+                            apps = entry.get("apps", []) if isinstance(entry, dict) else []
+                            agg_apps.extend(apps)
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                        break
+            if agg_apps:
+                return jsonify({key: _maybe_filter({"apps": agg_apps}),
+                                "available": True})
         file_data = None
         for sd in search_dirs:
             for fn in filenames:

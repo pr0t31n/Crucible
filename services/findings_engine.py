@@ -637,20 +637,21 @@ class FindingsEngine:
 
         for f in findings:
             ip = f.get("ip", "")
-            if not ip:
-                continue
-            port = str(f.get("port", 0))
             hostname = f.get("hostname", "")
+            if not ip and not hostname:
+                continue
+            host_key = ip or hostname
+            port = str(f.get("port", 0))
             tool = f.get("tool", "unknown")
             risk = (f.get("risk") or "INFO").upper()
 
-            if ip not in hosts:
-                hosts[ip] = {
+            if host_key not in hosts:
+                hosts[host_key] = {
                     "ip": ip, "hostname": hostname,
                     "ports": {}, "tools": set(),
                     "cves": set(), "findings_count": 0,
                 }
-            host = hosts[ip]
+            host = hosts[host_key]
             if hostname and not host["hostname"]:
                 host["hostname"] = hostname
             host["tools"].add(tool)

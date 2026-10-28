@@ -137,21 +137,63 @@
     });
   }
 
-  /* ── Mobile app file browser ─────────────────────────── */
+  /* ── Mobile app file list + browser ──────────────────── */
   var _maBrowseModal = document.getElementById('maBrowseModal');
   var _maBrowseList = document.getElementById('maBrowseList');
   var _maBrowseLoading = document.getElementById('maBrowseLoading');
   var _maBrowseCrumbs = document.getElementById('maBrowseCrumbs');
   var _MA_EXT = ['.ipa','.apk','.aab','.xapk'];
+  var mobileAppPaths = [];
 
   function _maIsApp(name) {
     var n = name.toLowerCase();
     return _MA_EXT.some(function(e){ return n.endsWith(e); });
   }
 
+  function _maRenderList() {
+    var ul = document.getElementById('mobileAppList');
+    if (!ul) return;
+    ul.innerHTML = '';
+    mobileAppPaths.forEach(function(p, i) {
+      var li = document.createElement('li');
+      var ext = p.split('.').pop().toLowerCase();
+      var badge = (ext === 'ipa' ? 'iOS' : ext === 'apk' || ext === 'aab' || ext === 'xapk' ? 'Android' : '');
+      li.innerHTML = '<span style="flex:1;word-break:break-all">' + escHtml(p) + '</span>' +
+        (badge ? '<span style="font-size:.7rem;padding:1px 6px;border-radius:8px;background:var(--accent-muted);color:var(--accent-primary);white-space:nowrap">' + badge + '</span>' : '') +
+        '<button type="button" class="file-remove" data-idx="' + i + '" title="Remove">&times;</button>';
+      ul.appendChild(li);
+    });
+    ul.querySelectorAll('.file-remove').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        mobileAppPaths.splice(parseInt(this.dataset.idx), 1);
+        _maRenderList();
+      });
+    });
+  }
+
+  function _maAddFile(path) {
+    if (!path) return;
+    path = path.trim();
+    if (!path) return;
+    if (mobileAppPaths.indexOf(path) !== -1) return;
+    mobileAppPaths.push(path);
+    _maRenderList();
+  }
+
+  var _maAddBtn = document.getElementById('btnMobileAddFile');
+  if (_maAddBtn) _maAddBtn.addEventListener('click', function() {
+    var inp = document.getElementById('mobileAppPathInput');
+    _maAddFile(inp.value);
+    inp.value = '';
+  });
+  var _maPathInput = document.getElementById('mobileAppPathInput');
+  if (_maPathInput) _maPathInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); _maAddFile(this.value); this.value = ''; }
+  });
+
   function _maOpenBrowse() {
     if (_maBrowseModal) _maBrowseModal.classList.add('open');
-    var cur = valOf('mobileAppPath');
+    var cur = valOf('mobileAppPathInput');
     var start = cur ? cur.replace(/\/[^/]*$/, '') || '/' : (navigator.platform.indexOf('Mac') > -1 ? '/Users' : '/');
     _maBrowseNavigate(start);
   }
@@ -188,7 +230,7 @@
           li.addEventListener('click', function(){ _maBrowseNavigate(entry.path); });
         } else {
           li.addEventListener('click', function(){
-            document.getElementById('mobileAppPath').value = entry.path;
+            _maAddFile(entry.path);
             _maCloseBrowse();
           });
         }
@@ -278,9 +320,14 @@
     });
   }
 
-  /* ── Mobile app path (pre-populate in edit mode) ──────── */
-  var _mobileAppPathEl = document.getElementById('mobileAppPath');
-  if (_mobileAppPathEl && _cfg.mobileAppPath) _mobileAppPathEl.value = _cfg.mobileAppPath;
+  /* ── Mobile app paths (pre-populate in edit mode) ─────── */
+  if (_cfg.mobileAppPaths && Array.isArray(_cfg.mobileAppPaths) && _cfg.mobileAppPaths.length) {
+    _cfg.mobileAppPaths.forEach(function(p) { if (p) mobileAppPaths.push(p); });
+    _maRenderList();
+  } else if (_cfg.mobileAppPath) {
+    mobileAppPaths.push(_cfg.mobileAppPath);
+    _maRenderList();
+  }
   var _mobilePlatformEl = document.getElementById('mobilePlatform');
   if (_mobilePlatformEl && _cfg.mobilePlatform) _mobilePlatformEl.value = _cfg.mobilePlatform;
 
@@ -782,7 +829,7 @@
     if (_sec('scopeQuillSection')) {
       addR(sg,'Platform',selText('mobilePlatform'));
       addR(sg,'Analysis',selText('mobileDynamic'));
-      addR(sg,'App File', valOf('mobileAppPath') || '(none)');
+      addR(sg,'App Files', mobileAppPaths.length ? mobileAppPaths.map(function(p){return p.split('/').pop();}).join(', ') : '(none)');
     }
     if (_sec('scopeIsotopeSection')) {
       addR(sg,'Analysis Files',isoFiles.length ? isoFiles.map(function(f){return f.name;}).join(', ') : '');
@@ -889,7 +936,7 @@
         gcp_project: valOf('gcpProject'),
         mobile_platform: document.getElementById('mobilePlatform').value,
         mobile_dynamic: document.getElementById('mobileDynamic').value === 'both',
-        mobile_app_path: valOf('mobileAppPath'),
+        mobile_app_paths: mobileAppPaths.slice(),
         frida_device: valOf('fridaDevice'),
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),
