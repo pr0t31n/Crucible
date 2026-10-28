@@ -281,6 +281,8 @@
   /* ── Mobile app path (pre-populate in edit mode) ──────── */
   var _mobileAppPathEl = document.getElementById('mobileAppPath');
   if (_mobileAppPathEl && _cfg.mobileAppPath) _mobileAppPathEl.value = _cfg.mobileAppPath;
+  var _mobilePlatformEl = document.getElementById('mobilePlatform');
+  if (_mobilePlatformEl && _cfg.mobilePlatform) _mobilePlatformEl.value = _cfg.mobilePlatform;
 
   /* ── Dredge collection path (file browser) ──────────────── */
   var dgCollectionPath = _cfg.dredgeCollectionPath || '';

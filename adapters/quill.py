@@ -14,7 +14,7 @@ class QuillAdapter(ToolAdapter):
 
     def build_command(self, project, settings, *, resume=False, extra_args=None):
         cmd = ["python3", self.script_path]
-        platform = settings.get("mobile_platform", "android")
+        platform = settings.get("mobile_platform", "auto")
         cmd.extend(["--platform", platform])
         td = project.get("tool_dirs", {}).get("quill", "")
         if td:
@@ -33,7 +33,7 @@ class QuillAdapter(ToolAdapter):
 
     def default_settings(self):
         return {
-            "mobile_platform": "android",
+            "mobile_platform": "auto",
             "app_files": [],
             "dynamic_analysis": False,
             "frida_device": "",
@@ -49,7 +49,7 @@ class QuillAdapter(ToolAdapter):
     def settings_schema(self):
         return {
             "mobile_platform": {"label": "Platform", "type": "select",
-                                "options": ["android", "ios", "both"]},
+                                "options": ["auto", "android", "ios"]},
             "app_files": {"label": "Application Files", "type": "file_list",
                           "hint": "Upload APK, IPA, or AAB files",
                           "accept": ".apk,.ipa,.aab,.xapk"},

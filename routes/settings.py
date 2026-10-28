@@ -186,7 +186,7 @@ def _backfill_from_project(settings, project, tool_id):
                 settings["aws_auth_method"] = "keys"
     elif tool_id == "quill":
         if not settings.get("mobile_platform"):
-            settings["mobile_platform"] = scope_def.get("mobile_platform", "android")
+            settings["mobile_platform"] = scope_def.get("mobile_platform", "auto")
         if not settings.get("dynamic_analysis"):
             settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)
         if not settings.get("frida_device"):
