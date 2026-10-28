@@ -49,6 +49,7 @@ class ForgeAdapter(ToolAdapter):
     def default_settings(self):
         return {
             "cloud_provider": "aws",
+            "aws_auth_method": "profile",
             "aws_profile": "", "aws_region": "",
             "aws_access_key_id": "", "aws_secret_key": "",
             "aws_console_url": "", "aws_console_user": "", "aws_console_pass": "",
@@ -61,28 +62,52 @@ class ForgeAdapter(ToolAdapter):
         }
 
     def settings_schema(self):
+        _aws = {"cloud_provider": ["aws"]}
+        _azure = {"cloud_provider": ["azure"]}
+        _gcp = {"cloud_provider": ["gcp"]}
+        _aws_profile = {"cloud_provider": ["aws"], "aws_auth_method": ["profile"]}
+        _aws_keys = {"cloud_provider": ["aws"], "aws_auth_method": ["keys"]}
+        _aws_console = {"cloud_provider": ["aws"], "aws_auth_method": ["console"]}
         return {
             "cloud_provider": {"label": "Cloud Provider", "type": "select",
                                "options": ["aws", "azure", "gcp"]},
-            "aws_profile": {"label": "AWS CLI Profile", "type": "text",
-                            "hint": "Named profile from ~/.aws/credentials (leave blank if using keys below)"},
+            "aws_auth_method": {"label": "AWS Authentication", "type": "select",
+                                "options": [
+                                    {"value": "profile", "label": "CLI Profile"},
+                                    {"value": "keys", "label": "Access Keys"},
+                                    {"value": "console", "label": "Console Login"},
+                                ],
+                                "depends_on": _aws},
             "aws_region": {"label": "AWS Region", "type": "text",
-                           "hint": "e.g. us-east-1"},
+                           "hint": "e.g. us-east-1",
+                           "depends_on": _aws},
+            "aws_profile": {"label": "AWS CLI Profile", "type": "text",
+                            "hint": "Named profile from ~/.aws/credentials",
+                            "depends_on": _aws_profile},
             "aws_access_key_id": {"label": "AWS Access Key ID", "type": "text",
-                                  "hint": "Overrides profile — from IAM → Users → Security credentials"},
+                                  "hint": "From IAM → Users → Security credentials",
+                                  "depends_on": _aws_keys},
             "aws_secret_key": {"label": "AWS Secret Access Key", "type": "password",
-                               "hint": "Paired with access key ID above"},
+                               "hint": "Paired with access key ID above",
+                               "depends_on": _aws_keys},
             "aws_console_url": {"label": "AWS Console Sign-In URL", "type": "text",
-                                "hint": "e.g. https://123456789012.signin.aws.amazon.com/console"},
+                                "hint": "e.g. https://123456789012.signin.aws.amazon.com/console",
+                                "depends_on": _aws_console},
             "aws_console_user": {"label": "AWS Console Username", "type": "text",
-                                 "hint": "IAM username for console login"},
+                                 "hint": "IAM username for console login",
+                                 "depends_on": _aws_console},
             "aws_console_pass": {"label": "AWS Console Password", "type": "password",
-                                 "hint": "IAM password — used once to create temp access keys"},
-            "azure_subscription": {"label": "Azure Subscription ID", "type": "text"},
-            "azure_tenant": {"label": "Azure Tenant ID", "type": "text"},
-            "gcp_project": {"label": "GCP Project ID", "type": "text"},
+                                 "hint": "IAM password — used once to create temp access keys",
+                                 "depends_on": _aws_console},
+            "azure_subscription": {"label": "Azure Subscription ID", "type": "text",
+                                   "depends_on": _azure},
+            "azure_tenant": {"label": "Azure Tenant ID", "type": "text",
+                             "depends_on": _azure},
+            "gcp_project": {"label": "GCP Project ID", "type": "text",
+                            "depends_on": _gcp},
             "gcp_key_file": {"label": "GCP Service Account Key File", "type": "text",
-                             "hint": "Path to JSON key file"},
+                             "hint": "Path to JSON key file",
+                             "depends_on": _gcp},
             "scan_iam": {"label": "Scan IAM", "type": "checkbox"},
             "scan_storage": {"label": "Scan Storage", "type": "checkbox"},
             "scan_compute": {"label": "Scan Compute", "type": "checkbox"},

@@ -179,6 +179,11 @@ def _backfill_from_project(settings, project, tool_id):
             settings["azure_subscription"] = scope_def.get("azure_subscription", "")
         if not settings.get("gcp_project"):
             settings["gcp_project"] = scope_def.get("gcp_project", "")
+        if not settings.get("aws_auth_method") or settings["aws_auth_method"] == "profile":
+            if settings.get("aws_console_url"):
+                settings["aws_auth_method"] = "console"
+            elif settings.get("aws_access_key_id"):
+                settings["aws_auth_method"] = "keys"
     elif tool_id == "quill":
         if not settings.get("mobile_platform"):
             settings["mobile_platform"] = scope_def.get("mobile_platform", "android")

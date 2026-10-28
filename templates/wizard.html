@@ -811,16 +811,17 @@
           <div class="form-group">
             <label class="form-label" for="cloudProvider">Cloud Provider</label>
             <select id="cloudProvider" class="form-control">
-              <option value="all">All Providers</option>
-              <option value="aws">AWS</option>
-              <option value="azure">Azure</option>
-              <option value="gcp">GCP</option>
+              {% set _cp = (project.scope_definition or {}).get('cloud_provider','all') if project else 'all' %}
+              <option value="all"{{ ' selected' if _cp == 'all' }}>All Providers</option>
+              <option value="aws"{{ ' selected' if _cp == 'aws' }}>AWS</option>
+              <option value="azure"{{ ' selected' if _cp == 'azure' }}>Azure</option>
+              <option value="gcp"{{ ' selected' if _cp == 'gcp' }}>GCP</option>
             </select>
           </div>
           <div class="form-group form-grid-full" id="cloudAwsAuthBlock">
             <div class="form-group" style="margin-bottom:8px">
               <label class="form-label" for="awsRegion">AWS Region</label>
-              <input type="text" id="awsRegion" class="form-control" placeholder="us-east-1 (leave blank for all)" value="">
+              <input type="text" id="awsRegion" class="form-control" placeholder="us-east-1 (leave blank for all)" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_region','') }}{% endif %}">
             </div>
             <label class="form-label" style="margin-bottom:6px">AWS Authentication <span style="font-weight:400;color:var(--text-muted)">(choose one)</span></label>
             <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -831,35 +832,35 @@
             <div id="awsAuthProfile" class="form-grid" style="margin-bottom:0">
               <div class="form-group">
                 <label class="form-label" for="awsProfile">AWS CLI Profile</label>
-                <input type="text" id="awsProfile" class="form-control" placeholder="default" value="">
+                <input type="text" id="awsProfile" class="form-control" placeholder="default" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_profile','') }}{% endif %}">
                 <span class="form-hint">Named profile from ~/.aws/credentials (run: aws configure --profile name)</span>
               </div>
             </div>
             <div id="awsAuthKeys" class="form-grid" hidden style="margin-bottom:0">
               <div class="form-group">
                 <label class="form-label" for="awsAccessKeyId">Access Key ID</label>
-                <input type="text" id="awsAccessKeyId" class="form-control" placeholder="AKIA..." value="">
+                <input type="text" id="awsAccessKeyId" class="form-control" placeholder="AKIA..." value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_access_key_id','') }}{% endif %}">
                 <span class="form-hint">From IAM &rarr; Users &rarr; Security credentials &rarr; Create access key</span>
               </div>
               <div class="form-group">
                 <label class="form-label" for="awsSecretKey">Secret Access Key</label>
-                <input type="password" id="awsSecretKey" class="form-control" placeholder="" value="">
+                <input type="password" id="awsSecretKey" class="form-control" placeholder="" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_secret_key','') }}{% endif %}">
               </div>
             </div>
             <div id="awsAuthConsole" hidden style="margin-bottom:0">
               <div class="form-grid">
                 <div class="form-group form-grid-full">
                   <label class="form-label" for="awsConsoleUrl">Sign-In URL</label>
-                  <input type="text" id="awsConsoleUrl" class="form-control" placeholder="https://123456789012.signin.aws.amazon.com/console" value="">
+                  <input type="text" id="awsConsoleUrl" class="form-control" placeholder="https://123456789012.signin.aws.amazon.com/console" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_console_url','') }}{% endif %}">
                   <span class="form-hint">The IAM sign-in URL your client provided</span>
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="awsConsoleUser">IAM Username</label>
-                  <input type="text" id="awsConsoleUser" class="form-control" placeholder="" value="">
+                  <input type="text" id="awsConsoleUser" class="form-control" placeholder="" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_console_user','') }}{% endif %}">
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="awsConsolePass">IAM Password</label>
-                  <input type="password" id="awsConsolePass" class="form-control" placeholder="" value="">
+                  <input type="password" id="awsConsolePass" class="form-control" placeholder="" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('aws_console_pass','') }}{% endif %}">
                 </div>
               </div>
               <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px">Forge will log into the Console, create a temporary access key, run the audit, then delete the key. May not work if CAPTCHA or MFA is required.</div>
@@ -867,11 +868,11 @@
           </div>
           <div class="form-group" id="cloudAzureGroup">
             <label class="form-label" for="azureSubscription">Azure Subscription ID</label>
-            <input type="text" id="azureSubscription" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="">
+            <input type="text" id="azureSubscription" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('azure_subscription','') }}{% endif %}">
           </div>
           <div class="form-group" id="cloudGcpGroup">
             <label class="form-label" for="gcpProject">GCP Project ID</label>
-            <input type="text" id="gcpProject" class="form-control" placeholder="my-project-123" value="">
+            <input type="text" id="gcpProject" class="form-control" placeholder="my-project-123" value="{% if project and project.scope_definition %}{{ (project.scope_definition or {}).get('gcp_project','') }}{% endif %}">
           </div>
         </div>
       </div>
@@ -1125,7 +1126,7 @@
 
 
 {% block scripts %}
-<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }}}</script>
+<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }}}</script>
 <script src="/static/js/wizard.js"></script>
 {% endblock %}
 

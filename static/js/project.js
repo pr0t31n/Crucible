@@ -9249,8 +9249,43 @@ function renderSettingsFields(container, settings, schema) {
             group.innerHTML += '<span class="form-hint">' + esc(fieldSchema.hint) + '</span>';
         }
 
+        if (fieldSchema.depends_on) {
+            group.dataset.dependsOn = JSON.stringify(fieldSchema.depends_on);
+        }
+
         container.appendChild(group);
     }
+
+    _applySettingsDeps();
+}
+
+function _applySettingsDeps() {
+    var allGroups = document.querySelectorAll('#settingsFields .form-group[data-depends-on], #settingsAdvancedFields .form-group[data-depends-on]');
+    var depKeys = {};
+    allGroups.forEach(function(g) {
+        var deps = JSON.parse(g.dataset.dependsOn);
+        Object.keys(deps).forEach(function(k) { depKeys[k] = true; });
+    });
+
+    function evalDeps() {
+        allGroups.forEach(function(g) {
+            var deps = JSON.parse(g.dataset.dependsOn);
+            var visible = true;
+            Object.keys(deps).forEach(function(k) {
+                var el = document.querySelector('[name="' + k + '"]');
+                if (!el) { visible = false; return; }
+                var val = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
+                if (deps[k].indexOf(val) === -1) visible = false;
+            });
+            g.hidden = !visible;
+        });
+    }
+
+    Object.keys(depKeys).forEach(function(k) {
+        var el = document.querySelector('#settingsFields [name="' + k + '"], #settingsAdvancedFields [name="' + k + '"]');
+        if (el) el.addEventListener('change', evalDeps);
+    });
+    evalDeps();
 }
 
 function _collectSettingsForm() {

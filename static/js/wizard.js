@@ -536,6 +536,7 @@
     var exEl = document.getElementById('scopeExclusionsSection');
     if (exEl) exEl.hidden = !tools.some(function(t){ return EXCLUSION_TOOLS.indexOf(t) !== -1; });
     updateCloudFields();
+    updateAwsAuthMethod();
     updateMobileDynamic();
     updateDredgeMode();
   }
@@ -829,6 +830,7 @@
         firewall_vendor: document.getElementById('fwVendor').value,
         firewall_configs: fwFiles.map(function(f){return f.name;}),
         cloud_provider: document.getElementById('cloudProvider').value,
+        aws_auth_method: (document.querySelector('input[name="awsAuthMethod"]:checked') || {}).value || 'profile',
         aws_profile: valOf('awsProfile'),
         aws_region: valOf('awsRegion'),
         aws_access_key_id: valOf('awsAccessKeyId'),
@@ -1186,6 +1188,22 @@
   if (EDIT_MODE) {
     (_cfg.fractureRoles || []).forEach(function(r) { addRoleRow('fr', r.role, r.username, r.password); });
     (_cfg.siphonRoles || []).forEach(function(r) { addRoleRow('si', r.role, r.username, r.password); });
+
+    if (_cfg.cloudProvider && _cfg.cloudProvider !== 'all') {
+      cloudProviderEl.value = _cfg.cloudProvider;
+    }
+    var _authMethod = _cfg.awsAuthMethod || '';
+    if (!_authMethod) {
+      if (document.getElementById('awsConsoleUrl').value) _authMethod = 'console';
+      else if (document.getElementById('awsAccessKeyId').value) _authMethod = 'keys';
+      else if (document.getElementById('awsProfile').value) _authMethod = 'profile';
+    }
+    if (_authMethod) {
+      var _radio = document.querySelector('input[name="awsAuthMethod"][value="' + _authMethod + '"]');
+      if (_radio) _radio.checked = true;
+    }
+    updateCloudFields();
+    updateAwsAuthMethod();
   }
 
   /* ── Edit mode: load existing engagement hours + scheduled starts ── */
