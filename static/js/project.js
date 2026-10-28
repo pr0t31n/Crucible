@@ -352,6 +352,7 @@ socket.on('tool_status', function(data) {
             }
         }
     }
+    if (!data.phase) _fetchQueueData();
     renderToolFeeds();
     updateConsoleHeader();
     _updatePauseAllButtons();
