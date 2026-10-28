@@ -18,7 +18,7 @@ class QuillAdapter(ToolAdapter):
         cmd.extend(["--platform", platform])
         td = project.get("tool_dirs", {}).get("quill", "")
         if td:
-            cmd.extend(["--output", td])
+            cmd.extend(["--project", td])
         app_files = settings.get("app_files", [])
         for af in app_files:
             cmd.extend(["--app", af])
