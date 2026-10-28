@@ -15,8 +15,6 @@ class ForgeAdapter(ToolAdapter):
 
     def build_command(self, project, settings, *, resume=False, extra_args=None):
         cmd = ["python3", self.script_path]
-        provider = settings.get("cloud_provider", "aws")
-        cmd.extend(["--provider", provider])
         if settings.get("aws_profile"):
             cmd.extend(["--aws-profile", settings["aws_profile"]])
         if settings.get("aws_region"):
@@ -27,16 +25,33 @@ class ForgeAdapter(ToolAdapter):
             cmd.extend(["--gcp-project", settings["gcp_project"]])
         td = project.get("tool_dirs", {}).get("forge", "")
         if td:
-            cmd.extend(["--output", td])
+            cmd.extend(["--project", td])
         cmd.extend(["--client-short", project.get("client_short", "")])
         if extra_args:
             cmd.extend(extra_args)
         return cmd
 
+    def build_env(self, project, settings):
+        """Pass AWS credentials via environment to avoid ps visibility."""
+        env = {}
+        if settings.get("aws_access_key_id"):
+            env["FORGE_AWS_ACCESS_KEY_ID"] = settings["aws_access_key_id"]
+        if settings.get("aws_secret_key"):
+            env["FORGE_AWS_SECRET_KEY"] = settings["aws_secret_key"]
+        if settings.get("aws_console_url"):
+            env["FORGE_AWS_CONSOLE_URL"] = settings["aws_console_url"]
+        if settings.get("aws_console_user"):
+            env["FORGE_AWS_CONSOLE_USER"] = settings["aws_console_user"]
+        if settings.get("aws_console_pass"):
+            env["FORGE_AWS_CONSOLE_PASS"] = settings["aws_console_pass"]
+        return env
+
     def default_settings(self):
         return {
             "cloud_provider": "aws",
             "aws_profile": "", "aws_region": "",
+            "aws_access_key_id": "", "aws_secret_key": "",
+            "aws_console_url": "", "aws_console_user": "", "aws_console_pass": "",
             "azure_subscription": "", "azure_tenant": "",
             "gcp_project": "", "gcp_key_file": "",
             "scan_iam": True, "scan_storage": True,
@@ -49,10 +64,20 @@ class ForgeAdapter(ToolAdapter):
         return {
             "cloud_provider": {"label": "Cloud Provider", "type": "select",
                                "options": ["aws", "azure", "gcp"]},
-            "aws_profile": {"label": "AWS Profile", "type": "text",
-                            "hint": "Named profile from ~/.aws/credentials"},
+            "aws_profile": {"label": "AWS CLI Profile", "type": "text",
+                            "hint": "Named profile from ~/.aws/credentials (leave blank if using keys below)"},
             "aws_region": {"label": "AWS Region", "type": "text",
                            "hint": "e.g. us-east-1"},
+            "aws_access_key_id": {"label": "AWS Access Key ID", "type": "text",
+                                  "hint": "Overrides profile — from IAM → Users → Security credentials"},
+            "aws_secret_key": {"label": "AWS Secret Access Key", "type": "password",
+                               "hint": "Paired with access key ID above"},
+            "aws_console_url": {"label": "AWS Console Sign-In URL", "type": "text",
+                                "hint": "e.g. https://123456789012.signin.aws.amazon.com/console"},
+            "aws_console_user": {"label": "AWS Console Username", "type": "text",
+                                 "hint": "IAM username for console login"},
+            "aws_console_pass": {"label": "AWS Console Password", "type": "password",
+                                 "hint": "IAM password — used once to create temp access keys"},
             "azure_subscription": {"label": "Azure Subscription ID", "type": "text"},
             "azure_tenant": {"label": "Azure Tenant ID", "type": "text"},
             "gcp_project": {"label": "GCP Project ID", "type": "text"},

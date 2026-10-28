@@ -963,6 +963,15 @@ class ProcessManager:
                                          resume=resume, extra_args=extra_args)
                    if adapter else [])
 
+        # Merge adapter-supplied env vars (e.g. credentials)
+        if adapter and hasattr(adapter, "build_env"):
+            try:
+                adapter_env = adapter.build_env(_launch_project, settings)
+                if adapter_env:
+                    env.update(adapter_env)
+            except Exception:
+                pass
+
         if not cmd:
             script_path = tool_cfg.get("script")
             if not script_path or not Path(script_path).exists():
