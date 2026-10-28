@@ -346,11 +346,57 @@ def api_create_project():
     return jsonify({"ok": True, "project_id": pid, "project": meta})
 
 
+_SCOPE_TO_SETTINGS = {
+    "quill": {
+        "mobile_platform": ("mobile_platform", "auto"),
+        "mobile_app_path": ("app_files", None),
+        "mobile_dynamic": ("dynamic_analysis", False),
+        "frida_device": ("frida_device", ""),
+    },
+    "forge": {
+        "cloud_provider": ("cloud_provider", "all"),
+        "aws_auth_method": ("aws_auth_method", ""),
+    },
+}
+
+
+def _sync_scope_to_tool_settings(data, project):
+    scope_def = data.get("scope_definition", {})
+    if not scope_def:
+        return
+    ts = dict(project.get("tool_settings", {}))
+    tools = project.get("tools", [])
+    changed = False
+    for tid, field_map in _SCOPE_TO_SETTINGS.items():
+        if tid not in tools:
+            continue
+        tool_ts = dict(ts.get(tid, {}))
+        for scope_key, (settings_key, default) in field_map.items():
+            val = scope_def.get(scope_key)
+            if val is None:
+                continue
+            if settings_key == "app_files" and isinstance(val, str):
+                if val:
+                    tool_ts["app_files"] = [val]
+                    changed = True
+            elif tool_ts.get(settings_key) != val:
+                tool_ts[settings_key] = val
+                changed = True
+        if changed:
+            ts[tid] = tool_ts
+    if changed:
+        data["tool_settings"] = ts
+
+
 @project_bp.route("/api/update_project/<project_id>", methods=["POST"])
 def api_update_project(project_id):
     data = request.get_json(silent=True) or {}
     if "scope" in data and "active_scopes" not in data:
         data["active_scopes"] = [data["scope"]]
+    if "scope_definition" in data and "tool_settings" not in data:
+        project = get_project(project_id)
+        if project:
+            _sync_scope_to_tool_settings(data, project)
     ok = update_project(project_id, data)
     if not ok:
         return jsonify({"error": "Not found"}), 404
