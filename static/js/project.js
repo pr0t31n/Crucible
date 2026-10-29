@@ -342,6 +342,13 @@ socket.on('tool_status', function(data) {
                 toolStatuses[data.tool_id] = {status: _phSt, tool_id: data.tool_id, project_id: data.project_id};
             }
         }
+        if (data.mitm_active !== undefined) {
+            if (!toolStatuses[data.tool_id]) toolStatuses[data.tool_id] = {};
+            toolStatuses[data.tool_id]._mitm_active = !!data.mitm_active;
+        }
+        if (data.phase === 'mitm_capture' && (_phSt === 'complete' || _phSt === 'error' || _phSt === 'skipped')) {
+            if (toolStatuses[data.tool_id]) toolStatuses[data.tool_id]._mitm_active = false;
+        }
     } else {
         toolStatuses[data.tool_id] = data;
         if (_sci !== -1) {
@@ -9263,7 +9270,41 @@ function renderStatusPanel(tool, body, empty) {
         }
     }
 
-    body.innerHTML = '<div style="max-width:640px;margin:0 auto;padding:20px">' + headerHtml + scopeSelectorHtml + treeHtml + '</div>';
+    var mitmBtnHtml = '';
+    if ((st._mitm_active) && overallStatus === 'running') {
+        mitmBtnHtml = '<div style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:12px">' +
+            '<span style="font-size:13px;color:var(--text-muted);flex:1">MITM capture is active — exercise the app, then stop when ready.</span>' +
+            '<button class="btn btn-danger btn-sm" id="mitmStopBtn" style="white-space:nowrap">' +
+                '<i class="bi bi-stop-circle"></i> Stop MITM Capture' +
+            '</button>' +
+        '</div>';
+    }
+
+    body.innerHTML = '<div style="max-width:640px;margin:0 auto;padding:20px">' + headerHtml + scopeSelectorHtml + mitmBtnHtml + treeHtml + '</div>';
+
+    var _mitmBtn = document.getElementById('mitmStopBtn');
+    if (_mitmBtn) {
+        _mitmBtn.addEventListener('click', function() {
+            _mitmBtn.disabled = true;
+            _mitmBtn.textContent = 'Stopping…';
+            fetch('/api/mitm_stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({project_id: PID, tool_id: tool})
+            }).then(function(r) { return r.json(); }).then(function(j) {
+                if (j.ok) {
+                    _mitmBtn.textContent = 'Stop signal sent';
+                    if (toolStatuses[tool]) toolStatuses[tool]._mitm_active = false;
+                } else {
+                    _mitmBtn.textContent = j.error || 'Failed';
+                    _mitmBtn.disabled = false;
+                }
+            }).catch(function() {
+                _mitmBtn.textContent = 'Error';
+                _mitmBtn.disabled = false;
+            });
+        });
+    }
 
     if (specs) {
         var phaseKeys = Object.keys(phases);

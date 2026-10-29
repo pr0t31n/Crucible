@@ -473,6 +473,34 @@ def api_pause_all():
     return jsonify({"ok": True, "paused_tools": paused})
 
 
+@console_bp.route("/api/mitm_stop", methods=["POST"])
+def api_mitm_stop():
+    """Signal a running Quill instance to stop MITM capture."""
+    data = request.get_json(silent=True) or {}
+    project_id = data.get("project_id")
+    tool_id = data.get("tool_id", "quill")
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    project = require_project(project_id)
+    if not project:
+        return jsonify({"error": "project not found"}), 404
+    wrote = False
+    td = project.get("tool_dirs", {}).get(tool_id)
+    if td:
+        sentinel = Path(td) / "_mitm_stop"
+        sentinel.write_text("stop", encoding="utf-8")
+        wrote = True
+    for scope_dirs in (project.get("scope_tool_dirs") or {}).values():
+        std = scope_dirs.get(tool_id)
+        if std and std != td:
+            sentinel = Path(std) / "_mitm_stop"
+            sentinel.write_text("stop", encoding="utf-8")
+            wrote = True
+    if not wrote:
+        return jsonify({"error": "No active tool directory found"}), 404
+    return jsonify({"ok": True})
+
+
 @console_bp.route("/api/resume_tool", methods=["POST"])
 def api_resume_tool():
     """Resume a paused tool (re-launch with --resume)."""
