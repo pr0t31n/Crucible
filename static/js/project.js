@@ -4940,7 +4940,7 @@ var TOOL_SUBTABS = {
     auger:    [['status','Database Status'],['db-schema','DB Schema Map'],['db-privs','DB Privilege Matrix']],
     bastion:  [['status','Firewall Status'],['fw-rules','FW Rule Matrix'],['fw-zones','FW Zone Map'],['fw-compliance','FW Policy Compliance'],['fw-config','FW Config Summary']],
     forge:    [['status','Cloud Status'],['cloud-resources','Cloud Resource Inventory'],['cloud-iam','Cloud IAM Matrix'],['cloud-services','Cloud Service Dashboard']],
-    quill:    [['status','Mobile Status'],['mobile-components','Mobile Component Map'],['mobile-perms','Mobile Permission Matrix'],['mobile-hardening','Mobile Binary Hardening'],['mobile-data','Mobile Data Flow'],['mobile-domains','Domains & URLs'],['mobile-emails','Emails']],
+    quill:    [['status','Mobile Status'],['mobile-components','Mobile Component Map'],['mobile-perms','Mobile Permission Matrix'],['mobile-hardening','Mobile Binary Hardening'],['mobile-data','Mobile Data Flow'],['mobile-domains','Domains & URLs'],['mobile-emails','Emails'],['mitm-cert','MITM CA Cert']],
     isotope:  [['status','File Status'],['iso-properties','File Properties'],['iso-entropy','Entropy Analysis'],['iso-contents','Archive Contents'],['iso-strings','String Analysis'],['iso-code','Code Analysis'],['iso-metadata','Metadata'],['iso-binary','Binary Analysis'],['iso-secrets','Secrets Detection'],['iso-ioc','IOC Matches']],
     dredge:   [['status','Endpoint Status'],['endpoint-overview','System Overview'],['endpoint-hardening','Hardening Assessment'],['endpoint-cis','CIS Benchmark'],['endpoint-nist','NIST 800-123'],['endpoint-stig','DISA STIG'],['endpoint-software','Software Inventory'],['endpoint-ad','Active Directory'],['endpoint-network','Network Posture'],['endpoint-browser','Browser Security'],['endpoint-disk','Disk & Storage'],['endpoint-hardware','Hardware Inventory']],
     aether:   [['status','Wi-Fi Status']], aether_b: [['status','Bluetooth Status']], aether_z: [['status','Zigbee Status']], aether_u: [['status','UWB Status']]
@@ -5420,6 +5420,7 @@ function loadIntelPanel(panel, tool) {
         'mobile-data': '/api/intel/mobile-data/' + PID,
         'mobile-domains': '/api/intel/mobile-domains/' + PID,
         'mobile-emails': '/api/intel/mobile-emails/' + PID,
+        'mitm-cert': '/api/intel/mitm-cert/' + PID,
         'traffic-overview': '/api/intel/traffic-overview/' + PID,
         'traffic-convos': '/api/intel/traffic-convos/' + PID,
         'net-hosts': '/api/intel/net-hosts/' + PID,
@@ -8793,6 +8794,67 @@ function _renderMobileEmails(data) {
     return h;
 }
 
+
+function _renderMitmCert(data) {
+    var h = '<div style="margin-bottom:20px"><h3 style="margin:0 0 4px 0;font-size:1.1rem">MITM Proxy CA Certificate</h3>' +
+        '<div style="color:var(--text-secondary);font-size:0.85rem">Import this certificate into Burp Suite (or your upstream proxy) to trust mitmproxy connections</div></div>';
+
+    if (!data || !data.available || !data.pem) {
+        h += '<div class="empty-state"><div class="empty-state-text">' +
+            'No mitmproxy CA certificate found.<br>' +
+            '<span style="font-size:0.85rem;color:var(--text-secondary)">Start a Quill MITM capture first — the certificate is copied to the project output on capture start.</span>' +
+            '</div></div>';
+        return h;
+    }
+
+    h += '<div style="background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px">';
+    h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">';
+    h += '<div style="width:44px;height:44px;border-radius:8px;background:var(--clr-accent,#4a90d9);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#fff">🔐</div>';
+    h += '<div><div style="font-weight:600;font-size:1rem">mitmproxy-ca-cert.pem</div>';
+    h += '<div style="font-size:0.8rem;color:var(--text-secondary)">PEM-encoded X.509 CA certificate</div></div></div>';
+
+    h += '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">';
+    h += '<a href="/api/intel/mitm-cert/' + PID + '/download" class="btn btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">' +
+         '<span style="font-size:1.1em">⬇</span> Download PEM</a>';
+    h += '<button onclick="_copyMitmCertPem()" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px">' +
+         '<span style="font-size:1.1em">📋</span> Copy PEM to Clipboard</button>';
+    h += '</div>';
+
+    h += '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);user-select:none">Show certificate PEM</summary>';
+    h += '<pre id="mitmCertPem" style="margin-top:8px;padding:12px;background:var(--bg-code,var(--bg-tertiary,#1a1a2e));border:1px solid var(--border);border-radius:6px;' +
+         'font-size:0.78rem;line-height:1.4;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto">' +
+         esc(data.pem) + '</pre></details>';
+    h += '</div>';
+
+    h += '<div style="background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border);border-radius:8px;padding:20px">';
+    h += '<div style="font-weight:600;margin-bottom:12px">Import into Burp Suite</div>';
+    h += '<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.9rem">';
+    h += '<li>Download the PEM file above</li>';
+    h += '<li>In Burp Suite: <b>Settings → Network → TLS → Client TLS Certificates</b></li>';
+    h += '<li>Or: <b>Settings → Network → TLS → Server TLS Inspection</b> → add the CA to trusted CAs</li>';
+    h += '<li>Restart Burp if prompted</li>';
+    h += '<li>Re-run the MITM capture — Burp should now trust mitmproxy connections</li>';
+    h += '</ol></div>';
+
+    return h;
+}
+
+function _copyMitmCertPem() {
+    var el = document.getElementById('mitmCertPem');
+    if (!el) return;
+    var text = el.textContent || el.innerText;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            toast('success', 'Certificate PEM copied to clipboard.');
+        }).catch(function() {
+            toast('error', 'Failed to copy — select and copy manually.');
+        });
+    } else {
+        toast('error', 'Clipboard API not available — select and copy manually.');
+    }
+}
+
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8841,6 +8903,7 @@ var _INTEL_RENDERERS = {
     'mobile-data': _renderMobileData,
     'mobile-domains': _renderMobileDomains,
     'mobile-emails': _renderMobileEmails,
+    'mitm-cert': _renderMitmCert,
 };
 
 

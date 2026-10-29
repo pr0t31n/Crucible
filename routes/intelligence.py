@@ -2930,3 +2930,55 @@ def api_save_intel(project_id):
 
     saved = [r for r in results if "path" in r]
     return jsonify({"ok": len(saved) > 0, "results": results})
+
+
+@intelligence_bp.route("/api/intel/mitm-cert/<project_id>")
+def api_intel_mitm_cert(project_id):
+    """Return the mitmproxy CA certificate PEM from a Quill output dir."""
+    project = require_project(project_id)
+    all_tool_dirs = _resolve_tool_dirs(project, "quill")
+    for td_str in all_tool_dirs:
+        td = Path(td_str)
+        if not td.is_dir():
+            continue
+        for sub in sorted(td.iterdir(), reverse=True):
+            cert = sub / "mitm" / "mitmproxy-ca-cert.pem"
+            if cert.exists():
+                try:
+                    pem = cert.read_text(encoding="utf-8")
+                    return jsonify({"available": True, "pem": pem,
+                                    "path": str(cert)})
+                except OSError:
+                    continue
+        cert = td / "mitm" / "mitmproxy-ca-cert.pem"
+        if cert.exists():
+            try:
+                pem = cert.read_text(encoding="utf-8")
+                return jsonify({"available": True, "pem": pem,
+                                "path": str(cert)})
+            except OSError:
+                pass
+    return jsonify({"available": False, "pem": None})
+
+
+@intelligence_bp.route("/api/intel/mitm-cert/<project_id>/download")
+def api_intel_mitm_cert_download(project_id):
+    """Download the mitmproxy CA certificate PEM file."""
+    project = require_project(project_id)
+    all_tool_dirs = _resolve_tool_dirs(project, "quill")
+    for td_str in all_tool_dirs:
+        td = Path(td_str)
+        if not td.is_dir():
+            continue
+        for sub in sorted(td.iterdir(), reverse=True):
+            cert = sub / "mitm" / "mitmproxy-ca-cert.pem"
+            if cert.exists():
+                return send_file(str(cert), mimetype="application/x-pem-file",
+                                 as_attachment=True,
+                                 download_name="mitmproxy-ca-cert.pem")
+        cert = td / "mitm" / "mitmproxy-ca-cert.pem"
+        if cert.exists():
+            return send_file(str(cert), mimetype="application/x-pem-file",
+                             as_attachment=True,
+                             download_name="mitmproxy-ca-cert.pem")
+    return jsonify({"error": "MITM CA cert not found"}), 404
