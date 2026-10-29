@@ -331,6 +331,7 @@
   var _mobilePlatformEl = document.getElementById('mobilePlatform');
   if (_mobilePlatformEl && _cfg.mobilePlatform) _mobilePlatformEl.value = _cfg.mobilePlatform;
   if (mobileModeEl && _cfg.analysisMode) mobileModeEl.value = _cfg.analysisMode;
+  if (fridaEnabledEl && _cfg.fridaAnalysis) { fridaEnabledEl.checked = true; updateFridaFields(); }
   if (mitmEnabledEl && _cfg.mitmAnalysis) { mitmEnabledEl.checked = true; updateMitmFields(); }
   if (_cfg.mitmDuration) { var _mdEl = document.getElementById('mitmDuration'); if (_mdEl) _mdEl.value = _cfg.mitmDuration; }
   if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
@@ -576,6 +577,7 @@
 
   /* ── Mobile analysis mode toggle ─────────────────────── */
   var mobileModeEl = document.getElementById('mobileMode');
+  var fridaEnabledEl = document.getElementById('fridaEnabled');
   var mitmEnabledEl = document.getElementById('mitmEnabled');
   function updateMobileMode() {
     if (!mobileModeEl) return;
@@ -586,6 +588,11 @@
     document.getElementById('mobileDynamicGroup').hidden = !showDynamic;
   }
   if (mobileModeEl) { mobileModeEl.addEventListener('change', updateMobileMode); updateMobileMode(); }
+  function updateFridaFields() {
+    if (!fridaEnabledEl) return;
+    document.getElementById('fridaGroup').hidden = !fridaEnabledEl.checked;
+  }
+  if (fridaEnabledEl) { fridaEnabledEl.addEventListener('change', updateFridaFields); updateFridaFields(); }
   function updateMitmFields() {
     if (!mitmEnabledEl) return;
     document.getElementById('mobileMitmGroup').hidden = !mitmEnabledEl.checked;
@@ -719,6 +726,35 @@
         return false;
       }
     }
+    if (n === 3) {
+      var ok = true;
+      var quillSec = document.getElementById('scopeQuillSection');
+      if (quillSec && !quillSec.hidden) {
+        var _qm = (document.getElementById('mobileMode') || {}).value || 'static';
+        var _qHasApp = mobileAppPaths.length > 0;
+        var _qFrida = !!(document.getElementById('fridaEnabled') || {}).checked;
+        var _qMitm = !!(document.getElementById('mitmEnabled') || {}).checked;
+        var _qPlatform = (document.getElementById('mobilePlatform') || {}).value || 'auto';
+        if ((_qm === 'static' || _qm === 'full') && !_qHasApp) {
+          markError(document.getElementById('mobileAppPathInput'), 'At least one application binary is required for static analysis');
+          ok = false;
+        }
+        if ((_qm === 'dynamic' || _qm === 'full') && !_qFrida && !_qMitm) {
+          var _dynLabel = document.getElementById('mobileDynamicGroup');
+          if (_dynLabel) { var _de = document.createElement('span'); _de.className = 'form-error'; _de.textContent = 'Select at least one dynamic method: Frida and/or MITM'; _dynLabel.insertBefore(_de, _dynLabel.firstChild); }
+          ok = false;
+        }
+        if (_qFrida && !_qHasApp && !valOf('targetProcess')) {
+          markError(document.getElementById('targetProcess'), 'Target process is required when no app binary is provided (e.g. com.example.app)');
+          ok = false;
+        }
+        if (!_qHasApp && _qPlatform === 'auto') {
+          markError(document.getElementById('mobilePlatform'), 'Select a platform — auto-detect requires an app binary');
+          ok = false;
+        }
+      }
+      return ok;
+    }
     return true;
   }
 
@@ -843,13 +879,21 @@
     if (_sec('scopeQuillSection')) {
       addR(sg,'Platform',selText('mobilePlatform'));
       addR(sg,'Analysis Mode',selText('mobileMode'));
-      addR(sg,'App Files', mobileAppPaths.length ? mobileAppPaths.map(function(p){return p.split('/').pop();}).join(', ') : '(none)');
       var _mm = document.getElementById('mobileMode').value;
-      if (_mm === 'dynamic' || _mm === 'full') {
-        var _fd = valOf('fridaDevice');
-        if (_fd) addR(sg,'Frida Device',_fd);
+      if (_mm === 'static' || _mm === 'full') {
+        addR(sg,'App Files', mobileAppPaths.length ? mobileAppPaths.map(function(p){return p.split('/').pop();}).join(', ') : '(none)');
       }
-      if (document.getElementById('mitmEnabled').checked) addR(sg,'MITM','Enabled ('+valOf('mitmDuration')+'s, port '+valOf('mitmPort')+')');
+      if (_mm === 'dynamic' || _mm === 'full') {
+        var _dynParts = [];
+        if ((document.getElementById('fridaEnabled') || {}).checked) {
+          var _tp = valOf('targetProcess'); var _fd = valOf('fridaDevice');
+          _dynParts.push('Frida' + (_tp ? ' (' + _tp + ')' : '') + (_fd ? ' on ' + _fd : ''));
+        }
+        if ((document.getElementById('mitmEnabled') || {}).checked) {
+          _dynParts.push('MITM (' + valOf('mitmDuration') + 's, port ' + valOf('mitmPort') + ')');
+        }
+        addR(sg,'Dynamic Testing', _dynParts.length ? _dynParts.join(' + ') : '(none selected)');
+      }
     }
     if (_sec('scopeIsotopeSection')) {
       addR(sg,'Analysis Files',isoFiles.length ? isoFiles.map(function(f){return f.name;}).join(', ') : '');
@@ -880,7 +924,7 @@
 
   /* ── Submit ──────────────────────────────────────────── */
   btnSubmit.addEventListener('click', function() {
-    if (!validateStep(1) || !validateStep(2)) {
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
       return;
     }
     btnSubmit.disabled = true;
@@ -957,6 +1001,7 @@
         mobile_platform: (document.getElementById('mobilePlatform') || {}).value || 'auto',
         analysis_mode: (document.getElementById('mobileMode') || {}).value || 'static',
         mobile_app_paths: mobileAppPaths.slice(),
+        frida_analysis: !!(document.getElementById('fridaEnabled') || {}).checked,
         frida_device: valOf('fridaDevice'),
         target_process: valOf('targetProcess'),
         mitm_analysis: !!(document.getElementById('mitmEnabled') || {}).checked,

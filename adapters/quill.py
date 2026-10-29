@@ -28,23 +28,30 @@ class QuillAdapter(ToolAdapter):
         elif td:
             cmd.extend(["--project", td])
         ea = list(extra_args or [])
+        app_files = settings.get("app_files", [])
+        has_app = False
         if "--app" in ea:
             idx = ea.index("--app")
             if idx + 1 < len(ea):
                 cmd.extend(["--app", ea[idx + 1]])
                 ea = ea[:idx] + ea[idx + 2:]
-        else:
-            app_files = settings.get("app_files", [])
-            if app_files:
-                cmd.extend(["--app", app_files[0]])
+                has_app = True
+        elif app_files:
+            cmd.extend(["--app", app_files[0]])
+            has_app = True
+        if not has_app and platform == "auto":
+            platform = "android"
+            cmd[cmd.index("--platform") + 1] = platform
         mode = settings.get("analysis_mode", "static")
         cmd.extend(["--mode", mode])
-        if mode in ("dynamic", "full"):
+        frida_on = settings.get("frida_analysis", False)
+        mitm_on = settings.get("mitm_analysis", False)
+        if mode in ("dynamic", "full") and frida_on:
             if settings.get("frida_device"):
                 cmd.extend(["--device", settings["frida_device"]])
             if settings.get("target_process"):
                 cmd.extend(["--target-process", settings["target_process"]])
-        if settings.get("mitm_analysis"):
+        if mitm_on:
             cmd.append("--mitm")
             mitm_dur = settings.get("mitm_duration")
             if mitm_dur and mitm_dur != 120:
@@ -78,6 +85,7 @@ class QuillAdapter(ToolAdapter):
             "mobile_platform": "auto",
             "app_files": [],
             "analysis_mode": "static",
+            "frida_analysis": False,
             "frida_device": "",
             "target_process": "",
             "mitm_analysis": False,
@@ -95,27 +103,33 @@ class QuillAdapter(ToolAdapter):
                                 ]},
             "app_files": {"label": "Application Files", "type": "file_list",
                           "hint": "Upload APK, IPA, or AAB files",
-                          "accept": ".apk,.ipa,.aab,.xapk"},
+                          "accept": ".apk,.ipa,.aab,.xapk",
+                          "depends_on": {"analysis_mode": ["static", "full"]}},
             "analysis_mode": {"label": "Analysis Mode", "type": "select",
                               "options": [
                                   {"value": "static", "label": "Static Only"},
                                   {"value": "dynamic", "label": "Dynamic Only"},
                                   {"value": "full", "label": "Static + Dynamic"},
                               ]},
-            "frida_device": {"label": "Frida Device ID", "type": "text",
-                             "hint": "Device serial for dynamic analysis",
-                             "depends_on": {"analysis_mode": ["dynamic", "full"]}},
-            "target_process": {"label": "Target Process", "type": "text",
-                               "hint": "App package/process name (auto-detected if blank)",
+            "frida_analysis": {"label": "Frida Dynamic Analysis", "type": "checkbox",
+                               "hint": "Attach Frida for runtime instrumentation and SSL pinning bypass",
                                "depends_on": {"analysis_mode": ["dynamic", "full"]}},
-            "mitm_analysis": {"label": "Enable MITM Traffic Analysis", "type": "checkbox",
-                              "hint": "Capture + analyse live traffic via mitmproxy; "
-                                      "Frida SSL bypass auto-injected when available, "
-                                      "or chain Burp upstream for manual bypass"},
-            "mitm_duration": {"label": "MITM Capture Duration (sec)", "type": "number",
+            "frida_device": {"label": "Device ID", "type": "text",
+                             "hint": "Device serial (leave blank for USB)",
+                             "depends_on": {"frida_analysis": ["true"]}},
+            "target_process": {"label": "Target Process", "type": "text",
+                               "hint": "Package name (com.example.app) or bundle ID; "
+                                       "auto-detected from binary if provided, otherwise "
+                                       "use 'adb shell pm list packages' or 'frida-ps -U'",
+                               "depends_on": {"frida_analysis": ["true"]}},
+            "mitm_analysis": {"label": "MITM Traffic Capture", "type": "checkbox",
+                              "hint": "Capture + analyse traffic via mitmproxy; "
+                                      "works standalone or alongside Frida for auto SSL bypass",
+                              "depends_on": {"analysis_mode": ["dynamic", "full"]}},
+            "mitm_duration": {"label": "Capture Duration (sec)", "type": "number",
                               "hint": "How long to capture traffic (default: 120)",
                               "depends_on": {"mitm_analysis": ["true"]}},
-            "mitm_port": {"label": "MITM Proxy Port", "type": "number",
+            "mitm_port": {"label": "Proxy Port", "type": "number",
                           "hint": "mitmproxy listen port (default: 8080)",
                           "depends_on": {"mitm_analysis": ["true"]}},
         }

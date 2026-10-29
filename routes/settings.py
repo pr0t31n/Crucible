@@ -189,6 +189,8 @@ def _backfill_from_project(settings, project, tool_id):
             settings["mobile_platform"] = scope_def.get("mobile_platform", "auto")
         if not settings.get("analysis_mode"):
             settings["analysis_mode"] = scope_def.get("analysis_mode", "static")
+        if "frida_analysis" not in settings:
+            settings["frida_analysis"] = scope_def.get("frida_analysis", False)
         if not settings.get("frida_device"):
             settings["frida_device"] = scope_def.get("frida_device", "")
         if not settings.get("target_process"):
