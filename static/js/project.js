@@ -4926,7 +4926,7 @@ var TOOL_SUBTABS = {
     auger:    [['status','Database Status'],['db-schema','DB Schema Map'],['db-privs','DB Privilege Matrix']],
     bastion:  [['status','Firewall Status'],['fw-rules','FW Rule Matrix'],['fw-zones','FW Zone Map'],['fw-compliance','FW Policy Compliance'],['fw-config','FW Config Summary']],
     forge:    [['status','Cloud Status'],['cloud-resources','Cloud Resource Inventory'],['cloud-iam','Cloud IAM Matrix'],['cloud-services','Cloud Service Dashboard']],
-    quill:    [['status','Mobile Status'],['mobile-components','Mobile Component Map'],['mobile-perms','Mobile Permission Matrix'],['mobile-hardening','Mobile Binary Hardening'],['mobile-data','Mobile Data Flow']],
+    quill:    [['status','Mobile Status'],['mobile-components','Mobile Component Map'],['mobile-perms','Mobile Permission Matrix'],['mobile-hardening','Mobile Binary Hardening'],['mobile-data','Mobile Data Flow'],['mobile-domains','Domains & URLs'],['mobile-emails','Emails']],
     isotope:  [['status','File Status'],['iso-properties','File Properties'],['iso-entropy','Entropy Analysis'],['iso-contents','Archive Contents'],['iso-strings','String Analysis'],['iso-code','Code Analysis'],['iso-metadata','Metadata'],['iso-binary','Binary Analysis'],['iso-secrets','Secrets Detection'],['iso-ioc','IOC Matches']],
     dredge:   [['status','Endpoint Status'],['endpoint-overview','System Overview'],['endpoint-hardening','Hardening Assessment'],['endpoint-cis','CIS Benchmark'],['endpoint-nist','NIST 800-123'],['endpoint-stig','DISA STIG'],['endpoint-software','Software Inventory'],['endpoint-ad','Active Directory'],['endpoint-network','Network Posture'],['endpoint-browser','Browser Security'],['endpoint-disk','Disk & Storage'],['endpoint-hardware','Hardware Inventory']],
     aether:   [['status','Wi-Fi Status']], aether_b: [['status','Bluetooth Status']], aether_z: [['status','Zigbee Status']], aether_u: [['status','UWB Status']]
@@ -5404,6 +5404,8 @@ function loadIntelPanel(panel, tool) {
         'mobile-perms': '/api/intel/mobile-perms/' + PID,
         'mobile-hardening': '/api/intel/mobile-hardening/' + PID,
         'mobile-data': '/api/intel/mobile-data/' + PID,
+        'mobile-domains': '/api/intel/mobile-domains/' + PID,
+        'mobile-emails': '/api/intel/mobile-emails/' + PID,
         'traffic-overview': '/api/intel/traffic-overview/' + PID,
         'traffic-convos': '/api/intel/traffic-convos/' + PID,
         'net-hosts': '/api/intel/net-hosts/' + PID,
@@ -8723,6 +8725,60 @@ function _renderMobileData(data) {
     return h;
 }
 
+function _renderMobileDomains(data) {
+    var d = _mobileExtractPayload(data, 'mobile_domains');
+    if (!d || !d.apps || !d.apps.length) return '<div class="empty-state"><div class="empty-state-text">No domain/URL data available. Run Quill to populate.</div></div>';
+    var h = '';
+    d.apps.forEach(function(app) {
+        h += _mobileAppHeader(app);
+        h += '<div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">';
+        h += '<div style="background:var(--bg-secondary);padding:8px 14px;border-radius:6px"><span style="font-size:1.3rem;font-weight:700">' + (app.unique_domains || 0) + '</span><div style="font-size:0.75rem;color:var(--text-secondary)">Unique Domains</div></div>';
+        h += '<div style="background:var(--bg-secondary);padding:8px 14px;border-radius:6px"><span style="font-size:1.3rem;font-weight:700">' + (app.unique_urls || 0) + '</span><div style="font-size:0.75rem;color:var(--text-secondary)">Unique URLs</div></div>';
+        h += '</div>';
+        var domains = app.domains || [];
+        if (domains.length) {
+            h += '<div style="font-weight:600;margin:12px 0 6px;font-size:0.9rem">Top Domains (' + domains.length + ')</div>';
+            var domRows = domains.slice(0, 200).map(function(d) {
+                return ['<span style="font-family:var(--font-mono);font-size:0.8rem">' + esc(d.domain || '') + '</span>', String(d.count || 0)];
+            });
+            h += _intelTable(['Domain', 'References'], domRows);
+        }
+        var urls = app.urls || [];
+        if (urls.length) {
+            h += '<div style="font-weight:600;margin:12px 0 6px;font-size:0.9rem">URLs (' + urls.length + (urls.length >= 500 ? '+' : '') + ')</div>';
+            var urlRows = urls.slice(0, 200).map(function(u) {
+                return ['<span style="font-family:var(--font-mono);font-size:0.78rem;word-break:break-all">' + esc(u) + '</span>'];
+            });
+            h += _intelTable(['URL'], urlRows);
+        }
+        if (!domains.length && !urls.length) {
+            h += '<div style="color:var(--text-secondary);padding:8px;font-size:0.85rem">No domains or URLs detected in this application.</div>';
+        }
+    });
+    return h;
+}
+
+function _renderMobileEmails(data) {
+    var d = _mobileExtractPayload(data, 'mobile_emails');
+    if (!d || !d.apps || !d.apps.length) return '<div class="empty-state"><div class="empty-state-text">No email data available. Run Quill to populate.</div></div>';
+    var h = '';
+    d.apps.forEach(function(app) {
+        h += _mobileAppHeader(app);
+        h += '<div style="background:var(--bg-secondary);padding:8px 14px;border-radius:6px;margin-bottom:12px;display:inline-block"><span style="font-size:1.3rem;font-weight:700">' + (app.unique_emails || 0) + '</span><div style="font-size:0.75rem;color:var(--text-secondary)">Unique Emails</div></div>';
+        var emails = app.emails || [];
+        if (emails.length) {
+            var emRows = emails.map(function(e) {
+                var parts = e.split('@');
+                return ['<span style="font-family:var(--font-mono);font-size:0.8rem">' + esc(e) + '</span>', parts.length > 1 ? esc(parts[1]) : ''];
+            });
+            h += _intelTable(['Email Address', 'Domain'], emRows);
+        } else {
+            h += '<div style="color:var(--text-secondary);padding:8px;font-size:0.85rem">No email addresses detected in this application.</div>';
+        }
+    });
+    return h;
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -8769,6 +8825,8 @@ var _INTEL_RENDERERS = {
     'mobile-perms': _renderMobilePerms,
     'mobile-hardening': _renderMobileHardening,
     'mobile-data': _renderMobileData,
+    'mobile-domains': _renderMobileDomains,
+    'mobile-emails': _renderMobileEmails,
 };
 
 

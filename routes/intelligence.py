@@ -718,6 +718,8 @@ _PANEL_MAP = {
     "mobile-data":       ("quill", ["data_flow.json", "data.json"]),
     "mobile-traffic":    ("quill", ["traffic_analysis.json"]),
     "mobile-api":        ("quill", ["api_inventory.json"]),
+    "mobile-domains":    ("quill", ["domains.json", "url_domain_analysis.json"]),
+    "mobile-emails":     ("quill", ["emails.json", "email_analysis.json"]),
     # Trawler (traffic)
     "traffic-overview": ("trawler", ["traffic.json", "overview.json"]),
     "traffic-convos":   ("trawler", ["conversations.json", "flows.json"]),
