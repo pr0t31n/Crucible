@@ -59,9 +59,19 @@ class QuillAdapter(ToolAdapter):
             upstream = settings.get("mitm_upstream_proxy", "").strip()
             if upstream:
                 cmd.extend(["--mitm-upstream-proxy", upstream])
-            burp_ca = settings.get("mitm_burp_ca", "").strip()
-            if burp_ca:
-                cmd.extend(["--mitm-burp-ca", burp_ca])
+            ca_pem = settings.get("mitm_proxy_ca_pem", "").strip()
+            if ca_pem:
+                import os, tempfile
+                td = project.get("tool_dirs", {}).get("quill", "")
+                if td:
+                    os.makedirs(td, exist_ok=True)
+                    ca_path = os.path.join(td, "proxy-ca.pem")
+                else:
+                    fd, ca_path = tempfile.mkstemp(suffix=".pem", prefix="proxy-ca-")
+                    os.close(fd)
+                with open(ca_path, "w", encoding="utf-8") as f:
+                    f.write(ca_pem)
+                cmd.extend(["--mitm-burp-ca", ca_path])
         cmd.extend(["--client-short", project.get("client_short", "")])
         if ea:
             cmd.extend(ea)
@@ -94,7 +104,8 @@ class QuillAdapter(ToolAdapter):
             "mitm_analysis": False,
             "mitm_port": 8080,
             "mitm_upstream_proxy": "",
-            "mitm_burp_ca": "",
+            "mitm_proxy_ca_pem": "",
+            "mitm_proxy_ca_name": "",
         }
 
     def settings_schema(self):
@@ -140,10 +151,11 @@ class QuillAdapter(ToolAdapter):
                         "Chain: Device → Quill MITM → Proxy → Internet. "
                         "Leave blank if not using an upstream proxy.",
                 "depends_on": {"mitm_analysis": ["true"]}},
-            "mitm_burp_ca": {
+            "mitm_proxy_ca_pem": {
                 "label": "Proxy CA Certificate (cert+key PEM)",
-                "type": "text",
-                "hint": "Path to your upstream proxy's CA (cert+key PEM). "
+                "type": "file",
+                "accept": ".pem,.crt,.cer,.key",
+                "hint": "Upload your upstream proxy's CA (cert+key PEM). "
                         "When set, Quill signs with this CA so the device "
                         "only needs one CA trusted — no second CA install. "
                         "For Burp: Proxy → Import/Export CA → Certificate and Private Key in PEM.",

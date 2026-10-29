@@ -356,6 +356,9 @@ _SCOPE_TO_SETTINGS = {
         "target_process": ("target_process", ""),
         "mitm_analysis": ("mitm_analysis", False),
         "mitm_port": ("mitm_port", 8080),
+        "mitm_upstream_proxy": ("mitm_upstream_proxy", ""),
+        "mitm_proxy_ca_pem": ("mitm_proxy_ca_pem", ""),
+        "mitm_proxy_ca_name": ("mitm_proxy_ca_name", ""),
     },
     "forge": {
         "cloud_provider": ("cloud_provider", "all"),
@@ -1011,6 +1014,9 @@ def api_update_scopes(project_id):
             "target_process": ("target_process", ""),
             "mitm_analysis": ("mitm_analysis", False),
             "mitm_port": ("mitm_port", 8080),
+            "mitm_upstream_proxy": ("mitm_upstream_proxy", ""),
+            "mitm_proxy_ca_pem": ("mitm_proxy_ca_pem", ""),
+            "mitm_proxy_ca_name": ("mitm_proxy_ca_name", ""),
         },
         "forge": {
             "cloud_provider": ("cloud_provider", "all"),

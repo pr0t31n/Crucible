@@ -597,6 +597,34 @@
     var g = document.getElementById('mitmUpstreamCaGroup');
     if (g) g.hidden = !valOf('mitmUpstreamProxy');
   }
+  var _proxyCaPem = '';
+  var _proxyCaName = '';
+  var _proxyCaFileEl = document.getElementById('mitmBurpCaFile');
+  if (_proxyCaFileEl) {
+    _proxyCaFileEl.addEventListener('change', function() {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        _proxyCaPem = e.target.result;
+        _proxyCaName = f.name;
+        var nameEl = document.getElementById('mitmBurpCaName');
+        if (nameEl) nameEl.textContent = f.name;
+        var clrEl = document.getElementById('mitmBurpCaClear');
+        if (clrEl) clrEl.hidden = false;
+      };
+      reader.readAsText(f);
+    });
+  }
+  window.clearProxyCa = function() {
+    _proxyCaPem = '';
+    _proxyCaName = '';
+    var nameEl = document.getElementById('mitmBurpCaName');
+    if (nameEl) nameEl.textContent = '(none selected)';
+    var clrEl = document.getElementById('mitmBurpCaClear');
+    if (clrEl) clrEl.hidden = true;
+    if (_proxyCaFileEl) _proxyCaFileEl.value = '';
+  };
   var _upEl = document.getElementById('mitmUpstreamProxy');
   if (_upEl) _upEl.addEventListener('input', updateUpstreamCaField);
   if (mitmEnabledEl) mitmEnabledEl.addEventListener('change', updateMitmFields);
@@ -618,7 +646,14 @@
   }
   if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
   if (_cfg.mitmUpstreamProxy) { var _muEl = document.getElementById('mitmUpstreamProxy'); if (_muEl) _muEl.value = _cfg.mitmUpstreamProxy; }
-  if (_cfg.mitmBurpCa) { var _bcEl = document.getElementById('mitmBurpCa'); if (_bcEl) _bcEl.value = _cfg.mitmBurpCa; }
+  if (_cfg.mitmBurpCa) {
+    _proxyCaPem = _cfg.mitmBurpCa;
+    _proxyCaName = _cfg.mitmBurpCaName || 'proxy-ca.pem';
+    var _cnEl = document.getElementById('mitmBurpCaName');
+    if (_cnEl) _cnEl.textContent = _proxyCaName;
+    var _ccEl = document.getElementById('mitmBurpCaClear');
+    if (_ccEl) _ccEl.hidden = false;
+  }
   updateUpstreamCaField();
 
   /* ── Engagement hours toggle ───────────────────────────── */
@@ -914,7 +949,10 @@
         if ((document.getElementById('mitmEnabled') || {}).checked) {
           var _mitmDesc = 'MITM (port ' + valOf('mitmPort') + ')';
           var _upProxy = valOf('mitmUpstreamProxy');
-          if (_upProxy) _mitmDesc += ' → ' + _upProxy;
+          if (_upProxy) {
+            _mitmDesc += ' → ' + _upProxy;
+            if (_proxyCaName) _mitmDesc += ' (CA: ' + _proxyCaName + ')';
+          }
           _dynParts.push(_mitmDesc);
         }
         addR(sg,'Dynamic Testing', _dynParts.length ? _dynParts.join(' + ') : '(none selected)');
@@ -1032,7 +1070,8 @@
         mitm_analysis: !!(document.getElementById('mitmEnabled') || {}).checked,
         mitm_port: parseInt(valOf('mitmPort')) || 8080,
         mitm_upstream_proxy: valOf('mitmUpstreamProxy'),
-        mitm_burp_ca: valOf('mitmBurpCa'),
+        mitm_proxy_ca_pem: _proxyCaPem,
+        mitm_proxy_ca_name: _proxyCaName,
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),
         isotope_archive_depth: parseInt(valOf('isoArchiveDepth')) || 5
