@@ -56,6 +56,12 @@ class QuillAdapter(ToolAdapter):
             mitm_port = settings.get("mitm_port")
             if mitm_port and mitm_port != 8080:
                 cmd.extend(["--mitm-port", str(mitm_port)])
+            upstream = settings.get("mitm_upstream_proxy", "").strip()
+            if upstream:
+                cmd.extend(["--mitm-upstream-proxy", upstream])
+            burp_ca = settings.get("mitm_burp_ca", "").strip()
+            if burp_ca:
+                cmd.extend(["--mitm-burp-ca", burp_ca])
         cmd.extend(["--client-short", project.get("client_short", "")])
         if ea:
             cmd.extend(ea)
@@ -87,6 +93,8 @@ class QuillAdapter(ToolAdapter):
             "target_process": "",
             "mitm_analysis": False,
             "mitm_port": 8080,
+            "mitm_upstream_proxy": "",
+            "mitm_burp_ca": "",
         }
 
     def settings_schema(self):
@@ -125,6 +133,21 @@ class QuillAdapter(ToolAdapter):
             "mitm_port": {"label": "Proxy Port", "type": "number",
                           "hint": "mitmproxy listen port (default: 8080)",
                           "depends_on": {"mitm_analysis": ["true"]}},
+            "mitm_upstream_proxy": {
+                "label": "Upstream Proxy",
+                "type": "text",
+                "hint": "Proxy URL to forward traffic through (e.g. Burp, ZAP, Charles). "
+                        "Chain: Device → Quill MITM → Proxy → Internet. "
+                        "Leave blank if not using an upstream proxy.",
+                "depends_on": {"mitm_analysis": ["true"]}},
+            "mitm_burp_ca": {
+                "label": "Proxy CA Certificate (cert+key PEM)",
+                "type": "text",
+                "hint": "Path to your upstream proxy's CA (cert+key PEM). "
+                        "When set, Quill signs with this CA so the device "
+                        "only needs one CA trusted — no second CA install. "
+                        "For Burp: Proxy → Import/Export CA → Certificate and Private Key in PEM.",
+                "depends_on": {"mitm_upstream_proxy": ["_nonempty"]}},
         }
 
     def load_findings(self, project_dir, tool_output_dir):

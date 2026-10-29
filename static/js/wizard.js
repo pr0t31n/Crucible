@@ -591,7 +591,14 @@
   function updateMitmFields() {
     if (!mitmEnabledEl) return;
     document.getElementById('mobileMitmGroup').hidden = !mitmEnabledEl.checked;
+    updateUpstreamCaField();
   }
+  function updateUpstreamCaField() {
+    var g = document.getElementById('mitmUpstreamCaGroup');
+    if (g) g.hidden = !valOf('mitmUpstreamProxy');
+  }
+  var _upEl = document.getElementById('mitmUpstreamProxy');
+  if (_upEl) _upEl.addEventListener('input', updateUpstreamCaField);
   if (mitmEnabledEl) mitmEnabledEl.addEventListener('change', updateMitmFields);
 
   /* ── Restore saved mobile settings in edit mode ─────────── */
@@ -610,6 +617,9 @@
     updateMitmFields();
   }
   if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
+  if (_cfg.mitmUpstreamProxy) { var _muEl = document.getElementById('mitmUpstreamProxy'); if (_muEl) _muEl.value = _cfg.mitmUpstreamProxy; }
+  if (_cfg.mitmBurpCa) { var _bcEl = document.getElementById('mitmBurpCa'); if (_bcEl) _bcEl.value = _cfg.mitmBurpCa; }
+  updateUpstreamCaField();
 
   /* ── Engagement hours toggle ───────────────────────────── */
   var wizEngToggle = document.getElementById('wizEngagementEnabled');
@@ -902,7 +912,10 @@
           _dynParts.push('Frida' + (_tp ? ' (' + _tp + ')' : '') + (_fd ? ' on ' + _fd : ''));
         }
         if ((document.getElementById('mitmEnabled') || {}).checked) {
-          _dynParts.push('MITM (port ' + valOf('mitmPort') + ')');
+          var _mitmDesc = 'MITM (port ' + valOf('mitmPort') + ')';
+          var _upProxy = valOf('mitmUpstreamProxy');
+          if (_upProxy) _mitmDesc += ' → ' + _upProxy;
+          _dynParts.push(_mitmDesc);
         }
         addR(sg,'Dynamic Testing', _dynParts.length ? _dynParts.join(' + ') : '(none selected)');
       }
@@ -1018,6 +1031,8 @@
         target_process: valOf('targetProcess'),
         mitm_analysis: !!(document.getElementById('mitmEnabled') || {}).checked,
         mitm_port: parseInt(valOf('mitmPort')) || 8080,
+        mitm_upstream_proxy: valOf('mitmUpstreamProxy'),
+        mitm_burp_ca: valOf('mitmBurpCa'),
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),
         isotope_archive_depth: parseInt(valOf('isoArchiveDepth')) || 5
