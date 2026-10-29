@@ -53,9 +53,6 @@ class QuillAdapter(ToolAdapter):
                 cmd.extend(["--target-process", settings["target_process"]])
         if mitm_on:
             cmd.append("--mitm")
-            mitm_dur = settings.get("mitm_duration")
-            if mitm_dur and mitm_dur != 3600:
-                cmd.extend(["--mitm-duration", str(mitm_dur)])
             mitm_port = settings.get("mitm_port")
             if mitm_port and mitm_port != 8080:
                 cmd.extend(["--mitm-port", str(mitm_port)])
@@ -89,7 +86,6 @@ class QuillAdapter(ToolAdapter):
             "frida_device": "",
             "target_process": "",
             "mitm_analysis": False,
-            "mitm_duration": 3600,
             "mitm_port": 8080,
         }
 
@@ -126,9 +122,6 @@ class QuillAdapter(ToolAdapter):
                               "hint": "Capture + analyse traffic via mitmproxy; "
                                       "works standalone or alongside Frida for auto SSL bypass",
                               "depends_on": {"analysis_mode": ["dynamic", "full"]}},
-            "mitm_duration": {"label": "Max Capture Duration (sec)", "type": "number",
-                              "hint": "Safety cap — capture stops earlier via Stop button (default: 3600)",
-                              "depends_on": {"mitm_analysis": ["true"]}},
             "mitm_port": {"label": "Proxy Port", "type": "number",
                           "hint": "mitmproxy listen port (default: 8080)",
                           "depends_on": {"mitm_analysis": ["true"]}},

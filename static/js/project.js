@@ -346,8 +346,15 @@ socket.on('tool_status', function(data) {
             if (!toolStatuses[data.tool_id]) toolStatuses[data.tool_id] = {};
             toolStatuses[data.tool_id]._mitm_active = !!data.mitm_active;
         }
+        if (data.mitm_paused !== undefined) {
+            if (!toolStatuses[data.tool_id]) toolStatuses[data.tool_id] = {};
+            toolStatuses[data.tool_id]._mitm_paused = !!data.mitm_paused;
+        }
         if (data.phase === 'mitm_capture' && (_phSt === 'complete' || _phSt === 'error' || _phSt === 'skipped')) {
-            if (toolStatuses[data.tool_id]) toolStatuses[data.tool_id]._mitm_active = false;
+            if (toolStatuses[data.tool_id]) {
+                toolStatuses[data.tool_id]._mitm_active = false;
+                toolStatuses[data.tool_id]._mitm_paused = false;
+            }
         }
     } else {
         toolStatuses[data.tool_id] = data;
@@ -9277,6 +9284,10 @@ function renderStatusPanel(tool, body, empty) {
             '<button class="btn btn-danger btn-sm" id="mitmStopBtn" style="white-space:nowrap">' +
                 '<i class="bi bi-stop-circle"></i> Stop MITM Capture' +
             '</button>' +
+        '</div>';
+    } else if (st._mitm_paused) {
+        mitmBtnHtml = '<div style="margin-bottom:16px;padding:12px;background:rgba(255,192,0,.12);border:1px solid rgba(255,192,0,.35);border-radius:8px;display:flex;align-items:center;gap:12px">' +
+            '<span style="font-size:13px;color:var(--text-primary);flex:1"><strong>MITM paused</strong> — memory threshold reached. Resume the tool to continue capture.</span>' +
         '</div>';
     }
 

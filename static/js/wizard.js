@@ -333,7 +333,6 @@
   if (mobileModeEl && _cfg.analysisMode) mobileModeEl.value = _cfg.analysisMode;
   if (fridaEnabledEl && _cfg.fridaAnalysis) { fridaEnabledEl.checked = true; updateFridaFields(); }
   if (mitmEnabledEl && _cfg.mitmAnalysis) { mitmEnabledEl.checked = true; updateMitmFields(); }
-  if (_cfg.mitmDuration) { var _mdEl = document.getElementById('mitmDuration'); if (_mdEl) _mdEl.value = _cfg.mitmDuration; }
   if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
 
   /* ── Dredge collection path (file browser) ──────────────── */
@@ -890,7 +889,7 @@
           _dynParts.push('Frida' + (_tp ? ' (' + _tp + ')' : '') + (_fd ? ' on ' + _fd : ''));
         }
         if ((document.getElementById('mitmEnabled') || {}).checked) {
-          _dynParts.push('MITM (' + valOf('mitmDuration') + 's, port ' + valOf('mitmPort') + ')');
+          _dynParts.push('MITM (port ' + valOf('mitmPort') + ')');
         }
         addR(sg,'Dynamic Testing', _dynParts.length ? _dynParts.join(' + ') : '(none selected)');
       }
@@ -1005,7 +1004,6 @@
         frida_device: valOf('fridaDevice'),
         target_process: valOf('targetProcess'),
         mitm_analysis: !!(document.getElementById('mitmEnabled') || {}).checked,
-        mitm_duration: parseInt(valOf('mitmDuration')) || 120,
         mitm_port: parseInt(valOf('mitmPort')) || 8080,
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),

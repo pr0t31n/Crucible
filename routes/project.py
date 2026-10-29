@@ -355,7 +355,6 @@ _SCOPE_TO_SETTINGS = {
         "frida_device": ("frida_device", ""),
         "target_process": ("target_process", ""),
         "mitm_analysis": ("mitm_analysis", False),
-        "mitm_duration": ("mitm_duration", 3600),
         "mitm_port": ("mitm_port", 8080),
     },
     "forge": {
@@ -1011,7 +1010,6 @@ def api_update_scopes(project_id):
             "frida_device": ("frida_device", ""),
             "target_process": ("target_process", ""),
             "mitm_analysis": ("mitm_analysis", False),
-            "mitm_duration": ("mitm_duration", 3600),
             "mitm_port": ("mitm_port", 8080),
         },
         "forge": {

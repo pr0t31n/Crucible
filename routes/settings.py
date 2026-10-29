@@ -197,8 +197,6 @@ def _backfill_from_project(settings, project, tool_id):
             settings["target_process"] = scope_def.get("target_process", "")
         if "mitm_analysis" not in settings:
             settings["mitm_analysis"] = scope_def.get("mitm_analysis", False)
-        if "mitm_duration" not in settings:
-            settings["mitm_duration"] = scope_def.get("mitm_duration", 3600)
         if "mitm_port" not in settings:
             settings["mitm_port"] = scope_def.get("mitm_port", 8080)
         if not settings.get("app_files"):
