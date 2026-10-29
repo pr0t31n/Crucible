@@ -17,7 +17,15 @@ class QuillAdapter(ToolAdapter):
         platform = settings.get("mobile_platform", "auto")
         cmd.extend(["--platform", platform])
         td = project.get("tool_dirs", {}).get("quill", "")
-        if td:
+        scope = project.get("_launch_scope", "")
+        if td and scope and scope.startswith("file:"):
+            import os
+            fname = scope.split(":", 1)[1]
+            file_dir = os.path.join(td, fname)
+            os.makedirs(file_dir, exist_ok=True)
+            cmd.extend(["--project", file_dir])
+            project["_scope_tool_dir"] = file_dir
+        elif td:
             cmd.extend(["--project", td])
         ea = list(extra_args or [])
         if "--app" in ea:

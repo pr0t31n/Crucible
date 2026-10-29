@@ -1006,6 +1006,13 @@ class ProcessManager:
             if extra_args:
                 cmd.extend(extra_args)
 
+        # Pick up scope-specific output dir from adapter (e.g. Quill per-file)
+        _scope_td = _launch_project.get("_scope_tool_dir")
+        if _scope_td:
+            _tool_dir = _scope_td
+            with self._lock:
+                self._tool_output_dirs.setdefault(project_id, {})[tk] = _scope_td
+
         # -- Fixup sudo env: env_reset in sudoers strips -E on most distros.
         # Replace  sudo [-S] [-E] <cmd>  with  sudo -S env K=V ... <cmd>
         # so PATH and CRUCIBLE_* vars survive into the tool process.
@@ -2856,12 +2863,77 @@ class ProcessManager:
                             "_reemit": True},
                            room=_room(project_id))
 
+    def _merge_scope_findings(self, project_id, tool_id, base_tool, project):
+        """Merge per-file scope findings into the base tool dir's findings.json.
+
+        When a tool runs with a file-scoped subdir (e.g. quill per-APK/IPA),
+        each run writes its own findings.json.  This method appends those
+        findings into the base tool dir so a single combined file exists for
+        the Findings tab and Prometheus.
+        """
+        if not project:
+            return
+        base_td = (project.get("tool_dirs") or {}).get(base_tool)
+        scope_td = (self._tool_output_dirs.get(project_id) or {}).get(tool_id)
+        if not base_td or not scope_td or str(base_td) == str(scope_td):
+            return
+        scope_fp = Path(scope_td) / "findings.json"
+        if not scope_fp.exists():
+            return
+        try:
+            raw = json.loads(scope_fp.read_text(encoding="utf-8"))
+            new_findings = (raw if isinstance(raw, list)
+                           else raw.get("findings", raw.get("entries", [])))
+        except Exception as exc:
+            log.warning("_merge_scope_findings: read %s: %s", scope_fp, exc)
+            return
+        if not new_findings:
+            return
+
+        base_fp = Path(base_td) / "findings.json"
+        lock_path = Path(base_td) / ".findings.lock"
+        import fcntl
+        try:
+            with open(lock_path, "w") as lock_fh:
+                fcntl.flock(lock_fh, fcntl.LOCK_EX)
+                existing = []
+                if base_fp.exists():
+                    try:
+                        eraw = json.loads(
+                            base_fp.read_text(encoding="utf-8"))
+                        existing = (eraw if isinstance(eraw, list)
+                                    else eraw.get("findings",
+                                                  eraw.get("entries", [])))
+                    except Exception:
+                        pass
+                seen = {f.get("id") for f in existing if f.get("id")}
+                added = 0
+                for f in new_findings:
+                    fid = f.get("id")
+                    if fid and fid not in seen:
+                        existing.append(f)
+                        seen.add(fid)
+                        added += 1
+                    elif not fid:
+                        existing.append(f)
+                        added += 1
+                base_fp.write_text(
+                    json.dumps(existing, indent=2), encoding="utf-8")
+                fcntl.flock(lock_fh, fcntl.LOCK_UN)
+            log.info("Merged %d findings from %s into %s",
+                     added, tool_id, base_td)
+        except Exception as exc:
+            log.warning("_merge_scope_findings: %s", exc)
+
     def _post_completion(self, project_id, tool_id, base_tool, final_status, rc):
         """Post-completion tasks that need Flask app context."""
         from models.project import get_project
         _proj = get_project(project_id)
         _audit(_proj.get("project_dir", "") if _proj else "",
                "TOOL_DONE", tool=tool_id, status=final_status, returncode=rc)
+
+        if ":" in tool_id and final_status == "complete":
+            self._merge_scope_findings(project_id, tool_id, base_tool, _proj)
 
         if base_tool in AETHER_TOOLS:
             try:
