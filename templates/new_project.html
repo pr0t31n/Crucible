@@ -890,14 +890,17 @@
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label" for="mobileDynamic">Analysis Type</label>
-            <select id="mobileDynamic" class="form-control">
+            <label class="form-label" for="mobileMode">Analysis Mode</label>
+            <select id="mobileMode" class="form-control">
               <option value="static">Static Only</option>
-              <option value="both">Static + Dynamic</option>
+              <option value="dynamic">Dynamic Only</option>
+              <option value="full">Static + Dynamic</option>
             </select>
           </div>
         </div>
-        <div class="form-group" style="margin-top:8px">
+
+        <!-- Static scope options (shown for static / full) -->
+        <div id="mobileStaticGroup" class="form-group" style="margin-top:8px">
           <span class="form-label">Application Binaries</span>
           <span class="form-hint" style="display:block;margin-bottom:8px;">Add one or more .ipa, .apk, .aab, or .xapk files. Mixed iOS and Android files are supported — each will be analysed in a separate run.</span>
           <ul class="file-list" id="mobileAppList"></ul>
@@ -911,10 +914,41 @@
           </div>
           <span class="form-hint">Full path to a .ipa or .apk on this server.</span>
         </div>
-        <div class="form-group" id="mobileFridaGroup" hidden>
-          <label class="form-label" for="fridaDevice">Frida Device ID</label>
-          <input type="text" id="fridaDevice" class="form-control" placeholder="Device ID (leave blank for USB)">
-          <span class="form-hint">Required for dynamic analysis. Connect device or start emulator first.</span>
+
+        <!-- Dynamic scope options (shown for dynamic / full) -->
+        <div id="mobileDynamicGroup" hidden>
+          <div class="form-grid" style="margin-top:8px">
+            <div class="form-group">
+              <label class="form-label" for="fridaDevice">Frida Device ID</label>
+              <input type="text" id="fridaDevice" class="form-control" placeholder="Device ID (leave blank for USB)">
+              <span class="form-hint">Connect device or start emulator first.</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="targetProcess">Target Process</label>
+              <input type="text" id="targetProcess" class="form-control" placeholder="com.example.app (auto-detected if blank)">
+              <span class="form-hint">App package name — auto-detected from APK/IPA if left blank.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- MITM options (available in any mode — Frida bypass auto-injected when available) -->
+        <div id="mobileMitmSection" style="margin-top:8px">
+          <div class="form-group">
+            <label class="form-label"><input type="checkbox" id="mitmEnabled" style="margin-right:6px"> Enable MITM Traffic Analysis</label>
+            <span class="form-hint">Capture + analyse live traffic via mitmproxy. Frida SSL bypass auto-injected when available; chain Burp upstream for manual pinning bypass.</span>
+          </div>
+          <div id="mobileMitmGroup" hidden>
+            <div class="form-grid" style="margin-top:8px">
+              <div class="form-group">
+                <label class="form-label" for="mitmDuration">Capture Duration (sec)</label>
+                <input type="number" id="mitmDuration" class="form-control" value="120" min="30" max="3600">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="mitmPort">Proxy Port</label>
+                <input type="number" id="mitmPort" class="form-control" value="8080" min="1024" max="65535">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

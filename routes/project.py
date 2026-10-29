@@ -350,8 +350,12 @@ _SCOPE_TO_SETTINGS = {
     "quill": {
         "mobile_platform": ("mobile_platform", "auto"),
         "mobile_app_paths": ("app_files", None),
-        "mobile_dynamic": ("dynamic_analysis", False),
+        "analysis_mode": ("analysis_mode", "static"),
         "frida_device": ("frida_device", ""),
+        "target_process": ("target_process", ""),
+        "mitm_analysis": ("mitm_analysis", False),
+        "mitm_duration": ("mitm_duration", 120),
+        "mitm_port": ("mitm_port", 8080),
     },
     "forge": {
         "cloud_provider": ("cloud_provider", "all"),
@@ -1001,8 +1005,12 @@ def api_update_scopes(project_id):
         "quill": {
             "mobile_platform": ("mobile_platform", "auto"),
             "mobile_app_paths": ("app_files", None),
-            "mobile_dynamic": ("dynamic_analysis", False),
+            "analysis_mode": ("analysis_mode", "static"),
             "frida_device": ("frida_device", ""),
+            "target_process": ("target_process", ""),
+            "mitm_analysis": ("mitm_analysis", False),
+            "mitm_duration": ("mitm_duration", 120),
+            "mitm_port": ("mitm_port", 8080),
         },
         "forge": {
             "cloud_provider": ("cloud_provider", "all"),

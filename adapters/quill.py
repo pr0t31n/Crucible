@@ -37,10 +37,13 @@ class QuillAdapter(ToolAdapter):
             app_files = settings.get("app_files", [])
             if app_files:
                 cmd.extend(["--app", app_files[0]])
-        if settings.get("dynamic_analysis"):
-            cmd.append("--dynamic")
-        if settings.get("frida_device"):
-            cmd.extend(["--frida-device", settings["frida_device"]])
+        mode = settings.get("analysis_mode", "static")
+        cmd.extend(["--mode", mode])
+        if mode in ("dynamic", "full"):
+            if settings.get("frida_device"):
+                cmd.extend(["--device", settings["frida_device"]])
+            if settings.get("target_process"):
+                cmd.extend(["--target-process", settings["target_process"]])
         if settings.get("mitm_analysis"):
             cmd.append("--mitm")
             mitm_dur = settings.get("mitm_duration")
@@ -74,15 +77,9 @@ class QuillAdapter(ToolAdapter):
         return {
             "mobile_platform": "auto",
             "app_files": [],
-            "dynamic_analysis": False,
+            "analysis_mode": "static",
             "frida_device": "",
-            "check_permissions": True,
-            "check_hardening": True,
-            "check_data_storage": True,
-            "check_network": True,
-            "check_crypto": True,
-            "decompile": True,
-            "threads": 4,
+            "target_process": "",
             "mitm_analysis": False,
             "mitm_duration": 120,
             "mitm_port": 8080,
@@ -99,23 +96,28 @@ class QuillAdapter(ToolAdapter):
             "app_files": {"label": "Application Files", "type": "file_list",
                           "hint": "Upload APK, IPA, or AAB files",
                           "accept": ".apk,.ipa,.aab,.xapk"},
-            "dynamic_analysis": {"label": "Enable Dynamic Analysis", "type": "checkbox",
-                                 "hint": "Requires Frida and a connected device/emulator"},
+            "analysis_mode": {"label": "Analysis Mode", "type": "select",
+                              "options": [
+                                  {"value": "static", "label": "Static Only"},
+                                  {"value": "dynamic", "label": "Dynamic Only"},
+                                  {"value": "full", "label": "Static + Dynamic"},
+                              ]},
             "frida_device": {"label": "Frida Device ID", "type": "text",
-                             "hint": "Device serial for dynamic analysis"},
-            "check_permissions": {"label": "Check Permissions", "type": "checkbox"},
-            "check_hardening": {"label": "Check Binary Hardening", "type": "checkbox"},
-            "check_data_storage": {"label": "Check Data Storage", "type": "checkbox"},
-            "check_network": {"label": "Check Network Security", "type": "checkbox"},
-            "check_crypto": {"label": "Check Cryptography", "type": "checkbox"},
-            "decompile": {"label": "Decompile Application", "type": "checkbox"},
-            "threads": {"label": "Threads", "type": "number", "advanced": True},
+                             "hint": "Device serial for dynamic analysis",
+                             "depends_on": {"analysis_mode": ["dynamic", "full"]}},
+            "target_process": {"label": "Target Process", "type": "text",
+                               "hint": "App package/process name (auto-detected if blank)",
+                               "depends_on": {"analysis_mode": ["dynamic", "full"]}},
             "mitm_analysis": {"label": "Enable MITM Traffic Analysis", "type": "checkbox",
-                              "hint": "Capture + analyse live traffic via mitmproxy + Frida SSL bypass"},
+                              "hint": "Capture + analyse live traffic via mitmproxy; "
+                                      "Frida SSL bypass auto-injected when available, "
+                                      "or chain Burp upstream for manual bypass"},
             "mitm_duration": {"label": "MITM Capture Duration (sec)", "type": "number",
-                              "hint": "How long to capture traffic (default: 120)"},
+                              "hint": "How long to capture traffic (default: 120)",
+                              "depends_on": {"mitm_analysis": ["true"]}},
             "mitm_port": {"label": "MITM Proxy Port", "type": "number",
-                          "hint": "mitmproxy listen port (default: 8080)"},
+                          "hint": "mitmproxy listen port (default: 8080)",
+                          "depends_on": {"mitm_analysis": ["true"]}},
         }
 
     def load_findings(self, project_dir, tool_output_dir):

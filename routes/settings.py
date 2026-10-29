@@ -187,10 +187,18 @@ def _backfill_from_project(settings, project, tool_id):
     elif tool_id == "quill":
         if not settings.get("mobile_platform"):
             settings["mobile_platform"] = scope_def.get("mobile_platform", "auto")
-        if not settings.get("dynamic_analysis"):
-            settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)
+        if not settings.get("analysis_mode"):
+            settings["analysis_mode"] = scope_def.get("analysis_mode", "static")
         if not settings.get("frida_device"):
             settings["frida_device"] = scope_def.get("frida_device", "")
+        if not settings.get("target_process"):
+            settings["target_process"] = scope_def.get("target_process", "")
+        if "mitm_analysis" not in settings:
+            settings["mitm_analysis"] = scope_def.get("mitm_analysis", False)
+        if "mitm_duration" not in settings:
+            settings["mitm_duration"] = scope_def.get("mitm_duration", 120)
+        if "mitm_port" not in settings:
+            settings["mitm_port"] = scope_def.get("mitm_port", 8080)
         if not settings.get("app_files"):
             app_path = scope_def.get("mobile_app_path", "")
             if app_path:

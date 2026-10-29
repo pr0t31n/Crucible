@@ -570,13 +570,22 @@
   });
   cloudProviderEl.addEventListener('change', updateCloudFields);
 
-  /* ── Mobile dynamic analysis toggle ──────────────────── */
-  var mobileDynamicEl = document.getElementById('mobileDynamic');
-  function updateMobileDynamic() {
-    var isDynamic = mobileDynamicEl.value === 'both';
-    document.getElementById('mobileFridaGroup').hidden = !isDynamic;
+  /* ── Mobile analysis mode toggle ─────────────────────── */
+  var mobileModeEl = document.getElementById('mobileMode');
+  var mitmEnabledEl = document.getElementById('mitmEnabled');
+  function updateMobileMode() {
+    var mode = mobileModeEl.value;
+    var showStatic = mode === 'static' || mode === 'full';
+    var showDynamic = mode === 'dynamic' || mode === 'full';
+    document.getElementById('mobileStaticGroup').hidden = !showStatic;
+    document.getElementById('mobileDynamicGroup').hidden = !showDynamic;
   }
-  mobileDynamicEl.addEventListener('change', updateMobileDynamic);
+  mobileModeEl.addEventListener('change', updateMobileMode);
+  updateMobileMode();
+  function updateMitmFields() {
+    document.getElementById('mobileMitmGroup').hidden = !mitmEnabledEl.checked;
+  }
+  mitmEnabledEl.addEventListener('change', updateMitmFields);
 
   /* ── Engagement hours toggle ───────────────────────────── */
   var wizEngToggle = document.getElementById('wizEngagementEnabled');
@@ -828,8 +837,14 @@
     }
     if (_sec('scopeQuillSection')) {
       addR(sg,'Platform',selText('mobilePlatform'));
-      addR(sg,'Analysis',selText('mobileDynamic'));
+      addR(sg,'Analysis Mode',selText('mobileMode'));
       addR(sg,'App Files', mobileAppPaths.length ? mobileAppPaths.map(function(p){return p.split('/').pop();}).join(', ') : '(none)');
+      var _mm = document.getElementById('mobileMode').value;
+      if (_mm === 'dynamic' || _mm === 'full') {
+        var _fd = valOf('fridaDevice');
+        if (_fd) addR(sg,'Frida Device',_fd);
+      }
+      if (document.getElementById('mitmEnabled').checked) addR(sg,'MITM','Enabled ('+valOf('mitmDuration')+'s, port '+valOf('mitmPort')+')');
     }
     if (_sec('scopeIsotopeSection')) {
       addR(sg,'Analysis Files',isoFiles.length ? isoFiles.map(function(f){return f.name;}).join(', ') : '');
@@ -935,9 +950,13 @@
         azure_subscription: valOf('azureSubscription'),
         gcp_project: valOf('gcpProject'),
         mobile_platform: document.getElementById('mobilePlatform').value,
-        mobile_dynamic: document.getElementById('mobileDynamic').value === 'both',
+        analysis_mode: document.getElementById('mobileMode').value,
         mobile_app_paths: mobileAppPaths.slice(),
         frida_device: valOf('fridaDevice'),
+        target_process: valOf('targetProcess'),
+        mitm_analysis: document.getElementById('mitmEnabled').checked,
+        mitm_duration: parseInt(valOf('mitmDuration')) || 120,
+        mitm_port: parseInt(valOf('mitmPort')) || 8080,
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),
         isotope_archive_depth: parseInt(valOf('isoArchiveDepth')) || 5
