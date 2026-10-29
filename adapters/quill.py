@@ -41,6 +41,14 @@ class QuillAdapter(ToolAdapter):
             cmd.append("--dynamic")
         if settings.get("frida_device"):
             cmd.extend(["--frida-device", settings["frida_device"]])
+        if settings.get("mitm_analysis"):
+            cmd.append("--mitm")
+            mitm_dur = settings.get("mitm_duration")
+            if mitm_dur and mitm_dur != 120:
+                cmd.extend(["--mitm-duration", str(mitm_dur)])
+            mitm_port = settings.get("mitm_port")
+            if mitm_port and mitm_port != 8080:
+                cmd.extend(["--mitm-port", str(mitm_port)])
         cmd.extend(["--client-short", project.get("client_short", "")])
         if ea:
             cmd.extend(ea)
@@ -75,6 +83,9 @@ class QuillAdapter(ToolAdapter):
             "check_crypto": True,
             "decompile": True,
             "threads": 4,
+            "mitm_analysis": False,
+            "mitm_duration": 120,
+            "mitm_port": 8080,
         }
 
     def settings_schema(self):
@@ -99,6 +110,12 @@ class QuillAdapter(ToolAdapter):
             "check_crypto": {"label": "Check Cryptography", "type": "checkbox"},
             "decompile": {"label": "Decompile Application", "type": "checkbox"},
             "threads": {"label": "Threads", "type": "number", "advanced": True},
+            "mitm_analysis": {"label": "Enable MITM Traffic Analysis", "type": "checkbox",
+                              "hint": "Capture + analyse live traffic via mitmproxy + Frida SSL bypass"},
+            "mitm_duration": {"label": "MITM Capture Duration (sec)", "type": "number",
+                              "hint": "How long to capture traffic (default: 120)"},
+            "mitm_port": {"label": "MITM Proxy Port", "type": "number",
+                          "hint": "mitmproxy listen port (default: 8080)"},
         }
 
     def load_findings(self, project_dir, tool_output_dir):

@@ -716,6 +716,8 @@ _PANEL_MAP = {
     "mobile-perms":      ("quill", ["permission_matrix.json", "permissions.json"]),
     "mobile-hardening":  ("quill", ["binary_hardening.json", "hardening.json"]),
     "mobile-data":       ("quill", ["data_flow.json", "data.json"]),
+    "mobile-traffic":    ("quill", ["traffic_analysis.json"]),
+    "mobile-api":        ("quill", ["api_inventory.json"]),
     # Trawler (traffic)
     "traffic-overview": ("trawler", ["traffic.json", "overview.json"]),
     "traffic-convos":   ("trawler", ["conversations.json", "flows.json"]),
@@ -2182,6 +2184,7 @@ _SCOPE_SUBTAB_MAP = {
     "quill": [
         ("mobile-components", "Components"), ("mobile-perms", "Permissions"),
         ("mobile-hardening", "Hardening"), ("mobile-data", "Data Flow"),
+        ("mobile-traffic", "Traffic"), ("mobile-api", "API Map"),
     ],
     "isotope": [
         ("iso-properties", "Properties"), ("iso-entropy", "Entropy"),
