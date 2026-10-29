@@ -50,10 +50,6 @@ def register_tool_events(socketio, process_manager, queue_manager):
                                 sudo_password=sudo_password)
                         log.info("Expanded %s into %d file-scoped queue entries "
                                  "for project %s", tid, len(entries), pid)
-                        emit("tool_queued", {
-                            "project_id": pid, "tool_id": tid,
-                            "reason": f"Queued {len(entries)} app files"},
-                            to=_room(pid))
                         queue_manager.auto_dequeue(pid)
                         return
 

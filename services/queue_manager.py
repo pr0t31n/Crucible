@@ -264,18 +264,12 @@ class QueueManager:
                 log.exception("auto_dequeue: dequeue_next failed")
                 break
             if result is None:
-                log.info("[DIAG] auto_dequeue: dequeue_next returned None "
+                log.info("auto_dequeue: dequeue_next returned None "
                          "(nothing eligible) after %d iteration(s)", _diag_iter - 1)
                 break
             tool_id, scope, kwargs = result
-            log.info("[DIAG] auto_dequeue: dequeued %s scope=%s (iter %d)",
+            log.info("auto_dequeue: dequeued %s scope=%s (iter %d)",
                      tool_id, scope or "none", _diag_iter)
-            if pm:
-                pm._emit_console(
-                    project_id, tool_id,
-                    f"[DIAG] auto_dequeue: attempting launch "
-                    f"tool={tool_id} scope={scope or 'none'}",
-                    "system")
             with self._lock:
                 self._launching.setdefault(project_id, set()).add(tool_id)
             try:
@@ -285,13 +279,8 @@ class QueueManager:
                     load_settings(proj_dir, tool_id, scope=scope) if proj_dir else {})
                 can, reason = self.can_launch(project_id, tool_id, scope=scope)
                 if not can:
-                    log.info("[DIAG] auto_dequeue: can_launch denied %s: %s",
+                    log.info("auto_dequeue: can_launch denied %s: %s",
                              tool_id, reason)
-                    if pm:
-                        pm._emit_console(
-                            project_id, tool_id,
-                            f"[DIAG] can_launch denied: {reason}",
-                            "system")
                 ok = pm.launch(
                     project_id, tool_id,
                     project=project,
@@ -301,13 +290,8 @@ class QueueManager:
                     scope=scope,
                     extra_args=kwargs.get("extra_args"),
                 )
-                log.info("[DIAG] auto_dequeue: launch(%s, scope=%s) returned %s",
+                log.info("auto_dequeue: launch(%s, scope=%s) returned %s",
                          tool_id, scope or "none", ok)
-                if pm:
-                    pm._emit_console(
-                        project_id, tool_id,
-                        f"[DIAG] launch returned: {ok}",
-                        "system")
                 if ok:
                     launched_any = True
                 else:
@@ -318,11 +302,6 @@ class QueueManager:
             except Exception as exc:
                 log.exception("auto_dequeue launch error for %s:%s",
                               tool_id, scope or "")
-                if pm:
-                    pm._emit_console(
-                        project_id, tool_id,
-                        f"[DIAG] launch exception: {exc}",
-                        "system")
                 self._recover_failed_launch(
                     pm, project_id, tool_id, scope,
                     project.get("project_dir", ""),
