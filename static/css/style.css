@@ -55,6 +55,8 @@
     --transition-slow: 350ms ease;
 }
 
+[hidden] { display: none !important; }
+
 
 /* ============================================================
    1. PALETTE: TUXEDO — Professional, black/white monochrome
