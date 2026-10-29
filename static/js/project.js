@@ -8797,17 +8797,19 @@ function _renderMobileEmails(data) {
 
 function _renderMitmCert(data) {
     var h = '<div style="margin-bottom:20px"><h3 style="margin:0 0 4px 0;font-size:1.1rem">MITM Proxy CA Certificate</h3>' +
-        '<div style="color:var(--text-secondary);font-size:0.85rem">Import this certificate into Burp Suite (or your upstream proxy) to trust mitmproxy connections</div></div>';
+        '<div style="color:var(--text-secondary);font-size:0.85rem">Required for Device → Burp → mitmdump proxy chains. ' +
+        'Quill auto-imports into local Burp on capture start; use the commands below for remote Burp installs.</div></div>';
 
     if (!data || !data.available || !data.pem) {
         h += '<div class="empty-state"><div class="empty-state-text">' +
             'No mitmproxy CA certificate found.<br>' +
-            '<span style="font-size:0.85rem;color:var(--text-secondary)">Start a Quill MITM capture first — the certificate is copied to the project output on capture start.</span>' +
+            '<span style="font-size:0.85rem;color:var(--text-secondary)">Start a Quill MITM capture first — the certificate is auto-generated and copied to the project on capture start.</span>' +
             '</div></div>';
         return h;
     }
 
-    h += '<div style="background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px">';
+    /* ── Certificate card ── */
+    h += '<div style="background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">';
     h += '<div style="width:44px;height:44px;border-radius:8px;background:var(--clr-accent,#4a90d9);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#fff">🔐</div>';
     h += '<div><div style="font-weight:600;font-size:1rem">mitmproxy-ca-cert.pem</div>';
@@ -8820,32 +8822,85 @@ function _renderMitmCert(data) {
          '<span style="font-size:1.1em">📋</span> Copy PEM to Clipboard</button>';
     h += '</div>';
 
-    h += '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);user-select:none">Show certificate PEM</summary>';
+    h += '<details><summary style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);user-select:none">Show certificate PEM</summary>';
     h += '<pre id="mitmCertPem" style="margin-top:8px;padding:12px;background:var(--bg-code,var(--bg-tertiary,#1a1a2e));border:1px solid var(--border);border-radius:6px;' +
          'font-size:0.78rem;line-height:1.4;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto">' +
          esc(data.pem) + '</pre></details>';
     h += '</div>';
 
+    /* ── Import into Burp (Java truststore) ── */
+    h += '<div style="background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px">';
+    h += '<div style="font-weight:600;margin-bottom:4px">Import into Burp Suite Java Truststore</div>';
+    h += '<div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:14px">' +
+         'Burp validates upstream TLS via its bundled Java truststore, not the UI settings. ' +
+         'Quill auto-imports on the local machine when it detects Burp. ' +
+         'For a remote Burp install, download the PEM above and run the keytool command on that machine.</div>';
+
+    h += '<div style="font-weight:600;font-size:0.9rem;margin-bottom:8px">macOS</div>';
+    var macCmd = 'sudo "/Applications/Burp Suite.app/Contents/Resources/jre.bundle/Contents/Home/bin/keytool" ' +
+        '-import -alias mitmproxy -trustcacerts -noprompt ' +
+        '-file ~/Downloads/mitmproxy-ca-cert.pem ' +
+        '-keystore "/Applications/Burp Suite.app/Contents/Resources/jre.bundle/Contents/Home/lib/security/cacerts" ' +
+        '-storepass changeit';
+    h += '<div style="position:relative">';
+    h += '<pre id="mitmKeytoolMac" style="padding:12px;padding-right:48px;background:var(--bg-code,var(--bg-tertiary,#1a1a2e));border:1px solid var(--border);border-radius:6px;' +
+         'font-size:0.78rem;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all">' + esc(macCmd) + '</pre>';
+    h += '<button onclick="_copyElText(\'mitmKeytoolMac\')" style="position:absolute;top:8px;right:8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem" title="Copy">📋</button>';
+    h += '</div>';
+
+    h += '<div style="font-weight:600;font-size:0.9rem;margin:14px 0 8px">Linux</div>';
+    var linuxCmd = 'BURP_HOME=/opt/BurpSuitePro  # adjust path as needed\n' +
+        'sudo "$BURP_HOME/jre/bin/keytool" ' +
+        '-import -alias mitmproxy -trustcacerts -noprompt ' +
+        '-file ~/Downloads/mitmproxy-ca-cert.pem ' +
+        '-keystore "$BURP_HOME/jre/lib/security/cacerts" ' +
+        '-storepass changeit';
+    h += '<div style="position:relative">';
+    h += '<pre id="mitmKeytoolLinux" style="padding:12px;padding-right:48px;background:var(--bg-code,var(--bg-tertiary,#1a1a2e));border:1px solid var(--border);border-radius:6px;' +
+         'font-size:0.78rem;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all">' + esc(linuxCmd) + '</pre>';
+    h += '<button onclick="_copyElText(\'mitmKeytoolLinux\')" style="position:absolute;top:8px;right:8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem" title="Copy">📋</button>';
+    h += '</div>';
+
+    h += '<div style="font-weight:600;font-size:0.9rem;margin:14px 0 8px">Windows</div>';
+    var winCmd = 'set BURP_HOME=C:\\Program Files\\BurpSuitePro\n' +
+        '"%BURP_HOME%\\jre\\bin\\keytool.exe" ' +
+        '-import -alias mitmproxy -trustcacerts -noprompt ' +
+        '-file %USERPROFILE%\\Downloads\\mitmproxy-ca-cert.pem ' +
+        '-keystore "%BURP_HOME%\\jre\\lib\\security\\cacerts" ' +
+        '-storepass changeit';
+    h += '<div style="position:relative">';
+    h += '<pre id="mitmKeytoolWin" style="padding:12px;padding-right:48px;background:var(--bg-code,var(--bg-tertiary,#1a1a2e));border:1px solid var(--border);border-radius:6px;' +
+         'font-size:0.78rem;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all">' + esc(winCmd) + '</pre>';
+    h += '<button onclick="_copyElText(\'mitmKeytoolWin\')" style="position:absolute;top:8px;right:8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem" title="Copy">📋</button>';
+    h += '</div>';
+
+    h += '<div style="margin-top:14px;padding:10px 14px;background:var(--clr-accent-bg,rgba(74,144,217,.1));border-radius:6px;font-size:0.85rem">' +
+         '<b>After import:</b> Restart Burp Suite. The <code>changeit</code> password is Java\'s default cacerts keystore password.</div>';
+    h += '</div>';
+
+    /* ── Device CA install ── */
     h += '<div style="background:var(--bg-card,var(--bg-secondary));border:1px solid var(--border);border-radius:8px;padding:20px">';
-    h += '<div style="font-weight:600;margin-bottom:12px">Import into Burp Suite</div>';
+    h += '<div style="font-weight:600;margin-bottom:4px">Install CA on Device</div>';
+    h += '<div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px">' +
+         'If the device connects directly to mitmdump (reverse chain), the device also needs this CA.</div>';
     h += '<ol style="margin:0;padding-left:20px;line-height:1.8;font-size:0.9rem">';
-    h += '<li>Download the PEM file above</li>';
-    h += '<li>In Burp Suite: <b>Settings → Network → TLS → Client TLS Certificates</b></li>';
-    h += '<li>Or: <b>Settings → Network → TLS → Server TLS Inspection</b> → add the CA to trusted CAs</li>';
-    h += '<li>Restart Burp if prompted</li>';
-    h += '<li>Re-run the MITM capture — Burp should now trust mitmproxy connections</li>';
+    h += '<li>Transfer <code>mitmproxy-ca-cert.pem</code> to the device</li>';
+    h += '<li><b>Android:</b> Settings → Security → Encryption → Install from storage → select the PEM</li>';
+    h += '<li><b>iOS:</b> AirDrop or email the PEM → Settings → General → VPN & Device Management → install profile → Settings → General → About → Certificate Trust Settings → enable</li>';
     h += '</ol></div>';
 
     return h;
 }
 
-function _copyMitmCertPem() {
-    var el = document.getElementById('mitmCertPem');
+function _copyMitmCertPem() { _copyElText('mitmCertPem', 'Certificate PEM'); }
+
+function _copyElText(elId, label) {
+    var el = document.getElementById(elId);
     if (!el) return;
     var text = el.textContent || el.innerText;
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function() {
-            toast('success', 'Certificate PEM copied to clipboard.');
+            toast('success', (label || 'Text') + ' copied to clipboard.');
         }).catch(function() {
             toast('error', 'Failed to copy — select and copy manually.');
         });
