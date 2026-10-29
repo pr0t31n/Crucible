@@ -330,6 +330,10 @@
   }
   var _mobilePlatformEl = document.getElementById('mobilePlatform');
   if (_mobilePlatformEl && _cfg.mobilePlatform) _mobilePlatformEl.value = _cfg.mobilePlatform;
+  if (mobileModeEl && _cfg.analysisMode) mobileModeEl.value = _cfg.analysisMode;
+  if (mitmEnabledEl && _cfg.mitmAnalysis) { mitmEnabledEl.checked = true; updateMitmFields(); }
+  if (_cfg.mitmDuration) { var _mdEl = document.getElementById('mitmDuration'); if (_mdEl) _mdEl.value = _cfg.mitmDuration; }
+  if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
 
   /* ── Dredge collection path (file browser) ──────────────── */
   var dgCollectionPath = _cfg.dredgeCollectionPath || '';
@@ -574,18 +578,19 @@
   var mobileModeEl = document.getElementById('mobileMode');
   var mitmEnabledEl = document.getElementById('mitmEnabled');
   function updateMobileMode() {
+    if (!mobileModeEl) return;
     var mode = mobileModeEl.value;
     var showStatic = mode === 'static' || mode === 'full';
     var showDynamic = mode === 'dynamic' || mode === 'full';
     document.getElementById('mobileStaticGroup').hidden = !showStatic;
     document.getElementById('mobileDynamicGroup').hidden = !showDynamic;
   }
-  mobileModeEl.addEventListener('change', updateMobileMode);
-  updateMobileMode();
+  if (mobileModeEl) { mobileModeEl.addEventListener('change', updateMobileMode); updateMobileMode(); }
   function updateMitmFields() {
+    if (!mitmEnabledEl) return;
     document.getElementById('mobileMitmGroup').hidden = !mitmEnabledEl.checked;
   }
-  mitmEnabledEl.addEventListener('change', updateMitmFields);
+  if (mitmEnabledEl) mitmEnabledEl.addEventListener('change', updateMitmFields);
 
   /* ── Engagement hours toggle ───────────────────────────── */
   var wizEngToggle = document.getElementById('wizEngagementEnabled');
@@ -640,7 +645,7 @@
     if (exEl) exEl.hidden = !tools.some(function(t){ return EXCLUSION_TOOLS.indexOf(t) !== -1; });
     updateCloudFields();
     updateAwsAuthMethod();
-    updateMobileDynamic();
+    updateMobileMode();
     updateDredgeMode();
   }
 
@@ -949,12 +954,12 @@
         aws_console_pass: valOf('awsConsolePass'),
         azure_subscription: valOf('azureSubscription'),
         gcp_project: valOf('gcpProject'),
-        mobile_platform: document.getElementById('mobilePlatform').value,
-        analysis_mode: document.getElementById('mobileMode').value,
+        mobile_platform: (document.getElementById('mobilePlatform') || {}).value || 'auto',
+        analysis_mode: (document.getElementById('mobileMode') || {}).value || 'static',
         mobile_app_paths: mobileAppPaths.slice(),
         frida_device: valOf('fridaDevice'),
         target_process: valOf('targetProcess'),
-        mitm_analysis: document.getElementById('mitmEnabled').checked,
+        mitm_analysis: !!(document.getElementById('mitmEnabled') || {}).checked,
         mitm_duration: parseInt(valOf('mitmDuration')) || 120,
         mitm_port: parseInt(valOf('mitmPort')) || 8080,
         isotope_files: isoFiles.map(function(f){return f.name;}),
