@@ -1444,17 +1444,22 @@ def api_intel_panel(panel, project_id):
                 qtd_p = Path(qtd)
                 if not qtd_p.is_dir():
                     continue
-                for fn in filenames:
-                    fp = qtd_p / fn
-                    if fp.exists():
-                        try:
-                            with open(fp) as f:
-                                entry = json.load(f)
-                            apps = entry.get("apps", []) if isinstance(entry, dict) else []
-                            agg_apps.extend(apps)
-                        except (json.JSONDecodeError, OSError):
-                            pass
-                        break
+                _quill_search = [qtd_p]
+                for sub in sorted(qtd_p.iterdir()):
+                    if sub.is_dir() and sub.name[0] != '.':
+                        _quill_search.append(sub)
+                for _qsd in _quill_search:
+                    for fn in filenames:
+                        fp = _qsd / fn
+                        if fp.exists():
+                            try:
+                                with open(fp) as f:
+                                    entry = json.load(f)
+                                apps = entry.get("apps", []) if isinstance(entry, dict) else []
+                                agg_apps.extend(apps)
+                            except (json.JSONDecodeError, OSError):
+                                pass
+                            break
             if agg_apps:
                 return jsonify({key: _maybe_filter({"apps": agg_apps}),
                                 "available": True})
