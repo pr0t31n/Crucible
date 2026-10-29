@@ -330,10 +330,6 @@
   }
   var _mobilePlatformEl = document.getElementById('mobilePlatform');
   if (_mobilePlatformEl && _cfg.mobilePlatform) _mobilePlatformEl.value = _cfg.mobilePlatform;
-  if (mobileModeEl && _cfg.analysisMode) mobileModeEl.value = _cfg.analysisMode;
-  if (fridaEnabledEl && _cfg.fridaAnalysis) { fridaEnabledEl.checked = true; updateFridaFields(); }
-  if (mitmEnabledEl && _cfg.mitmAnalysis) { mitmEnabledEl.checked = true; updateMitmFields(); }
-  if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
 
   /* ── Dredge collection path (file browser) ──────────────── */
   var dgCollectionPath = _cfg.dredgeCollectionPath || '';
@@ -597,6 +593,23 @@
     document.getElementById('mobileMitmGroup').hidden = !mitmEnabledEl.checked;
   }
   if (mitmEnabledEl) mitmEnabledEl.addEventListener('change', updateMitmFields);
+
+  /* ── Restore saved mobile settings in edit mode ─────────── */
+  if (mobileModeEl && _cfg.analysisMode) {
+    mobileModeEl.value = _cfg.analysisMode;
+    updateMobileMode();
+  }
+  if (fridaEnabledEl && _cfg.fridaAnalysis) {
+    fridaEnabledEl.checked = true;
+    updateFridaFields();
+  }
+  if (_cfg.fridaDevice) { var _fdEl = document.getElementById('fridaDevice'); if (_fdEl) _fdEl.value = _cfg.fridaDevice; }
+  if (_cfg.targetProcess) { var _tpEl = document.getElementById('targetProcess'); if (_tpEl) _tpEl.value = _cfg.targetProcess; }
+  if (mitmEnabledEl && _cfg.mitmAnalysis) {
+    mitmEnabledEl.checked = true;
+    updateMitmFields();
+  }
+  if (_cfg.mitmPort) { var _mpEl = document.getElementById('mitmPort'); if (_mpEl) _mpEl.value = _cfg.mitmPort; }
 
   /* ── Engagement hours toggle ───────────────────────────── */
   var wizEngToggle = document.getElementById('wizEngagementEnabled');
