@@ -1256,6 +1256,11 @@ function updateConsoleHeader() {
     document.getElementById('btnConsoleClear').disabled = !selectedTool;
     document.getElementById('btnConsoleCopy').disabled = !selectedTool;
     document.getElementById('btnConsoleSave').disabled = !selectedTool;
+    var _mitmActive = st._mitm_active && isRunning;
+    var _mitmBtn = document.getElementById('btnMitmStop');
+    _mitmBtn.style.display = _mitmActive ? '' : 'none';
+    _mitmBtn.disabled = !_mitmActive;
+    if (_mitmActive) _mitmBtn.textContent = 'Stop MITM';
     if (isPausing) {
         document.getElementById('btnToolPause').textContent = 'Pausing…';
         document.getElementById('btnToolPause').disabled = true;
@@ -1441,6 +1446,27 @@ document.getElementById('btnToolPause').addEventListener('click', function() {
 document.getElementById('btnToolResume').addEventListener('click', function() {
     if (!selectedTool) return;
     socket.emit('tool_start', {project_id: PID, tool_id: selectedTool, resume: true});
+});
+
+document.getElementById('btnMitmStop').addEventListener('click', function() {
+    if (!selectedTool) return;
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Stopping…';
+    fetch('/api/mitm_stop', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, tool_id: selectedTool})
+    }).then(function(r) { return r.json(); }).then(function(j) {
+        if (j.ok) {
+            btn.textContent = 'Sent';
+            if (toolStatuses[selectedTool]) toolStatuses[selectedTool]._mitm_active = false;
+            setTimeout(function() { updateConsoleHeader(); }, 1000);
+        } else {
+            btn.textContent = j.error || 'Failed';
+            btn.disabled = false;
+        }
+    }).catch(function() { btn.textContent = 'Error'; btn.disabled = false; });
 });
 
 function _updatePauseAllButtons() {
