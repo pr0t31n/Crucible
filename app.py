@@ -100,12 +100,13 @@ def create_app():
     from routes.standalone import standalone_bp
     from routes.report import report_bp
     from routes.importer_routes import importer_bp
+    from routes.sessions import sessions_bp
 
     for bp in (auth_bp, home_bp, project_bp, console_bp, findings_bp,
                action_items_bp, settings_bp, logs_bp, targets_bp,
                intelligence_bp, nessus_bp, traffic_bp, export_bp,
                worker_bp, integration_bp, shell_bp, standalone_bp,
-               report_bp, importer_bp):
+               report_bp, importer_bp, sessions_bp):
         app.register_blueprint(bp)
 
     socketio.init_app(app, cors_allowed_origins=[],

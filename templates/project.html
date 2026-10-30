@@ -27,6 +27,7 @@
     <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     <button type="button" class="tab-btn" data-tab="logs">Logs</button>
     <button type="button" class="tab-btn" data-tab="errors">Errors <span class="tab-pill error" id="errorsPill"></span></button>
+    <button type="button" class="tab-btn" data-tab="sessions">Sessions <span class="tab-pill" id="sessionsPill"></span></button>
   </div>
 
 
@@ -848,6 +849,159 @@
 
       <div class="pagination" id="errorsPagination" hidden></div>
 
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       SESSIONS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="sessions">
+    <div class="p-20">
+
+      <!-- ── Toolbar ──────────────────────────────────────── -->
+      <div class="logs-toolbar" style="margin-bottom:16px">
+        <button type="button" class="btn btn-xs btn-primary" id="btnAddSession">+ Add Session</button>
+        <button type="button" class="btn btn-xs btn-danger ml-auto" id="btnKillAllSessions">Kill All Sessions</button>
+      </div>
+
+      <!-- ── Live sessions ────────────────────────────────── -->
+      <h3 class="text-sm font-medium mb-8" style="color:var(--text-2)">Live Sessions</h3>
+      <div class="overflow-x-auto mb-20">
+        <table class="logs-table" id="sessionsLiveTable">
+          <thead>
+            <tr>
+              <th style="width:24px"></th>
+              <th>Label</th>
+              <th>Auth Type</th>
+              <th>Framework</th>
+              <th>Token</th>
+              <th>Origin</th>
+              <th>Scope</th>
+              <th>Started</th>
+              <th>Last Refresh</th>
+              <th>Expires</th>
+              <th>TTL</th>
+              <th style="width:160px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sessionsLiveBody">
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="sessionsLiveEmpty">
+        <div class="empty-state-text">No live sessions.</div>
+      </div>
+
+      <!-- ── Dead sessions ────────────────────────────────── -->
+      <h3 class="text-sm font-medium mb-8" style="color:var(--text-3)">Dead Sessions</h3>
+      <div class="overflow-x-auto">
+        <table class="logs-table" id="sessionsDeadTable">
+          <thead>
+            <tr>
+              <th style="width:24px"></th>
+              <th>Label</th>
+              <th>Auth Type</th>
+              <th>Framework</th>
+              <th>Died</th>
+              <th>Reason</th>
+              <th>Origin</th>
+              <th>Scope</th>
+              <th>Lived</th>
+              <th style="width:120px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sessionsDeadBody">
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="sessionsDeadEmpty">
+        <div class="empty-state-text">No dead sessions.</div>
+      </div>
+
+      <!-- ── Session detail panel ─────────────────────────── -->
+      <div class="panel mt-16" id="sessionDetailPanel" hidden>
+        <div class="panel-header">
+          <span class="panel-title" id="sessionDetailTitle">Session Details</span>
+          <button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('sessionDetailPanel').hidden=true">Close</button>
+        </div>
+        <div class="panel-body" id="sessionDetailBody"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ADD SESSION MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="addSessionModal">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Session</h3>
+        <button type="button" class="modal-close" onclick="document.getElementById('addSessionModal').classList.remove('active')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid" style="gap:12px">
+          <div class="form-group">
+            <label class="form-label">Label</label>
+            <input type="text" class="form-control" id="sesAddLabel" placeholder="e.g. Cariloop API Bearer">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Auth Type</label>
+            <select class="form-control" id="sesAddType">
+              <option value="oauth2">OAuth2 (Bearer + Refresh)</option>
+              <option value="jwt">JWT (re-auth on expiry)</option>
+              <option value="cookie">Cookie Session</option>
+              <option value="bearer_static">Bearer (Static)</option>
+              <option value="basic">Basic Auth</option>
+              <option value="apikey">API Key</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Framework (optional)</label>
+            <input type="text" class="form-control" id="sesAddFramework" placeholder="e.g. Auth0, Keycloak, Cognito">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Origin Tool</label>
+            <input type="text" class="form-control" id="sesAddOrigin" placeholder="e.g. quill, siphon, manual">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Scope</label>
+            <input type="text" class="form-control" id="sesAddScope" placeholder="e.g. api, web, internal">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Target URL</label>
+            <input type="text" class="form-control" id="sesAddTarget" placeholder="https://api.example.com">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Access Token / Bearer</label>
+            <textarea class="form-control" id="sesAddToken" rows="2" style="font-family:monospace;font-size:0.78rem" placeholder="eyJ..."></textarea>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label class="form-label">Refresh Token (optional)</label>
+            <textarea class="form-control" id="sesAddRefresh" rows="2" style="font-family:monospace;font-size:0.78rem" placeholder="eyJ..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Token Endpoint (optional)</label>
+            <input type="text" class="form-control" id="sesAddTokenEP" placeholder="https://auth.example.com/oauth/token">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Heartbeat URL (cookies)</label>
+            <input type="text" class="form-control" id="sesAddHeartbeat" placeholder="https://app.example.com/api/me">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Expires In (seconds)</label>
+            <input type="number" class="form-control" id="sesAddExpiresIn" placeholder="3600">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="btnSaveSession">Add Session</button>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('addSessionModal').classList.remove('active')">Cancel</button>
+      </div>
     </div>
   </div>
 

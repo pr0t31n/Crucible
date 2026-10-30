@@ -98,6 +98,7 @@ var _findingsRefreshTimer = null;
 var _activeToolCount = 0;
 var _findingsDebouncePending = false;
 var _findingsDebounceTimer = null;
+var _sessState = { _loaded: false, sessions: [], refreshTimer: null };
 
 
 /* ══════════════════════════════════════════════════════════════════
@@ -126,6 +127,7 @@ tabNav.addEventListener('click', function(e) {
     if (tab === 'errors' && !allErrors._loaded) loadErrors();
     if (tab === 'settings') initSettingsTabs();
     if (tab === 'import' && !_impState._loaded) initImportTab();
+    if (tab === 'sessions' && !_sessState._loaded) loadSessions();
 });
 
 
@@ -11469,6 +11471,306 @@ function _removeScheduledStart(schedId) {
 _loadEngagementHours();
 _loadScheduledStarts();
 
+
+/* ══════════════════════════════════════════════════════════════════
+   SESSIONS TAB
+   ══════════════════════════════════════════════════════════════════ */
+
+function _sesStatusDot(s) {
+    if (s.status === 'dead') return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red-500)"></span>';
+    if (s.status === 'expiring') return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--amber-500)"></span>';
+    return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--emerald-500)"></span>';
+}
+
+function _sesTTL(s) {
+    if (s.ttl_seconds == null) return '<span class="text-muted">—</span>';
+    var t = s.ttl_seconds;
+    if (t <= 0) return '<span style="color:var(--red-500)">expired</span>';
+    if (t < 300) return '<span style="color:var(--amber-500)">' + Math.floor(t/60) + 'm ' + (t%60) + 's</span>';
+    if (t < 3600) return Math.floor(t/60) + 'm';
+    return Math.floor(t/3600) + 'h ' + Math.floor((t%3600)/60) + 'm';
+}
+
+function _sesTime(iso) {
+    if (!iso) return '—';
+    try {
+        var d = new Date(iso);
+        return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    } catch(e) { return iso; }
+}
+
+function _sesDate(iso) {
+    if (!iso) return '—';
+    try {
+        var d = new Date(iso);
+        return d.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    } catch(e) { return iso; }
+}
+
+function _sesLived(started, died) {
+    if (!started || !died) return '—';
+    try {
+        var ms = new Date(died) - new Date(started);
+        var s = Math.floor(ms/1000);
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+        return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+    } catch(e) { return '—'; }
+}
+
+function loadSessions() {
+    fetch('/api/sessions/' + PID, {credentials:'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _sessState.sessions = d.sessions || [];
+            _sessState._loaded = true;
+            _renderSessions();
+            _updateSessionPill(d.counts);
+            if (!_sessState.refreshTimer) {
+                _sessState.refreshTimer = setInterval(function() {
+                    if (document.querySelector('.tab-content[data-tab="sessions"].active')) {
+                        loadSessions();
+                    }
+                }, 10000);
+            }
+        })
+        .catch(function() {});
+}
+
+function _updateSessionPill(counts) {
+    var pill = document.getElementById('sessionsPill');
+    if (!pill) return;
+    var n = counts ? counts.live : 0;
+    pill.textContent = n > 0 ? n : '';
+}
+
+function _renderSessions() {
+    var live = [];
+    var dead = [];
+    _sessState.sessions.forEach(function(s) {
+        if (s.status === 'dead') dead.push(s);
+        else live.push(s);
+    });
+
+    var liveBody = document.getElementById('sessionsLiveBody');
+    var deadBody = document.getElementById('sessionsDeadBody');
+    var liveEmpty = document.getElementById('sessionsLiveEmpty');
+    var deadEmpty = document.getElementById('sessionsDeadEmpty');
+    var liveTable = document.getElementById('sessionsLiveTable');
+    var deadTable = document.getElementById('sessionsDeadTable');
+
+    if (live.length === 0) {
+        liveTable.hidden = true; liveEmpty.hidden = false;
+    } else {
+        liveTable.hidden = false; liveEmpty.hidden = true;
+        liveBody.innerHTML = live.map(function(s) {
+            return '<tr style="cursor:pointer" onclick="showSessionDetail(\'' + esc(s.id) + '\')">'
+                + '<td>' + _sesStatusDot(s) + '</td>'
+                + '<td class="font-medium">' + esc(s.label) + '</td>'
+                + '<td>' + esc(s.auth_type) + '</td>'
+                + '<td>' + esc(s.framework || '—') + '</td>'
+                + '<td style="font-family:monospace;font-size:0.75rem">' + esc(s.token_preview || '—') + '</td>'
+                + '<td>' + esc(s.origin_tool || '—') + '</td>'
+                + '<td>' + esc(s.scope || '—') + '</td>'
+                + '<td>' + _sesDate(s.started_at) + '</td>'
+                + '<td>' + _sesTime(s.last_refresh) + '</td>'
+                + '<td>' + _sesTime(s.expires_at) + '</td>'
+                + '<td>' + _sesTTL(s) + '</td>'
+                + '<td onclick="event.stopPropagation()">'
+                + '<button class="btn btn-xs btn-ghost" onclick="refreshSession(\'' + esc(s.id) + '\')" title="Refresh">↻</button> '
+                + '<button class="btn btn-xs btn-danger" onclick="killSession(\'' + esc(s.id) + '\')" title="Kill">Kill</button>'
+                + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    if (dead.length === 0) {
+        deadTable.hidden = true; deadEmpty.hidden = false;
+    } else {
+        deadTable.hidden = false; deadEmpty.hidden = true;
+        deadBody.innerHTML = dead.map(function(s) {
+            return '<tr style="opacity:0.6;cursor:pointer" onclick="showSessionDetail(\'' + esc(s.id) + '\')">'
+                + '<td>' + _sesStatusDot(s) + '</td>'
+                + '<td>' + esc(s.label) + '</td>'
+                + '<td>' + esc(s.auth_type) + '</td>'
+                + '<td>' + esc(s.framework || '—') + '</td>'
+                + '<td>' + _sesDate(s.died_at) + '</td>'
+                + '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.death_reason || '') + '">' + esc(s.death_reason || '—') + '</td>'
+                + '<td>' + esc(s.origin_tool || '—') + '</td>'
+                + '<td>' + esc(s.scope || '—') + '</td>'
+                + '<td>' + _sesLived(s.started_at, s.died_at) + '</td>'
+                + '<td onclick="event.stopPropagation()">'
+                + '<button class="btn btn-xs btn-ghost" onclick="deleteSession(\'' + esc(s.id) + '\')" title="Delete">✕</button>'
+                + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+}
+
+function showSessionDetail(sessId) {
+    fetch('/api/sessions/' + PID + '/' + sessId, {credentials:'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.error) { toast('error', d.error); return; }
+            var panel = document.getElementById('sessionDetailPanel');
+            var title = document.getElementById('sessionDetailTitle');
+            var body = document.getElementById('sessionDetailBody');
+            title.textContent = d.label || 'Session Details';
+            var html = '<div class="form-grid" style="gap:10px 24px">';
+
+            html += '<div class="form-group"><span class="form-label">Auth Type</span><span>' + esc(d.auth_type) + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Framework</span><span>' + esc(d.framework || '—') + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Status</span><span>' + _sesStatusDot(d) + ' ' + esc(d.status) + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Origin Tool</span><span>' + esc(d.origin_tool || '—') + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Scope</span><span>' + esc(d.scope || '—') + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Target URL</span><span style="word-break:break-all">' + esc(d.target_url || '—') + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Has Refresh Token</span><span>' + (d.has_refresh_token ? 'Yes' : 'No') + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Refresh Endpoint</span><span style="word-break:break-all">' + esc(d.refresh_endpoint || '—') + '</span></div>';
+            html += '<div class="form-group"><span class="form-label">Heartbeat URL</span><span style="word-break:break-all">' + esc(d.heartbeat_url || '—') + '</span></div>';
+
+            if (d.consumers && d.consumers.length > 0) {
+                html += '<div class="form-group" style="grid-column:1/-1"><span class="form-label">Consumers</span><span>' + d.consumers.map(esc).join(', ') + '</span></div>';
+            }
+
+            if (d.jwt_claims && Object.keys(d.jwt_claims).length > 0) {
+                html += '<div class="form-group" style="grid-column:1/-1"><span class="form-label">JWT Claims</span>'
+                    + '<pre style="max-height:160px;overflow:auto;font-size:0.75rem;margin:0;background:var(--bg-2);padding:8px;border-radius:6px">'
+                    + esc(JSON.stringify(d.jwt_claims, null, 2)) + '</pre></div>';
+            }
+
+            if (d.cookies && Object.keys(d.cookies).length > 0) {
+                html += '<div class="form-group" style="grid-column:1/-1"><span class="form-label">Cookies</span>'
+                    + '<pre style="max-height:100px;overflow:auto;font-size:0.75rem;margin:0;background:var(--bg-2);padding:8px;border-radius:6px">'
+                    + esc(JSON.stringify(d.cookies, null, 2)) + '</pre></div>';
+            }
+
+            if (d.headers && Object.keys(d.headers).length > 0) {
+                html += '<div class="form-group" style="grid-column:1/-1"><span class="form-label">Injected Headers</span>'
+                    + '<pre style="max-height:100px;overflow:auto;font-size:0.75rem;margin:0;background:var(--bg-2);padding:8px;border-radius:6px">'
+                    + esc(JSON.stringify(d.headers, null, 2)) + '</pre></div>';
+            }
+
+            if (d.refresh_history && d.refresh_history.length > 0) {
+                html += '<div class="form-group" style="grid-column:1/-1"><span class="form-label">Refresh History (last 50)</span>'
+                    + '<div style="max-height:150px;overflow:auto;font-size:0.75rem">';
+                d.refresh_history.slice().reverse().forEach(function(h) {
+                    var color = h.outcome === 'success' ? 'var(--emerald-500)' : 'var(--red-500)';
+                    html += '<div style="padding:2px 0;border-bottom:1px solid var(--border)">'
+                        + '<span style="color:' + color + '">' + esc(h.outcome) + '</span> '
+                        + '<span class="text-muted">' + _sesTime(h.ts) + '</span>';
+                    if (h.new_expiry) html += ' → exp ' + _sesTime(h.new_expiry);
+                    if (h.reason) html += ' <span style="color:var(--red-400)">' + esc(h.reason) + '</span>';
+                    html += '</div>';
+                });
+                html += '</div></div>';
+            }
+
+            html += '</div>';
+            body.innerHTML = html;
+            panel.hidden = false;
+        })
+        .catch(function(e) { toast('error', 'Failed to load session details'); });
+}
+
+function killSession(sessId) {
+    fetch('/api/sessions/' + PID + '/' + sessId + '/kill', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok) { toast('success', 'Session killed'); loadSessions(); }
+        else toast('error', d.error || 'Failed');
+    });
+}
+
+function killAllSessions() {
+    if (!confirm('Kill ALL active sessions?')) return;
+    fetch('/api/sessions/' + PID + '/kill-all', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok) { toast('success', 'All sessions killed'); loadSessions(); }
+    });
+}
+
+function refreshSession(sessId) {
+    fetch('/api/sessions/' + PID + '/' + sessId + '/refresh', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok) { toast('success', 'Session refreshed'); loadSessions(); }
+        else toast('error', d.error || 'Refresh failed');
+    });
+}
+
+function deleteSession(sessId) {
+    if (!confirm('Delete this dead session?')) return;
+    fetch('/api/sessions/' + PID + '/' + sessId + '/kill', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'}
+    }).then(function() { loadSessions(); });
+}
+
+function _openAddSessionModal() {
+    document.getElementById('sesAddLabel').value = '';
+    document.getElementById('sesAddType').value = 'oauth2';
+    document.getElementById('sesAddFramework').value = '';
+    document.getElementById('sesAddOrigin').value = '';
+    document.getElementById('sesAddScope').value = '';
+    document.getElementById('sesAddTarget').value = '';
+    document.getElementById('sesAddToken').value = '';
+    document.getElementById('sesAddRefresh').value = '';
+    document.getElementById('sesAddTokenEP').value = '';
+    document.getElementById('sesAddHeartbeat').value = '';
+    document.getElementById('sesAddExpiresIn').value = '';
+    document.getElementById('addSessionModal').classList.add('active');
+}
+
+function _saveNewSession() {
+    var payload = {
+        label: document.getElementById('sesAddLabel').value.trim(),
+        auth_type: document.getElementById('sesAddType').value,
+        framework: document.getElementById('sesAddFramework').value.trim(),
+        origin_tool: document.getElementById('sesAddOrigin').value.trim(),
+        scope: document.getElementById('sesAddScope').value.trim(),
+        target_url: document.getElementById('sesAddTarget').value.trim(),
+        access_token: document.getElementById('sesAddToken').value.trim(),
+        refresh_token: document.getElementById('sesAddRefresh').value.trim(),
+        token_endpoint: document.getElementById('sesAddTokenEP').value.trim(),
+        heartbeat_url: document.getElementById('sesAddHeartbeat').value.trim(),
+    };
+    var ei = document.getElementById('sesAddExpiresIn').value.trim();
+    if (ei) payload.expires_in = parseInt(ei, 10);
+
+    fetch('/api/sessions/' + PID, {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.id) {
+            toast('success', 'Session added');
+            document.getElementById('addSessionModal').classList.remove('active');
+            loadSessions();
+        } else {
+            toast('error', d.error || 'Failed to add session');
+        }
+    });
+}
+
+(function _initSessionBindings() {
+    var btn = document.getElementById('btnAddSession');
+    if (btn) btn.addEventListener('click', _openAddSessionModal);
+    var killAll = document.getElementById('btnKillAllSessions');
+    if (killAll) killAll.addEventListener('click', killAllSessions);
+    var save = document.getElementById('btnSaveSession');
+    if (save) save.addEventListener('click', _saveNewSession);
+})();
+
+fetch('/api/sessions/' + PID + '/count', {credentials:'same-origin'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { _updateSessionPill(d); })
+    .catch(function() {});
+
+
 window.closeNotesModal = closeNotesModal;
 window._toggleOOS = _toggleOOS;
 window._toggleResets = _toggleResets;
@@ -11486,5 +11788,11 @@ window._resumeAll = _resumeAll;
 window._saveEngagementHours = _saveEngagementHours;
 window._scheduleEngagement = _scheduleEngagement;
 window._removeScheduledStart = _removeScheduledStart;
+window.showSessionDetail = showSessionDetail;
+window.killSession = killSession;
+window.killAllSessions = killAllSessions;
+window.refreshSession = refreshSession;
+window.deleteSession = deleteSession;
+window.loadSessions = loadSessions;
 
 })();
