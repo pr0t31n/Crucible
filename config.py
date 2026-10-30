@@ -13,7 +13,7 @@ APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 TEMPLATE_DIR = APP_DIR / "templates"
 
-PYTHON3 = shutil.which("python3") or sys.executable
+PYTHON3 = sys.executable or shutil.which("python3")
 
 # ── Clients base directory (platform-aware) ──────────────────
 if sys.platform == "darwin":
