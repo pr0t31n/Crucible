@@ -1254,6 +1254,60 @@ def api_system_info():
     })
 
 
+# ── Phish Analyzer ─────────────────────────────────────────────────────────
+
+
+@standalone_bp.route("/api/standalone/phish-analyzer", methods=["POST"])
+def api_phish_analyzer():
+    ev_file = request.files.get("events")
+    if not ev_file or not ev_file.filename:
+        return jsonify(ok=False, error="Events CSV file is required"), 400
+
+    tmp_events = None
+    tmp_results = None
+    try:
+        tmp_events = tempfile.NamedTemporaryFile(
+            suffix=".csv", prefix="phish_events_", delete=False
+        )
+        ev_file.save(tmp_events.name)
+        tmp_events.close()
+
+        res_file = request.files.get("results")
+        results_path = None
+        if res_file and res_file.filename:
+            tmp_results = tempfile.NamedTemporaryFile(
+                suffix=".csv", prefix="phish_results_", delete=False
+            )
+            res_file.save(tmp_results.name)
+            tmp_results.close()
+            results_path = tmp_results.name
+
+        no_geo = request.form.get("no_geo") == "1"
+
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from phish_analyzer import PhishAnalyzer
+
+        analyzer = PhishAnalyzer(
+            events_path=tmp_events.name,
+            results_path=results_path,
+            no_geo=no_geo,
+        )
+        analyzer.run()
+        report = analyzer.report_json()
+        csv_rows = analyzer.report_csv()
+
+        return jsonify(ok=True, report=report, csv_rows=csv_rows)
+    except Exception as exc:
+        return jsonify(ok=False, error=str(exc)), 500
+    finally:
+        for f in (tmp_events, tmp_results):
+            if f and os.path.exists(f.name):
+                try:
+                    os.unlink(f.name)
+                except OSError:
+                    pass
+
+
 # ── Standalone tools registry ──────────────────────────────────────────────
 
 STANDALONE_TOOLS = [
@@ -1348,6 +1402,14 @@ STANDALONE_TOOLS = [
         "name": "System Info",
         "desc": "Hostname, OS, CPU, memory, GPU, users, interfaces, listeners, and disk usage",
         "icon": "server",
+        "url": None,
+        "modal": True,
+    },
+    {
+        "id": "phish-analyzer",
+        "name": "Phish Analyzer",
+        "desc": "Analyze GoPhish campaigns — strip email filter artifacts, produce corrected metrics",
+        "icon": "mail",
         "url": None,
         "modal": True,
     },

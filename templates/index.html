@@ -217,6 +217,7 @@
           <option value="encoder">Encode / Decode</option>
           <option value="host-discovery">Host Discovery</option>
           <option value="merger">Engagement Merger</option>
+          <option value="phish-analyzer">Phish Analyzer</option>
           <option value="port-probe">Port Probe</option>
           <option value="sec-headers">Security Headers</option>
           <option value="ssl-audit">SSL/TLS Audit</option>
@@ -724,6 +725,45 @@
       <button type="button" class="btn btn-primary" onclick="loadSystemInfo()">Refresh</button>
       <button type="button" class="btn btn-ghost" id="siSaveBtn" style="display:none;" onclick="saveSystemInfo()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeSystemInfoModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Phish Analyzer modal ────────────────────────────── -->
+<div class="modal-overlay" id="phishAnalyzerModal">
+  <div class="modal-box modal-wide" style="max-width:780px">
+    <div class="modal-header">
+      <h3 class="modal-title">Phish Analyzer</h3>
+      <button type="button" class="modal-close" onclick="closePhishAnalyzerModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:14px;">Analyze GoPhish campaign results to identify email security filter artifacts (Proofpoint, Microsoft Defender, Mimecast, etc.) and produce corrected engagement metrics.</p>
+      <form id="paForm" onsubmit="return runPhishAnalyzer(event)">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Events CSV <span class="required">*</span></label>
+          <input type="file" id="paEventsFile" class="form-control" accept=".csv" required style="font-size:0.82rem;padding:6px 8px;">
+          <span class="form-hint">GoPhish campaign events export (required)</span>
+        </div>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Results CSV</label>
+          <input type="file" id="paResultsFile" class="form-control" accept=".csv" style="font-size:0.82rem;padding:6px 8px;">
+          <span class="form-hint">GoPhish campaign results export (optional — improves accuracy)</span>
+        </div>
+        <div class="form-check" style="margin-bottom:14px;">
+          <input type="checkbox" id="paNoGeo">
+          <label for="paNoGeo">Skip geolocation (offline mode — no ip-api.com lookups)</label>
+        </div>
+      </form>
+      <div id="paResultsPanel" style="display:none;margin-top:16px;">
+        <div style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Results</div>
+        <div id="paResultsContent" style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:12px 14px;font-size:0.8rem;max-height:50vh;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="paForm" class="btn btn-primary" id="paRunBtn">Analyze Campaign</button>
+      <button type="button" class="btn btn-ghost" id="paSaveJsonBtn" style="display:none;" onclick="savePhishAnalyzerJson()">Save JSON</button>
+      <button type="button" class="btn btn-ghost" id="paSaveCsvBtn" style="display:none;" onclick="savePhishAnalyzerCsv()">Save CSV</button>
+      <button type="button" class="btn btn-ghost" onclick="closePhishAnalyzerModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -1546,6 +1586,138 @@ function _siRow(label, value) {
   return '<span style="color:var(--text-muted);font-weight:500;">'+_esc(label)+'</span><span style="font-family:var(--font-mono);font-size:0.8rem;word-break:break-all;">'+_esc(String(value||''))+'</span>';
 }
 
+/* ── Phish Analyzer modal ──────────────────────────── */
+var _lastPhishReport = null;
+function openPhishAnalyzerModal() { document.getElementById('phishAnalyzerModal').classList.add('open'); }
+function closePhishAnalyzerModal() { document.getElementById('phishAnalyzerModal').classList.remove('open'); }
+function runPhishAnalyzer(e) {
+  e.preventDefault();
+  var evFile = document.getElementById('paEventsFile').files[0];
+  if (!evFile) return false;
+  var btn = document.getElementById('paRunBtn'), orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Analyzing...';
+  document.getElementById('paResultsPanel').style.display = 'none';
+  document.getElementById('paSaveJsonBtn').style.display = 'none';
+  document.getElementById('paSaveCsvBtn').style.display = 'none';
+
+  var fd = new FormData();
+  fd.append('events', evFile);
+  var resFile = document.getElementById('paResultsFile').files[0];
+  if (resFile) fd.append('results', resFile);
+  if (document.getElementById('paNoGeo').checked) fd.append('no_geo', '1');
+
+  fetch('/api/standalone/phish-analyzer', { method:'POST', body: fd })
+  .then(function(r){return r.json();}).then(function(data){
+    btn.disabled = false; btn.textContent = orig;
+    document.getElementById('paResultsPanel').style.display = 'block';
+    var content = document.getElementById('paResultsContent');
+    if (data.ok) {
+      _lastPhishReport = data;
+      document.getElementById('paSaveJsonBtn').style.display = '';
+      document.getElementById('paSaveCsvBtn').style.display = '';
+      var rpt = data.report;
+      var html = '';
+
+      /* summary comparison */
+      html += '<div style="margin-bottom:14px;">';
+      html += '<div style="font-weight:600;margin-bottom:6px;">Campaign Summary</div>';
+      html += '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
+      html += '<thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:4px 8px;"></th><th style="text-align:right;padding:4px 8px;">GoPhish (Raw)</th><th style="text-align:right;padding:4px 8px;">Corrected</th></tr></thead>';
+      html += '<tbody>';
+      var s = rpt.summary;
+      html += '<tr><td style="padding:4px 8px;">Emails Sent</td><td style="text-align:right;padding:4px 8px;">'+s.raw.sent+'</td><td style="text-align:right;padding:4px 8px;">'+s.corrected.sent+'</td></tr>';
+      html += '<tr><td style="padding:4px 8px;">Emails Opened</td><td style="text-align:right;padding:4px 8px;">'+s.raw.opened+'</td><td style="text-align:right;padding:4px 8px;font-weight:600;">'+s.corrected.opened+'</td></tr>';
+      html += '<tr><td style="padding:4px 8px;">Clicked Link</td><td style="text-align:right;padding:4px 8px;">'+s.raw.clicked+'</td><td style="text-align:right;padding:4px 8px;font-weight:600;color:var(--status-warning);">'+s.corrected.clicked+'</td></tr>';
+      html += '<tr><td style="padding:4px 8px;">Submitted Data</td><td style="text-align:right;padding:4px 8px;">'+s.raw.submitted+'</td><td style="text-align:right;padding:4px 8px;font-weight:600;color:var(--status-error);">'+s.corrected.submitted+'</td></tr>';
+      html += '</tbody></table></div>';
+
+      /* detected technology */
+      if (rpt.detected_technology && Object.keys(rpt.detected_technology).length) {
+        html += '<div style="margin-bottom:14px;">';
+        html += '<div style="font-weight:600;margin-bottom:6px;">Detected Email Security</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        Object.keys(rpt.detected_technology).forEach(function(k){
+          var t = rpt.detected_technology[k];
+          html += '<span style="background:var(--bg-hover);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:3px 8px;font-size:0.75rem;">'+_esc(k)+' <span style="color:var(--text-muted);">('+_esc(t.role)+', '+t.ip_count+' IPs)</span></span>';
+        });
+        html += '</div></div>';
+      }
+
+      /* event classification breakdown */
+      if (rpt.event_classifications) {
+        html += '<div style="margin-bottom:14px;">';
+        html += '<div style="font-weight:600;margin-bottom:6px;">Event Classifications</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        Object.keys(rpt.event_classifications).forEach(function(k){
+          var cnt = rpt.event_classifications[k];
+          var col = (k==='real') ? 'var(--status-success)' : 'var(--text-muted)';
+          html += '<span style="font-size:0.78rem;"><span style="color:'+col+';font-weight:600;">'+cnt+'</span> '+_esc(k)+'</span>';
+          html += '&nbsp;&nbsp;';
+        });
+        html += '</div></div>';
+      }
+
+      /* failed users table */
+      if (rpt.failed_users && rpt.failed_users.length) {
+        html += '<div style="margin-bottom:14px;">';
+        html += '<div style="font-weight:600;margin-bottom:6px;color:var(--status-error);">Failed Users ('+rpt.failed_users.length+')</div>';
+        html += '<div style="overflow-x:auto;">';
+        html += '<table style="width:100%;font-size:0.75rem;border-collapse:collapse;">';
+        html += '<thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="text-align:left;padding:4px 6px;">Name</th><th style="text-align:left;padding:4px 6px;">Email</th><th style="text-align:left;padding:4px 6px;">Status</th><th style="text-align:right;padding:4px 6px;">Clicks</th><th style="text-align:right;padding:4px 6px;">Submits</th><th style="text-align:left;padding:4px 6px;">Location</th></tr></thead>';
+        html += '<tbody>';
+        rpt.failed_users.forEach(function(u){
+          var loc = '';
+          if (u.real_events && u.real_events.length) {
+            var ev = u.real_events[0];
+            loc = [ev.city, ev.region, ev.country].filter(Boolean).join(', ');
+          }
+          var stColor = (u.corrected_status==='Submitted Data') ? 'var(--status-error)' : 'var(--status-warning)';
+          html += '<tr style="border-bottom:1px solid var(--border-subtle);">';
+          html += '<td style="padding:4px 6px;white-space:nowrap;">'+_esc(u.name)+'</td>';
+          html += '<td style="padding:4px 6px;font-family:var(--font-mono);font-size:0.72rem;">'+_esc(u.email)+'</td>';
+          html += '<td style="padding:4px 6px;color:'+stColor+';font-weight:500;">'+_esc(u.corrected_status)+'</td>';
+          html += '<td style="text-align:right;padding:4px 6px;">'+u.real_clicks+'</td>';
+          html += '<td style="text-align:right;padding:4px 6px;">'+u.real_submits+'</td>';
+          html += '<td style="padding:4px 6px;font-size:0.72rem;">'+_esc(loc)+'</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+      }
+
+      /* never opened (false opens) */
+      if (rpt.never_opened && rpt.never_opened.length) {
+        html += '<div style="margin-bottom:14px;">';
+        html += '<div style="font-weight:600;margin-bottom:6px;">Never Actually Opened ('+rpt.never_opened.length+' false opens)</div>';
+        html += '<div style="font-size:0.78rem;">';
+        rpt.never_opened.forEach(function(u){
+          html += '<div>'+_esc(u.name)+' &lt;'+_esc(u.email)+'&gt;</div>';
+        });
+        html += '</div></div>';
+      }
+
+      content.innerHTML = html;
+    } else {
+      content.innerHTML = '<span style="color:var(--status-error);">'+_esc(data.error || 'Analysis failed')+'</span>';
+    }
+  }).catch(function(err){ btn.disabled=false; btn.textContent=orig; document.getElementById('paResultsPanel').style.display='block'; document.getElementById('paResultsContent').innerHTML='<span style="color:var(--status-error);">Error: '+_esc(err.message)+'</span>'; });
+  return false;
+}
+function savePhishAnalyzerJson() {
+  if (!_lastPhishReport || !_lastPhishReport.report) return;
+  _downloadBlob(JSON.stringify(_lastPhishReport.report, null, 2), 'phish_analysis_' + _ts() + '.json', 'application/json');
+}
+function savePhishAnalyzerCsv() {
+  if (!_lastPhishReport || !_lastPhishReport.csv_rows) return;
+  var rows = _lastPhishReport.csv_rows;
+  if (!rows.length) return;
+  var keys = Object.keys(rows[0]);
+  var lines = [keys.join(',')];
+  rows.forEach(function(r){
+    lines.push(keys.map(function(k){ var v = String(r[k]||''); return v.indexOf(',')>=0||v.indexOf('"')>=0 ? '"'+v.replace(/"/g,'""')+'"' : v; }).join(','));
+  });
+  _downloadBlob(lines.join('\n'), 'phish_analysis_' + _ts() + '.csv', 'text/csv');
+}
+
 /* ── Quick Tools dropdown dispatcher ───────────────── */
 function runQuickTool() {
   var val = document.getElementById('quickToolSelect').value;
@@ -1556,6 +1728,7 @@ function runQuickTool() {
     'encoder': function(){ window.open('/tools/encoder','_blank'); },
     'host-discovery': openHostDiscoveryModal,
     'merger': function(){ window.location.href='/tools/merger'; },
+    'phish-analyzer': openPhishAnalyzerModal,
     'port-probe': openPortProbeModal,
     'sec-headers': openSecHeadersModal,
     'ssl-audit': openSslAuditModal,
