@@ -1527,6 +1527,12 @@ document.getElementById('btnConsoleClear').addEventListener('click', function() 
     if (!selectedTool) return;
     consoleBuffers[selectedTool] = [];
     renderConsole();
+    if (socket && socket.connected) {
+        socket.emit('console_clear', {
+            project_id: projectId,
+            tool_id: selectedTool
+        });
+    }
 });
 
 /* ── console save helpers ─────────────────────────────────────── */

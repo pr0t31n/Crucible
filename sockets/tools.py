@@ -158,7 +158,9 @@ def register_tool_events(socketio, process_manager, queue_manager):
                 base_tid = tid.split(":")[0]
                 scope = tid.split(":", 1)[1]
 
-            if process_manager.is_running(pid, base_tid, scope=scope):
+            if process_manager.is_console_cleared(pid, base_tid, scope=scope):
+                buf = []
+            elif process_manager.is_running(pid, base_tid, scope=scope):
                 buf = process_manager.get_console(pid, base_tid, scope=scope)
             else:
                 from routes.console import _load_full_console
@@ -174,6 +176,25 @@ def register_tool_events(socketio, process_manager, queue_manager):
             log.error("on_get_console crashed: %s\n%s", exc, traceback.format_exc())
             emit("error", {"project_id": pid, "tool_id": tid,
                            "message": f"Console error: {exc}"})
+
+    @socketio.on("console_clear")
+    def on_console_clear(data):
+        if not socket_auth_check():
+            return
+        pid, tid, proj = socket_validate_ids(data, check_tool_enabled=True)
+        if not pid:
+            return
+        try:
+            scope = (data or {}).get("scope")
+            base_tid = tid
+            if ":" in tid and not scope:
+                base_tid = tid.split(":")[0]
+                scope = tid.split(":", 1)[1]
+            process_manager.clear_console(pid, base_tid, scope=scope)
+            emit("console_buffer", {"project_id": pid, "tool_id": tid,
+                                    "lines": []})
+        except Exception as exc:
+            log.error("on_console_clear crashed: %s\n%s", exc, traceback.format_exc())
 
     @socketio.on("get_status")
     def on_get_status(data):

@@ -103,6 +103,7 @@ class ProcessManager:
         self._orphan_pids: dict[str, dict[str, int]] = {}
         self._lock = threading.Lock()
         self._history_loaded: set[str] = set()
+        self._console_cleared: set[tuple[str, str]] = set()
         self._watchdog_started = False
         self._rerun_created: set[str] = set()
 
@@ -1621,6 +1622,8 @@ class ProcessManager:
             self._pending_prompts.pop(project_id, None)
             self._answer_queues.pop(project_id, None)
             self._history_loaded.discard(project_id)
+            self._console_cleared = {
+                (p, t) for p, t in self._console_cleared if p != project_id}
 
     def is_running(self, project_id: str, tool_id: str, *,
                    scope: str | None = None) -> bool:
@@ -1712,12 +1715,28 @@ class ProcessManager:
 
     def clear_console(self, project_id: str, tool_id: str, *,
                       scope: str | None = None) -> None:
-        """Clear the console buffer for a tool."""
+        """Clear the console buffer for a tool (memory + disk)."""
         tk = _tkey(tool_id, scope)
         with self._lock:
             bufs = self._console_buffers.get(project_id)
             if bufs and tk in bufs:
                 bufs[tk].clear()
+            self._console_cleared.add((project_id, tk))
+        proj_dir = self._resolve_project_dir(project_id)
+        if proj_dir:
+            with self._lock:
+                tool_dir = (self._tool_output_dirs.get(project_id) or {}).get(tk)
+            cl = self._console_log_path(proj_dir, tk, tool_dir)
+            try:
+                if cl.exists():
+                    cl.write_text("")
+            except OSError as exc:
+                log.debug("clear_console: truncate %s: %s", cl, exc)
+
+    def is_console_cleared(self, project_id: str, tool_id: str, *,
+                           scope: str | None = None) -> bool:
+        tk = _tkey(tool_id, scope)
+        return (project_id, tk) in self._console_cleared
 
     def remove_tool_session(self, project_id: str, tool_id: str) -> None:
         """Fully remove a tool's session data — all scope-qualified keys,
@@ -1792,6 +1811,7 @@ class ProcessManager:
             buf.append(entry)
             if len(buf) > MAX_CONSOLE_LINES:
                 del buf[0]
+            self._console_cleared.discard((project_id, tool_id))
         self._stream_console_line(project_id, tool_id, entry)
 
     def _stream_console_line(self, project_id: str, tool_id: str,
