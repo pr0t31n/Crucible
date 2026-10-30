@@ -106,6 +106,9 @@ class ProcessManager:
         self._console_cleared: set[tuple[str, str]] = set()
         self._watchdog_started = False
         self._rerun_created: set[str] = set()
+        self._console_dedup: dict[str, tuple[str, int, float]] = {}
+        self._DEDUP_THRESHOLD = 3
+        self._DEDUP_WINDOW = 5.0
 
     # ── Resource watchdog ──────────────────────────────────────────
 
@@ -1855,6 +1858,30 @@ class ProcessManager:
     def _emit_console(self, project_id: str, tool_id: str, text: str,
                       stream: str = "stdout") -> None:
         """Append to buffer, emit ``console_line`` event, persist to disk."""
+        dk = _pkey(project_id, tool_id)
+        now = time.monotonic()
+        prev = self._console_dedup.get(dk)
+        if prev and prev[0] == text and (now - prev[2]) < self._DEDUP_WINDOW:
+            count = prev[1] + 1
+            self._console_dedup[dk] = (text, count, now)
+            if count > self._DEDUP_THRESHOLD:
+                return
+        else:
+            if prev and prev[1] > self._DEDUP_THRESHOLD:
+                suppressed = prev[1] - self._DEDUP_THRESHOLD
+                sup_entry = {
+                    "project_id": project_id, "tool_id": tool_id,
+                    "ts": _now_ts(), "stream": "system",
+                    "text": f"[Crucible] ⋯ suppressed {suppressed} repeated line(s)",
+                }
+                self._append_console(project_id, tool_id, sup_entry)
+                try:
+                    self.socketio.emit("console_line", sup_entry,
+                                       room=_room(project_id))
+                except Exception:
+                    pass
+            self._console_dedup[dk] = (text, 1, now)
+
         entry = {
             "project_id": project_id,
             "tool_id": tool_id,
