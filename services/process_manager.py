@@ -910,7 +910,7 @@ class ProcessManager:
                 return False
             self._ensure_buffers_locked(project_id, tk)
 
-        self._archive_previous_console(project_id, tk, project)
+        self._prepare_restart_console(project_id, tk, project)
         self._ensure_tool_dir(project_id, tool_id, project)
         _tool_dir = (project.get("tool_dirs") or {}).get(tool_id)
         if _tool_dir:
@@ -1680,38 +1680,20 @@ class ProcessManager:
         }
         self._append_console(project_id, tool_id, entry)
 
-    def _archive_previous_console(self, project_id: str, tool_id: str,
-                                   project: dict) -> None:
-        """Archive the previous run's console so a re-launch doesn't wipe it.
+    def _prepare_restart_console(self, project_id: str, tool_id: str,
+                                  project: dict) -> None:
+        """Prepare console for a tool restart — append separator, keep history.
 
-        Skips archiving when the tool was paused — the console must persist
-        and the resumed run appends to it.
+        Does NOT clear the in-memory buffer or archive the on-disk log.
+        Previous output stays visible so the operator has full context.
+        Skips the separator when paused (resume is seamless).
         """
         with self._lock:
             buf = (self._console_buffers.get(project_id) or {}).get(tool_id, [])
             has_content = bool(buf)
             cur_status = (self._tool_status.get(project_id) or {}).get(tool_id)
-        if not has_content:
-            return
         if cur_status == "paused":
             return
-        try:
-            proj_dir = self._resolve_project_dir(project_id)
-            if not proj_dir:
-                return
-            with self._lock:
-                tool_dir = (self._tool_output_dirs.get(project_id) or {}).get(tool_id)
-            cl = self._console_log_path(proj_dir, tool_id, tool_dir)
-            if cl.exists() and cl.stat().st_size > 0:
-                ts = time.strftime("%Y%m%d_%H%M%S")
-                archive = cl.with_name(cl.stem + f"_{ts}" + cl.suffix)
-                try:
-                    cl.rename(archive)
-                except OSError as exc:
-                    log.warning("reset_for_new_run: archive rename: %s", exc)
-        except Exception as exc:
-            log.warning("reset_for_new_run: console archive for %s: %s",
-                        tool_id, exc)
         hp = self._history_path(self._resolve_project_dir(project_id) or "")
         if hp.exists():
             try:
@@ -1721,12 +1703,12 @@ class ProcessManager:
                     history[f"{tool_id}:{prev.get('ended_at', 'prev')}"] = prev
                     hp.write_text(json.dumps(history, indent=2))
             except (json.JSONDecodeError, OSError) as exc:
-                log.warning("reset_for_new_run: history rotate for %s: %s",
+                log.warning("_prepare_restart_console: history rotate for %s: %s",
                             tool_id, exc)
-        with self._lock:
-            bufs = self._console_buffers.get(project_id)
-            if bufs and tool_id in bufs:
-                bufs[tool_id] = []
+        if has_content:
+            base_tool = tool_id.split(":")[0] if ":" in tool_id else tool_id
+            sep = f"── {base_tool} restarted at {_now_iso()} ──"
+            self._emit_console(project_id, tool_id, sep, "system")
 
     def clear_console(self, project_id: str, tool_id: str, *,
                       scope: str | None = None) -> None:
