@@ -3128,7 +3128,7 @@ class ProcessManager:
         # of potentially the same tool against different targets (e.g. OOS)
         # and must remain pending for auto-queue to pick them up.
 
-        if self._queue_manager and final_status != "killed":
+        if self._queue_manager and final_status == "complete":
             try:
                 if _proj and _proj.get("auto_queue"):
                     self._emit_console(project_id, tool_id,
@@ -3163,6 +3163,10 @@ class ProcessManager:
                 log.warning("Auto-dequeue error for %s: %s", project_id, exc)
                 self._emit_console(project_id, tool_id,
                     f"[Crucible] Auto-dequeue error: {exc}", "system")
+        elif self._queue_manager and final_status == "failed":
+            self._emit_console(project_id, tool_id,
+                f"[Crucible] {tool_id} failed (rc={rc}) — queue held, "
+                f"not auto-launching next tool", "system")
             with self._lock:
                 _diag_st = (self._tool_status.get(project_id) or {}).get(tool_id)
             self._emit_console(project_id, tool_id,
