@@ -9855,6 +9855,46 @@ function renderSettingsFields(container, settings, schema) {
                     group.querySelector('input[name="' + k + '"]').value = JSON.stringify(vals);
                 });
             })(key);
+        } else if (type === 'checkbox_group') {
+            var opts = fieldSchema.options || [];
+            var checked = Array.isArray(val) ? val : [];
+            group.className += ' form-grid-full';
+            var html = '<span class="form-label">' + esc(label) + '</span>';
+            if (fieldSchema.hint) html += '<span class="form-hint" style="display:block;margin-bottom:8px">' + esc(fieldSchema.hint) + '</span>';
+            html += '<div style="display:flex;flex-direction:column;gap:6px">';
+            opts.forEach(function(o) {
+                var oVal = (typeof o === 'object' && o !== null) ? (o.value || '') : o;
+                var oLabel = (typeof o === 'object' && o !== null) ? (o.label || oVal) : o;
+                var oHint = (typeof o === 'object' && o !== null) ? (o.hint || '') : '';
+                html += '<label style="font-weight:400;display:flex;align-items:center;gap:6px">' +
+                    '<input type="checkbox" class="cg-' + esc(key) + '" value="' + esc(oVal) + '"' +
+                    (checked.indexOf(oVal) !== -1 ? ' checked' : '') + '> ' +
+                    esc(oLabel);
+                if (oHint) html += '<span class="form-hint" style="margin-left:auto;font-size:0.75rem">' + esc(oHint) + '</span>';
+                html += '</label>';
+            });
+            html += '</div>';
+            html += '<div style="margin-top:6px;display:flex;gap:8px">' +
+                '<button type="button" class="btn btn-secondary btn-sm cg-all-' + esc(key) + '">Select All</button>' +
+                '<button type="button" class="btn btn-secondary btn-sm cg-none-' + esc(key) + '">Deselect All</button></div>';
+            html += '<input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(checked)) + '">';
+            group.innerHTML = html;
+            (function(k) {
+                function _sync() {
+                    var vals = [];
+                    group.querySelectorAll('.cg-' + k + ':checked').forEach(function(cb) { vals.push(cb.value); });
+                    group.querySelector('input[name="' + k + '"]').value = JSON.stringify(vals);
+                }
+                group.addEventListener('change', _sync);
+                var allBtn = group.querySelector('.cg-all-' + k);
+                var noneBtn = group.querySelector('.cg-none-' + k);
+                if (allBtn) allBtn.addEventListener('click', function() {
+                    group.querySelectorAll('.cg-' + k).forEach(function(cb) { cb.checked = true; }); _sync();
+                });
+                if (noneBtn) noneBtn.addEventListener('click', function() {
+                    group.querySelectorAll('.cg-' + k).forEach(function(cb) { cb.checked = false; }); _sync();
+                });
+            })(key);
         } else if (type === 'checkbox') {
             group.innerHTML =
                 '<div class="form-check">' +
@@ -9929,7 +9969,7 @@ function _collectSettingsForm() {
     ['settingsFields','settingsAdvancedFields'].forEach(function(cid) {
         var inputs = document.getElementById(cid).querySelectorAll('[name]');
         inputs.forEach(function(el) {
-            if (el.type === 'checkbox' && !el.closest('.file-list-widget') && !el.className.match(/^mc-/)) {
+            if (el.type === 'checkbox' && !el.closest('.file-list-widget') && !el.className.match(/^mc-|^cg-/)) {
                 formData[el.name] = el.checked;
             } else if (el.type === 'hidden') {
                 try { formData[el.name] = JSON.parse(el.value); } catch(e) { formData[el.name] = el.value; }

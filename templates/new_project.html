@@ -974,6 +974,58 @@
             </div>
           </div>
         </div>
+
+        <!-- ── Analysis Phases (shown for dynamic / full) ──── -->
+        <div id="quillPhasesGroup" hidden style="margin-top:12px">
+          <span class="form-label" style="display:block;margin-bottom:8px">Analysis Phases</span>
+          <span class="form-hint" style="display:block;margin-bottom:10px">Select which deep-analysis phases to run. Phases with unmet prerequisites (root, Frida) are skipped automatically on the device.</span>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="recon" checked>
+              Static Reconnaissance
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">metadata, secrets, components</span>
+            </label>
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="storage" checked>
+              Storage Analysis
+              <span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text-secondary);margin-left:4px">root</span>
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">files, databases, preferences, keychain</span>
+            </label>
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="ipc" checked>
+              IPC Testing
+              <span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text-secondary);margin-left:4px">root</span>
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">intents, deep links, content providers</span>
+            </label>
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="logs" checked>
+              Log Analysis
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">monitor device logs for data leaks</span>
+            </label>
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="memory" checked>
+              Memory Analysis
+              <span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text-secondary);margin-left:4px">root</span>
+              <span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text-secondary);margin-left:2px">frida</span>
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">credentials, PII in process memory</span>
+            </label>
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="resilience" checked>
+              Resilience Testing
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">root detection, SSL pinning, anti-tamper</span>
+            </label>
+            <label class="form-label" style="font-weight:400;display:flex;align-items:center;gap:6px">
+              <input type="checkbox" class="quillPhase" value="instrumentation" checked>
+              Runtime Instrumentation
+              <span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text-secondary);margin-left:4px">frida</span>
+              <span class="form-hint" style="margin-left:auto;font-size:0.75rem">crypto, auth, WebView, biometric hooks</span>
+            </label>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelectorAll('.quillPhase').forEach(function(c){c.checked=true})">Select All</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelectorAll('.quillPhase').forEach(function(c){c.checked=false})">Deselect All</button>
+          </div>
+        </div>
       </div>
 
       <!-- ── Isotope ──────────────────────────────────────── -->

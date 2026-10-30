@@ -44,6 +44,14 @@ class QuillAdapter(ToolAdapter):
             cmd[cmd.index("--platform") + 1] = platform
         mode = settings.get("analysis_mode", "static")
         cmd.extend(["--mode", mode])
+        phases = settings.get("quill_phases", [])
+        if phases and "all" not in phases:
+            _all_phases = ["recon", "storage", "ipc", "logs", "memory",
+                           "resilience", "instrumentation"]
+            if sorted(phases) != sorted(_all_phases):
+                cmd.extend(["--phases", ",".join(phases)])
+        if settings.get("no_phases"):
+            cmd.append("--no-phases")
         frida_on = settings.get("frida_analysis", False)
         mitm_on = settings.get("mitm_analysis", False)
         if mode in ("dynamic", "full") and frida_on:
@@ -106,6 +114,9 @@ class QuillAdapter(ToolAdapter):
             "mitm_upstream_proxy": "",
             "mitm_proxy_ca_pem": "",
             "mitm_proxy_ca_name": "",
+            "quill_phases": ["recon", "storage", "ipc", "logs", "memory",
+                             "resilience", "instrumentation"],
+            "no_phases": False,
         }
 
     def settings_schema(self):
@@ -126,6 +137,29 @@ class QuillAdapter(ToolAdapter):
                                   {"value": "dynamic", "label": "Dynamic Only"},
                                   {"value": "full", "label": "Static + Dynamic"},
                               ]},
+            "quill_phases": {
+                "label": "Analysis Phases",
+                "type": "checkbox_group",
+                "hint": "Select which deep-analysis phases to run. Phases with "
+                        "unmet prerequisites (root, Frida) are skipped automatically.",
+                "depends_on": {"analysis_mode": ["dynamic", "full"]},
+                "options": [
+                    {"value": "recon", "label": "Static Reconnaissance",
+                     "hint": "Extract metadata, secrets, components from app binary"},
+                    {"value": "storage", "label": "Storage Analysis",
+                     "hint": "Check file permissions, databases, preferences, keychain (requires root)"},
+                    {"value": "ipc", "label": "IPC Testing",
+                     "hint": "Test exported components, deep links, content providers (requires root)"},
+                    {"value": "logs", "label": "Log Analysis",
+                     "hint": "Monitor device logs for sensitive data leaks"},
+                    {"value": "memory", "label": "Memory Analysis",
+                     "hint": "Scan process memory for credentials and PII (requires root + Frida)"},
+                    {"value": "resilience", "label": "Resilience Testing",
+                     "hint": "Test root detection, SSL pinning, anti-tampering"},
+                    {"value": "instrumentation", "label": "Runtime Instrumentation",
+                     "hint": "Hook crypto, auth, WebView, biometric APIs (requires Frida)"},
+                ],
+            },
             "frida_analysis": {"label": "Frida Dynamic Analysis", "type": "checkbox",
                                "hint": "Attach Frida for runtime instrumentation and SSL pinning bypass",
                                "depends_on": {"analysis_mode": ["dynamic", "full"]}},

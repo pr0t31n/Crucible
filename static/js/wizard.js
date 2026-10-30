@@ -581,6 +581,8 @@
     var showDynamic = mode === 'dynamic' || mode === 'full';
     document.getElementById('mobileStaticGroup').hidden = !showStatic;
     document.getElementById('mobileDynamicGroup').hidden = !showDynamic;
+    var phasesGroup = document.getElementById('quillPhasesGroup');
+    if (phasesGroup) phasesGroup.hidden = !showDynamic;
   }
   if (mobileModeEl) { mobileModeEl.addEventListener('change', updateMobileMode); updateMobileMode(); }
   function updateFridaFields() {
@@ -655,6 +657,20 @@
     if (_ccEl) _ccEl.hidden = false;
   }
   updateUpstreamCaField();
+
+  /* ── Quill phases helper + restore ─────────────────────── */
+  function getQuillPhases() {
+    var phases = [];
+    document.querySelectorAll('.quillPhase:checked').forEach(function(cb) {
+      phases.push(cb.value);
+    });
+    return phases;
+  }
+  if (_cfg.quillPhases && Array.isArray(_cfg.quillPhases)) {
+    document.querySelectorAll('.quillPhase').forEach(function(cb) {
+      cb.checked = _cfg.quillPhases.indexOf(cb.value) !== -1;
+    });
+  }
 
   /* ── Engagement hours toggle ───────────────────────────── */
   var wizEngToggle = document.getElementById('wizEngagementEnabled');
@@ -957,6 +973,16 @@
         }
         addR(sg,'Dynamic Testing', _dynParts.length ? _dynParts.join(' + ') : '(none selected)');
       }
+      if (_mm === 'dynamic' || _mm === 'full') {
+        var _qPhases = getQuillPhases();
+        if (_qPhases.length === 7) {
+          addR(sg, 'Analysis Phases', 'All (7 phases)');
+        } else if (_qPhases.length) {
+          addR(sg, 'Analysis Phases', _qPhases.join(', '));
+        } else {
+          addR(sg, 'Analysis Phases', '(none — legacy mode)');
+        }
+      }
     }
     if (_sec('scopeIsotopeSection')) {
       addR(sg,'Analysis Files',isoFiles.length ? isoFiles.map(function(f){return f.name;}).join(', ') : '');
@@ -1072,6 +1098,7 @@
         mitm_upstream_proxy: valOf('mitmUpstreamProxy'),
         mitm_proxy_ca_pem: _proxyCaPem,
         mitm_proxy_ca_name: _proxyCaName,
+        quill_phases: getQuillPhases(),
         isotope_files: isoFiles.map(function(f){return f.name;}),
         isotope_modules: getIsoModules(),
         isotope_archive_depth: parseInt(valOf('isoArchiveDepth')) || 5
