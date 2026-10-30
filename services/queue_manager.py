@@ -24,6 +24,21 @@ log = logging.getLogger("crucible.queue")
 _DEQUEUE_RETRY_SECONDS = 30
 
 
+def _decode_jwt_for_session(token: str) -> dict | None:
+    import base64
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = parts[1]
+        pad = 4 - len(payload) % 4
+        if pad != 4:
+            payload += "=" * pad
+        return json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return None
+
+
 class QueueManager:
     """Per-project job queue with parallelism enforcement.
 
@@ -713,19 +728,32 @@ class QueueManager:
                     "origin_tool": "quill",
                     "scope": item_scope,
                     "target_url": target,
+                    "heartbeat_url": target,
                 }
                 if auth_header and auth_value:
                     _tk = auth_value
                     if _tk.lower().startswith("bearer "):
                         _tk = _tk[7:]
-                    _sk["auth_type"] = "bearer_static"
+                    _jwt = _decode_jwt_for_session(_tk)
+                    if _jwt:
+                        _sk["auth_type"] = "jwt"
+                        _sk["expires_at"] = float(_jwt["exp"]) if "exp" in _jwt else None
+                        _sk["jwt_claims"] = _jwt
+                    else:
+                        _sk["auth_type"] = "bearer_static"
                     _sk["access_token"] = _tk
                     _sk["headers"] = {auth_header: auth_value}
                 elif auth_cookies:
                     _sk["auth_type"] = "cookie"
                     _sk["cookies"] = dict(auth_cookies)
                 elif auth_token_field and auth_token_value:
-                    _sk["auth_type"] = "bearer_static"
+                    _jwt = _decode_jwt_for_session(auth_token_value)
+                    if _jwt:
+                        _sk["auth_type"] = "jwt"
+                        _sk["expires_at"] = float(_jwt["exp"]) if "exp" in _jwt else None
+                        _sk["jwt_claims"] = _jwt
+                    else:
+                        _sk["auth_type"] = "bearer_static"
                     _sk["access_token"] = auth_token_value
                     _sk["headers"] = {"Authorization":
                                       f"Bearer {auth_token_value}"}

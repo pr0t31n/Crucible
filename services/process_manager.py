@@ -77,6 +77,22 @@ def _tkey(tool_id: str, scope: str | None = None) -> str:
     return tool_id
 
 
+def _decode_jwt_for_session(token: str) -> dict | None:
+    """Decode a JWT payload if the token looks like one. Returns claims or None."""
+    import base64
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = parts[1]
+        pad = 4 - len(payload) % 4
+        if pad != 4:
+            payload += "=" * pad
+        return json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return None
+
+
 class ProcessManager:
     """Manage tool subprocess lifecycles and SocketIO event routing."""
 
@@ -2262,7 +2278,7 @@ class ProcessManager:
                             data: dict) -> None:
         """Route an ACTION_ITEM token and persist via ActionEngine."""
         data.setdefault("source_tool", tool_id)
-        if tool_id == "quill" and (data.get("metadata") or {}).get("immediate_queue"):
+        if tool_id == "quill" and (data.get("approval_tier") or "").lower() == "auto":
             data["in_scope"] = True
         self._emit_console(project_id, tool_id,
                            f"[ACTION] {data.get('title', data.get('message', ''))}",
@@ -2308,17 +2324,32 @@ class ProcessManager:
                         _tk = _av
                         if _tk.lower().startswith("bearer "):
                             _tk = _tk[7:]
-                        _sk["auth_type"] = "bearer_static"
+                        _jwt = _decode_jwt_for_session(_tk)
+                        if _jwt:
+                            _sk["auth_type"] = "jwt"
+                            _sk["expires_at"] = float(_jwt["exp"]) if "exp" in _jwt else None
+                            _sk["jwt_claims"] = _jwt
+                        else:
+                            _sk["auth_type"] = "bearer_static"
                         _sk["access_token"] = _tk
                         _sk["headers"] = {_ah: _av}
+                        _sk["heartbeat_url"] = _target
                     elif _ac:
                         _sk["auth_type"] = "cookie"
                         _sk["cookies"] = dict(_ac)
+                        _sk["heartbeat_url"] = _target
                     elif _atf and _atv:
-                        _sk["auth_type"] = "bearer_static"
+                        _jwt = _decode_jwt_for_session(_atv)
+                        if _jwt:
+                            _sk["auth_type"] = "jwt"
+                            _sk["expires_at"] = float(_jwt["exp"]) if "exp" in _jwt else None
+                            _sk["jwt_claims"] = _jwt
+                        else:
+                            _sk["auth_type"] = "bearer_static"
                         _sk["access_token"] = _atv
                         _sk["headers"] = {"Authorization":
                                           f"Bearer {_atv}"}
+                        _sk["heartbeat_url"] = _target
                     register_session(project_id, **_sk)
                 except Exception as _se:
                     log.debug("session reg from action item: %s", _se)

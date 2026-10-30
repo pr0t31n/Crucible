@@ -262,14 +262,17 @@ class SessionManager:
         for sess in sessions:
             if sess.status == _STATUS_DEAD:
                 continue
-            if sess.is_static():
+            if sess.is_static() and not sess.heartbeat_url:
+                continue
+            if sess.is_static() and sess.heartbeat_url:
+                self._heartbeat_session(sess)
                 continue
             ttl = sess.seconds_until_expiry()
             if ttl is not None and ttl < 300 and sess.status == _STATUS_LIVE:
                 sess.status = _STATUS_EXPIRING
             if ttl is not None and ttl <= _REFRESH_MARGIN_S:
                 self._refresh_session(sess)
-            elif sess.auth_type == _TYPE_COOKIE and sess.heartbeat_url:
+            elif sess.heartbeat_url:
                 self._heartbeat_session(sess)
         self._schedule_check()
 
