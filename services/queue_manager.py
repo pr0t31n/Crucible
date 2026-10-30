@@ -727,7 +727,7 @@ class QueueManager:
     def _write_mitm_auth_settings(self, proj_dir, tool, scope,
                                   header_name, header_value,
                                   tool_dir=""):
-        """Write captured auth into a tool settings file."""
+        """Write captured auth into a tool settings file (scan.auth)."""
         import json
         from config import TOOL_SETTINGS_PREFIX
         prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
@@ -740,20 +740,22 @@ class QueueManager:
                 settings = json.loads(settings_file.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        if tool == "fracture":
-            settings["auth_method"] = "bearer"
-            settings["auth_header"] = header_name
-            settings["auth_token"] = header_value
-        elif tool == "siphon":
-            settings["auth_method"] = "bearer"
-            settings["auth_header"] = header_name
-            settings["auth_token"] = header_value
+        token = header_value
+        if token.lower().startswith("bearer "):
+            token = token[7:]
+        auth_block = settings.setdefault("scan", {}).setdefault("auth", {})
+        auth_block["enabled"] = True
+        auth_block["method"] = "bearer"
+        auth_block["auth_token"] = token
+        auth_block["token_type"] = "Bearer"
+        for stale in ("auth_method", "auth_header", "auth_token"):
+            settings.pop(stale, None)
         settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         return {}
 
     def _write_mitm_cookie_settings(self, proj_dir, tool, scope, cookies,
                                     tool_dir=""):
-        """Write captured cookies into a tool settings file."""
+        """Write captured cookies into a tool settings file (scan.auth)."""
         import json
         from config import TOOL_SETTINGS_PREFIX
         prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
@@ -767,12 +769,12 @@ class QueueManager:
             except Exception:
                 pass
         cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-        if tool == "fracture":
-            settings["auth_method"] = "cookie"
-            settings["auth_cookie"] = cookie_str
-        elif tool == "siphon":
-            settings["auth_method"] = "cookie"
-            settings["auth_cookie"] = cookie_str
+        auth_block = settings.setdefault("scan", {}).setdefault("auth", {})
+        auth_block["enabled"] = True
+        auth_block["method"] = "session_cookie"
+        auth_block["session_cookie"] = cookie_str
+        for stale in ("auth_method", "auth_cookie"):
+            settings.pop(stale, None)
         settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         return {}
 
