@@ -2256,7 +2256,46 @@ class ProcessManager:
                                    room=_room(project_id))
             except Exception as exc:
                 log.warning("_handle_action_item: socketio emit: %s", exc)
-            immediate = (data.get("metadata") or {}).get("immediate_queue")
+            meta = data.get("metadata") or {}
+            _ah = meta.get("auth_header", "")
+            _av = meta.get("auth_value", "")
+            _ac = meta.get("auth_cookies", {})
+            _atf = meta.get("auth_token_field", "")
+            _atv = meta.get("auth_token_value", "")
+            _has_auth = (bool(_ah and _av) or bool(_ac)
+                         or bool(_atf and _atv))
+            if _has_auth:
+                try:
+                    from services.session_manager import register_session
+                    _target = data.get("target", "")
+                    _tool = (data.get("recommended_tool") or "").lower()
+                    _scope = data.get("scope", "")
+                    _host = _target.split("//")[-1].split("/")[0] if _target else ""
+                    _sk = {
+                        "label": f"MITM auth: {_host}" if _host else "MITM auth capture",
+                        "origin_tool": tool_id,
+                        "scope": _scope,
+                        "target_url": _target,
+                    }
+                    if _ah and _av:
+                        _tk = _av
+                        if _tk.lower().startswith("bearer "):
+                            _tk = _tk[7:]
+                        _sk["auth_type"] = "bearer_static"
+                        _sk["access_token"] = _tk
+                        _sk["headers"] = {_ah: _av}
+                    elif _ac:
+                        _sk["auth_type"] = "cookie"
+                        _sk["cookies"] = dict(_ac)
+                    elif _atf and _atv:
+                        _sk["auth_type"] = "bearer_static"
+                        _sk["access_token"] = _atv
+                        _sk["headers"] = {"Authorization":
+                                          f"Bearer {_atv}"}
+                    register_session(project_id, **_sk)
+                except Exception as _se:
+                    log.debug("session reg from action item: %s", _se)
+            immediate = meta.get("immediate_queue")
             if immediate and self._queue_manager:
                 self._immediate_auto_queue(project_id, saved)
 
