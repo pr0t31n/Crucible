@@ -2256,6 +2256,11 @@ class ProcessManager:
         qm = self._queue_manager
         if not qm:
             return
+        tier = (item.get("approval_tier") or "").lower()
+        if tier == "manual":
+            log.info("_immediate_auto_queue: skipping manual-tier item %s → %s",
+                     item.get("recommended_tool"), item.get("target"))
+            return
         proj = self._resolve_project(project_id)
         if not proj or not proj.get("auto_queue"):
             return
