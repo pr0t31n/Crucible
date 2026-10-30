@@ -609,6 +609,148 @@ class QueueManager:
 
         return enqueued
 
+    def immediate_enqueue_single(self, project_id: str, project: dict,
+                                 item: dict) -> bool:
+        """Enqueue a single action item immediately, bypassing source-tool-finished check.
+
+        Called by ProcessManager._immediate_auto_queue() for items with
+        metadata.immediate_queue=True (e.g. Quill MITM real-time targets).
+        """
+        tool = (item.get("recommended_tool") or "").lower()
+        if not tool or tool not in AUTO_QUEUE_TOOLS:
+            return False
+
+        target = item.get("target", "")
+        if not target:
+            return False
+
+        proj_dir = project.get("project_dir", "")
+        if not proj_dir:
+            return False
+
+        running_keys = self._get_running_keys(project_id)
+        active_scopes = project.get("active_scopes") or []
+        _primary_scope = active_scopes[0] if active_scopes else ""
+        _scope_norm = {
+            "api": "webapp", "int": "internal", "ext": "external",
+            "web": "webapp", "osint": "osint", "file": "file",
+        }
+        raw_scope = item.get("scope") or ""
+        mapped = _scope_norm.get(raw_scope, raw_scope)
+        if mapped in active_scopes:
+            item_scope = mapped
+        elif raw_scope in active_scopes:
+            item_scope = raw_scope
+        else:
+            item_scope = _primary_scope
+
+        queue_key = f"{tool}:{item_scope}" if item_scope else tool
+        running_key = queue_key
+        queued_tools = {
+            (f"{e['tool_id']}:{e['scope']}" if e.get("scope") else e["tool_id"])
+            for e in self.get_queue(project_id)
+        }
+        if running_key in running_keys or queue_key in queued_tools:
+            log.info("[immediate] %s already running/queued, skipping", tool)
+            return False
+
+        from routes.action_items import _inject_targets, _ensure_tool_registered
+        from models.action_items import update_action_item_status
+
+        _ensure_tool_registered(project_id, project, tool, item_scope=item_scope)
+        _inject_targets(proj_dir, tool, [target], {}, project=project,
+                        scope=item_scope)
+
+        item_id = item.get("id")
+        if item_id:
+            update_action_item_status(proj_dir, item_id, "queued")
+
+        meta = (item.get("metadata") or {})
+        auth_header = meta.get("auth_header", "")
+        auth_value = meta.get("auth_value", "")
+        auth_cookies = meta.get("auth_cookies", {})
+        auth_token_field = meta.get("auth_token_field", "")
+        auth_token_value = meta.get("auth_token_value", "")
+
+        extra = {}
+        if auth_header and auth_value:
+            extra = self._write_mitm_auth_settings(
+                proj_dir, tool, item_scope, auth_header, auth_value)
+        elif auth_cookies:
+            extra = self._write_mitm_cookie_settings(
+                proj_dir, tool, item_scope, auth_cookies)
+        elif auth_token_field and auth_token_value:
+            extra = self._write_mitm_auth_settings(
+                proj_dir, tool, item_scope,
+                "Authorization", f"Bearer {auth_token_value}")
+
+        self.enqueue(project_id, tool, priority=1,
+                     auto_queued=True, scope=item_scope, **extra)
+        log.info("[immediate] Enqueued %s for project %s (target=%s)",
+                 tool, project_id, target)
+
+        try:
+            from app import socketio
+            if socketio is not None:
+                socketio.emit("tool_queued", {
+                    "project_id": project_id,
+                    "tool_id": tool,
+                    "reason": f"Immediate auto-queue from MITM ({target})",
+                }, room=f"project_{project_id}")
+        except Exception:
+            pass
+
+        self.auto_dequeue(project_id)
+        return True
+
+    def _write_mitm_auth_settings(self, proj_dir, tool, scope,
+                                  header_name, header_value):
+        """Write captured auth into a tool settings file."""
+        import json
+        from config import TOOL_SETTINGS_PREFIX
+        prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
+        sfx = f"_{scope}" if scope else ""
+        settings_file = Path(proj_dir) / f"{prefix}_settings{sfx}.json"
+        settings = {}
+        if settings_file.exists():
+            try:
+                settings = json.loads(settings_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        if tool == "fracture":
+            settings["auth_method"] = "bearer"
+            settings["auth_header"] = header_name
+            settings["auth_token"] = header_value
+        elif tool == "siphon":
+            settings["auth_method"] = "bearer"
+            settings["auth_header"] = header_name
+            settings["auth_token"] = header_value
+        settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+        return {}
+
+    def _write_mitm_cookie_settings(self, proj_dir, tool, scope, cookies):
+        """Write captured cookies into a tool settings file."""
+        import json
+        from config import TOOL_SETTINGS_PREFIX
+        prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
+        sfx = f"_{scope}" if scope else ""
+        settings_file = Path(proj_dir) / f"{prefix}_settings{sfx}.json"
+        settings = {}
+        if settings_file.exists():
+            try:
+                settings = json.loads(settings_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        if tool == "fracture":
+            settings["auth_method"] = "cookie"
+            settings["auth_cookie"] = cookie_str
+        elif tool == "siphon":
+            settings["auth_method"] = "cookie"
+            settings["auth_cookie"] = cookie_str
+        settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+        return {}
+
     def _prepare_credentialled_launch(self, project, tool, meta):
         """Write a credentialled settings file and return extra_args.
 

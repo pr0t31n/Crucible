@@ -2240,6 +2240,43 @@ class ProcessManager:
                                    room=_room(project_id))
             except Exception as exc:
                 log.warning("_handle_action_item: socketio emit: %s", exc)
+            immediate = (data.get("metadata") or {}).get("immediate_queue")
+            if immediate and self._queue_manager:
+                self._immediate_auto_queue(project_id, saved)
+
+    def _immediate_auto_queue(self, project_id: str, item: dict) -> None:
+        """Auto-queue a single action item while the source tool still runs.
+
+        Used by Quill MITM: captures auth + targets mid-scan and emits
+        action items with metadata.immediate_queue=True so Fracture/Siphon
+        start testing while Quill continues capturing traffic.
+        """
+        qm = self._queue_manager
+        if not qm:
+            return
+        proj = self._resolve_project(project_id)
+        if not proj or not proj.get("auto_queue"):
+            return
+        tool = (item.get("recommended_tool") or "").lower()
+        if not tool:
+            return
+        from config import AUTO_QUEUE_TOOLS
+        if tool not in AUTO_QUEUE_TOOLS:
+            return
+        target = item.get("target", "")
+        if not target:
+            return
+        source = item.get("source_tool", "quill")
+        self._emit_console(project_id, source,
+                           f"[Crucible] Immediate auto-queue: {tool} → {target}",
+                           "system")
+        try:
+            qm.immediate_enqueue_single(project_id, proj, item)
+        except Exception as exc:
+            log.warning("_immediate_auto_queue error: %s", exc)
+            self._emit_console(project_id, source,
+                               f"[Crucible] Immediate auto-queue error: {exc}",
+                               "system")
 
     # ── Live targets cache + disk persistence ──────────────────────────
 
