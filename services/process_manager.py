@@ -2223,6 +2223,8 @@ class ProcessManager:
                             data: dict) -> None:
         """Route an ACTION_ITEM token and persist via ActionEngine."""
         data.setdefault("source_tool", tool_id)
+        if tool_id == "quill" and (data.get("metadata") or {}).get("immediate_queue"):
+            data["in_scope"] = True
         self._emit_console(project_id, tool_id,
                            f"[ACTION] {data.get('title', data.get('message', ''))}",
                            "stdout")

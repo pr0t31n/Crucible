@@ -669,9 +669,7 @@ class QueueManager:
         _inject_targets(proj_dir, tool, [target], {}, project=project,
                         scope=item_scope)
 
-        item_id = item.get("id")
-        if item_id:
-            update_action_item_status(proj_dir, item_id, "queued")
+        tool_dir = (project.get("tool_dirs") or {}).get(tool, "")
 
         meta = (item.get("metadata") or {})
         auth_header = meta.get("auth_header", "")
@@ -680,17 +678,32 @@ class QueueManager:
         auth_token_field = meta.get("auth_token_field", "")
         auth_token_value = meta.get("auth_token_value", "")
 
+        has_auth = (bool(auth_header and auth_value)
+                    or bool(auth_cookies)
+                    or bool(auth_token_field and auth_token_value))
+        if tool in ("siphon", "fracture") and not has_auth:
+            log.warning("[immediate] %s requires intercepted auth — "
+                        "leaving action item as pending", tool)
+            return False
+
+        item_id = item.get("id")
+        if item_id:
+            update_action_item_status(proj_dir, item_id, "queued")
+
         extra = {}
         if auth_header and auth_value:
             extra = self._write_mitm_auth_settings(
-                proj_dir, tool, item_scope, auth_header, auth_value)
+                proj_dir, tool, item_scope, auth_header, auth_value,
+                tool_dir=tool_dir)
         elif auth_cookies:
             extra = self._write_mitm_cookie_settings(
-                proj_dir, tool, item_scope, auth_cookies)
+                proj_dir, tool, item_scope, auth_cookies,
+                tool_dir=tool_dir)
         elif auth_token_field and auth_token_value:
             extra = self._write_mitm_auth_settings(
                 proj_dir, tool, item_scope,
-                "Authorization", f"Bearer {auth_token_value}")
+                "Authorization", f"Bearer {auth_token_value}",
+                tool_dir=tool_dir)
 
         self.enqueue(project_id, tool, priority=1,
                      auto_queued=True, scope=item_scope, **extra)
@@ -712,13 +725,15 @@ class QueueManager:
         return True
 
     def _write_mitm_auth_settings(self, proj_dir, tool, scope,
-                                  header_name, header_value):
+                                  header_name, header_value,
+                                  tool_dir=""):
         """Write captured auth into a tool settings file."""
         import json
         from config import TOOL_SETTINGS_PREFIX
         prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
         sfx = f"_{scope}" if scope else ""
-        settings_file = Path(proj_dir) / f"{prefix}_settings{sfx}.json"
+        base = Path(tool_dir) if tool_dir else Path(proj_dir)
+        settings_file = base / f"{prefix}_settings{sfx}.json"
         settings = {}
         if settings_file.exists():
             try:
@@ -736,13 +751,15 @@ class QueueManager:
         settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         return {}
 
-    def _write_mitm_cookie_settings(self, proj_dir, tool, scope, cookies):
+    def _write_mitm_cookie_settings(self, proj_dir, tool, scope, cookies,
+                                    tool_dir=""):
         """Write captured cookies into a tool settings file."""
         import json
         from config import TOOL_SETTINGS_PREFIX
         prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
         sfx = f"_{scope}" if scope else ""
-        settings_file = Path(proj_dir) / f"{prefix}_settings{sfx}.json"
+        base = Path(tool_dir) if tool_dir else Path(proj_dir)
+        settings_file = base / f"{prefix}_settings{sfx}.json"
         settings = {}
         if settings_file.exists():
             try:
