@@ -406,7 +406,9 @@ def _ensure_tool_registered(project_id, project, tool_id, item_scope=None):
     active = project.get("active_scopes") or []
 
     target_scope = None
-    _USER_SCOPES = {"external", "internal", "osint", "webapp", "api"}
+    _USER_SCOPES = {"external", "internal", "osint", "webapp", "api",
+                     "mobile", "cloud", "wifi", "bluetooth", "zigbee",
+                     "uwb", "file", "endpoint", "database", "firewall"}
 
     if item_scope and item_scope in _USER_SCOPES \
             and item_scope in active and item_scope in scope_tools:

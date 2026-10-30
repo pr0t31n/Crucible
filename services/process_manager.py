@@ -2805,6 +2805,7 @@ class ProcessManager:
         # Determine final status.
         with self._lock:
             cur_status = (self._tool_status.get(project_id) or {}).get(tool_id)
+            user_killed = (cur_status == "killed")
             if cur_status == "killed":
                 final_status = "killed"
             elif rc == EXIT_PAUSED or cur_status == "pausing":
@@ -2858,7 +2859,9 @@ class ProcessManager:
         if ctx:
             ctx.__enter__()
         try:
-            self._post_completion(project_id, tool_id, base_tool, final_status, rc)
+            self._post_completion(project_id, tool_id, base_tool,
+                                  final_status, rc,
+                                  user_killed=user_killed)
         finally:
             if ctx:
                 ctx.__exit__(None, None, None)
@@ -2866,15 +2869,21 @@ class ProcessManager:
         with self._lock:
             post_status = (self._tool_status.get(project_id) or {}).get(tool_id)
         if post_status != final_status:
-            log.warning("_wait_proc: status for %s changed during "
-                        "_post_completion: expected %s, found %s — "
-                        "restoring", tool_id, final_status, post_status)
-            self._emit_console(project_id, tool_id,
-                f"[DIAG] Status changed during post-completion! "
-                f"Expected {final_status}, found {post_status}. Restoring.",
-                "system")
-            with self._lock:
-                self._tool_status.setdefault(project_id, {})[tool_id] = final_status
+            _live = {"running", "pausing"}
+            if post_status in _live:
+                log.info("_wait_proc: status for %s changed to %s during "
+                         "_post_completion (tool restarted) — keeping",
+                         tool_id, post_status)
+            else:
+                log.warning("_wait_proc: status for %s changed during "
+                            "_post_completion: expected %s, found %s — "
+                            "restoring", tool_id, final_status, post_status)
+                self._emit_console(project_id, tool_id,
+                    f"[DIAG] Status changed during post-completion! "
+                    f"Expected {final_status}, found {post_status}. Restoring.",
+                    "system")
+                with self._lock:
+                    self._tool_status.setdefault(project_id, {})[tool_id] = final_status
         self.socketio.emit("tool_status",
                            {"project_id": project_id,
                             "tool_id": tool_id, "status": final_status,
@@ -2944,7 +2953,8 @@ class ProcessManager:
         except Exception as exc:
             log.warning("_merge_scope_findings: %s", exc)
 
-    def _post_completion(self, project_id, tool_id, base_tool, final_status, rc):
+    def _post_completion(self, project_id, tool_id, base_tool, final_status, rc,
+                         *, user_killed: bool = False):
         """Post-completion tasks that need Flask app context."""
         from models.project import get_project
         _proj = get_project(project_id)
@@ -2995,14 +3005,15 @@ class ProcessManager:
             except Exception as exc:
                 log.warning("Action item status update error: %s", exc)
 
-        if final_status in ("killed", "failed"):
+        if final_status == "failed" or (final_status == "killed"
+                                          and not user_killed):
             rerun_key = _pkey(project_id, tool_id)
             with self._lock:
                 already = rerun_key in self._rerun_created
             if not already:
                 scope = tool_id.split(":", 1)[1] if ":" in tool_id else None
                 cat = "rerun_killed" if final_status == "killed" else "rerun_failed"
-                reason = (f"{tool_id} was killed (return code {rc})"
+                reason = (f"{tool_id} was killed by signal (return code {rc})"
                           if final_status == "killed"
                           else f"{tool_id} failed with return code {rc}")
                 self._create_rerun_action_item(
@@ -3039,7 +3050,7 @@ class ProcessManager:
         # of potentially the same tool against different targets (e.g. OOS)
         # and must remain pending for auto-queue to pick them up.
 
-        if self._queue_manager:
+        if self._queue_manager and final_status != "killed":
             try:
                 if _proj and _proj.get("auto_queue"):
                     self._emit_console(project_id, tool_id,
