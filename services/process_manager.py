@@ -1525,6 +1525,10 @@ class ProcessManager:
                     entry["pid"] = meta["pid"]
                 if meta.get("tool_version"):
                     entry["tool_version"] = meta["tool_version"]
+                if meta.get("mitm_active"):
+                    entry["mitm_active"] = True
+                if meta.get("mitm_paused"):
+                    entry["mitm_paused"] = True
                 if ":" in tid:
                     result[tid] = entry
                     base = tid.split(":")[0]
@@ -2164,6 +2168,14 @@ class ProcessManager:
                 pc.setdefault(tool_id, {})[phase_key] = new_entry
                 if prev_subtools and "tools" not in data:
                     data["tools"] = dict(prev_subtools)
+        if "mitm_active" in data or "mitm_paused" in data:
+            with self._lock:
+                ms = self._tool_metadata.setdefault(project_id, {})
+                tm = ms.setdefault(tool_id, {})
+                if "mitm_active" in data:
+                    tm["mitm_active"] = bool(data["mitm_active"])
+                if "mitm_paused" in data:
+                    tm["mitm_paused"] = bool(data["mitm_paused"])
         step = data.get("step", "")
         label = data.get("label", data.get("phase", "?"))
         if step:

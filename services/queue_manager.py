@@ -705,6 +705,34 @@ class QueueManager:
                 "Authorization", f"Bearer {auth_token_value}",
                 tool_dir=tool_dir)
 
+        if has_auth:
+            try:
+                from services.session_manager import register_session
+                _sk = {
+                    "label": f"MITM: {tool} → {target}",
+                    "origin_tool": "quill",
+                    "scope": item_scope,
+                    "target_url": target,
+                }
+                if auth_header and auth_value:
+                    _tk = auth_value
+                    if _tk.lower().startswith("bearer "):
+                        _tk = _tk[7:]
+                    _sk["auth_type"] = "bearer_static"
+                    _sk["access_token"] = _tk
+                    _sk["headers"] = {auth_header: auth_value}
+                elif auth_cookies:
+                    _sk["auth_type"] = "cookie"
+                    _sk["cookies"] = dict(auth_cookies)
+                elif auth_token_field and auth_token_value:
+                    _sk["auth_type"] = "bearer_static"
+                    _sk["access_token"] = auth_token_value
+                    _sk["headers"] = {"Authorization":
+                                      f"Bearer {auth_token_value}"}
+                register_session(project_id, **_sk)
+            except Exception as _se:
+                log.debug("session registration from MITM: %s", _se)
+
         self.enqueue(project_id, tool, priority=1,
                      auto_queued=True, scope=item_scope, **extra)
         log.info("[immediate] Enqueued %s for project %s (target=%s)",

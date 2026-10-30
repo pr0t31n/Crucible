@@ -152,6 +152,12 @@ socket.on('all_status', function(data) {
     var tools = data.tools || {};
     for (var tid in tools) {
         toolStatuses[tid] = tools[tid];
+        if (tools[tid].mitm_active !== undefined) {
+            toolStatuses[tid]._mitm_active = !!tools[tid].mitm_active;
+        }
+        if (tools[tid].mitm_paused !== undefined) {
+            toolStatuses[tid]._mitm_paused = !!tools[tid].mitm_paused;
+        }
         _derivePhaseStatuses(tid, tools[tid]);
     }
     var phases = data.phases || {};
