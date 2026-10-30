@@ -615,7 +615,15 @@ class QueueManager:
 
         Called by ProcessManager._immediate_auto_queue() for items with
         metadata.immediate_queue=True (e.g. Quill MITM real-time targets).
+        Wraps in app_context because this runs from a drain thread.
         """
+        if self._app:
+            with self._app.app_context():
+                return self._immediate_enqueue_inner(project_id, project, item)
+        return self._immediate_enqueue_inner(project_id, project, item)
+
+    def _immediate_enqueue_inner(self, project_id: str, project: dict,
+                                 item: dict) -> bool:
         tool = (item.get("recommended_tool") or "").lower()
         if not tool or tool not in AUTO_QUEUE_TOOLS:
             return False
