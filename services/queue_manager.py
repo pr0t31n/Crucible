@@ -593,6 +593,31 @@ class QueueManager:
 
             bulk_update_status(proj_dir, item_ids, "queued")
 
+            tool_dir = (project.get("tool_dirs") or {}).get(tool, "")
+            for it in items:
+                _m = it.get("metadata") or {}
+                _ah = _m.get("auth_header", "")
+                _av = _m.get("auth_value", "")
+                _ac = _m.get("auth_cookies", {})
+                _atf = _m.get("auth_token_field", "")
+                _atv = _m.get("auth_token_value", "")
+                if _ah and _av:
+                    self._write_mitm_auth_settings(
+                        proj_dir, tool, item_scope, _ah, _av,
+                        tool_dir=tool_dir)
+                    break
+                elif _ac:
+                    self._write_mitm_cookie_settings(
+                        proj_dir, tool, item_scope, _ac,
+                        tool_dir=tool_dir)
+                    break
+                elif _atf and _atv:
+                    self._write_mitm_auth_settings(
+                        proj_dir, tool, item_scope,
+                        "Authorization", f"Bearer {_atv}",
+                        tool_dir=tool_dir)
+                    break
+
             best_priority = min(
                 {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}.get(
                     it.get("priority", "MEDIUM"), 2)
