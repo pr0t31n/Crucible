@@ -109,6 +109,12 @@ def create_app():
                report_bp, importer_bp, sessions_bp):
         app.register_blueprint(bp)
 
+    try:
+        from routes.intelligence_v2 import intel_v2
+        app.register_blueprint(intel_v2)
+    except ImportError:
+        pass
+
     socketio.init_app(app, cors_allowed_origins=[],
                       async_mode="threading", manage_session=False)
 

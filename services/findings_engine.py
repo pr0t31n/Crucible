@@ -521,6 +521,16 @@ class FindingsEngine:
             target=self._populate_db,
             args=(project_id, project, list(active)),
             name="fdb-populate", daemon=True).start()
+        # Phase 8: Ingest intelligence data into DB tables
+        try:
+            from services.intel_ingestion import ingest_all as _ingest_intel
+            db = self._get_db(project_id, project)
+            if db:
+                _ingest_intel(db, project.get("project_dir", ""),
+                              tool_dirs=project.get("tool_dirs"),
+                              scope_tool_dirs=project.get("scope_tool_dirs"))
+        except Exception:
+            pass
         log.info("Refreshed findings for project %s: %d active, %d FP",
                  project_id, len(active), len(fps))
         return list(active)

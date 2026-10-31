@@ -3128,6 +3128,29 @@ class ProcessManager:
                                                             tool_id=base_tool)
                 except Exception:
                     pass
+                # Phase 8: Ingest completed tool's intelligence data
+                try:
+                    from services.intel_ingestion import ingest_single as _ingest_single
+                    from services.findings_engine import FindingsEngine
+                    _fe = FindingsEngine.instance() if hasattr(FindingsEngine, 'instance') else None
+                    if _fe:
+                        _db = _fe._get_db(project_id, _proj)
+                        if _db:
+                            _td = _proj.get("tool_dirs", {})
+                            _std = _proj.get("scope_tool_dirs", {})
+                            _all_dirs = {}
+                            if _td:
+                                _all_dirs.update(_td)
+                            if _std:
+                                for _sc, _tools in _std.items():
+                                    for _tid, _tp in _tools.items():
+                                        _all_dirs[f"{_sc}_{_tid}"] = _tp
+                            _tool_dir = _all_dirs.get(tool_id, "")
+                            if _tool_dir:
+                                _ingest_single(_db, _proj.get("project_dir", ""),
+                                               tool_id, _tool_dir)
+                except Exception:
+                    pass
                 try:
                     self._findings_engine.refresh(project_id, _proj)
                 except Exception as exc:
