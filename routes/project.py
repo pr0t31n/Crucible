@@ -20,6 +20,14 @@ from models.project import (
 )
 from routes._helpers import require_project, get_ext
 
+try:
+    from services.import_engine import (
+        detect_export_version, run_import, prepare_export_meta,
+    )
+    _IMPORT_ENGINE = True
+except ImportError:
+    _IMPORT_ENGINE = False
+
 project_bp = Blueprint("project", __name__)
 
 
@@ -578,7 +586,7 @@ def _relativize_findings_json(findings_path, eng_dir):
 
 @project_bp.route("/api/download-project/<project_id>")
 def api_download_project(project_id):
-    """ZIP export of engagement directory (v2.0) or project + tools (v1.x)."""
+    """ZIP export of engagement directory (v2.0/v3.0) or project + tools (v1.x)."""
     project = require_project(project_id)
     scope_filter = request.args.get("scope")
 
@@ -587,12 +595,17 @@ def api_download_project(project_id):
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         if project.get("layout_version") == "2.0" and eng_dir.exists():
+            export_meta = prepare_export_meta(project) if _IMPORT_ENGINE else None
             for fp in eng_dir.rglob("*"):
                 if fp.is_file():
                     rel = fp.relative_to(eng_dir)
                     if scope_filter and not str(rel).startswith(scope_filter + "/"):
                         if fp.name != "engagement.json":
                             continue
+                    if fp.name == "crucible_meta.json" and export_meta:
+                        zf.writestr(str(rel),
+                                    json.dumps(export_meta, indent=2, default=str))
+                        continue
                     if fp.name == "findings.json":
                         zf.writestr(str(rel),
                                     _relativize_findings_json(fp, eng_dir))
@@ -626,7 +639,13 @@ _MAX_IMPORT_SIZE = 500 * 1024 * 1024
 
 @project_bp.route("/api/import_project", methods=["POST"])
 def api_import_project():
-    """Import a project from a Crucible ZIP export."""
+    """Import a project from a Crucible/Vantage ZIP export.
+
+    Delegates to the version-aware import engine which detects the export
+    format (v3.0 DB-native, v2.0 JSON, v1.x legacy, Vantage, raw output),
+    converts to the current layout, and creates a FindingsDB when available.
+    Falls back to the legacy v1/v2 import path if the engine is unavailable.
+    """
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     f = request.files["file"]
@@ -635,7 +654,6 @@ def api_import_project():
 
     import tempfile
     import shutil
-    from config import CLIENTS_BASE
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="crucible_import_"))
     try:
@@ -655,80 +673,100 @@ def api_import_project():
             zf.extractall(tmp_dir / "contents")
 
         contents = tmp_dir / "contents"
-        meta_file = contents / "project" / "crucible_meta.json"
-        is_v2 = False
-        if not meta_file.exists():
-            meta_file = contents / "crucible_meta.json"
-            is_v2 = True
-        if not meta_file.exists():
-            for candidate in contents.rglob("crucible_meta.json"):
-                meta_file = candidate
-                is_v2 = meta_file.parent == contents
-                break
-        if not meta_file.exists():
-            return jsonify({"error": "No crucible_meta.json found in ZIP"}), 400
 
-        with open(meta_file) as mf:
-            meta = json.load(mf)
-
-        existing_id = meta.get("id")
-        if existing_id:
-            from models.project import get_project
-            if get_project(existing_id):
+        if _IMPORT_ENGINE:
+            result = run_import(contents, create_project)
+            if result.get("error") == "file_import":
                 return jsonify({
-                    "error": f"Project '{existing_id}' already exists. "
-                             "Delete or rename the existing project first."
-                }), 409
+                    "error": "This ZIP contains scanner output files, not a "
+                             "project export. Use the Import tab within a "
+                             "project to import scanner files."
+                }), 400
+            if not result.get("ok"):
+                code = 409 if "already exists" in result.get("error", "") else 400
+                return jsonify({"error": result["error"]}), code
+            return jsonify(result)
 
-        form_data = {
-            "name": meta.get("name", "Imported Engagement"),
-            "client_name": meta.get("client_name", ""),
-            "client_short": meta.get("client_short", "imported"),
-            "scope": meta.get("scope", "external"),
-            "tools": meta.get("tools", []),
-            "consultant": meta.get("consultant", {}),
-            "client_poc": meta.get("client_poc", {}),
-            "start_date": meta.get("start_date", ""),
-            "end_date": meta.get("end_date", ""),
-            "scope_definition": meta.get("scope_definition", {}),
-        }
-
-        pid, new_meta = create_project(form_data)
-        proj_dir = Path(new_meta.get("project_dir", ""))
-
-        if is_v2:
-            src = meta_file.parent
-            if proj_dir.exists() and src.exists():
-                for item in src.iterdir():
-                    dest = proj_dir / item.name
-                    if item.is_dir():
-                        shutil.copytree(item, dest, dirs_exist_ok=True)
-                    elif item.name != "crucible_meta.json":
-                        shutil.copy2(item, dest)
-        else:
-            proj_content = contents / "project"
-            if proj_dir.exists() and proj_content.exists():
-                for item in proj_content.iterdir():
-                    dest = proj_dir / item.name
-                    if item.is_dir():
-                        shutil.copytree(item, dest, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(item, dest)
-
-            tools_content = contents / "tools"
-            if tools_content.exists():
-                for tool_dir in tools_content.iterdir():
-                    if tool_dir.is_dir():
-                        tool_id = tool_dir.name
-                        dest = new_meta.get("tool_dirs", {}).get(tool_id)
-                        if dest:
-                            dest_path = Path(dest)
-                            dest_path.mkdir(parents=True, exist_ok=True)
-                            shutil.copytree(tool_dir, dest_path, dirs_exist_ok=True)
-
-        return jsonify({"ok": True, "project_id": pid})
+        return _legacy_import(contents)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _legacy_import(contents):
+    """Legacy v1/v2 import path — used when import engine is unavailable."""
+    import shutil
+
+    meta_file = contents / "project" / "crucible_meta.json"
+    is_v2 = False
+    if not meta_file.exists():
+        meta_file = contents / "crucible_meta.json"
+        is_v2 = True
+    if not meta_file.exists():
+        for candidate in contents.rglob("crucible_meta.json"):
+            meta_file = candidate
+            is_v2 = (meta_file.parent == contents)
+            break
+    if not meta_file.exists():
+        return jsonify({"error": "No crucible_meta.json found in ZIP"}), 400
+
+    with open(meta_file) as mf:
+        meta = json.load(mf)
+
+    existing_id = meta.get("id")
+    if existing_id:
+        if get_project(existing_id):
+            return jsonify({
+                "error": f"Project '{existing_id}' already exists. "
+                         "Delete or rename the existing project first."
+            }), 409
+
+    form_data = {
+        "name": meta.get("name", "Imported Engagement"),
+        "client_name": meta.get("client_name", ""),
+        "client_short": meta.get("client_short", "imported"),
+        "scope": meta.get("scope", "external"),
+        "tools": meta.get("tools", []),
+        "consultant": meta.get("consultant", {}),
+        "client_poc": meta.get("client_poc", {}),
+        "start_date": meta.get("start_date", ""),
+        "end_date": meta.get("end_date", ""),
+        "scope_definition": meta.get("scope_definition", {}),
+    }
+
+    pid, new_meta = create_project(form_data)
+    proj_dir = Path(new_meta.get("project_dir", ""))
+
+    if is_v2:
+        src = meta_file.parent
+        if proj_dir.exists() and src.exists():
+            for item in src.iterdir():
+                dest = proj_dir / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest, dirs_exist_ok=True)
+                elif item.name != "crucible_meta.json":
+                    shutil.copy2(item, dest)
+    else:
+        proj_content = contents / "project"
+        if proj_dir.exists() and proj_content.exists():
+            for item in proj_content.iterdir():
+                dest = proj_dir / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dest)
+
+        tools_content = contents / "tools"
+        if tools_content.exists():
+            for tool_dir in tools_content.iterdir():
+                if tool_dir.is_dir():
+                    tool_id = tool_dir.name
+                    dest = new_meta.get("tool_dirs", {}).get(tool_id)
+                    if dest:
+                        dest_path = Path(dest)
+                        dest_path.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(tool_dir, dest_path, dirs_exist_ok=True)
+
+    return jsonify({"ok": True, "project_id": pid})
 
 
 @project_bp.route("/api/system_info")
