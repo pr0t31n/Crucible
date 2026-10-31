@@ -547,6 +547,12 @@ class ImporterService:
             "scope_tool_dirs": scope_tool_dirs,
             "tools": tools,
         })
+        if hasattr(self._fe, "bulk_add_findings"):
+            try:
+                self._fe.bulk_add_findings(project_id, findings, project=project)
+            except Exception:
+                log.debug("bulk_add_findings in persist failed, skipping")
+
         self._console(job["id"], project_id,
                       f"[IMPORT] Persisted {len(findings)} findings to disk "
                       f"and registered {tool_id} in project")

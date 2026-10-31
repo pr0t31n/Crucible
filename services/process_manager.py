@@ -955,6 +955,16 @@ class ProcessManager:
         if extra:
             env["PATH"] = extra + (":" + cur_path if cur_path else "")
 
+        try:
+            from config import FINDINGS_DB_FILENAME, FINDINGS_DB_AVAILABLE
+            if FINDINGS_DB_AVAILABLE:
+                _db_proj_dir = project.get("project_dir", "")
+                if _db_proj_dir:
+                    env["PR0T31N_FINDINGS_DB"] = str(
+                        Path(_db_proj_dir) / FINDINGS_DB_FILENAME)
+        except ImportError:
+            pass
+
         # -- Build command (adapter preferred, inline fallback) ---------------
         from adapters import get_adapter
         adapter = get_adapter(tool_id)
@@ -3113,6 +3123,11 @@ class ProcessManager:
         if self._findings_engine:
             self._findings_engine.invalidate(project_id)
             if _proj:
+                try:
+                    self._findings_engine.ingest_stragglers(project_id, _proj,
+                                                            tool_id=base_tool)
+                except Exception:
+                    pass
                 try:
                     self._findings_engine.refresh(project_id, _proj)
                 except Exception as exc:

@@ -556,7 +556,12 @@ class FindingsEngine:
 
     def add_live_finding(self, project_id, finding, project=None):
         """Add a finding from a live tool stream (before it's written to disk).
-        Deduplicates against the existing cache and generates action items."""
+
+        When FindingsDB is available, inserts directly into DB (O(1) via
+        UNIQUE dedup_key constraint) instead of re-deduplicating the entire
+        in-memory cache.  The cache is still updated for backward compat
+        with the legacy /api/findings/ endpoint.
+        """
         if project:
             try:
                 from flask import current_app
@@ -568,6 +573,15 @@ class FindingsEngine:
         self._enrich_from_catalogue([finding])
         if project:
             apply_risk_overrides([finding], project)
+
+        if _fdb and project:
+            try:
+                db = self._get_db(project_id, project)
+                if db:
+                    db.insert_finding(finding)
+            except Exception:
+                pass
+
         with self._lock:
             cached = self._cache.get(project_id)
             if cached is None:
@@ -598,6 +612,78 @@ class FindingsEngine:
             self._cache[project_id] = [
                 f for f in cached if f.get("id") != finding_id
             ]
+
+    def bulk_add_findings(self, project_id, findings, project=None):
+        """Batch-insert findings into DB.  Used by ImporterService for
+        parsed scanner files.  Falls back to per-finding add_live_finding
+        when DB is not available."""
+        if _fdb and project:
+            try:
+                db = self._get_db(project_id, project)
+                if db:
+                    self._enrich_from_catalogue(findings)
+                    if project:
+                        apply_risk_overrides(findings, project)
+                    db.bulk_insert(findings)
+                    with self._lock:
+                        cached = self._cache.get(project_id)
+                        if cached is None:
+                            self._cache[project_id] = deduplicate(findings)
+                        else:
+                            merged = list(cached) + findings
+                            self._cache[project_id] = deduplicate(merged)
+                    return
+            except Exception:
+                log.debug("bulk_add_findings DB path failed, falling back")
+        for f in findings:
+            self.add_live_finding(project_id, f, project=project)
+
+    def ingest_stragglers(self, project_id, project, tool_id=None):
+        """Ingest findings from final JSON files that weren't live-injected.
+
+        Called by _post_completion() before the full refresh.  The DB's UNIQUE
+        dedup_key constraint makes this idempotent — duplicates of
+        already-injected findings are silently skipped.
+        """
+        if not _fdb or not project:
+            return
+        try:
+            db = self._get_db(project_id, project)
+            if not db:
+                return
+        except Exception:
+            return
+        tool_dirs = project.get("tool_dirs", {})
+        scope_tool_dirs = project.get("scope_tool_dirs", {})
+        loaded = set()
+
+        for scope_name, dirs in scope_tool_dirs.items():
+            for tid, td in dirs.items():
+                if tool_id and tid != tool_id:
+                    continue
+                if (tid, td) in loaded:
+                    continue
+                loaded.add((tid, td))
+                fp = Path(td) / "findings.json"
+                if fp.exists():
+                    try:
+                        db.ingest_findings_json(str(fp), tool_id=tid,
+                                                scope=scope_name)
+                    except Exception:
+                        pass
+
+        for tid, td in tool_dirs.items():
+            if tool_id and tid != tool_id:
+                continue
+            if (tid, td) in loaded:
+                continue
+            loaded.add((tid, td))
+            fp = Path(td) / "findings.json"
+            if fp.exists():
+                try:
+                    db.ingest_findings_json(str(fp), tool_id=tid)
+                except Exception:
+                    pass
 
     # ── Mutations ────────────────────────────────────────────
 
