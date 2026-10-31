@@ -98,6 +98,14 @@ var _findingsRefreshTimer = null;
 var _activeToolCount = 0;
 var _findingsDebouncePending = false;
 var _findingsDebounceTimer = null;
+var _v2Source = null;
+var _serverSummary = null;
+var _serverTotal = 0;
+var _serverPages = 1;
+var _v2Mode = false;
+var _v2Params = {};
+var _v2FiltersLoaded = false;
+var _allFindingsLoaded = false;
 var _sessState = { _loaded: false, sessions: [], refreshTimer: null };
 
 
@@ -447,13 +455,18 @@ socket.on('console_buffer', function(data) {
 /* ── tool_finding: new finding discovered ──────────────────────── */
 socket.on('tool_finding', function(data) {
     if (data.project_id !== PID) return;
-    if (!allFindings._loaded) {
-        allFindings = [];
-        allFindings._loaded = true;
-    }
-    allFindings.push(data);
     var pill = document.getElementById('findingsPill');
-    if (pill) pill.textContent = allFindings.length || '';
+    if (_v2Mode) {
+        _serverTotal = (_serverTotal || 0) + 1;
+        if (pill) pill.textContent = _serverTotal || '';
+    } else {
+        if (!allFindings._loaded) {
+            allFindings = [];
+            allFindings._loaded = true;
+        }
+        allFindings.push(data);
+        if (pill) pill.textContent = allFindings.length || '';
+    }
     _findingsDebouncePending = true;
     if (!_findingsDebounceTimer) {
         _findingsDebounceTimer = setTimeout(function() {
@@ -461,7 +474,11 @@ socket.on('tool_finding', function(data) {
             if (!_findingsDebouncePending) return;
             _findingsDebouncePending = false;
             if (document.querySelector('.tab-content[data-tab="findings"].active')) {
-                applyFindingsFilter();
+                if (_v2Mode) {
+                    _fetchFindingsV2(_v2Params);
+                } else {
+                    applyFindingsFilter();
+                }
             }
             updateRiskOverview();
         }, 2000);
@@ -634,7 +651,11 @@ socket.on('tool_started', function(data) {
     _fetchQueueData();
     if (!_findingsRefreshTimer) {
         _findingsRefreshTimer = setInterval(function() {
-            if (allFindings._loaded) loadFindings(true);
+            if (_v2Mode) {
+                _fetchFindingsV2(_v2Params);
+            } else if (allFindings._loaded) {
+                loadFindings(true);
+            }
         }, 30000);
     }
     var startEl = document.getElementById('engagementStartTime');
@@ -1620,10 +1641,41 @@ document.getElementById('stdinInput').addEventListener('keydown', function(e) {
    6. FINDINGS TAB
    ══════════════════════════════════════════════════════════════════ */
 var _findingsRetries = 0;
-function loadFindings(forceRefresh) {
-    var url = forceRefresh ? '/api/reload-findings/' + PID : '/api/findings/' + PID;
-    var opts = forceRefresh ? {method: 'POST', credentials: 'same-origin'} : {credentials: 'same-origin'};
-    fetch(url, opts)
+
+function _buildV2Params() {
+    var p = {};
+    p.page = findingsPage || 1;
+    p.per_page = FINDINGS_PER_PAGE;
+    var scope = (document.getElementById('findingsFilterScope') || {}).value || '';
+    if (scope) p.scope = scope;
+    var tool = (document.getElementById('findingsFilterTool') || {}).value || '';
+    if (tool) p.tool = tool;
+    var search = (document.getElementById('findingsSearch') || {}).value || '';
+    if (search) p.search = search;
+    var oosFilter = (document.getElementById('findingsFilterOos') || {}).value || '';
+    if (oosFilter === 'oos') p.include_oos = '1';
+    else if (oosFilter === 'inscope') p.include_oos = '0';
+    var activeRisks = [];
+    for (var rk in _riskToggles) {
+        if (_riskToggles[rk]) activeRisks.push(rk);
+    }
+    if (activeRisks.length < 5) p.risk = activeRisks.join(',');
+    var sortMode = (document.getElementById('findingsSortOrder') || {}).value || 'risk';
+    if (sortMode === 'alpha') { p.sort = 'title,risk_id'; }
+    else { p.sort = 'risk_id,title'; }
+    p.order = 'asc';
+    return p;
+}
+
+function _fetchFindingsV2(params) {
+    var qs = [];
+    for (var k in params) {
+        if (params[k] !== undefined && params[k] !== '') {
+            qs.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
+        }
+    }
+    var url = '/api/findings/v2/' + PID + (qs.length ? '?' + qs.join('&') : '');
+    fetch(url, {credentials: 'same-origin'})
         .then(function(r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
@@ -1631,21 +1683,122 @@ function loadFindings(forceRefresh) {
         .then(function(data) {
             _findingsRetries = 0;
             if (data.error) throw new Error(data.error);
-            allFindings = data.findings || data || [];
-            allFindings._loaded = true;
-            populateFindingsScopeFilter();
-            populateFindingsToolFilter();
-            applyFindingsFilter();
+            filteredFindings = data.findings || [];
+            _serverSummary = data.summary || null;
+            _serverTotal = data.total || 0;
+            _serverPages = data.pages || 1;
+            _v2Source = data.source || 'cache';
+            _v2Params = params;
+            findingsPage = data.page || 1;
+            var pill = document.getElementById('findingsPill');
+            if (pill) pill.textContent = _serverTotal || '';
+            if (categoryViewActive) {
+                renderCategoryView();
+            } else {
+                renderFindingsTable();
+            }
+            updateFindingsStats();
             updateRiskOverview();
         })
         .catch(function(err) {
-            console.warn('Findings load failed:', err.message);
+            console.warn('V2 findings fetch failed:', err.message);
             if (_findingsRetries < 3) {
                 _findingsRetries++;
-                setTimeout(function() { loadFindings(forceRefresh); },
+                setTimeout(function() { _fetchFindingsV2(params); },
                            _findingsRetries * 5000);
             }
         });
+}
+
+function _fetchV2Filters() {
+    fetch('/api/findings/v2/' + PID + '/filters', {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _v2FiltersLoaded = true;
+            _populateFiltersFromServer(data);
+        })
+        .catch(function() { _v2FiltersLoaded = false; });
+}
+
+function _populateFiltersFromServer(data) {
+    var scopeSel = document.getElementById('findingsFilterScope');
+    if (scopeSel && data.scopes) {
+        while (scopeSel.options.length > 1) scopeSel.remove(1);
+        data.scopes.forEach(function(s) {
+            var o = document.createElement('option');
+            o.value = s; o.textContent = s;
+            scopeSel.appendChild(o);
+        });
+    }
+    var toolSel = document.getElementById('findingsFilterTool');
+    if (toolSel && data.tools) {
+        while (toolSel.options.length > 1) toolSel.remove(1);
+        data.tools.forEach(function(t) {
+            var tid = _resolveToolId(t.id || t.name);
+            var cfg = TOOLS_CFG[tid];
+            var label = cfg ? cfg.name : (t.name || t.id);
+            var o = document.createElement('option');
+            o.value = t.id || t.name;
+            o.textContent = label;
+            toolSel.appendChild(o);
+        });
+        var tOpts = Array.from(toolSel.options).slice(1);
+        tOpts.sort(function(a,b){ return a.textContent.localeCompare(b.textContent); });
+        tOpts.forEach(function(o){ toolSel.appendChild(o); });
+    }
+}
+
+function _ensureAllFindings(cb) {
+    if (_allFindingsLoaded && allFindings._loaded) {
+        cb();
+        return;
+    }
+    fetch('/api/findings/' + PID, {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            allFindings = data.findings || data || [];
+            allFindings._loaded = true;
+            _allFindingsLoaded = true;
+            populateFindingsScopeFilter();
+            populateFindingsToolFilter();
+            cb();
+        })
+        .catch(function(err) { console.warn('Full findings load failed:', err.message); });
+}
+
+function loadFindings(forceRefresh) {
+    if (showFP) {
+        if (!fpFindings._loaded) {
+            fetch('/api/false-positives/' + PID, {credentials: 'same-origin'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    fpFindings = data.false_positives || data.findings || data || [];
+                    fpFindings._loaded = true;
+                    applyFindingsFilter();
+                });
+        } else {
+            applyFindingsFilter();
+        }
+        return;
+    }
+    if (categoryViewActive) {
+        _ensureAllFindings(function() { applyFindingsFilter(); });
+        return;
+    }
+    _v2Mode = true;
+    if (forceRefresh) {
+        fetch('/api/reload-findings/' + PID, {method: 'POST', credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function() {
+                _allFindingsLoaded = false;
+                _fetchV2Filters();
+                _fetchFindingsV2(_buildV2Params());
+            })
+            .catch(function() { _fetchFindingsV2(_buildV2Params()); });
+        return;
+    }
+    if (!_v2FiltersLoaded) _fetchV2Filters();
+    _fetchFindingsV2(_buildV2Params());
 }
 
 var FINDING_TOOL_SCOPE = {
@@ -1701,6 +1854,7 @@ function _findingCategory(f) {
 }
 
 function populateFindingsScopeFilter() {
+    if (_v2Mode) return;
     var sel = document.getElementById('findingsFilterScope');
     var existing = new Set();
     sel.querySelectorAll('option').forEach(function(o) { if (o.value) existing.add(o.value); });
@@ -1720,6 +1874,7 @@ function populateFindingsScopeFilter() {
 }
 
 function populateFindingsToolFilter() {
+    if (_v2Mode) return;
     var sel = document.getElementById('findingsFilterTool');
     while (sel.options.length > 1) sel.remove(1);
     var tools = {};
@@ -1745,6 +1900,12 @@ var _riskToggles = {CRITICAL:true, HIGH:true, MEDIUM:true, LOW:true, INFO:true};
 var categoryViewActive = false;
 
 function applyFindingsFilter() {
+    if (_v2Mode && !showFP && !categoryViewActive) {
+        findingsPage = 1;
+        _fetchFindingsV2(_buildV2Params());
+        return;
+    }
+
     var scope = document.getElementById('findingsFilterScope').value;
     var tool = document.getElementById('findingsFilterTool').value;
     var search = document.getElementById('findingsSearch').value.toLowerCase();
@@ -1800,6 +1961,15 @@ function applyFindingsFilter() {
 }
 
 function updateFindingsStats() {
+    if (_v2Mode && _serverSummary && !showFP && !categoryViewActive) {
+        document.getElementById('fStatCrit').textContent = _serverSummary.CRITICAL || 0;
+        document.getElementById('fStatHigh').textContent = _serverSummary.HIGH || 0;
+        document.getElementById('fStatMed').textContent = _serverSummary.MEDIUM || 0;
+        document.getElementById('fStatLow').textContent = _serverSummary.LOW || 0;
+        document.getElementById('fStatInfo').textContent = _serverSummary.INFO || 0;
+        document.getElementById('findingsCount').textContent = _serverTotal + ' finding' + (_serverTotal !== 1 ? 's' : '');
+        return;
+    }
     var src = showFP ? fpFindings : allFindings;
     var counts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
     src.forEach(function(f) { var r = (f.risk||'').toUpperCase(); if (counts[r] !== undefined) counts[r]++; });
@@ -1873,8 +2043,14 @@ function renderFindingsTable() {
     }
     empty.style.display = 'none';
 
-    var start = (findingsPage - 1) * FINDINGS_PER_PAGE;
-    var page = filteredFindings.slice(start, start + FINDINGS_PER_PAGE);
+    var start, page;
+    if (_v2Mode && !showFP) {
+        start = 0;
+        page = filteredFindings;
+    } else {
+        start = (findingsPage - 1) * FINDINGS_PER_PAGE;
+        page = filteredFindings.slice(start, start + FINDINGS_PER_PAGE);
+    }
 
     tbody.innerHTML = '';
     page.forEach(function(f, idx) {
@@ -1934,16 +2110,48 @@ function renderFindingsTable() {
     });
 
     /* pagination */
-    var totalPages = Math.ceil(filteredFindings.length / FINDINGS_PER_PAGE);
+    var totalPages = (_v2Mode && !showFP) ? _serverPages : Math.ceil(filteredFindings.length / FINDINGS_PER_PAGE);
     if (totalPages > 1) {
         pag.hidden = false;
         pag.innerHTML = '';
-        for (var p = 1; p <= totalPages; p++) {
+
+        var _maxBtns = 10;
+        var startP = Math.max(1, findingsPage - Math.floor(_maxBtns / 2));
+        var endP = Math.min(totalPages, startP + _maxBtns - 1);
+        if (endP - startP + 1 < _maxBtns) startP = Math.max(1, endP - _maxBtns + 1);
+
+        if (startP > 1) {
+            var first = document.createElement('button');
+            first.className = 'pagination-btn';
+            first.textContent = '1';
+            first.setAttribute('data-page', 1);
+            pag.appendChild(first);
+            if (startP > 2) {
+                var dots = document.createElement('span');
+                dots.className = 'pagination-dots';
+                dots.textContent = '…';
+                pag.appendChild(dots);
+            }
+        }
+        for (var p = startP; p <= endP; p++) {
             var btn = document.createElement('button');
             btn.className = 'pagination-btn' + (p === findingsPage ? ' active' : '');
             btn.textContent = p;
             btn.setAttribute('data-page', p);
             pag.appendChild(btn);
+        }
+        if (endP < totalPages) {
+            if (endP < totalPages - 1) {
+                var dots2 = document.createElement('span');
+                dots2.className = 'pagination-dots';
+                dots2.textContent = '…';
+                pag.appendChild(dots2);
+            }
+            var last = document.createElement('button');
+            last.className = 'pagination-btn';
+            last.textContent = totalPages;
+            last.setAttribute('data-page', totalPages);
+            pag.appendChild(last);
         }
     } else {
         pag.hidden = true;
@@ -2209,16 +2417,23 @@ document.getElementById('btnExportFindingsGo').addEventListener('click', functio
 document.getElementById('btnShowFP').addEventListener('click', function() {
     showFP = !showFP;
     this.textContent = showFP ? 'Show Findings' : 'Show FP';
-    if (showFP && !fpFindings._loaded) {
-        fetch('/api/false-positives/' + PID, {credentials: 'same-origin'})
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                fpFindings = data.false_positives || data.findings || data || [];
-                fpFindings._loaded = true;
-                applyFindingsFilter();
-            });
+    if (showFP) {
+        _v2Mode = false;
+        if (!fpFindings._loaded) {
+            fetch('/api/false-positives/' + PID, {credentials: 'same-origin'})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    fpFindings = data.false_positives || data.findings || data || [];
+                    fpFindings._loaded = true;
+                    applyFindingsFilter();
+                });
+        } else {
+            applyFindingsFilter();
+        }
     } else {
-        applyFindingsFilter();
+        _v2Mode = true;
+        findingsPage = 1;
+        loadFindings(false);
     }
 });
 
@@ -2231,14 +2446,19 @@ document.getElementById('btnToggleCategoryView').addEventListener('click', funct
     var catWrap = document.getElementById('findingsCategoryView');
     var pag = document.getElementById('findingsPagination');
     if (categoryViewActive) {
+        _v2Mode = false;
         tableWrap.hidden = true;
         pag.hidden = true;
-        renderCategoryView();
+        _ensureAllFindings(function() {
+            applyFindingsFilter();
+        });
     } else {
         catWrap.hidden = true;
         catWrap.innerHTML = '';
         tableWrap.hidden = false;
-        renderFindingsTable();
+        _v2Mode = true;
+        findingsPage = 1;
+        loadFindings(false);
     }
 });
 
@@ -2267,7 +2487,13 @@ document.getElementById('findingsPagination').addEventListener('click', function
     var btn = e.target.closest('.pagination-btn');
     if (!btn) return;
     findingsPage = parseInt(btn.getAttribute('data-page'), 10);
-    renderFindingsTable();
+    if (_v2Mode && !showFP) {
+        var p = _buildV2Params();
+        p.page = findingsPage;
+        _fetchFindingsV2(p);
+    } else {
+        renderFindingsTable();
+    }
 });
 
 /* ── Findings table click delegation ───────────────────────────── */

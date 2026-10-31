@@ -184,6 +184,43 @@ class FindingsEngine:
             log.exception("FindingsDB query failed for %s", project_id)
             return None
 
+    def get_filter_options(self, project_id, project):
+        """Return distinct scopes, tools, and categories for filter dropdowns."""
+        db = self._get_db(project_id, project)
+        if db is not None:
+            try:
+                scopes = [r["name"] for r in db._conn.execute(
+                    "SELECT DISTINCT s.name FROM findings f "
+                    "JOIN scopes s ON f.scope_id=s.id "
+                    "WHERE f.is_false_positive=0 ORDER BY s.name"
+                ).fetchall() if r["name"]]
+                tools = [{"id": r["tool_id"], "name": r["tool_name"]} for r in
+                         db._conn.execute(
+                    "SELECT DISTINCT f.tool_id, t.name as tool_name "
+                    "FROM findings f JOIN tools t ON f.tool_id=t.id "
+                    "WHERE f.is_false_positive=0 ORDER BY t.name"
+                ).fetchall()]
+                categories = [r["name"] for r in db._conn.execute(
+                    "SELECT DISTINCT c.name FROM findings f "
+                    "JOIN categories c ON f.category_id=c.id "
+                    "WHERE f.is_false_positive=0 ORDER BY c.name"
+                ).fetchall() if r["name"]]
+                return {"scopes": scopes, "tools": tools,
+                        "categories": categories, "source": "db"}
+            except Exception:
+                log.debug("DB filter options failed for %s", project_id)
+        findings = self.get_findings(project_id, project)
+        scopes = sorted({f.get("scope", "") for f in findings} - {""})
+        tool_set = {}
+        for f in findings:
+            t = f.get("tool", "")
+            if t and t not in tool_set:
+                tool_set[t] = t
+        tools = [{"id": t, "name": t} for t in sorted(tool_set)]
+        categories = sorted({f.get("category", "") for f in findings} - {""})
+        return {"scopes": scopes, "tools": tools,
+                "categories": categories, "source": "cache"}
+
     def _preload_catalogues(self):
         try:
             self._load_catalogues()

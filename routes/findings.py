@@ -147,6 +147,18 @@ def api_findings_v2(project_id):
         return jsonify({"error": str(exc)}), 500
 
 
+@findings_bp.route("/api/findings/v2/<project_id>/filters")
+def api_findings_v2_filters(project_id):
+    """Distinct scopes, tools, categories for filter dropdowns."""
+    try:
+        project = require_project(project_id)
+        filters = _engine().get_filter_options(project_id, project)
+        return jsonify(filters)
+    except Exception as exc:
+        log.exception("Error getting filter options for %s", project_id)
+        return jsonify({"error": str(exc)}), 500
+
+
 @findings_bp.route("/api/reload-findings/<project_id>", methods=["POST"])
 def api_reload_findings(project_id):
     try:
