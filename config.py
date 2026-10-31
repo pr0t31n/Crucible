@@ -186,6 +186,19 @@ NESSUS_POLL_INTERVAL = 30
 # ── Risk levels (canonical set) ─────────────────────────────
 VALID_RISKS = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"}
 
+# ── FindingsDB ──────────────────────────────────────────────
+FINDINGS_DB_FILENAME = "findings.db"
+
+try:
+    import sys as _fdb_sys
+    if "/opt/pr0t31n/shared" not in _fdb_sys.path:
+        _fdb_sys.path.insert(0, "/opt/pr0t31n/shared")
+    import pr0t31n_findings_db as _fdb_check  # noqa: F401
+    FINDINGS_DB_AVAILABLE = True
+    del _fdb_check
+except ImportError:
+    FINDINGS_DB_AVAILABLE = False
+
 # ── Import tab ──────────────────────────────────────────────
 IMPORT_MAX_CONCURRENT = 3
 

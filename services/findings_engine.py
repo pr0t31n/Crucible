@@ -6,6 +6,14 @@ import threading
 import logging
 from pathlib import Path
 
+try:
+    import sys as _sys
+    if "/opt/pr0t31n/shared" not in _sys.path:
+        _sys.path.insert(0, "/opt/pr0t31n/shared")
+    import pr0t31n_findings_db as _fdb
+except ImportError:
+    _fdb = None
+
 from services.audit_logger import audit as _audit
 from models.findings import (
     load_all_findings, load_false_positives, mark_false_positive,
@@ -120,8 +128,61 @@ class FindingsEngine:
         self._catalogues = {}
         self._catalogues_loaded = False
         self._catalogues_ready = threading.Event()
+        self._db_handles = {}
+        self._db_lock = threading.Lock()
         threading.Thread(target=self._preload_catalogues,
                          name="catalogue-preload", daemon=True).start()
+
+    def _get_db(self, project_id, project):
+        """Get or create a FindingsDB handle for a project."""
+        if _fdb is None:
+            return None
+        with self._db_lock:
+            db = self._db_handles.get(project_id)
+            if db is not None:
+                return db
+        eng_dir = project.get("engagement_dir") or project.get("project_dir", "")
+        if not eng_dir:
+            return None
+        from config import FINDINGS_DB_FILENAME
+        db_path = Path(eng_dir) / FINDINGS_DB_FILENAME
+        try:
+            db = _fdb.FindingsDB(str(db_path))
+            with self._db_lock:
+                self._db_handles[project_id] = db
+            return db
+        except Exception:
+            log.debug("Could not open FindingsDB at %s", db_path)
+            return None
+
+    def _close_db(self, project_id):
+        """Close and discard a DB handle."""
+        with self._db_lock:
+            db = self._db_handles.pop(project_id, None)
+        if db:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    def query_findings_db(self, project_id, project, **kwargs):
+        """Query findings from DB with server-side pagination.
+
+        Accepted kwargs: page, per_page, risk, tool, scope, ip, port,
+        hostname, category, search, sort, order, oos.
+        Returns dict: {findings, total, page, pages, summary}.
+        """
+        db = self._get_db(project_id, project)
+        if db is None:
+            return None
+        try:
+            result = db.query_findings(**kwargs)
+            summary = db.get_summary()
+            result["summary"] = summary
+            return result
+        except Exception:
+            log.exception("FindingsDB query failed for %s", project_id)
+            return None
 
     def _preload_catalogues(self):
         try:
@@ -419,9 +480,25 @@ class FindingsEngine:
                 target=self._generate_actions_batch,
                 args=(project_dir, list(active), project),
                 name="ai-gen-refresh", daemon=True).start()
+        threading.Thread(
+            target=self._populate_db,
+            args=(project_id, project, list(active)),
+            name="fdb-populate", daemon=True).start()
         log.info("Refreshed findings for project %s: %d active, %d FP",
                  project_id, len(active), len(fps))
         return list(active)
+
+    def _populate_db(self, project_id, project, findings):
+        """Bulk-insert enriched findings into FindingsDB (background)."""
+        db = self._get_db(project_id, project)
+        if db is None:
+            return
+        try:
+            db.bulk_insert(findings)
+            log.info("Populated FindingsDB for %s: %d findings", project_id,
+                     len(findings))
+        except Exception:
+            log.exception("FindingsDB populate failed for %s", project_id)
 
     # ── Invalidate ───────────────────────────────────────────
 
@@ -430,6 +507,7 @@ class FindingsEngine:
         with self._lock:
             self._cache.pop(project_id, None)
             self._fp_cache.pop(project_id, None)
+        self._close_db(project_id)
 
     def invalidate_all(self):
         """Invalidate all cached findings."""
@@ -502,6 +580,12 @@ class FindingsEngine:
         with self._lock:
             self._cache[project_id] = updated
             self._fp_cache.pop(project_id, None)
+        db = self._get_db(project_id, project)
+        if db:
+            try:
+                db.mark_false_positive(finding_id)
+            except Exception:
+                log.debug("DB FP mark failed for %s", finding_id)
         _audit(project_dir, "FINDING_FP", finding_id=finding_id,
                title=target.get("title", ""))
         return list(updated), target
@@ -538,6 +622,12 @@ class FindingsEngine:
             self.add_live_finding(project_id, recovered)
             with self._lock:
                 self._fp_cache.pop(project_id, None)
+            db = self._get_db(project_id, project)
+            if db:
+                try:
+                    db.recover_false_positive(finding_id)
+                except Exception:
+                    log.debug("DB FP recover failed for %s", finding_id)
             _audit(project_dir, "FINDING_RECOVER_FP", finding_id=finding_id)
         return recovered
 
@@ -553,6 +643,13 @@ class FindingsEngine:
                                       reason=reason)
         if not project_dir and project:
             project_dir = project.get("project_dir", "")
+        if project:
+            db = self._get_db(project_id, project)
+            if db:
+                try:
+                    db.override_risk(finding_id, new_risk, reason)
+                except Exception:
+                    log.debug("DB risk override failed for %s", finding_id)
         _audit(project_dir, "RISK_OVERRIDE", finding_id=finding_id,
                new_risk=new_risk, reason=reason)
 

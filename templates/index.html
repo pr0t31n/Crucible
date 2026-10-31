@@ -119,7 +119,7 @@
   <aside class="home-sidebar">
     <div class="home-sidebar-header">
       <h2 class="home-sidebar-title">ENGAGEMENTS</h2>
-      <button type="button" class="btn-new-engagement" onclick="window.location.href='/new_project'">Create New Engagement</button>
+      <button type="button" class="btn-new-engagement">Create New Engagement</button>
     </div>
 
     <div class="home-sidebar-list">
@@ -856,6 +856,48 @@
     </div>
   </div>
 </div>
+
+<!-- ── FindingsDB dependency missing modal ──────────────── -->
+<div class="modal-overlay" id="fdbDepModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h3 class="modal-title">Missing Dependency</h3>
+      <button type="button" class="modal-close" onclick="_closeDepModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;">The <strong>FindingsDB</strong> shared module is required but not installed. This module provides the SQLite-backed findings database that Crucible uses for engagement data storage.</p>
+      <p style="margin-bottom:12px;">To install it, run:</p>
+      <div style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:12px;font-family:var(--font-mono);font-size:0.82rem;margin-bottom:12px;user-select:all;">
+        cd /opt/pr0t31n/shared &amp;&amp; git pull
+      </div>
+      <p style="font-size:0.85rem;color:var(--text-muted);">If the shared repository is not yet cloned, contact your toolkit administrator or clone it from the pr0t31n shared repository into <code>/opt/pr0t31n/shared/</code>.</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary" onclick="_closeDepModal()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── FindingsDB conversion offer modal ───────────────── -->
+<div class="modal-overlay" id="fdbConvertModal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <h3 class="modal-title">Convert Engagement</h3>
+      <button type="button" class="modal-close" onclick="_closeConvertModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;">This engagement does not yet have a <strong>FindingsDB</strong> database file. Converting it will migrate all existing findings from JSON into a SQLite database, enabling faster queries and server-side pagination.</p>
+      <p style="margin-bottom:12px;">The original JSON files are <strong>not modified</strong> &mdash; the database is created alongside them.</p>
+      <div id="fdbConvertStatus" style="font-size:0.85rem;min-height:1.2em;margin-bottom:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary" id="fdbConvertBtn">Convert Now</button>
+      <button type="button" class="btn btn-ghost" id="fdbSkipBtn">Open Without Converting</button>
+      <button type="button" class="btn btn-ghost" onclick="_closeConvertModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}

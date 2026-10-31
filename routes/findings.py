@@ -80,6 +80,73 @@ def api_findings(project_id):
         return jsonify({"error": str(exc)}), 500
 
 
+@findings_bp.route("/api/findings/v2/<project_id>")
+def api_findings_v2(project_id):
+    """Paginated findings from FindingsDB — server-side filtering/sorting."""
+    try:
+        project = require_project(project_id)
+        kwargs = {}
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 50, type=int)
+        per_page = min(per_page, 500)
+        kwargs["page"] = max(page, 1)
+        kwargs["per_page"] = per_page
+        risk = request.args.get("risk")
+        if risk:
+            kwargs["risk"] = risk
+        tool = request.args.get("tool")
+        if tool:
+            kwargs["tool"] = [t.strip() for t in tool.split(",")]
+        scope = request.args.get("scope")
+        if scope:
+            kwargs["scope"] = scope
+        ip = request.args.get("ip")
+        if ip:
+            kwargs["ip"] = ip
+        port = request.args.get("port")
+        if port:
+            kwargs["port"] = port
+        hostname = request.args.get("hostname")
+        if hostname:
+            kwargs["hostname"] = hostname
+        category = request.args.get("category")
+        if category:
+            kwargs["category"] = category
+        search = request.args.get("search")
+        if search:
+            kwargs["search"] = search
+        sort = request.args.get("sort", "risk_id,title")
+        kwargs["sort"] = sort
+        order = request.args.get("order", "asc")
+        kwargs["order"] = order
+        include_fp = request.args.get("include_fp", "0") == "1"
+        kwargs["include_fp"] = include_fp
+        include_oos = request.args.get("include_oos", "1") != "0"
+        kwargs["include_oos"] = include_oos
+
+        result = _engine().query_findings_db(project_id, project, **kwargs)
+        if result is None:
+            findings = _engine().get_findings(project_id, project)
+            summary = _engine().get_full_summary(project_id, project)
+            total = len(findings)
+            start = (kwargs["page"] - 1) * per_page
+            page_findings = findings[start:start + per_page]
+            return jsonify({
+                "findings": page_findings,
+                "total": total,
+                "page": kwargs["page"],
+                "per_page": per_page,
+                "pages": (total + per_page - 1) // per_page if per_page else 1,
+                "summary": summary,
+                "source": "cache",
+            })
+        result["source"] = "db"
+        return jsonify(result)
+    except Exception as exc:
+        log.exception("Error in findings v2 for %s", project_id)
+        return jsonify({"error": str(exc)}), 500
+
+
 @findings_bp.route("/api/reload-findings/<project_id>", methods=["POST"])
 def api_reload_findings(project_id):
     try:

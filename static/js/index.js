@@ -1,11 +1,113 @@
 (function(){
+  /* ── FindingsDB dependency check ───────────────────────── */
+  var _fdbAvailable = null;
+  fetch('/api/findings-db-status', {credentials: 'same-origin'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ _fdbAvailable = !!d.available; })
+    .catch(function(){ _fdbAvailable = false; });
+
+  function _showDepModal(){
+    document.getElementById('fdbDepModal').classList.add('open');
+  }
+  function _showConvertModal(pid, href){
+    document.getElementById('fdbConvertModal').classList.add('open');
+    var convertBtn = document.getElementById('fdbConvertBtn');
+    var skipBtn = document.getElementById('fdbSkipBtn');
+    var statusEl = document.getElementById('fdbConvertStatus');
+    statusEl.textContent = '';
+    convertBtn.disabled = false;
+    convertBtn.textContent = 'Convert Now';
+    convertBtn.onclick = function(){
+      convertBtn.disabled = true;
+      convertBtn.textContent = 'Converting...';
+      statusEl.textContent = 'Migrating findings to database...';
+      statusEl.style.color = 'var(--text-secondary)';
+      fetch('/api/convert-engagement/' + pid, {method: 'POST', credentials: 'same-origin'})
+        .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+        .then(function(res){
+          if(res.ok && res.data.ok){
+            statusEl.textContent = res.data.message || 'Conversion complete';
+            statusEl.style.color = 'var(--status-success)';
+            setTimeout(function(){ window.location.href = href; }, 600);
+          } else {
+            statusEl.textContent = 'Error: ' + (res.data.error || 'Unknown error');
+            statusEl.style.color = 'var(--status-error)';
+            convertBtn.disabled = false;
+            convertBtn.textContent = 'Retry';
+          }
+        })
+        .catch(function(e){
+          statusEl.textContent = 'Network error: ' + e.message;
+          statusEl.style.color = 'var(--status-error)';
+          convertBtn.disabled = false;
+          convertBtn.textContent = 'Retry';
+        });
+    };
+    skipBtn.onclick = function(){
+      window._closeConvertModal();
+      window.location.href = href;
+    };
+  }
+  window._closeDepModal = function(){
+    document.getElementById('fdbDepModal').classList.remove('open');
+  };
+  window._closeConvertModal = function(){
+    document.getElementById('fdbConvertModal').classList.remove('open');
+  };
+
+  function _navigateProject(pid, href){
+    if(_fdbAvailable === false){
+      _showDepModal();
+      return;
+    }
+    fetch('/api/project-db-status/' + pid, {credentials: 'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d.has_db){
+          window.location.href = href;
+        } else {
+          _showConvertModal(pid, href);
+        }
+      })
+      .catch(function(){
+        window.location.href = href;
+      });
+  }
+
+  /* ── Intercept "Create New Engagement" button ──────────── */
+  var newEngBtn = document.querySelector('.btn-new-engagement');
+  if(newEngBtn){
+    newEngBtn.removeAttribute('onclick');
+    newEngBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      if(_fdbAvailable === false){
+        _showDepModal();
+      } else {
+        window.location.href = '/new_project';
+      }
+    });
+  }
+
+  /* ── Intercept project card clicks ─────────────────────── */
   document.querySelectorAll('.project-card[data-href]').forEach(function(card) {
     card.addEventListener('click', function(e) {
       if (e.target.closest('.project-card-actions')) return;
-      window.location.href = card.dataset.href;
+      var pid = card.dataset.id;
+      var href = card.dataset.href;
+      _navigateProject(pid, href);
     });
   });
 
+  /* ── Escape key for new modals ─────────────────────────── */
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Escape') return;
+    var dep = document.getElementById('fdbDepModal');
+    var conv = document.getElementById('fdbConvertModal');
+    if(dep && dep.classList.contains('open')) window._closeDepModal();
+    if(conv && conv.classList.contains('open')) window._closeConvertModal();
+  });
+
+  /* ── Delete modal (unchanged) ──────────────────────────── */
   var deleteModal     = document.getElementById('deleteModal');
   var deleteNameEl    = document.getElementById('deleteProjectName');
   var deleteFilesChk  = document.getElementById('deleteFilesCheck');

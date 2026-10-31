@@ -426,6 +426,19 @@ def create_project(form_data):
     from config import VERSION
     record_tool_use(project_dir, "crucible", "Crucible", VERSION)
 
+    try:
+        import sys as _s
+        if "/opt/pr0t31n/shared" not in _s.path:
+            _s.path.insert(0, "/opt/pr0t31n/shared")
+        from config import FINDINGS_DB_FILENAME
+        import pr0t31n_findings_db
+        _db_path = project_dir / FINDINGS_DB_FILENAME
+        _db = pr0t31n_findings_db.FindingsDB(str(_db_path))
+        _db.close()
+        log.info("Initialized findings DB at %s", _db_path)
+    except Exception:
+        log.debug("FindingsDB init skipped (module not available)")
+
     with _projects_lock:
         data = _load_projects()
         data[pid] = meta
