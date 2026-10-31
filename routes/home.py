@@ -43,7 +43,19 @@ def api_project_db_status(project_id):
     if not project:
         return jsonify({"error": "not found"}), 404
     eng_dir = project.get("engagement_dir", project.get("project_dir", ""))
-    has_db = bool(eng_dir and Path(eng_dir, config.FINDINGS_DB_FILENAME).exists())
+    db_file = Path(eng_dir, config.FINDINGS_DB_FILENAME) if eng_dir else None
+    has_db = False
+    if db_file and db_file.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(db_file))
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='migration_status'").fetchone()
+            has_db = bool(row and row[0] == "complete")
+            conn.close()
+        except Exception:
+            has_db = False
     return jsonify({"has_db": has_db, "project_id": project_id})
 
 
@@ -59,18 +71,49 @@ def api_convert_engagement(project_id):
         return jsonify({"error": "no engagement directory"}), 400
     db_path = Path(eng_dir) / config.FINDINGS_DB_FILENAME
     if db_path.exists():
-        return jsonify({"ok": True, "message": "Already converted", "skipped": True})
+        complete = False
+        try:
+            import sqlite3 as _sq
+            _c = _sq.connect(str(db_path))
+            _r = _c.execute(
+                "SELECT value FROM meta WHERE key='migration_status'").fetchone()
+            complete = bool(_r and _r[0] == "complete")
+            _c.close()
+        except Exception:
+            pass
+        if complete:
+            return jsonify({"ok": True, "message": "Already converted", "skipped": True})
+        log.warning("Incomplete findings.db for %s — removing for re-conversion",
+                    project_id)
+        try:
+            db_path.unlink()
+            for wal in (db_path.with_suffix(".db-wal"), db_path.with_suffix(".db-shm")):
+                if wal.exists():
+                    wal.unlink()
+        except OSError:
+            pass
+    tmp_path = db_path.with_suffix(".db.tmp")
     try:
         import sys
         if "/opt/pr0t31n/shared" not in sys.path:
             sys.path.insert(0, "/opt/pr0t31n/shared")
         import pr0t31n_findings_db
-        db = pr0t31n_findings_db.FindingsDB(str(db_path))
+        db = pr0t31n_findings_db.FindingsDB(str(tmp_path))
         total = db.migrate_legacy_project(eng_dir, project)
         db.close()
+        tmp_path.rename(db_path)
         log.info("Converted engagement %s: %d findings ingested", project_id, total)
         return jsonify({"ok": True, "findings": total,
                         "message": f"Converted {total} findings to database"})
     except Exception as exc:
         log.exception("Engagement conversion failed for %s", project_id)
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            for wal in (tmp_path.with_suffix(".db.tmp-wal"),
+                        tmp_path.with_suffix(".db.tmp-shm")):
+                if wal.exists():
+                    wal.unlink()
+        except OSError:
+            pass
         return jsonify({"error": str(exc)}), 500
