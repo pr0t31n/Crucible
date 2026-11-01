@@ -41,10 +41,28 @@ class FindingsEngine:
                 self._refresh_locks[project_id] = threading.Lock()
             return self._refresh_locks[project_id]
 
+    def _load_all_from_db(self, project_id, project):
+        """Load all non-FP findings from DB into the in-memory cache."""
+        db = self._get_db(project_id, project)
+        if db is None:
+            return None
+        try:
+            result = db.query_findings(page=1, per_page=500000)
+            findings = result.get("findings", [])
+            if not findings:
+                return None
+            with self._lock:
+                self._cache[project_id] = findings
+            return list(findings)
+        except Exception:
+            log.debug("DB load failed for %s, falling back to JSON", project_id)
+            return None
+
     def get_findings(self, project_id, project):
         """Get deduplicated findings for a project. Uses cache if available.
 
-        When the cache is cold, only one thread runs refresh() while
+        When the cache is cold, tries DB first (fast), then falls back
+        to full JSON refresh. Only one thread runs refresh() while
         concurrent callers wait and then read from the now-warm cache.
         """
         with self._lock:
@@ -55,6 +73,9 @@ class FindingsEngine:
             with self._lock:
                 if project_id in self._cache:
                     return list(self._cache[project_id])
+            db_result = self._load_all_from_db(project_id, project)
+            if db_result is not None:
+                return db_result
             return self.refresh(project_id, project)
 
     def get_false_positives(self, project_id, project):
