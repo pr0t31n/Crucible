@@ -3082,10 +3082,20 @@ select.form-control option {
     .home-sidebar {
         border-right: none;
         border-bottom: 1px solid var(--border-subtle);
-        max-height: 40vh;
+        max-height: none;
     }
     .home-main {
         padding: 24px 16px;
+    }
+    .home-main .hero-logo {
+        display: none;
+    }
+    .home-main .tool-table {
+        display: none;
+    }
+    .project-card-actions {
+        opacity: 1;
+        pointer-events: auto;
     }
 
     /* ── Nav ── */
