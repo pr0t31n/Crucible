@@ -52,10 +52,13 @@ def api_project_db_status(project_id):
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT value FROM meta WHERE key='migration_status'").fetchone()
-            has_db = bool(row and row[0] == "complete")
+            if row is None:
+                has_db = True
+            else:
+                has_db = row[0] == "complete"
             conn.close()
         except Exception:
-            has_db = False
+            has_db = True
     return jsonify({"has_db": has_db, "project_id": project_id})
 
 
@@ -71,18 +74,20 @@ def api_convert_engagement(project_id):
         return jsonify({"error": "no engagement directory"}), 400
     db_path = Path(eng_dir) / config.FINDINGS_DB_FILENAME
     if db_path.exists():
-        complete = False
         try:
             import sqlite3 as _sq
             _c = _sq.connect(str(db_path))
             _r = _c.execute(
                 "SELECT value FROM meta WHERE key='migration_status'").fetchone()
-            complete = bool(_r and _r[0] == "complete")
             _c.close()
+            if _r is None:
+                return jsonify({"ok": True, "message": "Already converted",
+                                "skipped": True})
+            if _r[0] == "complete":
+                return jsonify({"ok": True, "message": "Already converted",
+                                "skipped": True})
         except Exception:
             pass
-        if complete:
-            return jsonify({"ok": True, "message": "Already converted", "skipped": True})
         log.warning("Incomplete findings.db for %s — removing for re-conversion",
                     project_id)
         try:
@@ -106,7 +111,9 @@ def api_convert_engagement(project_id):
         return jsonify({"ok": True, "findings": total,
                         "message": f"Converted {total} findings to database"})
     except Exception as exc:
-        log.exception("Engagement conversion failed for %s", project_id)
+        import traceback as _tb
+        tb_str = _tb.format_exc()
+        log.error("Engagement conversion failed for %s:\n%s", project_id, tb_str)
         try:
             if tmp_path.exists():
                 tmp_path.unlink()
@@ -116,4 +123,4 @@ def api_convert_engagement(project_id):
                     wal.unlink()
         except OSError:
             pass
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": str(exc), "traceback": tb_str}), 500

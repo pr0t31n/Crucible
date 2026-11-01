@@ -176,6 +176,15 @@ def api_reload_findings(project_id):
 def api_findings_count(project_id):
     try:
         project = require_project(project_id)
+        db = _engine()._get_db(project_id, project)
+        if db is not None:
+            try:
+                total = db._conn.execute(
+                    "SELECT COUNT(*) FROM findings "
+                    "WHERE is_false_positive=0").fetchone()[0]
+                return jsonify({"count": total})
+            except Exception:
+                pass
         findings = _engine().get_findings(project_id, project)
         return jsonify({"count": len(findings)})
     except Exception as exc:

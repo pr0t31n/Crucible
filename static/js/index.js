@@ -30,7 +30,16 @@
             statusEl.style.color = 'var(--status-success)';
             setTimeout(function(){ window.location.href = href; }, 600);
           } else {
-            statusEl.textContent = 'Error: ' + (res.data.error || 'Unknown error');
+            var errMsg = 'Error: ' + (res.data.error || 'Unknown error');
+            if(res.data.traceback){
+              errMsg += '\n\n' + res.data.traceback;
+            }
+            statusEl.style.whiteSpace = 'pre-wrap';
+            statusEl.style.fontFamily = 'monospace';
+            statusEl.style.fontSize = '11px';
+            statusEl.style.maxHeight = '300px';
+            statusEl.style.overflow = 'auto';
+            statusEl.textContent = errMsg;
             statusEl.style.color = 'var(--status-error)';
             convertBtn.disabled = false;
             convertBtn.textContent = 'Retry';
