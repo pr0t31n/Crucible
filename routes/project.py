@@ -1186,6 +1186,52 @@ def api_summary(project_id):
     return jsonify(summary)
 
 
+@project_bp.route("/api/diag/<project_id>")
+def api_diag(project_id):
+    """Diagnostic: check DB availability and summary speed."""
+    import time
+    project = require_project(project_id)
+    fe = get_ext("findings_engine")
+    if not fe:
+        return jsonify({"error": "no findings_engine"})
+    diag = {"version": config.VERSION}
+    db = fe._get_db(project_id, project)
+    diag["db_available"] = db is not None
+    if db is not None:
+        diag["db_path"] = str(getattr(db, "_path", "?"))
+        try:
+            t0 = time.monotonic()
+            s = db.get_summary()
+            diag["db_summary_ms"] = round((time.monotonic() - t0) * 1000, 1)
+            diag["db_summary"] = s
+        except Exception as e:
+            diag["db_summary_error"] = str(e)
+        try:
+            t0 = time.monotonic()
+            ts = db.get_tool_summary()
+            diag["db_tool_summary_ms"] = round((time.monotonic() - t0) * 1000, 1)
+            diag["db_tool_count"] = len(ts)
+        except Exception as e:
+            diag["db_tool_summary_error"] = str(e)
+        try:
+            cnt = db._conn.execute(
+                "SELECT COUNT(*) FROM findings").fetchone()[0]
+            diag["db_total_findings"] = cnt
+        except Exception as e:
+            diag["db_count_error"] = str(e)
+        try:
+            cols = [r[1] for r in db._conn.execute(
+                "PRAGMA table_info(findings)").fetchall()]
+            diag["findings_columns"] = cols
+        except Exception as e:
+            diag["pragma_error"] = str(e)
+    t0 = time.monotonic()
+    summary = fe.get_full_summary(project_id, project)
+    diag["full_summary_ms"] = round((time.monotonic() - t0) * 1000, 1)
+    diag["full_summary"] = summary
+    return jsonify(diag)
+
+
 def _get_engagement_timing(proj_dir: str) -> dict:
     """Extract earliest started_at and latest ended_at from tool_history.json."""
     if not proj_dir:

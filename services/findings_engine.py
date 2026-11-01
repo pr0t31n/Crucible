@@ -1070,9 +1070,13 @@ class FindingsEngine:
                 fp_count = db._conn.execute(
                     "SELECT COUNT(*) FROM findings "
                     "WHERE is_false_positive=1").fetchone()[0]
-                accepted = db._conn.execute(
-                    "SELECT COUNT(*) FROM findings "
-                    "WHERE accepted=1 AND is_false_positive=0").fetchone()[0]
+                try:
+                    accepted = db._conn.execute(
+                        "SELECT COUNT(*) FROM findings "
+                        "WHERE accepted=1 AND is_false_positive=0"
+                    ).fetchone()[0]
+                except Exception:
+                    accepted = 0
                 return {
                     "risk_counts": rc,
                     "risk_summary": rc,
@@ -1083,7 +1087,8 @@ class FindingsEngine:
                     "fp_count": fp_count,
                 }
             except Exception:
-                log.debug("DB summary failed for %s, falling back", project_id)
+                log.exception("DB summary failed for %s, falling back",
+                              project_id)
         findings = self.get_findings(project_id, project)
         rc = get_risk_summary(findings)
         return {

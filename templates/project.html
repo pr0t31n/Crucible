@@ -1564,7 +1564,7 @@
 {% block scripts %}
 <script src="/static/js/socket.io.min.js"></script>
 <script id="projectConfig" type="application/json">{"pid":{{ project_id|tojson }},"project":{{ project|tojson }},"toolsCfg":{{ tools_config|tojson }}}</script>
-<script src="/static/js/project.js"></script>
+<script src="/static/js/project.js?v={{ app_version }}"></script>
 <script>
 var _selectedReportType = 'full';
 
