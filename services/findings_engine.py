@@ -1047,11 +1047,43 @@ class FindingsEngine:
 
     def get_summary(self, project_id, project):
         """Return risk summary dict for a project."""
+        db = self._get_db(project_id, project)
+        if db is not None:
+            try:
+                return db.get_summary()
+            except Exception:
+                pass
         findings = self.get_findings(project_id, project)
         return get_risk_summary(findings)
 
     def get_full_summary(self, project_id, project):
         """Return {risk_counts, tool_breakdown, findings_count, ...}."""
+        db = self._get_db(project_id, project)
+        if db is not None:
+            try:
+                s = db.get_summary()
+                rc = {k: s.get(k, 0) for k in
+                      ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")}
+                tb = {}
+                for row in db.get_tool_summary():
+                    tb[row["tool_id"]] = row["count"]
+                fp_count = db._conn.execute(
+                    "SELECT COUNT(*) FROM findings "
+                    "WHERE is_false_positive=1").fetchone()[0]
+                accepted = db._conn.execute(
+                    "SELECT COUNT(*) FROM findings "
+                    "WHERE accepted=1 AND is_false_positive=0").fetchone()[0]
+                return {
+                    "risk_counts": rc,
+                    "risk_summary": rc,
+                    "tool_breakdown": tb,
+                    "findings_count": s.get("total", 0),
+                    "total": s.get("total", 0),
+                    "accepted_count": accepted,
+                    "fp_count": fp_count,
+                }
+            except Exception:
+                log.debug("DB summary failed for %s, falling back", project_id)
         findings = self.get_findings(project_id, project)
         rc = get_risk_summary(findings)
         return {

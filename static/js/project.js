@@ -832,7 +832,15 @@ loadSystemInfo();
 
 function updateRiskOverview() {
     var counts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
-    allFindings.forEach(function(f) { var r = (f.risk||'').toUpperCase(); if (counts[r] !== undefined) counts[r]++; });
+    if (_serverSummary) {
+        counts.CRITICAL = _serverSummary.CRITICAL || 0;
+        counts.HIGH = _serverSummary.HIGH || 0;
+        counts.MEDIUM = _serverSummary.MEDIUM || 0;
+        counts.LOW = _serverSummary.LOW || 0;
+        counts.INFO = _serverSummary.INFO || 0;
+    } else {
+        allFindings.forEach(function(f) { var r = (f.risk||'').toUpperCase(); if (counts[r] !== undefined) counts[r]++; });
+    }
     document.getElementById('riskCritical').textContent = counts.CRITICAL;
     document.getElementById('riskHigh').textContent = counts.HIGH;
     document.getElementById('riskMedium').textContent = counts.MEDIUM;
@@ -840,7 +848,7 @@ function updateRiskOverview() {
     document.getElementById('riskInfo').textContent = counts.INFO;
     var total = counts.CRITICAL + counts.HIGH + counts.MEDIUM + counts.LOW + counts.INFO;
     document.getElementById('riskTotal').textContent = total + ' finding' + (total !== 1 ? 's' : '');
-    document.getElementById('findingsPill').textContent = total || '';
+    document.getElementById('findingsPill').textContent = _serverTotal || total || '';
 
     /* risk bar */
     var bar = document.getElementById('riskBarInner');
@@ -11278,20 +11286,10 @@ function _populateEngagementTiming(data) {
 fetch('/api/summary/' + PID, {credentials: 'same-origin'})
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        /* populate risk overview from summary if available */
-        if (data.findings_count !== undefined) {
-            allFindings = data.findings || allFindings;
-            updateRiskOverview();
-        }
         if (data.risk_counts) {
-            document.getElementById('riskCritical').textContent = data.risk_counts.CRITICAL || 0;
-            document.getElementById('riskHigh').textContent = data.risk_counts.HIGH || 0;
-            document.getElementById('riskMedium').textContent = data.risk_counts.MEDIUM || 0;
-            document.getElementById('riskLow').textContent = data.risk_counts.LOW || 0;
-            document.getElementById('riskInfo').textContent = data.risk_counts.INFO || 0;
-            var total = (data.risk_counts.CRITICAL||0) + (data.risk_counts.HIGH||0) + (data.risk_counts.MEDIUM||0) + (data.risk_counts.LOW||0) + (data.risk_counts.INFO||0);
-            document.getElementById('riskTotal').textContent = total + ' finding' + (total !== 1 ? 's' : '');
-            document.getElementById('findingsPill').textContent = total || '';
+            _serverSummary = data.risk_counts;
+            _serverTotal = data.total || data.findings_count || 0;
+            updateRiskOverview();
         }
         _populateEngagementTiming(data);
     })
