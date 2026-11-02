@@ -225,9 +225,20 @@ def _backfill_from_project(settings, project, tool_id):
             settings["archive_depth"] = depth
     elif tool_id in ("aether", "aether_b", "aether_z", "aether_u"):
         if not settings.get("target_ssids"):
-            ssids = scope_def.get("wireless_ssids", [])
+            active = scope_def.get("wireless_active_ssids", [])
+            passive = scope_def.get("wireless_passive_ssids", [])
+            legacy = scope_def.get("wireless_ssids", [])
+            ssids = (active + passive) if (active or passive) else legacy
             if ssids:
                 settings["target_ssids"] = ssids
+        if not settings.get("passive_ssids"):
+            ps = scope_def.get("wireless_passive_ssids", [])
+            if ps:
+                settings["passive_ssids"] = ps
+        if not settings.get("scope_default_mode"):
+            dm = scope_def.get("wireless_default_scope_mode", "")
+            if dm:
+                settings["scope_default_mode"] = dm
 
 
 def _archive_tool_output(project, tool_id):

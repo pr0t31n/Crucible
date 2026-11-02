@@ -440,6 +440,41 @@ def _sync_scope_to_tool_settings(data, project):
                     else:
                         disk_settings[settings_key] = val
                 save_settings(proj_dir, tid, disk_settings)
+    ae_tools = {"aether", "aether_b", "aether_z", "aether_u"}
+    for ae_tid in ae_tools:
+        if ae_tid not in tools:
+            continue
+        active_ssids = scope_def.get("wireless_active_ssids", [])
+        passive_ssids = scope_def.get("wireless_passive_ssids", [])
+        default_mode = scope_def.get("wireless_default_scope_mode", "active")
+        all_ssids = active_ssids + passive_ssids
+        if not all_ssids:
+            all_ssids = scope_def.get("wireless_ssids", [])
+            if not all_ssids:
+                continue
+            active_ssids = all_ssids
+        modes = {}
+        for s in active_ssids:
+            modes[s] = "active"
+        for s in passive_ssids:
+            modes[s] = "passive"
+        def _apply_ae_scope(d):
+            d["target_ssids"] = all_ssids
+            d["passive_ssids"] = passive_ssids
+            d["scope_default_mode"] = default_mode
+            d["scope_modes"] = modes
+            _sc = d.setdefault("scope", {})
+            _sc["ssids"] = all_ssids
+            _sc["modes"] = modes
+            _sc["default_mode"] = default_mode
+        ae_ts = dict(ts.get(ae_tid, {}))
+        _apply_ae_scope(ae_ts)
+        ts[ae_tid] = ae_ts
+        changed = True
+        if proj_dir:
+            disk_settings = load_settings(proj_dir, ae_tid)
+            _apply_ae_scope(disk_settings)
+            save_settings(proj_dir, ae_tid, disk_settings)
     if changed:
         data["tool_settings"] = ts
 

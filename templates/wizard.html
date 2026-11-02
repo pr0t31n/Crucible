@@ -765,9 +765,26 @@
       <div class="form-section tool-scope-group" id="scopeWirelessSection" hidden>
         <h3 class="form-section-title"><span class="tool-badge tool-ae">AE</span> Aether (Wireless)</h3>
         <div class="form-group">
-          <label class="form-label" for="ssids">Target SSIDs</label>
-          <textarea id="ssids" class="form-control" rows="3"
-                    placeholder="One SSID per line">{% if project and project.scope_definition %}{{ project.scope_definition.wireless_ssids|default([])|join('\n') }}{% endif %}</textarea>
+          <label class="form-label">Default Scope Mode</label>
+          <select id="wirelessDefaultMode" class="form-control">
+            <option value="active"{% if project and project.scope_definition and project.scope_definition.get('wireless_default_scope_mode') == 'passive' %}{% else %} selected{% endif %}>Active (full testing)</option>
+            <option value="passive"{% if project and project.scope_definition and project.scope_definition.get('wireless_default_scope_mode') == 'passive' %} selected{% endif %}>Passive (monitoring only)</option>
+          </select>
+          <span class="form-hint">Applied to SSIDs discovered during scanning that aren't listed below</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-group">
+            <label class="form-label" for="activeSSIDs">Active Scope SSIDs</label>
+            <textarea id="activeSSIDs" class="form-control" rows="3"
+                      placeholder="One SSID per line — full testing including client interaction">{% if project and project.scope_definition %}{{ (project.scope_definition.get('wireless_active_ssids') or project.scope_definition.get('wireless_ssids') or [])|join('\n') }}{% endif %}</textarea>
+            <span class="form-hint">Deauth, rogue AP, and client attacks allowed</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="passiveSSIDs">Passive Scope SSIDs</label>
+            <textarea id="passiveSSIDs" class="form-control" rows="3"
+                      placeholder="One SSID per line — monitoring and AP testing only">{% if project and project.scope_definition %}{{ (project.scope_definition.get('wireless_passive_ssids') or [])|join('\n') }}{% endif %}</textarea>
+            <span class="form-hint">No deauth, rogue AP, or client interaction</span>
+          </div>
         </div>
       </div>
 

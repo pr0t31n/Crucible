@@ -996,7 +996,11 @@
       if (dgParsers.length) addR(sg,'External Parsers',dgParsers.join(', '));
       if (dgExtToolFiles.length) addR(sg,'External Files',dgExtToolFiles.map(function(f){return f.name;}).join(', '));
     }
-    if (_sec('scopeWirelessSection')) addR(sg,'SSIDs',valOf('ssids'));
+    if (_sec('scopeWirelessSection')) {
+        addR(sg,'Default Scope Mode',document.getElementById('wirelessDefaultMode').value);
+        addR(sg,'Active SSIDs',valOf('activeSSIDs'));
+        addR(sg,'Passive SSIDs',valOf('passiveSSIDs'));
+    }
     if (_sec('scopeBastionSection')) {
       addR(sg,'FW Vendor',selText('fwVendor'));
       addR(sg,'FW Configs',fwFiles.length ? fwFiles.map(function(f){return f.name;}).join(', ') : '');
@@ -1138,7 +1142,10 @@
         dredge_skip_sections: valOf('dgSkipSections'),
         dredge_ext_parsers: getDgExtParsers(),
         dredge_ext_files: dgExtToolFiles.map(function(f){return f.name;}),
-        wireless_ssids: textToArray('ssids'),
+        wireless_active_ssids: textToArray('activeSSIDs'),
+        wireless_passive_ssids: textToArray('passiveSSIDs'),
+        wireless_default_scope_mode: document.getElementById('wirelessDefaultMode').value,
+        wireless_ssids: textToArray('activeSSIDs').concat(textToArray('passiveSSIDs')),
         exclusions: textToArray('exclusions'),
         firewall_vendor: document.getElementById('fwVendor').value,
         firewall_configs: fwFiles.map(function(f){return f.name;}),
