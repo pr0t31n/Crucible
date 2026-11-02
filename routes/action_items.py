@@ -1351,69 +1351,56 @@ def api_preview_command():
 
 
 @action_items_bp.route("/api/action-item/resolve-manual", methods=["POST"])
-@require_project
 def api_resolve_manual_check():
-    data = request.get_json(silent=True) or {}
-    project_id = data.get("project_id", "")
-    item_id = data.get("item_id", "")
-    resolution = data.get("resolution", "")
-    if not project_id or not item_id:
-        return jsonify({"error": "project_id and item_id required"}), 400
-    if resolution not in ("missing", "exists"):
-        return jsonify({"error": "resolution must be 'missing' or 'exists'"}), 400
-
-    from models.project import load_project
-    project = load_project(project_id)
-    if not project:
-        return jsonify({"error": "project not found"}), 404
-    project_dir = project.get("project_dir", "")
-
-    items = load_action_items(project_dir)
-    target_item = None
-    for ai in items:
-        if ai.get("id") == item_id:
-            target_item = ai
-            break
-    if not target_item:
-        return jsonify({"error": "action item not found"}), 404
-    if target_item.get("type") != "manual_check":
-        return jsonify({"error": "item is not a manual check"}), 400
-
-    finding_id = None
-    if resolution == "missing":
-        template = (target_item.get("metadata") or {}).get("finding_template", {})
-        check_id = (target_item.get("metadata") or {}).get("check_id", "")
-        from flask import current_app
-        fe = current_app.extensions.get("findings_engine")
-        if fe:
-            finding = fe.create_finding_from_manual_check(
-                project_id, project, template, check_id)
-            finding_id = finding.get("id") if finding else None
-        new_status = "confirmed_missing"
-        extra = {"finding_id": finding_id} if finding_id else {}
-        meta = target_item.get("metadata") or {}
-        meta.update(extra)
-        update_action_item_status(
-            project_dir, item_id, new_status,
-            extra_fields={"metadata": meta})
-    else:
-        new_status = "confirmed_exists"
-        update_action_item_status(project_dir, item_id, new_status)
+    """Resolve a manual check item as 'missing' (creates finding) or 'exists'."""
+    body = request.get_json(silent=True) or {}
+    project_id = body.get("project_id", "")
+    item_id = body.get("item_id", "")
+    resolution = body.get("resolution", "")
+    if not project_id or not item_id or resolution not in ("missing", "exists"):
+        return jsonify({"error": "project_id, item_id and resolution (missing|exists) required"}), 400
 
     try:
-        from flask_socketio import emit as _emit
-        _emit("manual_check_resolved", {
-            "item_id": item_id,
-            "resolution": resolution,
-            "finding_id": finding_id,
-            "status": new_status,
-        }, room=_room(project_id), namespace="/")
-    except Exception:
-        pass
+        project = require_project(project_id)
+        proj_dir = project.get("project_dir", "")
 
-    return jsonify({
-        "ok": True,
-        "item_id": item_id,
-        "status": new_status,
-        "finding_id": finding_id,
-    })
+        from models.action_items import get_action_item, update_action_item_status
+        item = get_action_item(proj_dir, item_id)
+        if not item:
+            return jsonify({"error": "Item not found"}), 404
+        if item.get("type") != "manual_check":
+            return jsonify({"error": "Item is not a manual check"}), 400
+
+        finding_id = None
+        if resolution == "missing":
+            template = (item.get("metadata") or {}).get("finding_template", {})
+            check_id = (item.get("metadata") or {}).get("check_id", "")
+            fe = get_ext("findings_engine")
+            if fe and template:
+                f = fe.create_finding_from_manual_check(
+                    project_id, project, template, check_id)
+                finding_id = f.get("id", "")
+            new_status = "confirmed_missing"
+        else:
+            new_status = "confirmed_exists"
+
+        from datetime import datetime
+        extra = {"resolution": resolution, "resolved_at": datetime.now().isoformat()}
+        if finding_id:
+            extra["finding_id"] = finding_id
+        update_action_item_status(proj_dir, item_id, new_status,
+                                  extra_fields=extra)
+
+        sio = get_ext("socketio")
+        if sio:
+            sio.emit("manual_check_resolved", {
+                "item_id": item_id,
+                "resolution": resolution,
+                "finding_id": finding_id,
+                "new_status": new_status,
+            }, room=_room(project_id))
+
+        return jsonify({"ok": True, "status": new_status, "finding_id": finding_id})
+    except Exception as exc:
+        log.exception("Error resolving manual check %s", item_id)
+        return jsonify({"error": str(exc)}), 500
