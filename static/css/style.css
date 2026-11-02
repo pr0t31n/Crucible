@@ -38,6 +38,7 @@
     --status-queued: #e67e22;
     --status-done: #4a90d9;
     --status-error: #e74c3c;
+    --status-success: #27ae60;
 
     /* Radii */
     --radius-sm: 4px;
@@ -1357,6 +1358,83 @@ table {
     background: rgba(163,230,53,.15);
     color: #a3e635;
     border: 1px solid rgba(163,230,53,.3);
+}
+
+/* Dredge — warm stone */
+.tool-dg {
+    background: rgba(168,162,158,.15);
+    color: #a8a29e;
+    border: 1px solid rgba(168,162,158,.3);
+}
+
+/* testssl.sh — steel blue */
+.tool-ts {
+    background: rgba(96,165,250,.15);
+    color: #60a5fa;
+    border: 1px solid rgba(96,165,250,.3);
+}
+
+/* sslscan — periwinkle */
+.tool-sl {
+    background: rgba(129,140,248,.15);
+    color: #818cf8;
+    border: 1px solid rgba(129,140,248,.3);
+}
+
+/* Nuclei — emerald */
+.tool-nu {
+    background: rgba(52,211,153,.15);
+    color: #34d399;
+    border: 1px solid rgba(52,211,153,.3);
+}
+
+/* droopescan — coral */
+.tool-ds {
+    background: rgba(251,146,60,.15);
+    color: #fb923c;
+    border: 1px solid rgba(251,146,60,.3);
+}
+
+/* dnstwist — violet */
+.tool-dt {
+    background: rgba(196,181,253,.15);
+    color: #c4b5fd;
+    border: 1px solid rgba(196,181,253,.3);
+}
+
+/* xurlfind3r — fuchsia */
+.tool-xu {
+    background: rgba(232,121,249,.15);
+    color: #e879f9;
+    border: 1px solid rgba(232,121,249,.3);
+}
+
+/* EmailHarvester — warm gold */
+.tool-eh {
+    background: rgba(253,224,71,.15);
+    color: #fde047;
+    border: 1px solid rgba(253,224,71,.3);
+}
+
+/* asnmap — teal */
+.tool-an {
+    background: rgba(45,212,191,.15);
+    color: #2dd4bf;
+    border: 1px solid rgba(45,212,191,.3);
+}
+
+/* webanalyze — peach */
+.tool-wa {
+    background: rgba(251,191,146,.15);
+    color: #fbbf94;
+    border: 1px solid rgba(251,191,146,.3);
+}
+
+/* Dependencies — neutral warm */
+.tool-dp {
+    background: rgba(120,113,108,.15);
+    color: #78716c;
+    border: 1px solid rgba(120,113,108,.3);
 }
 
 /* Default — neutral gray for unknown sources */

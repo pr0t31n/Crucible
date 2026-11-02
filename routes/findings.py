@@ -33,6 +33,11 @@ def _audit_evidence(project, findings):
 
     existing = load_errors(proj_dir)
     reported_ids = {e.get("finding_id") for e in existing if e.get("finding_id")}
+    reported_keys = set()
+    for e in existing:
+        m = e.get("message", "")
+        if "Finding generated without evidence" in m:
+            reported_keys.add(m)
 
     for f in no_evidence:
         fid = f.get("id", "")
@@ -57,6 +62,10 @@ def _audit_evidence(project, findings):
         msg += ', Finding: "%s"' % title
         if affected:
             msg += ", Affected: %s" % affected
+
+        if msg in reported_keys:
+            continue
+        reported_keys.add(msg)
 
         append_error(proj_dir, {
             "timestamp": datetime.now().isoformat(),

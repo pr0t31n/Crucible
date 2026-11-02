@@ -974,11 +974,11 @@
       <div class="modal-body">
         <div class="form-grid" style="gap:12px">
           <div class="form-group">
-            <label class="form-label">Label</label>
+            <label class="form-label" for="sesAddLabel">Label</label>
             <input type="text" class="form-control" id="sesAddLabel" placeholder="e.g. Cariloop API Bearer">
           </div>
           <div class="form-group">
-            <label class="form-label">Auth Type</label>
+            <label class="form-label" for="sesAddType">Auth Type</label>
             <select class="form-control" id="sesAddType">
               <option value="oauth2">OAuth2 (Bearer + Refresh)</option>
               <option value="jwt">JWT (re-auth on expiry)</option>
@@ -990,39 +990,39 @@
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">Framework (optional)</label>
+            <label class="form-label" for="sesAddFramework">Framework (optional)</label>
             <input type="text" class="form-control" id="sesAddFramework" placeholder="e.g. Auth0, Keycloak, Cognito">
           </div>
           <div class="form-group">
-            <label class="form-label">Origin Tool</label>
+            <label class="form-label" for="sesAddOrigin">Origin Tool</label>
             <input type="text" class="form-control" id="sesAddOrigin" placeholder="e.g. quill, siphon, manual">
           </div>
           <div class="form-group">
-            <label class="form-label">Scope</label>
+            <label class="form-label" for="sesAddScope">Scope</label>
             <input type="text" class="form-control" id="sesAddScope" placeholder="e.g. api, web, internal">
           </div>
           <div class="form-group" style="grid-column:1/-1">
-            <label class="form-label">Target URL</label>
+            <label class="form-label" for="sesAddTarget">Target URL</label>
             <input type="text" class="form-control" id="sesAddTarget" placeholder="https://api.example.com">
           </div>
           <div class="form-group" style="grid-column:1/-1">
-            <label class="form-label">Access Token / Bearer</label>
+            <label class="form-label" for="sesAddToken">Access Token / Bearer</label>
             <textarea class="form-control" id="sesAddToken" rows="2" style="font-family:monospace;font-size:0.78rem" placeholder="eyJ..."></textarea>
           </div>
           <div class="form-group" style="grid-column:1/-1">
-            <label class="form-label">Refresh Token (optional)</label>
+            <label class="form-label" for="sesAddRefresh">Refresh Token (optional)</label>
             <textarea class="form-control" id="sesAddRefresh" rows="2" style="font-family:monospace;font-size:0.78rem" placeholder="eyJ..."></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label">Token Endpoint (optional)</label>
+            <label class="form-label" for="sesAddTokenEP">Token Endpoint (optional)</label>
             <input type="text" class="form-control" id="sesAddTokenEP" placeholder="https://auth.example.com/oauth/token">
           </div>
           <div class="form-group">
-            <label class="form-label">Heartbeat URL (cookies)</label>
+            <label class="form-label" for="sesAddHeartbeat">Heartbeat URL (cookies)</label>
             <input type="text" class="form-control" id="sesAddHeartbeat" placeholder="https://app.example.com/api/me">
           </div>
           <div class="form-group">
-            <label class="form-label">Expires In (seconds)</label>
+            <label class="form-label" for="sesAddExpiresIn">Expires In (seconds)</label>
             <input type="number" class="form-control" id="sesAddExpiresIn" placeholder="3600">
           </div>
         </div>

@@ -396,7 +396,12 @@ def api_structure(project_id):
     if tool != "fracture":
         si_dir = _resolve_tool_dir(project, "siphon")
         if si_dir:
-            result["api_map"] = _intel.get_api_map(si_dir)
+            am_data, _ = _load_with_target_filter(si_dir, "api_map.json", target)
+            if isinstance(am_data, dict):
+                non_int = {k: v for k, v in am_data.items() if not k.startswith("_")}
+                if len(non_int) == 1:
+                    am_data = list(non_int.values())[0]
+            result["api_map"] = am_data
 
     return jsonify(result)
 
@@ -434,6 +439,8 @@ def api_auth_status(project_id):
         if td:
             data, targets = _load_with_target_filter(td, "authentication_status.json", target)
             if data:
+                if isinstance(data, dict) and "_items" in data:
+                    data = data["_items"]
                 result["auth_status"] = data
                 result["_targets"] = targets
                 break
@@ -688,7 +695,11 @@ def api_access_points(project_id):
 def api_api_inventory(project_id):
     project = require_project(project_id)
     si_dir = _resolve_tool_dir(project, "siphon")
-    data = _intel.get_api_inventory(si_dir) if si_dir else None
+    data = None
+    if si_dir:
+        data, _ = _load_with_target_filter(si_dir, "api_inventory.json")
+        if isinstance(data, dict) and "_items" in data:
+            data = data["_items"]
     return jsonify({"api_inventory": data})
 
 

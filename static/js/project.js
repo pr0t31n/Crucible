@@ -36,10 +36,10 @@ function _isErrEntry(e) {
 var _TOOL_ALIAS = {
     'scattershot3': 'ss3', 'scattershot': 'ss3', 'ss': 'ss3',
     'nmap': 'ss3', 'nmap-nse': 'ss3', 'masscan': 'ss3',
-    'sslscan': 'ss3', 'testssl': 'ss3', 'shcheck': 'ss3',
+    'testssl.sh': 'testssl', 'shcheck': 'ss3',
     'gobuster': 'ss3', 'nikto': 'ss3', 'wpscan': 'ss3',
-    'webanalyze': 'ss3', 'whatweb': 'ss3', 'ssh-audit': 'ss3',
-    'nuclei': 'ss3', 'http': 'ss3', 'http-fetch': 'ss3',
+    'whatweb': 'ss3', 'ssh-audit': 'ss3',
+    'http': 'ss3', 'http-fetch': 'ss3',
     'curl': 'ss3', 'nc-probe': 'ss3', 'snmpwalk': 'ss3',
     'smbmap': 'ss3', 'smbclient': 'ss3', 'enum4linux': 'ss3',
     'rpcclient': 'ss3', 'hydra': 'ss3', 'banner-grab': 'ss3',
@@ -51,7 +51,7 @@ var _TOOL_ALIAS = {
     'subfinder': 'osift', 'amass': 'osift', 'dnsx': 'osift',
     'chaos': 'osift', 'dnsdumpster': 'osift', 'rapiddns': 'osift',
     'theharvester': 'osift', 'recon-ng': 'osift', 'whois': 'osift',
-    'dnstwist': 'osift', 'metagoofil': 'osift', 'spiderfoot': 'osift',
+    'metagoofil': 'osift', 'spiderfoot': 'osift',
 };
 function _resolveToolId(raw) {
     if (!raw) return '';
