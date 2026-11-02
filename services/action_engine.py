@@ -234,6 +234,12 @@ CATEGORIES = {
         "approval_tier": "confirm",
         "description": "Tool timed out — re-run with adjusted settings",
     },
+    "manual_check": {
+        "recommended_tool": None,
+        "priority": "HIGH",
+        "approval_tier": "confirm",
+        "description": "Manual verification required — human testing needed",
+    },
 }
 
 # ── Credential discovery patterns ──────────────────────────────────────
@@ -1137,6 +1143,13 @@ class ActionEngine:
         ip = finding.get("ip", "")
         hostname = finding.get("hostname", "")
         scope = finding.get("scope", "")
+        _aether_ssid = ""
+        if source_tool.startswith("aether"):
+            _aether_ssid = (
+                (finding.get("data") or {}).get("ssid")
+                or finding.get("hostname")
+                or ""
+            )
         in_scope = self._resolve_in_scope(
             project, target=target, ip=ip, hostname=hostname)
         items = []
@@ -1310,6 +1323,12 @@ class ActionEngine:
             if item:
                 items.append(item)
 
+        if _aether_ssid and items:
+            for _ai in items:
+                _m = _ai.get("metadata")
+                if isinstance(_m, dict):
+                    _m["ssid"] = _aether_ssid
+
         return items
 
     # ── Credential discovery ─────────────────────────────────────────
@@ -1456,6 +1475,66 @@ class ActionEngine:
 
         return items
 
+    # ── Manual check catalogue loading ──────────────────────────────
+
+    _TOOL_MC_PATHS = {
+        "fracture": "/opt/pr0t31n/Fracture/manual_checks.json",
+        "siphon": "/opt/pr0t31n/Siphon/manual_checks.json",
+    }
+
+    def emit_manual_checks(self, project_dir, source_tool, project=None,
+                           _collector=None):
+        import json as _json
+        mc_path = self._TOOL_MC_PATHS.get(source_tool)
+        if not mc_path:
+            return []
+        mc_path = Path(mc_path)
+        if not mc_path.is_file():
+            return []
+        try:
+            with open(mc_path) as fh:
+                catalogue = _json.load(fh)
+        except Exception:
+            log.warning("Failed to load manual checks from %s", mc_path)
+            return []
+        checks = catalogue.get("checks") or []
+        if not checks:
+            return []
+
+        items = []
+        target = ""
+        scope_def = (project or {}).get("scope_definition") or {}
+        targets = scope_def.get("targets") or scope_def.get("urls") or []
+        if targets:
+            target = targets[0] if isinstance(targets, list) else str(targets)
+
+        for chk in checks:
+            item = {
+                "type": "manual_check",
+                "title": chk.get("title", ""),
+                "description": chk.get("description", ""),
+                "target": target,
+                "scope": "",
+                "source_tool": source_tool,
+                "recommended_tool": None,
+                "category": "manual_check",
+                "priority": chk.get("priority", "HIGH"),
+                "approval_tier": "confirm",
+                "in_scope": True,
+                "metadata": {
+                    "check_id": chk.get("id", ""),
+                    "instructions": chk.get("instructions", []),
+                    "finding_template": chk.get("finding_template", {}),
+                    "owasp_mapping": chk.get("owasp_mapping", ""),
+                },
+            }
+            if _collector is not None:
+                _collector.append(item)
+            else:
+                items.append(item)
+        log.info("Emitted %d manual checks for %s", len(checks), source_tool)
+        return items
+
     # ── Post-completion batch processing ───────────────────────────────
 
     def process_completed_findings(self, project_dir, project=None):
@@ -1492,6 +1571,15 @@ class ActionEngine:
 
         self._process_cross_tool_o365(project_dir, findings, project,
                                       _collector=collector)
+
+        _completed_tools = set()
+        for f in findings:
+            t = f.get("tool", "")
+            if t:
+                _completed_tools.add(t)
+        for _ct in _completed_tools:
+            self.emit_manual_checks(project_dir, _ct, project,
+                                    _collector=collector)
 
         store = _get_ai_store()
         added = store.add_items_batch(project_dir, collector)

@@ -4003,3 +4003,43 @@ kbd {
 .detail-table { border-collapse: collapse; }
 .detail-table td { padding: 5px 10px; font-size: 0.82rem; border-bottom: 1px solid var(--border-subtle); }
 .detail-label { font-weight: 600; color: var(--text-secondary); white-space: nowrap; width: 100px; }
+
+/* ── Manual check cards ─────────────────────────────────── */
+.manual-checks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+.manual-check-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: 8px; padding: 16px; display: flex; flex-direction: column;
+  transition: border-color .15s;
+}
+.manual-check-card:hover { border-color: var(--accent); }
+.manual-check-card .mc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.manual-check-card .mc-title { font-weight: 600; font-size: 0.92rem; flex: 1; }
+.manual-check-card .mc-desc { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 12px; }
+.manual-check-card .mc-instructions {
+  font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;
+  padding: 8px; background: var(--bg-surface); border-radius: 4px;
+  max-height: 0; overflow: hidden; transition: max-height .25s ease;
+}
+.manual-check-card .mc-instructions.expanded { max-height: 500px; }
+.manual-check-card .mc-instructions ol { margin: 0; padding-left: 18px; }
+.manual-check-card .mc-instructions li { margin-bottom: 4px; }
+.mc-toggle-instructions {
+  font-size: 0.72rem; color: var(--accent); cursor: pointer;
+  background: none; border: none; padding: 0; margin-bottom: 8px; text-decoration: underline;
+}
+.manual-check-actions { display: flex; gap: 8px; margin-top: auto; }
+.mc-btn-missing, .mc-btn-exists {
+  flex: 1; padding: 8px 12px; border: none; border-radius: 6px;
+  font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: opacity .15s;
+}
+.mc-btn-missing { background: var(--status-error); color: #fff; }
+.mc-btn-exists { background: var(--status-success); color: #fff; }
+.mc-btn-missing:hover, .mc-btn-exists:hover { opacity: .85; }
+.mc-btn-missing:disabled, .mc-btn-exists:disabled { opacity: .5; cursor: not-allowed; }
+.mc-resolved-badge {
+  display: inline-block; padding: 4px 10px; border-radius: 4px;
+  font-size: 0.78rem; font-weight: 600; margin-top: auto;
+}
+.mc-resolved-badge.missing { background: rgba(231,76,60,.12); color: var(--status-error); }
+.mc-resolved-badge.exists { background: rgba(46,204,113,.12); color: var(--status-success); }
+.mc-owasp-ref { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px; }

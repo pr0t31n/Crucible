@@ -334,6 +334,33 @@
   <div class="tab-content" data-tab="action-items">
     <div class="p-20">
 
+      <!-- ── Manual / Automated sub-tabs ─────────────────── -->
+      <div class="tab-nav mb-16" id="actionSubNav">
+        <button type="button" class="tab-btn active" data-action-tab="manual">
+          Manual Checks <span class="tab-pill" id="manualPill"></span>
+        </button>
+        <button type="button" class="tab-btn" data-action-tab="automated">
+          Automated <span class="tab-pill" id="automatedPill"></span>
+        </button>
+      </div>
+
+      <!-- ── Manual checks container ─────────────────────── -->
+      <div id="manualCheckContainer">
+        <div class="manual-checks-grid" id="manualChecksGrid"><!-- JS populates --></div>
+        <div class="empty-state" id="manualEmpty" hidden>
+          <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+            </svg>
+          </div>
+          <div class="empty-state-title">No manual checks pending</div>
+          <div class="empty-state-text">Manual verification items appear after automated scans complete.</div>
+        </div>
+      </div>
+
+      <!-- ── Automated items container ───────────────────── -->
+      <div id="automatedContainer" hidden>
+
       <!-- ── Summary bar ──────────────────────────────────── -->
       <div class="flex gap-16 flex-wrap mb-16" id="actionSummaryBar">
         <div class="flex gap-4" style="align-items:center"><span class="badge" style="background:rgba(231,76,60,.15);color:#e74c3c">Urgent</span><span class="font-mono text-xs" id="actUrgent">0</span></div>
@@ -377,6 +404,8 @@
         <div class="empty-state-title">No action items</div>
         <div class="empty-state-text">Action items appear when tools recommend follow-up testing.</div>
       </div>
+
+      </div><!-- /automatedContainer -->
 
     </div>
   </div>

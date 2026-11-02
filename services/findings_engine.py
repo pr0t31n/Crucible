@@ -635,6 +635,80 @@ class FindingsEngine:
                 except Exception:
                     log.exception("Failed to generate action for live finding")
 
+    def create_finding_from_manual_check(self, project_id, project,
+                                           template, source_check_id):
+        try:
+            import sys as _sys
+            if "/opt/pr0t31n/shared" not in _sys.path:
+                _sys.path.insert(0, "/opt/pr0t31n/shared")
+            import pr0t31n_schema as _us
+            finding = _us.make_finding(
+                tool="crucible",
+                title=template.get("title", "Manual Check Finding"),
+                risk=(template.get("risk") or "MEDIUM").upper(),
+                description=template.get("description", ""),
+                remediation=template.get("remediation", ""),
+                ip="",
+                port=0,
+                command="Manual verification by tester",
+                sources="crucible",
+                affected="",
+                cves=",".join(template.get("cve_examples", [])),
+                service="",
+                owasp=template.get("owasp_web", ""),
+                owasp_api=template.get("owasp_api", ""),
+                cwe=template.get("cwe", []),
+                source_tools=["crucible"],
+                confidence="Firm",
+            )
+        except ImportError:
+            from datetime import datetime as _dt
+            import uuid as _uuid
+            finding = {
+                "id": str(_uuid.uuid4()),
+                "tool": "crucible",
+                "title": template.get("title", "Manual Check Finding"),
+                "risk": (template.get("risk") or "MEDIUM").upper(),
+                "description": template.get("description", ""),
+                "remediation": template.get("remediation", ""),
+                "datetime": _dt.now().isoformat(),
+                "ip": "", "port": 0, "hostname": "",
+                "command": "Manual verification by tester",
+                "sources": "crucible", "affected": "",
+                "cves": ",".join(template.get("cve_examples", [])),
+                "service": "", "output": "", "output_file": "",
+                "owasp": template.get("owasp_web", ""),
+                "cwe": template.get("cwe", []),
+                "source_tools": ["crucible"],
+                "confidence": "Firm",
+                "exploitdb": False, "metasploit": False,
+                "exploit_details": [],
+            }
+
+        finding["metadata"] = {"source_check_id": source_check_id}
+        self.add_live_finding(project_id, finding, project=project)
+
+        project_dir = (project or {}).get("project_dir", "")
+        if project_dir:
+            findings_path = Path(project_dir) / "findings.json"
+            try:
+                import json as _json
+                existing = []
+                if findings_path.exists():
+                    with open(findings_path) as fh:
+                        data = _json.load(fh)
+                    if isinstance(data, list):
+                        existing = data
+                    elif isinstance(data, dict):
+                        existing = data.get("findings", [])
+                existing.append(finding)
+                with open(findings_path, "w") as fh:
+                    _json.dump(existing, fh, indent=2, default=str)
+            except Exception:
+                log.exception("Failed to persist manual check finding to disk")
+
+        return finding
+
     def remove_live_finding(self, project_id, finding_id):
         """Remove a finding from the live cache by id."""
         with self._lock:

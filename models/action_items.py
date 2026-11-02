@@ -70,6 +70,9 @@ def _normalize_target(raw):
 
 
 def _dedup_key(item):
+    if item.get("type") == "manual_check":
+        check_id = (item.get("metadata") or {}).get("check_id", "")
+        return ("_mc_", check_id)
     return (
         (item.get("recommended_tool") or "").lower(),
         _normalize_target(item.get("target") or ""),
@@ -203,6 +206,7 @@ class ActionItemStore:
         by_status = {}
         by_category = {}
         by_tool = {}
+        manual_pending = 0
         for item in items:
             s = item.get("status") or "pending"
             by_status[s] = by_status.get(s, 0) + 1
@@ -210,6 +214,8 @@ class ActionItemStore:
             by_category[c] = by_category.get(c, 0) + 1
             t = item.get("recommended_tool") or "unknown"
             by_tool[t] = by_tool.get(t, 0) + 1
+            if item.get("type") == "manual_check" and s == "pending":
+                manual_pending += 1
         return {
             "by_status": by_status,
             "by_category": by_category,
@@ -220,6 +226,7 @@ class ActionItemStore:
             "running": by_status.get("running", 0),
             "complete": by_status.get("complete", 0),
             "dismissed": by_status.get("dismissed", 0),
+            "manual_pending": manual_pending,
         }
 
     # ── Write operations (cache + persist) ──────────────────
@@ -253,6 +260,7 @@ class ActionItemStore:
             item.setdefault("priority", "MEDIUM")
             item.setdefault("category", "other")
             item.setdefault("in_scope", True)
+            item.setdefault("type", "automated")
             self._stores[project_dir].append(item)
             self._keys[project_dir].add(key)
             self._persist(project_dir)
@@ -288,6 +296,7 @@ class ActionItemStore:
                 item.setdefault("priority", "MEDIUM")
                 item.setdefault("category", "other")
                 item.setdefault("in_scope", True)
+                item.setdefault("type", "automated")
                 self._stores[project_dir].append(item)
                 self._keys[project_dir].add(key)
                 added.append(item)
@@ -307,6 +316,8 @@ class ActionItemStore:
                         item["completed_at"] = datetime.now().isoformat()
                     elif new_status == "dismissed":
                         item["dismissed_at"] = datetime.now().isoformat()
+                    elif new_status in ("confirmed_missing", "confirmed_exists"):
+                        item["resolved_at"] = datetime.now().isoformat()
                     if extra_fields:
                         item.update(extra_fields)
                     break

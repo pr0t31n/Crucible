@@ -77,6 +77,7 @@ var filteredFindings = [];  /* after filter */
 var showFP = false;
 var fpFindings = [];        /* false positives */
 var allActionItems = [];
+var _actionSubTab = 'manual';
 var allLogs = [];
 var allErrors = [];
 var logsPage = 1;
@@ -490,7 +491,7 @@ function _activeActionCount(items) {
     var count = 0;
     for (var i = 0; i < items.length; i++) {
         var s = (items[i].status || 'pending').toLowerCase();
-        if (s !== 'complete' && s !== 'dismissed') count++;
+        if (s !== 'complete' && s !== 'dismissed' && s !== 'confirmed_missing' && s !== 'confirmed_exists') count++;
     }
     return count;
 }
@@ -4158,6 +4159,31 @@ window.loadActionItems = function() {
 function renderActionItems() {
     var tbody = document.getElementById('actionTableBody');
     var empty = document.getElementById('actionEmpty');
+    var manualContainer = document.getElementById('manualCheckContainer');
+    var automatedContainer = document.getElementById('automatedContainer');
+
+    var manualItems = allActionItems.filter(function(a) { return a.type === 'manual_check'; });
+    var automatedItems = allActionItems.filter(function(a) { return a.type !== 'manual_check'; });
+
+    var manualPending = manualItems.filter(function(a) {
+        var s = (a.status||'').toLowerCase();
+        return s !== 'confirmed_missing' && s !== 'confirmed_exists';
+    }).length;
+    var manualPill = document.getElementById('manualPill');
+    var automatedPill = document.getElementById('automatedPill');
+    if (manualPill) manualPill.textContent = manualPending || '';
+    if (automatedPill) automatedPill.textContent = _activeActionCount(automatedItems.filter(_isInScope)) || '';
+
+    if (_actionSubTab === 'manual') {
+        if (manualContainer) manualContainer.hidden = false;
+        if (automatedContainer) automatedContainer.hidden = true;
+        _renderManualChecks(manualItems);
+        document.getElementById('actionPill').textContent =
+            (manualPending + _activeActionCount(automatedItems.filter(_isInScope))) || '';
+        return;
+    }
+    if (manualContainer) manualContainer.hidden = true;
+    if (automatedContainer) automatedContainer.hidden = false;
 
     var _priOrder = {critical:0, urgent:0, high:1, recommended:2, medium:2, low:3, optional:3};
     function _sortActionItems(arr) {
@@ -4168,8 +4194,8 @@ function renderActionItems() {
             return (a.title||'').localeCompare(b.title||'');
         });
     }
-    var inScopeItems = allActionItems.filter(_isInScope);
-    var oosItems = allActionItems.filter(function(a) { return !_isInScope(a); });
+    var inScopeItems = automatedItems.filter(_isInScope);
+    var oosItems = automatedItems.filter(function(a) { return !_isInScope(a); });
     var visible = _sortActionItems(_showOOS ? oosItems : inScopeItems);
 
     /* summary counts — always reflect visible set */
@@ -4183,7 +4209,8 @@ function renderActionItems() {
     document.getElementById('actUrgent').textContent = counts.urgent;
     document.getElementById('actRecommended').textContent = counts.recommended;
     document.getElementById('actOptional').textContent = counts.optional;
-    document.getElementById('actionPill').textContent = _activeActionCount(inScopeItems) || '';
+    document.getElementById('actionPill').textContent =
+        (manualPending + _activeActionCount(inScopeItems)) || '';
     document.getElementById('oosCount').textContent = oosItems.length;
     renderBulkActionBar();
 
@@ -4360,6 +4387,129 @@ function _bulkGroupLabel(key) {
     var authLabel = parts[1] === 'auth' ? 'AUTH' : 'UNAUTH';
     return prefix + name + ' - ' + authLabel;
 }
+
+/* ── Sub-tab click handler ──────────────────────────────────────── */
+(function() {
+    var nav = document.getElementById('actionSubNav');
+    if (!nav) return;
+    nav.addEventListener('click', function(e) {
+        var btn = e.target.closest('[data-action-tab]');
+        if (!btn) return;
+        _actionSubTab = btn.getAttribute('data-action-tab');
+        nav.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderActionItems();
+    });
+})();
+
+/* ── Manual check card renderer ────────────────────────────────── */
+function _renderManualChecks(items) {
+    var grid = document.getElementById('manualChecksGrid');
+    var emptyEl = document.getElementById('manualEmpty');
+    if (!grid) return;
+    if (!items.length) {
+        grid.innerHTML = '';
+        if (emptyEl) emptyEl.hidden = false;
+        return;
+    }
+    if (emptyEl) emptyEl.hidden = true;
+    var _priOrder = {critical:0, high:1, medium:2, low:3, info:4};
+    var sorted = items.slice().sort(function(a, b) {
+        var pa = _priOrder[(a.priority||'').toLowerCase()] ?? 4;
+        var pb = _priOrder[(b.priority||'').toLowerCase()] ?? 4;
+        if (pa !== pb) return pa - pb;
+        var sa = (a.status||'').toLowerCase(), sb = (b.status||'').toLowerCase();
+        var ra = (sa === 'confirmed_missing' || sa === 'confirmed_exists') ? 1 : 0;
+        var rb = (sb === 'confirmed_missing' || sb === 'confirmed_exists') ? 1 : 0;
+        return ra - rb;
+    });
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+        var item = sorted[i];
+        var meta = item.metadata || {};
+        var status = (item.status || 'pending').toLowerCase();
+        var resolved = (status === 'confirmed_missing' || status === 'confirmed_exists');
+        var pri = (item.priority || 'HIGH').toUpperCase();
+        var priColor = pri === 'CRITICAL' ? 'var(--risk-critical)' :
+                       pri === 'HIGH' ? 'var(--risk-high)' :
+                       pri === 'MEDIUM' ? 'var(--risk-medium)' : 'var(--risk-low)';
+        var instructions = meta.instructions || [];
+        var owasp = meta.owasp_mapping || '';
+        html += '<div class="manual-check-card">';
+        html += '<div class="mc-header">';
+        html += '<span class="badge" style="background:' + priColor + ';color:#fff;font-size:.7rem">' + esc(pri) + '</span>';
+        html += '<span class="mc-title">' + esc(item.title || '') + '</span>';
+        html += '</div>';
+        html += '<div class="mc-desc">' + esc(item.description || '') + '</div>';
+        if (owasp) html += '<div class="mc-owasp-ref">OWASP: ' + esc(owasp) + '</div>';
+        if (instructions.length) {
+            html += '<button type="button" class="mc-toggle-instructions" onclick="this.nextElementSibling.classList.toggle(\'expanded\');this.textContent=this.nextElementSibling.classList.contains(\'expanded\')?\'Hide instructions\':\'Show instructions\'">Show instructions</button>';
+            html += '<div class="mc-instructions"><ol>';
+            for (var j = 0; j < instructions.length; j++) {
+                html += '<li>' + esc(instructions[j]) + '</li>';
+            }
+            html += '</ol></div>';
+        }
+        if (resolved) {
+            if (status === 'confirmed_missing') {
+                html += '<div class="mc-resolved-badge missing">Issue Confirmed — Finding Created</div>';
+            } else {
+                html += '<div class="mc-resolved-badge exists">Verified — No Issue Found</div>';
+            }
+        } else {
+            html += '<div class="manual-check-actions">';
+            html += '<button type="button" class="mc-btn-missing" onclick="_resolveManualCheck(\'' + esc(item.id) + '\',\'missing\',this)">Missing — Issue Confirmed</button>';
+            html += '<button type="button" class="mc-btn-exists" onclick="_resolveManualCheck(\'' + esc(item.id) + '\',\'exists\',this)">Exists — No Issue</button>';
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+    grid.innerHTML = html;
+}
+
+function _resolveManualCheck(itemId, resolution, btn) {
+    var card = btn.closest('.manual-check-card');
+    var btns = card.querySelectorAll('button.mc-btn-missing, button.mc-btn-exists');
+    btns.forEach(function(b) { b.disabled = true; });
+    fetch('/api/action-item/resolve-manual', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, item_id: itemId, resolution: resolution})
+    }).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.ok) {
+            for (var i = 0; i < allActionItems.length; i++) {
+                if (allActionItems[i].id === itemId) {
+                    allActionItems[i].status = resp.status;
+                    break;
+                }
+            }
+            renderActionItems();
+            if (resolution === 'missing') {
+                loadFindings(true);
+            }
+        } else {
+            btns.forEach(function(b) { b.disabled = false; });
+            alert(resp.error || 'Failed to resolve manual check');
+        }
+    }).catch(function() {
+        btns.forEach(function(b) { b.disabled = false; });
+    });
+}
+
+/* ── manual_check_resolved socket event ────────────────────────── */
+socket.on('manual_check_resolved', function(data) {
+    if (!data || !data.item_id) return;
+    for (var i = 0; i < allActionItems.length; i++) {
+        if (allActionItems[i].id === data.item_id) {
+            allActionItems[i].status = data.status;
+            break;
+        }
+    }
+    if (document.querySelector('.tab-content[data-tab="action-items"].active')) {
+        renderActionItems();
+    }
+    if (data.resolution === 'missing') loadFindings(true);
+});
 
 function renderBulkActionBar() {
     var bar = document.getElementById('bulkActionBar');

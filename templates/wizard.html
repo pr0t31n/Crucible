@@ -774,18 +774,21 @@
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="form-group">
-            <label class="form-label" for="activeSSIDs">Active Scope SSIDs</label>
+            <label class="form-label" for="activeSSIDs">Active Scope SSIDs <span data-tooltip="Full testing: deauth, rogue AP, evil twin, and client attacks are permitted against these SSIDs." style="cursor:help;color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span></label>
             <textarea id="activeSSIDs" class="form-control" rows="3"
                       placeholder="One SSID per line — full testing including client interaction">{% if project and project.scope_definition %}{{ (project.scope_definition.get('wireless_active_ssids') or project.scope_definition.get('wireless_ssids') or [])|join('\n') }}{% endif %}</textarea>
             <span class="form-hint">Deauth, rogue AP, and client attacks allowed</span>
           </div>
           <div class="form-group">
-            <label class="form-label" for="passiveSSIDs">Passive Scope SSIDs</label>
+            <label class="form-label" for="passiveSSIDs">Passive Scope SSIDs <span data-tooltip="Monitoring only: packet capture, AP enumeration, and signal analysis. No deauth, rogue AP, or client interaction." style="cursor:help;color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span></label>
             <textarea id="passiveSSIDs" class="form-control" rows="3"
                       placeholder="One SSID per line — monitoring and AP testing only">{% if project and project.scope_definition %}{{ (project.scope_definition.get('wireless_passive_ssids') or [])|join('\n') }}{% endif %}</textarea>
             <span class="form-hint">No deauth, rogue AP, or client interaction</span>
           </div>
         </div>
+        <div id="ssidOverlapWarning" class="form-hint"
+             style="color:var(--risk-high);background:rgba(231,76,60,.08);padding:8px 12px;border-radius:4px;margin-top:8px"
+             hidden></div>
       </div>
 
       <!-- ── Bastion ───────────────────────────────────────── -->

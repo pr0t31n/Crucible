@@ -525,6 +525,20 @@ class QueueManager:
                 continue
             if item.get("user_reset"):
                 continue
+            if item.get("type") == "manual_check":
+                continue
+            _src = item.get("source_tool", "")
+            if _src.startswith("aether"):
+                _ssid = (item.get("metadata") or {}).get("ssid", "")
+                if _ssid:
+                    _sd = (project or {}).get("scope_definition") or {}
+                    _passive = set(_sd.get("wireless_passive_ssids") or [])
+                    _active = set(_sd.get("wireless_active_ssids") or [])
+                    _dflt = _sd.get("wireless_default_scope_mode", "active")
+                    if _ssid in _passive:
+                        continue
+                    if _ssid not in _active and _dflt == "passive":
+                        continue
             tier = item.get("approval_tier", "confirm")
             tool = (item.get("recommended_tool") or "").lower()
             if not tool or tool not in AUTO_QUEUE_TOOLS:

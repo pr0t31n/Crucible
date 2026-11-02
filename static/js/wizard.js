@@ -1081,9 +1081,62 @@
     return raw.split('\n').map(function(l){return l.trim();}).filter(Boolean);
   }
 
+  /* ── SSID mutual exclusivity validation ────────────────── */
+  function validateSSIDExclusivity() {
+    var active = textToArray('activeSSIDs');
+    var passive = textToArray('passiveSSIDs');
+    var activeSet = {};
+    active.forEach(function(s) { activeSet[s] = true; });
+    var overlap = passive.filter(function(s) { return activeSet[s]; });
+    var warn = document.getElementById('ssidOverlapWarning');
+    if (overlap.length) {
+      if (warn) {
+        warn.textContent = 'The following SSID(s) appear in both Active and Passive scope: ' + overlap.join(', ');
+        warn.hidden = false;
+      }
+      return false;
+    }
+    if (warn) warn.hidden = true;
+    return true;
+  }
+
+  /* ── Auto-queue gating for wireless-only passive scope ── */
+  function checkWirelessAutoQueueGating() {
+    var aqCheckbox = document.getElementById('autoQueue');
+    if (!aqCheckbox) return;
+    var active = textToArray('activeSSIDs');
+    var passive = textToArray('passiveSSIDs');
+    var defMode = (document.getElementById('wirelessDefaultMode') || {}).value || 'active';
+    var hasAnyWireless = active.length > 0 || passive.length > 0;
+    if (hasAnyWireless && active.length === 0 && passive.length > 0 && defMode === 'passive') {
+      aqCheckbox.checked = false;
+      aqCheckbox.disabled = true;
+      var label = aqCheckbox.closest('label') || aqCheckbox.parentElement;
+      if (label) label.setAttribute('data-tooltip', 'Auto-queue disabled: all SSIDs are passive (monitoring only)');
+    } else {
+      aqCheckbox.disabled = false;
+      var label2 = aqCheckbox.closest('label') || aqCheckbox.parentElement;
+      if (label2) label2.removeAttribute('data-tooltip');
+    }
+  }
+
+  /* Wire live validation to textareas and default mode select */
+  ['activeSSIDs', 'passiveSSIDs'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', function() { validateSSIDExclusivity(); checkWirelessAutoQueueGating(); });
+      el.addEventListener('blur', function() { validateSSIDExclusivity(); checkWirelessAutoQueueGating(); });
+    }
+  });
+  var wdm = document.getElementById('wirelessDefaultMode');
+  if (wdm) wdm.addEventListener('change', function() { checkWirelessAutoQueueGating(); });
+
   /* ── Submit ──────────────────────────────────────────── */
   btnSubmit.addEventListener('click', function() {
     if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
+      return;
+    }
+    if (!validateSSIDExclusivity()) {
       return;
     }
     btnSubmit.disabled = true;

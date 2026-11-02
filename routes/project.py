@@ -344,6 +344,12 @@ def _apply_wizard_scheduling(project_id, meta, data):
 @project_bp.route("/api/create_project", methods=["POST"])
 def api_create_project():
     data = request.get_json(silent=True) or {}
+    scope_def = data.get("scope_definition") or {}
+    _active_ssids = set(scope_def.get("wireless_active_ssids") or [])
+    _passive_ssids = set(scope_def.get("wireless_passive_ssids") or [])
+    _ssid_overlap = _active_ssids & _passive_ssids
+    if _ssid_overlap:
+        return jsonify({"error": f"SSID(s) in both Active and Passive scope: {', '.join(sorted(_ssid_overlap))}"}), 400
     try:
         pid, meta = create_project(data)
     except Exception as e:
@@ -482,6 +488,12 @@ def _sync_scope_to_tool_settings(data, project):
 @project_bp.route("/api/update_project/<project_id>", methods=["POST"])
 def api_update_project(project_id):
     data = request.get_json(silent=True) or {}
+    scope_def = data.get("scope_definition") or {}
+    _active_ssids = set(scope_def.get("wireless_active_ssids") or [])
+    _passive_ssids = set(scope_def.get("wireless_passive_ssids") or [])
+    _ssid_overlap = _active_ssids & _passive_ssids
+    if _ssid_overlap:
+        return jsonify({"error": f"SSID(s) in both Active and Passive scope: {', '.join(sorted(_ssid_overlap))}"}), 400
     if "scope" in data and "active_scopes" not in data:
         data["active_scopes"] = [data["scope"]]
     if "scope_definition" in data and "tool_settings" not in data:

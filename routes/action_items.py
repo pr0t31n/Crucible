@@ -1348,3 +1348,72 @@ def api_preview_command():
     except Exception as exc:
         log.exception("Error previewing command for %s", tool_id)
         return jsonify({"error": str(exc)}), 500
+
+
+@action_items_bp.route("/api/action-item/resolve-manual", methods=["POST"])
+@require_project
+def api_resolve_manual_check():
+    data = request.get_json(silent=True) or {}
+    project_id = data.get("project_id", "")
+    item_id = data.get("item_id", "")
+    resolution = data.get("resolution", "")
+    if not project_id or not item_id:
+        return jsonify({"error": "project_id and item_id required"}), 400
+    if resolution not in ("missing", "exists"):
+        return jsonify({"error": "resolution must be 'missing' or 'exists'"}), 400
+
+    from models.project import load_project
+    project = load_project(project_id)
+    if not project:
+        return jsonify({"error": "project not found"}), 404
+    project_dir = project.get("project_dir", "")
+
+    items = load_action_items(project_dir)
+    target_item = None
+    for ai in items:
+        if ai.get("id") == item_id:
+            target_item = ai
+            break
+    if not target_item:
+        return jsonify({"error": "action item not found"}), 404
+    if target_item.get("type") != "manual_check":
+        return jsonify({"error": "item is not a manual check"}), 400
+
+    finding_id = None
+    if resolution == "missing":
+        template = (target_item.get("metadata") or {}).get("finding_template", {})
+        check_id = (target_item.get("metadata") or {}).get("check_id", "")
+        from flask import current_app
+        fe = current_app.extensions.get("findings_engine")
+        if fe:
+            finding = fe.create_finding_from_manual_check(
+                project_id, project, template, check_id)
+            finding_id = finding.get("id") if finding else None
+        new_status = "confirmed_missing"
+        extra = {"finding_id": finding_id} if finding_id else {}
+        meta = target_item.get("metadata") or {}
+        meta.update(extra)
+        update_action_item_status(
+            project_dir, item_id, new_status,
+            extra_fields={"metadata": meta})
+    else:
+        new_status = "confirmed_exists"
+        update_action_item_status(project_dir, item_id, new_status)
+
+    try:
+        from flask_socketio import emit as _emit
+        _emit("manual_check_resolved", {
+            "item_id": item_id,
+            "resolution": resolution,
+            "finding_id": finding_id,
+            "status": new_status,
+        }, room=_room(project_id), namespace="/")
+    except Exception:
+        pass
+
+    return jsonify({
+        "ok": True,
+        "item_id": item_id,
+        "status": new_status,
+        "finding_id": finding_id,
+    })
