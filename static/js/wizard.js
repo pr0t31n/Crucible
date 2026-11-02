@@ -585,9 +585,75 @@
     if (phasesGroup) phasesGroup.hidden = !showDynamic;
   }
   if (mobileModeEl) { mobileModeEl.addEventListener('change', updateMobileMode); updateMobileMode(); }
+  function _fridaStatusMsg(el, type, msg) {
+    el.hidden = false;
+    el.style.background = type === 'error' ? 'var(--bg-error, #3a1c1c)' : type === 'warn' ? 'var(--bg-warn, #3a2e1c)' : 'var(--bg-info, #1c2a3a)';
+    el.style.color = type === 'error' ? 'var(--text-error, #ff6b6b)' : type === 'warn' ? 'var(--text-warn, #ffb347)' : 'var(--text-info, #6bc5ff)';
+    el.innerHTML = msg;
+  }
+  function fetchFridaDevices(selectEl, statusEl, savedDeviceId) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="">Scanning...</option>';
+    selectEl.disabled = true;
+    if (statusEl) statusEl.hidden = true;
+    fetch('/api/frida-devices', {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        selectEl.disabled = false;
+        selectEl.innerHTML = '';
+        if (!data.ok) {
+          if (data.error === 'frida_not_installed') {
+            selectEl.innerHTML = '<option value="">(Frida not installed)</option>';
+            if (statusEl) _fridaStatusMsg(statusEl, 'error',
+              '<strong>Frida is not installed.</strong><br>' +
+              'Install: <code>pip3 install frida-tools frida</code><br>' +
+              'Then download <code>frida-server</code> for your device from ' +
+              '<a href="https://github.com/frida/frida/releases" target="_blank" style="color:inherit;text-decoration:underline">GitHub releases</a> ' +
+              '(match the version to your desktop frida-tools).<br>' +
+              'Push to device: <code>adb push frida-server /data/local/tmp/ &amp;&amp; adb shell chmod 755 /data/local/tmp/frida-server &amp;&amp; adb shell su -c \'/data/local/tmp/frida-server -D &amp;\'</code>');
+          } else if (data.error === 'no_devices') {
+            selectEl.innerHTML = '<option value="">(No devices found)</option>';
+            if (statusEl) _fridaStatusMsg(statusEl, 'warn',
+              '<strong>No mobile devices detected.</strong><br>' +
+              'Connect your Android or iOS device via USB and ensure USB debugging is enabled. ' +
+              'Frida-server must be running on the device.');
+          } else {
+            selectEl.innerHTML = '<option value="">(Error: ' + (data.message || 'unknown') + ')</option>';
+            if (statusEl) _fridaStatusMsg(statusEl, 'error', data.message || 'Unknown error');
+          }
+          return;
+        }
+        selectEl.innerHTML = '<option value="">-- Select device --</option>';
+        (data.devices || []).forEach(function(d) {
+          var opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.name + ' (' + d.id + ')';
+          selectEl.appendChild(opt);
+        });
+        if (savedDeviceId) selectEl.value = savedDeviceId;
+        if (data.devices && data.devices.length === 1) selectEl.value = data.devices[0].id;
+        if (statusEl) statusEl.hidden = true;
+      })
+      .catch(function() {
+        selectEl.disabled = false;
+        selectEl.innerHTML = '<option value="">(Scan failed)</option>';
+        if (statusEl) _fridaStatusMsg(statusEl, 'error', 'Failed to reach server. Check network connection.');
+      });
+  }
+  var _fridaRefreshBtn = document.getElementById('fridaRefreshBtn');
+  var _fridaStatusEl = document.getElementById('fridaDeviceStatus');
+  var _fridaSelectEl = document.getElementById('fridaDevice');
+  if (_fridaRefreshBtn) {
+    _fridaRefreshBtn.addEventListener('click', function() {
+      fetchFridaDevices(_fridaSelectEl, _fridaStatusEl);
+    });
+  }
   function updateFridaFields() {
     if (!fridaEnabledEl) return;
     document.getElementById('fridaGroup').hidden = !fridaEnabledEl.checked;
+    if (fridaEnabledEl.checked && _fridaSelectEl && _fridaSelectEl.options.length <= 1 && !_fridaSelectEl.options[0].value) {
+      fetchFridaDevices(_fridaSelectEl, _fridaStatusEl, _cfg.fridaDevice || '');
+    }
   }
   if (fridaEnabledEl) { fridaEnabledEl.addEventListener('change', updateFridaFields); updateFridaFields(); }
   function updateMitmFields() {
@@ -640,7 +706,7 @@
     fridaEnabledEl.checked = true;
     updateFridaFields();
   }
-  if (_cfg.fridaDevice) { var _fdEl = document.getElementById('fridaDevice'); if (_fdEl) _fdEl.value = _cfg.fridaDevice; }
+  if (_cfg.fridaDevice) { fetchFridaDevices(_fridaSelectEl, _fridaStatusEl, _cfg.fridaDevice); }
   if (_cfg.targetProcess) { var _tpEl = document.getElementById('targetProcess'); if (_tpEl) _tpEl.value = _cfg.targetProcess; }
   if (mitmEnabledEl && _cfg.mitmAnalysis) {
     mitmEnabledEl.checked = true;

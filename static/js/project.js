@@ -10129,6 +10129,74 @@ function renderSettingsFields(container, settings, schema) {
                     group.querySelectorAll('.cg-' + k).forEach(function(cb) { cb.checked = false; }); _sync();
                 });
             })(key);
+        } else if (type === 'frida_device_select') {
+            group.innerHTML =
+                '<label class="form-label">' + esc(label) + '</label>' +
+                '<div style="display:flex;gap:6px;align-items:center">' +
+                    '<select class="form-control" name="' + esc(key) + '" id="s_' + esc(key) + '" style="flex:1">' +
+                        (val ? '<option value="' + esc(val) + '" selected>' + esc(val) + '</option>' : '') +
+                        '<option value="">-- Click Refresh to scan --</option>' +
+                    '</select>' +
+                    '<button type="button" class="btn btn-xs btn-secondary _frida-refresh-btn" title="Scan for connected devices">&#x21bb; Refresh</button>' +
+                '</div>' +
+                '<div class="_frida-status" hidden style="margin-top:6px;font-size:0.8rem;padding:8px 10px;border-radius:4px"></div>';
+            (function(grp, savedVal) {
+                var sel = grp.querySelector('select');
+                var btn = grp.querySelector('._frida-refresh-btn');
+                var sts = grp.querySelector('._frida-status');
+                function _msg(t, m) {
+                    sts.hidden = false;
+                    sts.style.background = t === 'error' ? 'var(--bg-error, #3a1c1c)' : t === 'warn' ? 'var(--bg-warn, #3a2e1c)' : 'var(--bg-info, #1c2a3a)';
+                    sts.style.color = t === 'error' ? 'var(--text-error, #ff6b6b)' : t === 'warn' ? 'var(--text-warn, #ffb347)' : 'var(--text-info, #6bc5ff)';
+                    sts.innerHTML = m;
+                }
+                function _scan() {
+                    sel.innerHTML = '<option value="">Scanning...</option>';
+                    sel.disabled = true;
+                    sts.hidden = true;
+                    fetch('/api/frida-devices', {credentials: 'same-origin'})
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            sel.disabled = false;
+                            sel.innerHTML = '';
+                            if (!data.ok) {
+                                if (data.error === 'frida_not_installed') {
+                                    sel.innerHTML = '<option value="">(Frida not installed)</option>';
+                                    _msg('error', '<strong>Frida is not installed.</strong><br>' +
+                                        'Install: <code>pip3 install frida-tools frida</code><br>' +
+                                        'Then download <code>frida-server</code> for your device from ' +
+                                        '<a href="https://github.com/frida/frida/releases" target="_blank" style="color:inherit;text-decoration:underline">GitHub releases</a>.<br>' +
+                                        'Push to device: <code>adb push frida-server /data/local/tmp/ &amp;&amp; adb shell chmod 755 /data/local/tmp/frida-server &amp;&amp; adb shell su -c \'/data/local/tmp/frida-server -D &amp;\'</code>');
+                                } else if (data.error === 'no_devices') {
+                                    sel.innerHTML = '<option value="">(No devices found)</option>';
+                                    _msg('warn', '<strong>No mobile devices detected.</strong><br>' +
+                                        'Connect your Android or iOS device via USB and ensure USB debugging is enabled. ' +
+                                        'Frida-server must be running on the device.');
+                                } else {
+                                    sel.innerHTML = '<option value="">(Error)</option>';
+                                    _msg('error', data.message || 'Unknown error');
+                                }
+                                return;
+                            }
+                            sel.innerHTML = '<option value="">-- Select device --</option>';
+                            (data.devices || []).forEach(function(d) {
+                                var o = document.createElement('option');
+                                o.value = d.id;
+                                o.textContent = d.name + ' (' + d.id + ')';
+                                sel.appendChild(o);
+                            });
+                            if (savedVal) sel.value = savedVal;
+                            if (data.devices && data.devices.length === 1) sel.value = data.devices[0].id;
+                            sts.hidden = true;
+                        })
+                        .catch(function() {
+                            sel.disabled = false;
+                            sel.innerHTML = '<option value="">(Scan failed)</option>';
+                            _msg('error', 'Failed to reach server.');
+                        });
+                }
+                btn.addEventListener('click', _scan);
+            })(group, val || '');
         } else if (type === 'checkbox') {
             group.innerHTML =
                 '<div class="form-check">' +

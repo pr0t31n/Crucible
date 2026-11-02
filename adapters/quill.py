@@ -163,8 +163,8 @@ class QuillAdapter(ToolAdapter):
             "frida_analysis": {"label": "Frida Dynamic Analysis", "type": "checkbox",
                                "hint": "Attach Frida for runtime instrumentation and SSL pinning bypass",
                                "depends_on": {"analysis_mode": ["dynamic", "full"]}},
-            "frida_device": {"label": "Device ID", "type": "text",
-                             "hint": "Device serial (leave blank for USB)",
+            "frida_device": {"label": "Device", "type": "frida_device_select",
+                             "hint": "Scans for USB-connected Android/iOS devices via Frida",
                              "depends_on": {"frida_analysis": ["true"]}},
             "target_process": {"label": "Target Process", "type": "text",
                                "hint": "Package name (com.example.app) or bundle ID; "

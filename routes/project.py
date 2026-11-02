@@ -4,6 +4,8 @@ import io
 import json
 import logging
 import os
+import shutil
+import subprocess
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -1420,3 +1422,74 @@ def api_unexclude_ip(project_id):
         fe.invalidate(project_id)
 
     return jsonify({"ok": True, "ip": ip, "exclusions": exclusions})
+
+
+@project_bp.route("/api/frida-devices")
+def api_frida_devices():
+    """Discover connected Frida-compatible USB devices."""
+    frida_ls = shutil.which("frida-ls-devices")
+    if not frida_ls:
+        return jsonify({
+            "ok": False,
+            "error": "frida_not_installed",
+            "message": "Frida is not installed on this system.",
+            "instructions": {
+                "install": "pip3 install frida-tools frida",
+                "server": (
+                    "Download frida-server for your device from "
+                    "https://github.com/frida/frida/releases — match the "
+                    "version to your desktop frida-tools. Push to device: "
+                    "adb push frida-server /data/local/tmp/ && "
+                    "adb shell chmod 755 /data/local/tmp/frida-server && "
+                    "adb shell su -c '/data/local/tmp/frida-server -D &'"
+                ),
+            },
+            "devices": [],
+        })
+
+    try:
+        cp = subprocess.run(
+            [frida_ls], capture_output=True, text=True, timeout=5,
+        )
+        raw = cp.stdout or ""
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            "ok": False,
+            "error": "timeout",
+            "message": "frida-ls-devices timed out after 5 seconds.",
+            "devices": [],
+        })
+    except Exception as exc:
+        return jsonify({
+            "ok": False,
+            "error": "exec_error",
+            "message": f"Failed to run frida-ls-devices: {exc}",
+            "devices": [],
+        })
+
+    devices = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("Id"):
+            continue
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        dev_id = parts[0]
+        dev_type = parts[1]
+        dev_name = " ".join(parts[2:])
+        if dev_type == "usb":
+            devices.append({"id": dev_id, "type": dev_type, "name": dev_name})
+
+    if not devices:
+        return jsonify({
+            "ok": False,
+            "error": "no_devices",
+            "message": (
+                "No mobile devices detected. Connect your Android or iOS "
+                "device via USB and ensure USB debugging is enabled."
+            ),
+            "devices": [],
+        })
+
+    return jsonify({"ok": True, "devices": devices})

@@ -927,9 +927,15 @@
             <div id="fridaGroup" hidden>
               <div class="form-grid" style="margin-top:8px">
                 <div class="form-group">
-                  <label class="form-label" for="fridaDevice">Device ID</label>
-                  <input type="text" id="fridaDevice" class="form-control" placeholder="Device serial (leave blank for USB)">
-                  <span class="form-hint">Connect device or start emulator first.</span>
+                  <label class="form-label" for="fridaDevice">Device</label>
+                  <div style="display:flex;gap:6px;align-items:center">
+                    <select id="fridaDevice" class="form-control" style="flex:1">
+                      <option value="">-- Click Refresh to scan --</option>
+                    </select>
+                    <button type="button" class="btn btn-xs btn-secondary" id="fridaRefreshBtn" title="Scan for connected devices">&#x21bb; Refresh</button>
+                  </div>
+                  <div id="fridaDeviceStatus" hidden style="margin-top:6px;font-size:0.8rem;padding:8px 10px;border-radius:4px"></div>
+                  <span class="form-hint">Scans for USB-connected Android/iOS devices via Frida.</span>
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="targetProcess">Target Process</label>
