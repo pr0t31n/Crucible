@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -1427,8 +1428,21 @@ def api_unexclude_ip(project_id):
 @project_bp.route("/api/frida-devices")
 def api_frida_devices():
     """Discover connected Frida-compatible USB devices."""
+    cmd = None
     frida_ls = shutil.which("frida-ls-devices")
-    if not frida_ls:
+    if frida_ls:
+        cmd = [frida_ls]
+    else:
+        frida_bin = shutil.which("frida")
+        if frida_bin:
+            sibling = os.path.join(os.path.dirname(frida_bin),
+                                   "frida-ls-devices")
+            if os.path.isfile(sibling) and os.access(sibling, os.X_OK):
+                cmd = [sibling]
+            else:
+                cmd = [sys.executable, "-m", "frida_tools.lsd"]
+
+    if cmd is None:
         return jsonify({
             "ok": False,
             "error": "frida_not_installed",
@@ -1449,14 +1463,14 @@ def api_frida_devices():
 
     try:
         cp = subprocess.run(
-            [frida_ls], capture_output=True, text=True, timeout=5,
+            cmd, capture_output=True, text=True, timeout=10,
         )
         raw = cp.stdout or ""
     except subprocess.TimeoutExpired:
         return jsonify({
             "ok": False,
             "error": "timeout",
-            "message": "frida-ls-devices timed out after 5 seconds.",
+            "message": "frida-ls-devices timed out after 10 seconds.",
             "devices": [],
         })
     except Exception as exc:
@@ -1487,7 +1501,8 @@ def api_frida_devices():
             "error": "no_devices",
             "message": (
                 "No mobile devices detected. Connect your Android or iOS "
-                "device via USB and ensure USB debugging is enabled."
+                "device via USB and ensure USB debugging is enabled. "
+                "Frida-server must be running on the device."
             ),
             "devices": [],
         })
