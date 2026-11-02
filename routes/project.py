@@ -1428,21 +1428,9 @@ def api_unexclude_ip(project_id):
 @project_bp.route("/api/frida-devices")
 def api_frida_devices():
     """Discover connected Frida-compatible USB devices."""
-    cmd = None
-    frida_ls = shutil.which("frida-ls-devices")
-    if frida_ls:
-        cmd = [frida_ls]
-    else:
-        frida_bin = shutil.which("frida")
-        if frida_bin:
-            sibling = os.path.join(os.path.dirname(frida_bin),
-                                   "frida-ls-devices")
-            if os.path.isfile(sibling) and os.access(sibling, os.X_OK):
-                cmd = [sibling]
-            else:
-                cmd = [sys.executable, "-m", "frida_tools.lsd"]
-
-    if cmd is None:
+    try:
+        import frida
+    except ImportError:
         return jsonify({
             "ok": False,
             "error": "frida_not_installed",
@@ -1462,38 +1450,23 @@ def api_frida_devices():
         })
 
     try:
-        cp = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10,
-        )
-        raw = cp.stdout or ""
-    except subprocess.TimeoutExpired:
-        return jsonify({
-            "ok": False,
-            "error": "timeout",
-            "message": "frida-ls-devices timed out after 10 seconds.",
-            "devices": [],
-        })
+        all_devices = frida.enumerate_devices()
     except Exception as exc:
         return jsonify({
             "ok": False,
             "error": "exec_error",
-            "message": f"Failed to run frida-ls-devices: {exc}",
+            "message": f"Frida device enumeration failed: {exc}",
             "devices": [],
         })
 
     devices = []
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line or line.startswith("Id"):
-            continue
-        parts = line.split()
-        if len(parts) < 3:
-            continue
-        dev_id = parts[0]
-        dev_type = parts[1]
-        dev_name = " ".join(parts[2:])
-        if dev_type == "usb":
-            devices.append({"id": dev_id, "type": dev_type, "name": dev_name})
+    for d in all_devices:
+        if d.type == "usb":
+            devices.append({
+                "id": d.id,
+                "type": "usb",
+                "name": d.name,
+            })
 
     if not devices:
         return jsonify({
