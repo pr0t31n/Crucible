@@ -450,6 +450,10 @@ class SessionManager:
         sess = self.get_session(session_id)
         if not sess or sess.status == _STATUS_DEAD:
             return False
+        if sess.is_static():
+            if sess.heartbeat_url:
+                self._heartbeat_session(sess)
+            return sess.status != _STATUS_DEAD
         self._refresh_session(sess)
         return sess.status != _STATUS_DEAD
 
