@@ -318,10 +318,11 @@ def _resolve_isotope_targets(item, project):
 
 _TOOL_GENERATORS = {
     "fracture": ["osift", "ss3"],
-    "siphon":   ["osift", "ss3", "fracture"],
+    "siphon":   ["osift", "ss3", "fracture", "quill"],
     "auger":    ["ss3", "fracture"],
     "ss3":      ["osift"],
-    "isotope":  ["fracture", "ss3"],
+    "isotope":  ["fracture", "ss3", "quill"],
+    "forge":    ["quill"],
 }
 
 

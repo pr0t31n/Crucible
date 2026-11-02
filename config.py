@@ -171,7 +171,7 @@ TOOL_OUTPUT_DIRS = {
     "fracture": "fracture", "siphon": "siphon", "auger": "auger",
     "aether": "aether", "aether_b": "aether_b", "aether_z": "aether_z",
     "aether_u": "aether_u",
-    "bastion": "bastion", "forge": "cloud/forge", "quill": "quill", "isotope": "isotope", "dredge": "dredge",
+    "bastion": "bastion", "forge": "forge", "quill": "quill", "isotope": "isotope", "dredge": "dredge",
     "authprobe": "authprobe", "nessus": "nessus",
     "nuclei": "nuclei", "testssl": "testssl", "sslscan": "sslscan",
     "droopescan": "droopescan", "dnstwist": "dnstwist", "xurlfind3r": "xurlfind3r",
