@@ -200,9 +200,13 @@ def _backfill_from_project(settings, project, tool_id):
         if "mitm_port" not in settings:
             settings["mitm_port"] = scope_def.get("mitm_port", 8080)
         if not settings.get("app_files"):
-            app_path = scope_def.get("mobile_app_path", "")
-            if app_path:
-                settings["app_files"] = [app_path]
+            app_paths = scope_def.get("mobile_app_paths", [])
+            if app_paths and isinstance(app_paths, list):
+                settings["app_files"] = [p for p in app_paths if p]
+            else:
+                app_path = scope_def.get("mobile_app_path", "")
+                if app_path:
+                    settings["app_files"] = [app_path]
     elif tool_id == "bastion":
         if not settings.get("firewall_vendor"):
             settings["firewall_vendor"] = scope_def.get("firewall_vendor", "palo_alto")

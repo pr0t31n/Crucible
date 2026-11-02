@@ -607,9 +607,13 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         settings["mobile_platform"] = scope_def.get("mobile_platform", "auto")
         settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)
         settings["frida_device"] = scope_def.get("frida_device", "")
-        app_path = scope_def.get("mobile_app_path", "")
-        if app_path:
-            settings["app_files"] = [app_path]
+        app_paths = scope_def.get("mobile_app_paths", [])
+        if app_paths and isinstance(app_paths, list):
+            settings["app_files"] = [p for p in app_paths if p]
+        else:
+            app_path = scope_def.get("mobile_app_path", "")
+            if app_path:
+                settings["app_files"] = [app_path]
 
 
 def update_project(project_id, updates):

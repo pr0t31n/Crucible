@@ -351,6 +351,11 @@ def api_create_project():
     from services.audit_logger import audit
     audit(meta.get("project_dir", ""), "PROJECT_CREATE",
           project_id=pid, name=meta.get("name", ""))
+    if "scope_definition" in data:
+        _sync_scope_to_tool_settings(data, meta)
+        ts = data.get("tool_settings", meta.get("tool_settings", {}))
+        if ts:
+            update_project(pid, {"tool_settings": ts})
     _apply_wizard_scheduling(pid, meta, data)
     if meta.get("beacon_enabled") and meta.get("beacon_url"):
         _sync_beacon(pid)
