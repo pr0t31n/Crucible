@@ -911,6 +911,70 @@ class ProcessManager:
         except Exception as exc:
             log.warning("Failed to inject output dir for %s: %s", tool_id, exc)
 
+        if tool_id == "siphon":
+            self._inject_quill_har_into_settings(project, scope)
+
+    def _inject_quill_har_into_settings(self, project, scope=None):
+        """If Quill produced a HAR, inject it into Siphon's api_spec_files."""
+        quill_dirs = []
+        td = (project.get("tool_dirs") or {}).get("quill", "")
+        if td:
+            quill_dirs.append(Path(td))
+        for _s, _sd in (project.get("scope_tool_dirs") or {}).items():
+            _qtd = _sd.get("quill", "")
+            if _qtd and _qtd != td:
+                quill_dirs.append(Path(_qtd))
+        if not quill_dirs:
+            return
+        har_files = []
+        for qd in quill_dirs:
+            har = qd / "mitm" / "traffic_capture.har"
+            if har.exists() and har.stat().st_size > 10:
+                har_files.append(str(har))
+        if not har_files:
+            return
+        siphon_td = (project.get("tool_dirs") or {}).get("siphon", "")
+        proj_dir = project.get("project_dir", "")
+        from config import TOOL_SETTINGS_PREFIX
+        prefix = TOOL_SETTINGS_PREFIX.get("siphon", "siphon")
+        sfx = f"_{scope}" if scope else ""
+        base = Path(siphon_td) if siphon_td else Path(proj_dir)
+        settings_file = base / f"{prefix}_settings{sfx}.json"
+        if not settings_file.exists():
+            settings_file = base / f"{prefix}_settings.json"
+        settings = {}
+        if settings_file.exists():
+            try:
+                settings = json.loads(
+                    settings_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        scan = settings.setdefault("scan", {})
+        existing = scan.get("api_spec_files") or []
+        added = 0
+        for hf in har_files:
+            if hf not in existing:
+                existing.append(hf)
+                added += 1
+        if not added:
+            return
+        scan["api_spec_files"] = existing
+        try:
+            settings_file.write_text(
+                json.dumps(settings, indent=2), encoding="utf-8")
+            log.info("[quill-har] Injected %d HAR file(s) into Siphon "
+                     "settings: %s", added, har_files)
+            project_id = project.get("id", "")
+            if project_id:
+                self._emit_console(
+                    project_id, "siphon",
+                    f"[Crucible] Quill MITM HAR injected — Siphon will "
+                    f"start with {sum(1 for h in har_files)} captured "
+                    f"traffic file(s)",
+                    "system")
+        except Exception as exc:
+            log.warning("[quill-har] Failed to inject: %s", exc)
+
     # ── public API ───────────────────────────────────────────────────────
 
     def launch(self, project_id: str, tool_id: str, *, project: dict,

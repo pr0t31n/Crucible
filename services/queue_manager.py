@@ -659,6 +659,10 @@ class QueueManager:
                         tool_dir=tool_dir)
                     break
 
+            if any(it.get("source_tool") == "quill" for it in items):
+                self._inject_quill_spec(project, tool, item_scope,
+                                        tool_dir=tool_dir)
+
             best_priority = min(
                 {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}.get(
                     it.get("priority", "MEDIUM"), 2)
@@ -827,6 +831,10 @@ class QueueManager:
             except Exception as _se:
                 log.debug("session registration from MITM: %s", _se)
 
+        if item.get("source_tool") == "quill":
+            self._inject_quill_spec(project, tool, item_scope,
+                                    tool_dir=tool_dir)
+
         self.enqueue(project_id, tool, priority=1,
                      auto_queued=True, scope=item_scope, **extra)
         log.info("[immediate] Enqueued %s for project %s (target=%s)",
@@ -899,6 +907,58 @@ class QueueManager:
             settings.pop(stale, None)
         settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         return {}
+
+    def _inject_quill_spec(self, project, tool, scope, tool_dir=""):
+        """Inject Quill's MITM HAR/api_inventory into the tool's settings.
+
+        When Quill ran MITM and produced traffic_capture.har or
+        api_inventory.json, add them as api_spec_files so Siphon (or
+        Fracture) starts with real captured endpoints instead of blind
+        wordlist discovery.
+        """
+        if tool != "siphon":
+            return
+        import json
+        quill_dirs = []
+        td = (project.get("tool_dirs") or {}).get("quill", "")
+        if td:
+            quill_dirs.append(Path(td))
+        for _s, _sd in (project.get("scope_tool_dirs") or {}).items():
+            _qtd = _sd.get("quill", "")
+            if _qtd and _qtd != td:
+                quill_dirs.append(Path(_qtd))
+        if not quill_dirs:
+            return
+        spec_files = []
+        for qd in quill_dirs:
+            har = qd / "mitm" / "traffic_capture.har"
+            if har.exists() and har.stat().st_size > 10:
+                spec_files.append(str(har))
+        if not spec_files:
+            return
+        from config import TOOL_SETTINGS_PREFIX
+        prefix = TOOL_SETTINGS_PREFIX.get(tool, tool)
+        sfx = f"_{scope}" if scope else ""
+        base = Path(tool_dir) if tool_dir else Path(
+            project.get("project_dir", ""))
+        settings_file = base / f"{prefix}_settings{sfx}.json"
+        settings = {}
+        if settings_file.exists():
+            try:
+                settings = json.loads(
+                    settings_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        scan = settings.setdefault("scan", {})
+        existing = scan.get("api_spec_files") or []
+        for sf in spec_files:
+            if sf not in existing:
+                existing.append(sf)
+        scan["api_spec_files"] = existing
+        settings_file.write_text(
+            json.dumps(settings, indent=2), encoding="utf-8")
+        log.info("[quill-har] Injected %d spec file(s) into %s settings: %s",
+                 len(spec_files), tool, spec_files)
 
     def _prepare_credentialled_launch(self, project, tool, meta):
         """Write a credentialled settings file and return extra_args.
