@@ -2021,6 +2021,9 @@ var _ROLE_COLORS = {
     'read-only':       {bg:'#00838f',fg:'#fff'},
     'guest':           {bg:'#546e7a',fg:'#fff'},
     'api':             {bg:'#e65100',fg:'#fff'},
+    'static':          {bg:'#1565c0',fg:'#fff'},
+    'frida':           {bg:'#ad1457',fg:'#fff'},
+    'mitm':            {bg:'#e65100',fg:'#fff'},
 };
 var _ROLE_FALLBACK = {bg:'#455a64',fg:'#fff'};
 function _renderRolePills(roles) {
