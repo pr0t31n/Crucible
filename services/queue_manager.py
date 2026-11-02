@@ -440,6 +440,29 @@ class QueueManager:
                         settings_path, exc)
             return False
 
+    @staticmethod
+    def _forge_has_creds(project):
+        """Return True if any cloud credentials are configured for Forge."""
+        proj_dir = project.get("project_dir", "")
+        if not proj_dir:
+            return False
+        for name in ("forge_settings.json", "forge_webapp_settings.json",
+                     "forge_cloud_settings.json"):
+            sp = Path(proj_dir) / name
+            if not sp.exists():
+                continue
+            try:
+                import json
+                cfg = json.loads(sp.read_text())
+                if any(cfg.get(k) for k in (
+                    "aws_profile", "aws_access_key_id", "aws_region",
+                    "gcp_project", "azure_subscription",
+                )):
+                    return True
+            except Exception:
+                pass
+        return False
+
     def process_auto_queue(self, project_id: str, project: dict) -> int:
         """Examine pending action items and enqueue eligible tools.
 
@@ -536,6 +559,10 @@ class QueueManager:
         }
 
         for (tool, is_oos), items in tool_groups.items():
+            if tool == "forge" and not self._forge_has_creds(project):
+                log.info("[auto-queue] Skipping Forge — no cloud credentials "
+                         "configured for project %s", project_id)
+                continue
             raw_scope = items[0].get("scope") or ""
             # Remap action-item scopes to the engagement's configured scope.
             # If the item scope (or its alias) is one of the active scopes,

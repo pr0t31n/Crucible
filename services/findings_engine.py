@@ -563,8 +563,9 @@ class FindingsEngine:
             return
         try:
             db.bulk_insert(findings)
-            log.info("Populated FindingsDB for %s: %d findings", project_id,
-                     len(findings))
+            db.rebuild_fts()
+            log.info("Populated FindingsDB for %s: %d findings (FTS rebuilt)",
+                     project_id, len(findings))
         except Exception:
             log.exception("FindingsDB populate failed for %s", project_id)
 
@@ -656,6 +657,7 @@ class FindingsEngine:
                     if project:
                         apply_risk_overrides(findings, project)
                     db.bulk_insert(findings)
+                    db.rebuild_fts()
                     with self._lock:
                         cached = self._cache.get(project_id)
                         if cached is None:
