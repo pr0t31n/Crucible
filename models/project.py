@@ -750,9 +750,25 @@ def clear_project(project_id):
                         "audit.log", "audit.log.jsonl",
                         "falsePositives.json", "falsePositives.csv",
                         "false_positives.json", "false_positives.csv",
-                        "risk_overrides.json", "findings.db",
-                        "findings.db-wal", "findings.db-shm"):
+                        "risk_overrides.json"):
         (proj_dir / _stale_name).unlink(missing_ok=True)
+
+    _fdb_path = proj_dir / "findings.db"
+    if _fdb_path.exists():
+        for _wal in (_fdb_path.with_suffix(".db-wal"),
+                     _fdb_path.with_suffix(".db-shm")):
+            _wal.unlink(missing_ok=True)
+        _fdb_path.unlink(missing_ok=True)
+        try:
+            import sys as _s
+            if "/opt/pr0t31n/shared" not in _s.path:
+                _s.path.insert(0, "/opt/pr0t31n/shared")
+            import pr0t31n_findings_db
+            _db = pr0t31n_findings_db.FindingsDB(str(_fdb_path))
+            _db.set_meta("migration_status", "complete")
+            _db.close()
+        except Exception:
+            pass
     _snap_dir = proj_dir / "network_snapshots"
     if _snap_dir.is_dir():
         shutil.rmtree(_snap_dir, ignore_errors=True)
