@@ -1,4 +1,4 @@
-"""Findings API routes — CRUD, FP, risk override, notes, export, snapshots."""
+"""Findings API routes — CRUD, FP, risk override, notes, evidence, export, snapshots."""
 
 import csv
 import io
@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app, Response, send_file
 from config import VALID_RISKS
+from models import evidence as _ev
 from routes._helpers import require_project, get_ext
 
 findings_bp = Blueprint("findings", __name__)
@@ -415,42 +416,84 @@ def api_attach_evidence(project_id):
     if not f.filename:
         return jsonify({"error": "Empty filename"}), 400
 
-    safe_name = Path(f.filename).name
-    if ".." in safe_name or "/" in safe_name or "\\" in safe_name:
-        return jsonify({"error": "Invalid filename"}), 400
+    ok, err = _ev.validate_file(f.filename, f)
+    if not ok:
+        return jsonify({"error": err}), 400
 
-    evidence_dir = Path(project_dir) / "evidence" / finding_id
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    dest = evidence_dir / safe_name
-    f.save(str(dest))
+    rec, err = _ev.add_evidence(project_dir, finding_id, f.filename, f)
+    if not rec:
+        return jsonify({"error": err}), 400
 
-    try:
-        rel = str(dest.relative_to(project_dir))
-    except ValueError as exc:
-        log.debug("evidence relative_to: %s", exc)
-        rel = str(dest)
-
-    fe = _engine()
-    findings = fe.get_findings(project_id, project)
-    updated = False
-    for fnd in findings:
-        if fnd.get("id") == finding_id:
-            existing = fnd.get("output_file") or ""
-            if existing:
-                paths = set(existing.split("\n"))
-                paths.add(rel)
-                fnd["output_file"] = "\n".join(sorted(paths))
-            else:
-                fnd["output_file"] = rel
-            updated = True
-            break
-
-    if updated:
-        _persist_evidence_update(project_dir, finding_id, rel)
+    _persist_evidence_update(project_dir, finding_id, rec["stored_path"])
 
     log.info("Attached evidence %s to finding %s in project %s",
-             safe_name, finding_id, project_id)
-    return jsonify({"ok": True, "path": rel, "filename": safe_name})
+             rec["filename"], finding_id, project_id)
+    return jsonify({"ok": True, "evidence": rec})
+
+
+@findings_bp.route("/api/finding/evidence/<project_id>/<finding_id>")
+def api_list_evidence(project_id, finding_id):
+    """List all evidence attachments for a finding."""
+    project = require_project(project_id)
+    project_dir = project.get("project_dir", "")
+    if not project_dir:
+        return jsonify({"error": "No project directory"}), 400
+    items = _ev.list_evidence(project_dir, finding_id)
+    return jsonify({"evidence": items, "count": len(items)})
+
+
+@findings_bp.route("/api/finding/evidence-counts/<project_id>")
+def api_evidence_counts(project_id):
+    """Bulk evidence counts for multiple findings."""
+    project = require_project(project_id)
+    project_dir = project.get("project_dir", "")
+    if not project_dir:
+        return jsonify({"error": "No project directory"}), 400
+    ids = request.args.getlist("ids")
+    if not ids:
+        raw = request.args.get("ids_csv", "")
+        if raw:
+            ids = [x.strip() for x in raw.split(",") if x.strip()]
+    counts = _ev.evidence_counts(project_dir, ids) if ids else {}
+    return jsonify({"counts": counts})
+
+
+@findings_bp.route("/api/finding/evidence-download/<project_id>/<evidence_id>")
+def api_download_evidence(project_id, evidence_id):
+    """Download an evidence file with integrity verification."""
+    project = require_project(project_id)
+    project_dir = project.get("project_dir", "")
+    if not project_dir:
+        return jsonify({"error": "No project directory"}), 400
+
+    fpath, result = _ev.get_evidence_file(project_dir, evidence_id)
+    if not fpath:
+        code = 409 if "integrity" in (result or "").lower() else 404
+        return jsonify({"error": result}), code
+
+    return send_file(
+        str(fpath),
+        mimetype=result.get("content_type", "application/octet-stream"),
+        as_attachment=True,
+        download_name=result.get("filename", fpath.name),
+    )
+
+
+@findings_bp.route("/api/finding/evidence-delete/<project_id>/<evidence_id>",
+                    methods=["DELETE"])
+def api_delete_evidence(project_id, evidence_id):
+    """Delete an evidence attachment."""
+    project = require_project(project_id)
+    project_dir = project.get("project_dir", "")
+    if not project_dir:
+        return jsonify({"error": "No project directory"}), 400
+
+    ok, err = _ev.delete_evidence(project_dir, evidence_id)
+    if not ok:
+        return jsonify({"error": err}), 404
+
+    log.info("Deleted evidence %s in project %s", evidence_id, project_id)
+    return jsonify({"ok": True})
 
 
 def _persist_evidence_update(project_dir, finding_id, new_path):

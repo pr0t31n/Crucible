@@ -1716,6 +1716,108 @@ mark.ev-hl-current { background: rgba(255,140,0,.7); outline: 2px solid rgba(255
 }
 .kev-detail-section .form-label { color: #ef4444; }
 
+/* ── Evidence upload / attachments ─────────────────────────── */
+.ev-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    margin-top: 8px;
+    position: relative;
+}
+.ev-dropzone:hover,
+.ev-dropzone-active {
+    border-color: var(--accent);
+    background: rgba(99,102,241,.06);
+}
+.ev-dropzone-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+.ev-dropzone-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.ev-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ev-list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+.ev-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+}
+.ev-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.ev-thumb-icon {
+    color: var(--text-secondary);
+}
+.ev-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.ev-filename {
+    font-size: 0.8rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-decoration: none;
+    color: var(--accent);
+}
+.ev-filename:hover {
+    text-decoration: underline;
+}
+.ev-delete {
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 2px 6px;
+}
+.ev-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    margin-left: 3px;
+}
+
 /* ── Risk toggle pills ─────────────────────────────────────── */
 .risk-toggle {
     display: inline-flex;
@@ -4107,6 +4209,80 @@ kbd {
 .cat-body .findings-table thead { display: none; }
 .cat-body .findings-table { border: none; }
 .cat-body .findings-table tr:last-child td { border-bottom: none; }
+
+/* ── Attack Surface tab ─────────────────────────────────── */
+.stat-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-width: 60px;
+}
+.stat-value { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
+.stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-top: 2px; }
+.as-sev-bar {
+    display: flex;
+    height: 18px;
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 80px;
+    background: var(--bg-secondary);
+}
+.as-sev-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #fff;
+    min-width: 0;
+    transition: width .2s;
+}
+.risk-bg-critical { background: var(--risk-critical); }
+.risk-bg-high { background: var(--risk-high); }
+.risk-bg-medium { background: var(--risk-medium); }
+.risk-bg-low { background: var(--risk-low); }
+.risk-bg-info { background: var(--risk-info, #6b7280); }
+.as-detail-inner {
+    padding: 8px 16px 12px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+}
+.data-table-nested { font-size: 0.8rem; }
+.data-table-nested th { padding: 4px 8px; font-size: 0.7rem; }
+.data-table-nested td { padding: 4px 8px; vertical-align: top; }
+.as-gap-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 50%;
+    background: rgba(231,76,60,.15);
+    color: var(--risk-high);
+    margin-left: 4px;
+}
+.as-gap-tool {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(231,76,60,.1);
+    color: var(--risk-high);
+    margin: 1px 2px;
+}
+.as-finding-link {
+    font-size: 0.78rem;
+    text-decoration: none;
+    color: var(--accent);
+}
+.as-finding-link:hover { text-decoration: underline; }
+.as-host-row:hover { background: var(--bg-hover); }
 
 /* ── Import tab ──────────────────────────────────────────── */
 .import-detail-btn { font-size: 0.72rem; padding: 2px 8px; }

@@ -136,6 +136,7 @@ tabNav.addEventListener('click', function(e) {
     if (tab === 'errors' && !allErrors._loaded) loadErrors();
     if (tab === 'settings') initSettingsTabs();
     if (tab === 'import' && !_impState._loaded) initImportTab();
+    if (tab === 'attack-surface' && typeof window._initAttackSurface === 'function') window._initAttackSurface();
     if (tab === 'sessions' && !_sessState._loaded) loadSessions();
 });
 
@@ -1708,6 +1709,7 @@ function _fetchFindingsV2(params) {
             }
             updateFindingsStats();
             updateRiskOverview();
+            _enrichEvidenceCounts(filteredFindings);
         })
         .catch(function(err) {
             console.warn('V2 findings fetch failed:', err.message);
@@ -1717,6 +1719,30 @@ function _fetchFindingsV2(params) {
                            _findingsRetries * 5000);
             }
         });
+}
+
+function _enrichEvidenceCounts(findings) {
+    var ids = findings.map(function(f) { return f.id; }).filter(Boolean);
+    if (!ids.length) return;
+    var csv = ids.join(',');
+    fetch('/api/finding/evidence-counts/' + PID + '?ids_csv=' + encodeURIComponent(csv), {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d.counts) return;
+            var changed = false;
+            findings.forEach(function(f) {
+                var c = d.counts[f.id] || 0;
+                if (c !== (f._ev_count || 0)) {
+                    f._ev_count = c;
+                    changed = true;
+                }
+            });
+            if (changed) {
+                if (categoryViewActive) renderCategoryView();
+                else renderFindingsTable();
+            }
+        })
+        .catch(function() {});
 }
 
 function _fetchV2Filters() {
@@ -2097,12 +2123,20 @@ function renderFindingsTable() {
         var affected = f.affected || '';
         var sources = f.sources || '';
         var evidence = f.output_file || f.output || '';
+        var evCount = (f._ev_count || 0);
         var roles = f.roles || '';
         if (!roles && Array.isArray(f.accounts) && f.accounts.length) {
             roles = f.accounts.map(function(a) { return a.role || ''; }).filter(Boolean).join(', ');
         }
         var details = f.description || f.output || '';
         if (details.length > 80) details = details.substring(0, 80) + '…';
+
+        var evCell = '<span style="color:var(--text-secondary)">—</span>';
+        if (evidence || evCount > 0) {
+            evCell = '<button class="btn btn-xs btn-evidence" data-action="evidence" data-idx="' + globalIdx + '" title="View evidence files">View';
+            if (evCount > 0) evCell += ' <span class="ev-count-badge">' + evCount + '</span>';
+            evCell += '</button>';
+        }
 
         var tr = document.createElement('tr');
         tr.setAttribute('data-finding-idx', String(globalIdx));
@@ -2119,7 +2153,7 @@ function renderFindingsTable() {
             '<td class="font-mono text-sm">' + esc(String(port)) + '</td>' +
             '<td class="text-sm text-truncate" style="max-width:120px" title="' + esc(affected) + '">' + esc(affected) + '</td>' +
             '<td class="text-sm" style="max-width:140px">' + _renderSourcePills(sources) + '</td>' +
-            '<td class="text-sm" style="max-width:100px">' + (evidence ? '<button class="btn btn-xs btn-evidence" data-action="evidence" data-idx="' + globalIdx + '" title="View evidence files">View</button>' : '<span style="color:var(--text-secondary)">—</span>') + '</td>' +
+            '<td class="text-sm" style="max-width:100px">' + evCell + '</td>' +
             '<td class="text-sm">' + _renderRolePills(roles) + '</td>' +
             '<td class="text-sm text-truncate" style="max-width:160px" title="' + esc(f.description||'') + '">' + esc(details) + '</td>' +
             '<td class="col-actions">' +
@@ -2339,8 +2373,15 @@ function renderCategoryView() {
             html += '<td class="font-mono text-sm">' + esc(String(port)) + '</td>';
             html += '<td class="text-sm text-truncate" style="max-width:120px" title="' + esc(affected) + '">' + esc(affected) + '</td>';
             var evidence = f.output_file || f.output || '';
+            var evCnt = (f._ev_count || 0);
+            var catEvCell = '<span style="color:var(--text-secondary)">—</span>';
+            if (evidence || evCnt > 0) {
+                catEvCell = '<button class="btn btn-xs btn-evidence" data-action="cat-evidence" data-cat-idx="' + globalIdx + '" title="View evidence files">View';
+                if (evCnt > 0) catEvCell += ' <span class="ev-count-badge">' + evCnt + '</span>';
+                catEvCell += '</button>';
+            }
             html += '<td class="text-sm" style="max-width:140px">' + _renderSourcePills(sources) + '</td>';
-            html += '<td class="text-sm" style="max-width:100px">' + (evidence ? '<button class="btn btn-xs btn-evidence" data-action="cat-evidence" data-cat-idx="' + globalIdx + '" title="View evidence files">View</button>' : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
+            html += '<td class="text-sm" style="max-width:100px">' + catEvCell + '</td>';
             html += '</tr>';
         });
 
@@ -2719,28 +2760,103 @@ function openFindingDetail(f) {
     }
 
     html += '<div class="mb-8" style="border-top:1px solid var(--border);padding-top:12px;margin-top:16px">';
-    html += '<span class="form-label">Attach Evidence</span>';
-    html += '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">';
-    html += '<input type="file" id="evidenceFileInput" multiple style="flex:1;font-size:12px">';
-    html += '<button class="btn btn-sm" onclick="uploadEvidence(\'' + esc(f.id || '') + '\')" style="white-space:nowrap">Upload</button>';
+    html += '<span class="form-label">Evidence Attachments</span>';
+    html += '<div id="evidenceListContainer" style="margin-top:8px"><span class="text-sm text-secondary">Loading...</span></div>';
+    html += '<div id="evidenceDropzone" class="ev-dropzone" data-fid="' + esc(f.id || '') + '">';
+    html += '<input type="file" id="evidenceFileInput" multiple class="ev-dropzone-input">';
+    html += '<div class="ev-dropzone-label">';
+    html += '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+    html += ' Drop files here or <span style="color:var(--accent);cursor:pointer">browse</span>';
     html += '</div></div>';
+    html += '</div>';
 
     body.innerHTML = html;
     document.getElementById('findingDetailModal').classList.add('open');
+
+    _loadEvidenceList(f.id || '');
+    _setupDropzone(f.id || '');
 }
 
-window.uploadEvidence = function(findingId) {
+function _loadEvidenceList(findingId) {
+    var container = document.getElementById('evidenceListContainer');
+    if (!container) return;
+    fetch('/api/finding/evidence/' + PID + '/' + findingId, {credentials: 'same-origin'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (!d.evidence || !d.evidence.length) {
+            container.innerHTML = '<span class="text-sm text-secondary">No attachments yet.</span>';
+            return;
+        }
+        var html = '<div class="ev-list">';
+        d.evidence.forEach(function(ev) {
+            var sizeStr = ev.size_bytes < 1024 ? ev.size_bytes + ' B'
+                : ev.size_bytes < 1048576 ? (ev.size_bytes / 1024).toFixed(1) + ' KB'
+                : (ev.size_bytes / 1048576).toFixed(1) + ' MB';
+            html += '<div class="ev-list-item">';
+            if (ev.is_image) {
+                html += '<div class="ev-thumb"><img src="/api/finding/evidence-download/' + PID + '/' + esc(ev.id) + '" alt="' + esc(ev.filename) + '"></div>';
+            } else {
+                html += '<div class="ev-thumb ev-thumb-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>';
+            }
+            html += '<div class="ev-info">';
+            html += '<a href="/api/finding/evidence-download/' + PID + '/' + esc(ev.id) + '" class="ev-filename" title="' + esc(ev.filename) + '">' + esc(ev.filename) + '</a>';
+            html += '<span class="text-xs text-secondary">' + sizeStr + '</span>';
+            html += '</div>';
+            html += '<button class="btn btn-xs btn-ghost ev-delete" data-evid="' + esc(ev.id) + '" data-fid="' + esc(findingId) + '" title="Delete attachment" style="color:var(--risk-high)">&times;</button>';
+            html += '</div>';
+        });
+        html += '</div>';
+        container.innerHTML = html;
+        container.querySelectorAll('.ev-delete').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var evid = btn.getAttribute('data-evid');
+                var fid = btn.getAttribute('data-fid');
+                if (!confirm('Delete this attachment?')) return;
+                fetch('/api/finding/evidence-delete/' + PID + '/' + evid, {
+                    method: 'DELETE', credentials: 'same-origin'
+                }).then(function(r) { return r.json(); }).then(function(rd) {
+                    if (rd.ok) {
+                        toast('success', 'Attachment deleted');
+                        _loadEvidenceList(fid);
+                        if (allFindings._loaded) loadFindings(true);
+                    } else {
+                        toast('error', rd.error || 'Delete failed');
+                    }
+                }).catch(function() { toast('error', 'Delete failed'); });
+            });
+        });
+    })
+    .catch(function() {
+        container.innerHTML = '<span class="text-sm text-secondary">Could not load attachments.</span>';
+    });
+}
+
+function _setupDropzone(findingId) {
+    var dz = document.getElementById('evidenceDropzone');
+    if (!dz) return;
     var input = document.getElementById('evidenceFileInput');
-    if (!input || !input.files || !input.files.length) {
-        toast('warning', 'Select a file to attach.');
-        return;
-    }
+
+    dz.addEventListener('click', function() { input.click(); });
+    dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('ev-dropzone-active'); });
+    dz.addEventListener('dragleave', function() { dz.classList.remove('ev-dropzone-active'); });
+    dz.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dz.classList.remove('ev-dropzone-active');
+        if (e.dataTransfer.files.length) _doEvidenceUpload(findingId, e.dataTransfer.files);
+    });
+    input.addEventListener('change', function() {
+        if (input.files.length) _doEvidenceUpload(findingId, input.files);
+    });
+}
+
+function _doEvidenceUpload(findingId, files) {
     var uploaded = 0;
-    var total = input.files.length;
+    var total = files.length;
     for (var i = 0; i < total; i++) {
         var fd = new FormData();
         fd.append('finding_id', findingId);
-        fd.append('file', input.files[i]);
+        fd.append('file', files[i]);
         fetch('/api/finding/attach-evidence/' + PID, {
             method: 'POST',
             credentials: 'same-origin',
@@ -2750,18 +2866,22 @@ window.uploadEvidence = function(findingId) {
         .then(function(d) {
             uploaded++;
             if (d.ok) {
-                toast('success', 'Evidence attached: ' + d.filename);
+                toast('success', 'Attached: ' + (d.evidence ? d.evidence.filename : ''));
             } else {
-                toast('error', 'Failed: ' + (d.error || 'unknown'));
+                toast('error', d.error || 'Upload failed');
             }
-            if (uploaded === total && allFindings._loaded) loadFindings(true);
+            if (uploaded === total) {
+                _loadEvidenceList(findingId);
+                if (allFindings._loaded) loadFindings(true);
+            }
         })
         .catch(function() {
             uploaded++;
             toast('error', 'Upload failed');
+            if (uploaded === total) _loadEvidenceList(findingId);
         });
     }
-};
+}
 
 window.closeFindingDetail = function() {
     document.getElementById('findingDetailModal').classList.remove('open');
@@ -12325,5 +12445,162 @@ window.killAllSessions = killAllSessions;
 window.refreshSession = refreshSession;
 window.deleteSession = deleteSession;
 window.loadSessions = loadSessions;
+
+/* ── Attack Surface tab ─────────────────────────────────────── */
+var _asLoaded = false;
+var _asData = null;
+var _asExpanded = {};
+
+window._initAttackSurface = function() {
+    if (!_asLoaded) {
+        _asLoaded = true;
+        _asBindEvents();
+    }
+    _asLoad();
+};
+
+function _asBindEvents() {
+    var sortSel = document.getElementById('asSortSelect');
+    var filterSel = document.getElementById('asFilterRisk');
+    if (sortSel) sortSel.addEventListener('change', function() { _asLoad(); });
+    if (filterSel) filterSel.addEventListener('change', function() { _asLoad(); });
+}
+
+function _asLoad() {
+    var sort = (document.getElementById('asSortSelect') || {}).value || 'severity';
+    var risk = (document.getElementById('asFilterRisk') || {}).value || '';
+    var url = '/api/attack-surface/' + PID + '?sort=' + sort;
+    if (risk) url += '&filter_risk=' + encodeURIComponent(risk);
+
+    fetch(url, {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _asData = data;
+            _asRenderSummary(data.summary || {});
+            _asRenderHosts(data.hosts || []);
+        })
+        .catch(function(err) {
+            console.warn('Attack surface load failed:', err);
+        });
+}
+
+function _asRenderSummary(s) {
+    var se = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    se('asTotalHosts', s.total_hosts || 0);
+    se('asTotalPorts', s.total_ports || 0);
+    se('asTotalFindings', s.total_findings || 0);
+    se('asCritical', (s.severity || {}).CRITICAL || 0);
+    se('asHigh', (s.severity || {}).HIGH || 0);
+    se('asMedium', (s.severity || {}).MEDIUM || 0);
+    se('asLow', (s.severity || {}).LOW || 0);
+    se('asCoverage', (s.coverage_pct || 0) + '%');
+}
+
+function _asRenderHosts(hosts) {
+    var container = document.getElementById('asHostTable');
+    var empty = document.getElementById('asEmpty');
+    if (!hosts.length) {
+        container.innerHTML = '';
+        if (empty) empty.hidden = false;
+        return;
+    }
+    if (empty) empty.hidden = true;
+
+    var html = '<table class="data-table"><thead><tr>';
+    html += '<th>IP</th><th>Hostname</th><th>Ports</th><th>Services</th>';
+    html += '<th style="min-width:120px">Severity</th>';
+    html += '<th>Findings</th><th>Tools</th><th>Coverage</th>';
+    html += '</tr></thead><tbody>';
+
+    hosts.forEach(function(h, idx) {
+        var svcs = [];
+        h.ports.forEach(function(p) { if (p.service && svcs.indexOf(p.service) === -1) svcs.push(p.service); });
+        var sc = h.severity_counts || {};
+        var total = (sc.CRITICAL||0) + (sc.HIGH||0) + (sc.MEDIUM||0) + (sc.LOW||0) + (sc.INFO||0);
+        var barHtml = _asSeverityBar(sc, total);
+        var covCls = h.coverage_pct >= 80 ? 'risk-low' : h.coverage_pct >= 50 ? 'risk-medium' : 'risk-high';
+        var hasMissing = h.ports.some(function(p) { return p.missing_tools && p.missing_tools.length; });
+
+        html += '<tr class="as-host-row" data-as-idx="' + idx + '" style="cursor:pointer">';
+        html += '<td class="font-mono text-sm">' + esc(h.ip) + '</td>';
+        html += '<td class="text-sm">' + esc(h.hostname || '') + '</td>';
+        html += '<td class="text-sm">' + h.port_count + '</td>';
+        html += '<td class="text-sm text-truncate" style="max-width:200px">' + esc(svcs.join(', ')) + '</td>';
+        html += '<td>' + barHtml + '</td>';
+        html += '<td class="text-sm">' + h.total_findings + '</td>';
+        html += '<td class="text-sm">' + h.tools.length + '</td>';
+        html += '<td class="text-sm"><span class="' + covCls + '">' + h.coverage_pct + '%</span>' +
+                (hasMissing ? ' <span class="as-gap-badge" title="Coverage gaps detected">!</span>' : '') + '</td>';
+        html += '</tr>';
+
+        html += '<tr class="as-detail-row" data-as-detail="' + idx + '" ' + (_asExpanded[idx] ? '' : 'hidden') + '>';
+        html += '<td colspan="8" style="padding:0"><div class="as-detail-inner">' + _asRenderPortDetail(h) + '</div></td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    container.querySelectorAll('.as-host-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var idx = parseInt(row.getAttribute('data-as-idx'));
+            var detail = container.querySelector('[data-as-detail="' + idx + '"]');
+            if (detail) {
+                detail.hidden = !detail.hidden;
+                _asExpanded[idx] = !detail.hidden;
+            }
+        });
+    });
+}
+
+function _asSeverityBar(sc, total) {
+    if (!total) return '<span class="text-secondary text-sm">—</span>';
+    var w = function(n) { return Math.max(total > 0 ? (n / total * 100) : 0, n > 0 ? 4 : 0); };
+    var html = '<div class="as-sev-bar">';
+    if (sc.CRITICAL) html += '<div class="as-sev-seg risk-bg-critical" style="width:' + w(sc.CRITICAL) + '%" title="Critical: ' + sc.CRITICAL + '">' + sc.CRITICAL + '</div>';
+    if (sc.HIGH) html += '<div class="as-sev-seg risk-bg-high" style="width:' + w(sc.HIGH) + '%" title="High: ' + sc.HIGH + '">' + sc.HIGH + '</div>';
+    if (sc.MEDIUM) html += '<div class="as-sev-seg risk-bg-medium" style="width:' + w(sc.MEDIUM) + '%" title="Medium: ' + sc.MEDIUM + '">' + sc.MEDIUM + '</div>';
+    if (sc.LOW) html += '<div class="as-sev-seg risk-bg-low" style="width:' + w(sc.LOW) + '%" title="Low: ' + sc.LOW + '">' + sc.LOW + '</div>';
+    if (sc.INFO) html += '<div class="as-sev-seg risk-bg-info" style="width:' + w(sc.INFO) + '%" title="Info: ' + sc.INFO + '">' + sc.INFO + '</div>';
+    html += '</div>';
+    return html;
+}
+
+function _asRenderPortDetail(host) {
+    var html = '<table class="data-table data-table-nested"><thead><tr>';
+    html += '<th>Port</th><th>Service</th><th>Proto</th>';
+    html += '<th>Findings</th><th>Tools</th><th>Gaps</th>';
+    html += '</tr></thead><tbody>';
+
+    host.ports.forEach(function(p) {
+        var findingsList = '';
+        if (p.findings && p.findings.length) {
+            findingsList = p.findings.map(function(f) {
+                var cls = 'risk-' + (f.risk || 'info').toLowerCase();
+                return '<span class="risk-badge ' + cls + '" style="font-size:0.6rem">' + esc(f.risk) + '</span> ' +
+                       '<a href="#" class="as-finding-link" data-fid="' + esc(f.id || '') + '">' + esc(f.title) + '</a>' +
+                       (f.kev ? ' <span class="kev-badge">KEV</span>' : '');
+            }).join('<br>');
+        }
+        var gapHtml = '';
+        if (p.missing_tools && p.missing_tools.length) {
+            gapHtml = p.missing_tools.map(function(t) {
+                return '<span class="as-gap-tool">' + esc(t) + ' not run</span>';
+            }).join(' ');
+        }
+
+        html += '<tr>';
+        html += '<td class="font-mono text-sm">' + p.port + '</td>';
+        html += '<td class="text-sm">' + esc(p.service || '') + '</td>';
+        html += '<td class="text-sm">' + esc(p.protocol || 'tcp') + '</td>';
+        html += '<td class="text-sm">' + (findingsList || '<span class="text-secondary">—</span>') + '</td>';
+        html += '<td class="text-sm">' + (p.tools || []).join(', ') + '</td>';
+        html += '<td class="text-sm">' + (gapHtml || '<span style="color:var(--status-success)">✓</span>') + '</td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    return html;
+}
 
 })();
