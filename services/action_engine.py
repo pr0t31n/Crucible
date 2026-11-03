@@ -222,6 +222,12 @@ CATEGORIES = {
         "approval_tier": "confirm",
         "description": "Windows endpoint discovered with remote access — run Dredge",
     },
+    "ad_discovered": {
+        "recommended_tool": "vault",
+        "priority": "HIGH",
+        "approval_tier": "confirm",
+        "description": "Active Directory target discovered — run Vault",
+    },
     "file_analysis": {
         "recommended_tool": "isotope",
         "priority": "HIGH",
@@ -268,6 +274,11 @@ _CRED_SERVICE_TOOLS = {
     "cassandra": "auger",
     "couchdb": "auger",
     "elasticsearch": "auger",
+    "ldap":   "vault",
+    "ldaps":  "vault",
+    "kerberos": "vault",
+    "smb":    "vault",
+    "msrpc":  "vault",
 }
 
 # ── Service → category mapping ──────────────────────────────────────────
@@ -299,6 +310,9 @@ _API_INDICATORS = frozenset({
 _WIRELESS_SERVICES = frozenset({
     "wifi", "bluetooth", "zigbee", "uwb",
 })
+
+_AD_PORTS = {88: "kerberos", 389: "ldap", 636: "ldaps", 3268: "gc", 3269: "gc-ssl"}
+_AD_SERVICES = frozenset({"kerberos", "ldap", "ldaps", "msrpc", "kpasswd5"})
 
 
 class ActionEngine:
@@ -432,6 +446,27 @@ class ActionEngine:
                 "metadata": {
                     "ip": ip, "port": port, "hostname": hostname,
                     "service": service,
+                },
+            })
+            if item:
+                items.append(item)
+
+        # AD services → Vault (deduplicate by IP — one Vault run per DC)
+        if port in _AD_PORTS or service in _AD_SERVICES:
+            ad_svc = _AD_PORTS.get(port, service)
+            item = add_action_item(project_dir, {
+                "source_tool": source_tool,
+                "recommended_tool": "vault",
+                "category": "ad_discovered",
+                "title": f"AD service ({ad_svc}) on {ip}:{port}",
+                "target": ip,
+                "scope": scope,
+                "priority": "HIGH",
+                "approval_tier": "confirm",
+                "in_scope": in_scope,
+                "metadata": {
+                    "ip": ip, "port": port, "hostname": hostname,
+                    "service": ad_svc, "product": product,
                 },
             })
             if item:
@@ -601,7 +636,7 @@ class ActionEngine:
                 "gearbox": "int", "bastion": "int",
                 "forge": "webapp", "auger": "int",
                 "isotope": "int", "quill": "int",
-                "trawler": "int",
+                "trawler": "int", "vault": "int",
             }
             item_data["scope"] = _SCOPE_FALLBACK.get(_rt.lower(), "")
 
@@ -706,6 +741,7 @@ class ActionEngine:
         "aether_z": {"deeper": None, "manual": ["KillerBee", "Z-Stack sniffer"]},
         "aether_u": {"deeper": None, "manual": ["UWB sniffer"]},
         "auger": {"deeper": None, "manual": ["sqlmap", "manual queries", "DB client"]},
+        "vault": {"deeper": None, "manual": ["impacket-secretsdump", "bloodhound-python", "kerbrute", "crackmapexec"]},
         "bastion": {"deeper": None, "manual": ["manual config review", "CIS benchmark"]},
         "authprobe": {"deeper": "fracture", "manual": ["hydra", "Burp Intruder"]},
         "trawler": {"deeper": None, "manual": ["Wireshark", "tshark", "NetworkMiner"]},
@@ -1000,9 +1036,11 @@ class ActionEngine:
         service/port is not compatible with the deeper tool (e.g. don't
         recommend Fracture for SSH findings from SS3)."""
         deeper = self._TOOL_DEEPER_MAP.get(source_tool, {}).get("deeper")
+        port = int(finding.get("port") or 0)
+        svc = (finding.get("service") or "").lower()
+        if svc in _AD_SERVICES or port in _AD_PORTS:
+            return "vault"
         if deeper in ("fracture", "siphon"):
-            port = int(finding.get("port") or 0)
-            svc = (finding.get("service") or "").lower()
             _non_web = {"ssh", "ftp", "smtp", "snmp", "rdp", "telnet",
                         "smb", "nfs", "dns", "imap", "pop3", "vnc",
                         "mysql", "postgres", "mssql", "oracle", "redis",
@@ -1397,6 +1435,8 @@ class ActionEngine:
 
         if service in _CRED_SERVICE_TOOLS:
             tools.append(_CRED_SERVICE_TOOLS[service])
+        elif port in _AD_PORTS or service in _AD_SERVICES:
+            tools.append("vault")
         elif port in _DB_PORTS:
             tools.append("auger")
         elif port in _WEB_PORTS or service in _WEB_SERVICES:

@@ -18,6 +18,7 @@ _ADAPTER_MAP = {
     "quill":     ("adapters.quill",          "QuillAdapter"),
     "isotope":   ("adapters.isotope",        "IsotopeAdapter"),
     "dredge":    ("adapters.dredge",         "DredgeAdapter"),
+    "vault":     ("adapters.vault",          "VaultAdapter"),
     # ── External CLI tools ──────────────────────────────────────
     "nuclei":         ("adapters.external", "NucleiAdapter"),
     "testssl":        ("adapters.external", "TestSSLAdapter"),
