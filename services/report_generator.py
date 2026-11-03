@@ -2515,6 +2515,7 @@ def build_report(data):
     consultant = cm.get("consultant", {})
     client_poc = cm.get("client_poc", {})
     client_name = cm.get("client_name", "Client")
+    assessor_firm = cm.get("assessor_firm", "the assessor")
     active_scopes = cm.get("active_scopes", [])
     engagement_dir = cm.get("project_dir", "")
 
@@ -3647,6 +3648,7 @@ def _build_compliance_report(data, framework_key, report_title, background_parag
                              applicability_text):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     assessment = data.get(f"{framework_key}_assessment", {})
     findings = data.get("dredge_findings", [])
@@ -3685,6 +3687,7 @@ def _build_compliance_report(data, framework_key, report_title, background_parag
 def build_disk_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     ep = data.get("endpoint_status", {})
     disk = data.get("disk_storage", {})
@@ -3828,6 +3831,7 @@ def build_disk_report(data):
 def build_hardware_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     ep = data.get("endpoint_status", {})
     hw = data.get("hardware", {})
@@ -3945,6 +3949,7 @@ def build_hardware_report(data):
 def build_software_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     ep = data.get("endpoint_status", {})
     sw = data.get("software_inventory", {})
@@ -4012,6 +4017,7 @@ def build_software_report(data):
 def build_malicious_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     ep = data.get("endpoint_status", {})
     findings = data.get("dredge_findings", [])
@@ -4807,6 +4813,7 @@ def gather_cross_scope_data(project):
 def build_ext_vuln_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     targets = _scope_target_lines(meta, "external")
@@ -4851,6 +4858,7 @@ def build_ext_vuln_report(data):
 def build_ext_surface_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     hosts = data.get("ss3_hosts", [])
     services = data.get("ss3_services", {})
@@ -4963,6 +4971,7 @@ def build_ext_surface_report(data):
 def build_ext_pci_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     targets = _scope_target_lines(meta, "external")
@@ -5031,6 +5040,7 @@ def build_ext_pci_report(data):
 def build_ext_firewall_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     hosts = data.get("ss3_hosts", [])
@@ -5125,6 +5135,7 @@ def build_ext_firewall_report(data):
 def build_ext_exec_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     hosts = data.get("ss3_hosts", [])
@@ -5197,6 +5208,7 @@ def build_ext_exec_report(data):
 def build_osint_intel_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     osift_targets = data.get("osift_targets", {})
@@ -5294,6 +5306,7 @@ def build_osint_intel_report(data):
 def build_osint_footprint_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     osift_targets = data.get("osift_targets", {})
     dns_data = data.get("osift_dns", {})
@@ -5385,6 +5398,7 @@ def build_osint_footprint_report(data):
 def build_osint_email_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     osift_targets = data.get("osift_targets", {})
@@ -5497,6 +5511,7 @@ def build_osint_email_report(data):
 def build_osint_dns_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     dns_data = data.get("osift_dns", {})
@@ -5629,6 +5644,7 @@ def build_osint_dns_report(data):
 def build_osint_exec_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     osift_targets = data.get("osift_targets", {})
@@ -5705,6 +5721,7 @@ def build_int_vuln_report(data):
     """Internal Vulnerability Assessment — full finding report."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
 
     findings = _all_internal_findings(data)
@@ -5798,6 +5815,7 @@ def build_int_segment_report(data):
     """Network Segmentation Report — internal segmentation analysis."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     hosts = data.get("ss3_hosts", [])
     bastion_f = data.get("bastion_findings", [])
@@ -5895,6 +5913,7 @@ def build_int_ad_report(data):
     """Active Directory Security Report — AD-focused findings and analysis."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     all_f = _all_internal_findings(data)
 
@@ -6054,6 +6073,7 @@ def build_int_smb_report(data):
     """SMB & File Share Report — SMB-specific findings and share analysis."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     all_f = _all_internal_findings(data)
 
@@ -6176,6 +6196,7 @@ def build_int_exec_report(data):
     """Executive Summary — Internal (single-page overview)."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = _all_internal_findings(data)
     findings.sort(key=risk_sort)
@@ -6188,7 +6209,7 @@ def build_int_exec_report(data):
 
     body += '<div class="page"><h1>Executive Summary</h1>'
     body += f'''<p class="section-intro">
-{esc(client_name)} engaged the assessor to perform an internal penetration test of its
+{esc(client_name)} engaged {esc(assessor_firm)} to perform an internal penetration test of its
 network infrastructure. This executive summary provides a high-level overview of the
 assessment results for leadership and stakeholders.</p>'''
 
@@ -6240,6 +6261,7 @@ def build_wire_assess_report(data):
     """Full Wireless Security Assessment — all protocols combined."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = _all_wireless_findings(data)
     findings.sort(key=risk_sort)
@@ -6339,6 +6361,7 @@ def build_wire_wifi_report(data):
     """Wi-Fi Configuration Report — Wi-Fi-specific configuration analysis."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     wifi_f = sorted(data.get("aether_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in wifi_f)
@@ -6462,6 +6485,7 @@ def build_wire_rogue_report(data):
     """Rogue Access Point Report — unauthorized AP detection analysis."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     wifi_f = data.get("aether_findings", [])
 
@@ -6546,6 +6570,7 @@ def build_wire_ble_report(data):
     """Bluetooth / IoT Protocol Report — BLE, Zigbee, UWB findings."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     ble_f = sorted(data.get("aether_b_findings", []), key=risk_sort)
     zigbee_f = sorted(data.get("aether_z_findings", []), key=risk_sort)
@@ -6615,6 +6640,7 @@ def build_wire_exec_report(data):
     """Executive Summary — Wireless (single-page overview)."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = _all_wireless_findings(data)
     findings.sort(key=risk_sort)
@@ -6636,7 +6662,7 @@ def build_wire_exec_report(data):
 
     body += '<div class="page"><h1>Executive Summary</h1>'
     body += f'''<p class="section-intro">
-{esc(client_name)} engaged the assessor to perform a wireless security assessment of
+{esc(client_name)} engaged {esc(assessor_firm)} to perform a wireless security assessment of
 its environment. This executive summary provides a high-level overview of the
 assessment results for leadership and stakeholders. Testing covered
 {", ".join(protocols_tested) if protocols_tested else "wireless"} protocol(s).</p>'''
@@ -6692,6 +6718,7 @@ assessment results for leadership and stakeholders. Testing covered
 def build_web_vuln_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -6765,6 +6792,7 @@ methodology and the Penetration Testing Execution Standard (PTES):</p>
 def build_web_owasp_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     targets = _scope_target_lines(meta, "web")
@@ -6842,6 +6870,7 @@ both confirmed vulnerabilities and testing gaps.</p>'''
 def build_web_tech_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     targets = _scope_target_lines(meta, "web")
@@ -6904,6 +6933,7 @@ running outdated versions with known CVEs. These represent an immediate patching
 def build_web_discovery_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = data.get("findings", [])
     targets = _scope_target_lines(meta, "web")
@@ -6970,6 +7000,7 @@ credentials, source code, or database connection strings exposed via web server.
 def build_web_exec_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -6982,7 +7013,7 @@ def build_web_exec_report(data):
 
     body += '<div class="page"><h1>Executive Summary</h1>'
     body += f'''<p class="section-intro">
-{esc(client_name)} engaged the assessor to perform a web application penetration test.
+{esc(client_name)} engaged {esc(assessor_firm)} to perform a web application penetration test.
 This executive summary provides a high-level overview of the assessment results for
 leadership and stakeholders.</p>'''
 
@@ -7033,6 +7064,7 @@ leadership and stakeholders.</p>'''
 def build_api_vuln_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7134,6 +7166,7 @@ the API specification. These "shadow" APIs bypass governance and may lack proper
 def build_api_owasp_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     targets = _scope_target_lines(meta, "api")
@@ -7209,6 +7242,7 @@ for the presence of confirmed vulnerabilities and testing coverage.</p>'''
 def build_api_exec_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7222,7 +7256,7 @@ def build_api_exec_report(data):
 
     body += '<div class="page"><h1>Executive Summary</h1>'
     body += f'''<p class="section-intro">
-{esc(client_name)} engaged the assessor to perform an API security assessment. This
+{esc(client_name)} engaged {esc(assessor_firm)} to perform an API security assessment. This
 executive summary provides a high-level overview for leadership and stakeholders.</p>'''
 
     body += '<div class="stats-row">'
@@ -7273,6 +7307,7 @@ def build_trawler_report(data):
     """Network Traffic Analysis Report — Trawler findings with security focus."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("trawler_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7395,6 +7430,7 @@ def build_auger_report(data):
     """Database Security Report — Auger findings with data security focus."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("auger_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7545,6 +7581,7 @@ def build_bastion_report(data):
     """Firewall & Configuration Audit Report — Bastion findings."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("bastion_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7688,6 +7725,7 @@ def build_forge_report(data):
     """Cloud Configuration Security Report — Forge findings."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("forge_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7903,6 +7941,7 @@ def build_cloud_pentest_report(data):
     """Cloud Penetration Test Assessment — attack-surface focused."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("forge_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -7958,7 +7997,7 @@ def build_cloud_pentest_report(data):
 
     body += '<div class="page"><h1>Executive Summary</h1>'
     body += f'''<p class="section-intro">
-the assessor performed a cloud infrastructure penetration test of {esc(client_name)}'s
+{esc(assessor_firm)} performed a cloud infrastructure penetration test of {esc(client_name)}'s
 AWS environment. This assessment evaluated the cloud environment from an attacker's
 perspective, identifying misconfiguration-driven attack vectors across identity management,
 network exposure, data storage, secrets handling, and detection capability gaps that
@@ -8086,6 +8125,7 @@ def build_cloud_cis_report(data):
     """CIS AWS Foundations Benchmark Assessment."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("forge_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -8237,6 +8277,7 @@ def build_cloud_compliance_report(data):
     """Cloud Regulatory Compliance Report — multi-framework gap analysis."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("forge_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -8490,6 +8531,7 @@ def build_cloud_exec_report(data):
     """Cloud Executive Summary — non-technical leadership overview."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("forge_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -8509,7 +8551,7 @@ def build_cloud_exec_report(data):
     users_no_mfa = sum(1 for u in iam_matrix if u.get("mfa_active") in ("false", False))
 
     body += f'''<p class="section-intro">
-the assessor performed a cloud infrastructure security assessment of {esc(client_name)}'s
+{esc(assessor_firm)} performed a cloud infrastructure security assessment of {esc(client_name)}'s
 Amazon Web Services (AWS) environment. The assessment identified <strong>{total}
 finding(s)</strong> across <strong>{svc_affected} AWS service(s)</strong>, including
 <strong style="color:#dc2626">{crit} critical</strong> and
@@ -8615,7 +8657,7 @@ Overall Risk: {posture}</div>
 
     body += '<div class="page"><h1>Strategic Recommendations</h1>'
     body += f'''<p class="section-intro">Based on the cloud security assessment of {esc(client_name)}'s
-AWS environment, the assessor recommends the following strategic actions.</p>'''
+AWS environment, {esc(assessor_firm)} recommends the following strategic actions.</p>'''
     body += '''<table>
     <tr><th>Priority</th><th>Recommendation</th><th>Business Impact</th></tr>
     <tr><td><span class="badge" style="background:#dc2626">IMMEDIATE</span></td>
@@ -8645,6 +8687,7 @@ def build_quill_report(data):
     """Mobile Application Security Report — Quill findings."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("quill_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -8780,6 +8823,7 @@ def build_isotope_report(data):
     """File & Artifact Analysis Report — Isotope findings."""
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("isotope_findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -8907,6 +8951,7 @@ and other metadata that could expose internal information or contain malicious p
 def build_remediation_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -8989,6 +9034,7 @@ then Critical+Moderate, then High+Easy, and so on.</p>'''
 def build_compliance_matrix_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -9085,6 +9131,7 @@ remediation efforts by framework requirement.</p>'''
 def build_unified_exec_report(data):
     meta = data.get("crucible_meta", {})
     client_name = meta.get("client_name", "Client")
+    assessor_firm = meta.get("assessor_firm", "the assessor")
     incomplete = data.get("incomplete", False)
     findings = sorted(data.get("findings", []), key=risk_sort)
     risk_counts = Counter((f.get("risk") or "INFO").upper() for f in findings)
@@ -9104,7 +9151,7 @@ def build_unified_exec_report(data):
 
     body += '<div class="page"><h1>Executive Summary</h1>'
     body += f'''<p class="section-intro">
-{esc(client_name)} engaged the assessor to perform a comprehensive security assessment
+{esc(client_name)} engaged {esc(assessor_firm)} to perform a comprehensive security assessment
 spanning {len(active_scopes)} scope(s): {", ".join(esc(s.title()) for s in active_scopes) if active_scopes else "multiple domains"}.
 This executive summary consolidates findings from all assessment domains into a unified
 risk picture for leadership and board-level stakeholders.</p>'''
