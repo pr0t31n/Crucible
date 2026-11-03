@@ -204,7 +204,7 @@ Crucible/
 │   ├── traffic.py          # Trawler/pcap management
 │   ├── export.py           # Project export/download
 │   ├── worker.py           # Worker delegation API
-│   ├── integration.py      # Nexus + Arbiter integration
+│   ├── integration.py      # Nexus integration
 │   └── shell.py            # Web shell page
 ├── services/               # Business logic
 │   ├── process_manager.py  # Subprocess lifecycle + SocketIO events
@@ -285,7 +285,7 @@ Crucible v2.0 runs on port **5100** (inherits from Vantage, which previously hel
 ## Integration Points
 
 - **Nexus** — central hub status reporting via `/api/nexus-status`
-- **Arbiter** — findings catalogue enrichment via `/api/arbiter/enrich`
+- **Shared Catalogue** — findings catalogue enrichment via `pr0t31n_catalogue.py`
 - **Prometheus** — report generation from universal findings
 
 ## License
