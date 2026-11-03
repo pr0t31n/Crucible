@@ -108,7 +108,7 @@ class FindingsEngine:
         "forge": "Forge", "quill": "Quill", "isotope": "Isotope",
         "aether": "Aether", "aether_b": "Aether-B",
         "aether_z": "Aether-Z", "aether_u": "Aether-U",
-        "gearbox": "Gearbox", "phalanx": "Phalanx",
+        "gearbox": "Gearbox",
         "dredge": "Dredge", "pain": "pAIn",
         "anvil": "Anvil", "vault": "Vault",
         "drift": "Drift", "pivot": "Pivot",
