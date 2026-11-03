@@ -322,7 +322,6 @@ def _load_catalogues():
         return
     master_path = "/opt/pr0t31n/shared/master_findings_catalogue.json"
     fallback_paths = [
-        "/opt/pr0t31n/Arbiter/findings_catalogue.json",
         "/opt/pr0t31n/Scattershot3/findings_catalogue.json",
         "/opt/pr0t31n/Fracture/findings_catalogue.json",
         "/opt/pr0t31n/OSift/findings_catalogue.json",
@@ -8478,7 +8477,7 @@ outside the scope of a cloud infrastructure configuration audit.</p>'''
         body += f'''<p class="section-intro">
 {unenriched} of {len(findings)} finding(s) have not been mapped to any compliance
 framework. This typically indicates the findings have not yet been processed through
-catalogue-based compliance enrichment. Running the Arbiter enrichment pipeline against
+catalogue-based compliance enrichment. Running the catalogue enrichment pipeline against
 these findings will populate NIST, PCI DSS, ISO 27001, SOC 2, and other framework
 mappings for more complete compliance coverage.</p>'''
         body += '<p>Findings without compliance mappings are still included in the pentest and CIS benchmark reports.</p>'

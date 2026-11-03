@@ -282,11 +282,6 @@ class FindingsEngine:
             except Exception:
                 log.exception("Failed to load catalogue for %s", tid)
         master_path = Path("/opt/pr0t31n/shared/master_findings_catalogue.json")
-        if not master_path.exists():
-            master_path = TOOL_DIR / "Arbiter" / "findings_catalogue.json"
-            if master_path.exists():
-                log.warning("Master catalogue not at /opt/pr0t31n/shared/ — "
-                            "falling back to Arbiter-local copy")
         if master_path.exists():
             try:
                 raw = json.loads(master_path.read_text())
