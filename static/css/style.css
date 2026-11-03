@@ -1684,6 +1684,38 @@ mark.ev-hl-current { background: rgba(255,140,0,.7); outline: 2px solid rgba(255
     border-color: rgba(74,125,160,.30);
 }
 
+/* ── KEV badge ─────────────────────────────────────────────── */
+.kev-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 7px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-radius: 3px;
+    white-space: nowrap;
+    line-height: 1.4;
+    background: rgba(220,38,38,.18);
+    color: #ef4444;
+    border: 1px solid rgba(220,38,38,.4);
+    margin-left: 4px;
+}
+[data-mode="light"] .kev-badge {
+    background: rgba(220,38,38,.12);
+    color: #dc2626;
+    border-color: rgba(220,38,38,.35);
+}
+.kev-detail-section {
+    background: rgba(220,38,38,.06);
+    border: 1px solid rgba(220,38,38,.2);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 8px 0 16px;
+}
+.kev-detail-section .form-label { color: #ef4444; }
+
 /* ── Risk toggle pills ─────────────────────────────────────── */
 .risk-toggle {
     display: inline-flex;

@@ -33,6 +33,9 @@ class FindingsEngine:
     def set_action_engine(self, ae):
         self._action_engine = ae
 
+    def set_kev_enricher(self, kev):
+        self._kev_enricher = kev
+
     # ── Read ─────────────────────────────────────────────────
 
     def _get_refresh_lock(self, project_id):
@@ -146,6 +149,7 @@ class FindingsEngine:
         self._refresh_locks = {}
         self._refresh_locks_mu = threading.Lock()
         self._action_engine = None
+        self._kev_enricher = None
         self._catalogues = {}
         self._catalogues_loaded = False
         self._catalogues_ready = threading.Event()
@@ -605,6 +609,8 @@ class FindingsEngine:
         self._enrich_from_catalogue([finding])
         if project:
             apply_risk_overrides([finding], project)
+        if self._kev_enricher:
+            self._kev_enricher.enrich(finding)
 
         if _fdb and project:
             try:

@@ -1906,6 +1906,7 @@ function populateFindingsToolFilter() {
 }
 
 var _riskToggles = {CRITICAL:true, HIGH:true, MEDIUM:true, LOW:true, INFO:true};
+var _kevFilterActive = false;
 var categoryViewActive = false;
 
 function applyFindingsFilter() {
@@ -1929,6 +1930,7 @@ function applyFindingsFilter() {
         if (tool && (f.tool||'') !== tool) return false;
         if (oosFilter === 'oos' && !f.oos) return false;
         if (oosFilter === 'inscope' && f.oos) return false;
+        if (_kevFilterActive && !f.kev) return false;
         if (search) {
             var hay = ((f.title||'') + ' ' + (f.ip||'') + ' ' + (f.hostname||'') +
                 ' ' + (f.description||'') + ' ' + _findingTarget(f) +
@@ -1951,6 +1953,8 @@ function applyFindingsFilter() {
         var ra = _riskOrder[(a.risk||'INFO').toUpperCase()]; if (ra === undefined) ra = 5;
         var rb = _riskOrder[(b.risk||'INFO').toUpperCase()]; if (rb === undefined) rb = 5;
         if (ra !== rb) return ra - rb;
+        var ka = a.kev ? 0 : 1, kb = b.kev ? 0 : 1;
+        if (ka !== kb) return ka - kb;
         var ta = (a.title||'').toLowerCase(), tb = (b.title||'').toLowerCase();
         if (ta !== tb) return ta < tb ? -1 : 1;
         var sa = _findingScope(a), sb = _findingScope(b);
@@ -1970,6 +1974,7 @@ function applyFindingsFilter() {
 }
 
 function updateFindingsStats() {
+    var kevCount = 0;
     if (_v2Mode && _serverSummary && !showFP && !categoryViewActive) {
         document.getElementById('fStatCrit').textContent = _serverSummary.CRITICAL || 0;
         document.getElementById('fStatHigh').textContent = _serverSummary.HIGH || 0;
@@ -1977,16 +1982,25 @@ function updateFindingsStats() {
         document.getElementById('fStatLow').textContent = _serverSummary.LOW || 0;
         document.getElementById('fStatInfo').textContent = _serverSummary.INFO || 0;
         document.getElementById('findingsCount').textContent = _serverTotal + ' finding' + (_serverTotal !== 1 ? 's' : '');
+        kevCount = (allFindings || []).filter(function(f) { return f.kev; }).length;
+        var kevEl = document.getElementById('fStatKev');
+        if (kevEl) kevEl.textContent = kevCount;
         return;
     }
     var src = showFP ? fpFindings : allFindings;
     var counts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
-    src.forEach(function(f) { var r = (f.risk||'').toUpperCase(); if (counts[r] !== undefined) counts[r]++; });
+    src.forEach(function(f) {
+        var r = (f.risk||'').toUpperCase();
+        if (counts[r] !== undefined) counts[r]++;
+        if (f.kev) kevCount++;
+    });
     document.getElementById('fStatCrit').textContent = counts.CRITICAL;
     document.getElementById('fStatHigh').textContent = counts.HIGH;
     document.getElementById('fStatMed').textContent = counts.MEDIUM;
     document.getElementById('fStatLow').textContent = counts.LOW;
     document.getElementById('fStatInfo').textContent = counts.INFO;
+    var kevEl = document.getElementById('fStatKev');
+    if (kevEl) kevEl.textContent = kevCount;
     document.getElementById('findingsCount').textContent = filteredFindings.length + ' finding' + (filteredFindings.length !== 1 ? 's' : '');
 }
 
@@ -2094,7 +2108,7 @@ function renderFindingsTable() {
         tr.setAttribute('data-finding-idx', String(globalIdx));
         tr.style.cursor = 'pointer';
         tr.innerHTML =
-            '<td class="col-risk"><span class="risk-badge ' + riskCls + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span></td>' +
+            '<td class="col-risk"><span class="risk-badge ' + riskCls + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span>' + (f.kev ? '<span class="kev-badge">KEV</span>' : '') + '</td>' +
             '<td class="text-sm">' + esc(cvss) + '</td>' +
             '<td class="text-sm">' + esc(scope) + '</td>' +
             '<td class="col-tool"><span class="tool-badge ' + toolCls + '" title="' + esc(toolName) + '">' + esc(toolKey) + '</span></td>' +
@@ -2351,6 +2365,12 @@ document.getElementById('findingsSearch').addEventListener('input', debounce(app
 document.getElementById('findingsStatsBar').addEventListener('click', function(e) {
     var btn = e.target.closest('.risk-toggle');
     if (!btn) return;
+    if (btn.id === 'kevFilterToggle') {
+        _kevFilterActive = !_kevFilterActive;
+        btn.classList.toggle('active', _kevFilterActive);
+        applyFindingsFilter();
+        return;
+    }
     var rk = btn.getAttribute('data-risk');
     _riskToggles[rk] = !_riskToggles[rk];
     btn.classList.toggle('active', _riskToggles[rk]);
@@ -2366,7 +2386,10 @@ document.getElementById('btnClearFindingsFilters').addEventListener('click', fun
     if (document.getElementById('findingsSortOrder'))
         document.getElementById('findingsSortOrder').value = 'risk';
     _riskToggles = {CRITICAL:true, HIGH:true, MEDIUM:true, LOW:true, INFO:true};
-    document.querySelectorAll('.risk-toggle').forEach(function(b) { b.classList.add('active'); });
+    _kevFilterActive = false;
+    document.querySelectorAll('.risk-toggle[data-risk]').forEach(function(b) { b.classList.add('active'); });
+    var kevBtn = document.getElementById('kevFilterToggle');
+    if (kevBtn) kevBtn.classList.remove('active');
     applyFindingsFilter();
 });
 
@@ -2560,9 +2583,26 @@ function openFindingDetail(f) {
     var body = document.getElementById('findingDetailBody');
 
     var html = '<div class="mb-8"><span class="risk-badge risk-' + (f.risk||'info').toLowerCase() + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span>';
-    if (f.kev) html += ' <span class="tag" style="background:var(--clr-critical);color:#fff">KEV</span>';
+    if (f.kev) html += ' <span class="kev-badge">KEV</span>';
     if (f.confidence) html += ' <span class="tag">' + esc(f.confidence) + '</span>';
     html += '</div>';
+
+    if (f.kev && f.kev_details && f.kev_details.length) {
+        html += '<div class="kev-detail-section">';
+        html += '<div class="form-label" style="margin-bottom:8px">CISA Known Exploited Vulnerability</div>';
+        f.kev_details.forEach(function(k) {
+            html += '<div class="form-grid mb-8" style="gap:4px 12px">';
+            if (k.cve) html += _detailField('CVE', k.cve);
+            if (k.vendor) html += _detailField('Vendor', k.vendor);
+            if (k.product) html += _detailField('Product', k.product);
+            if (k.name) html += _detailField('Vulnerability', k.name);
+            if (k.date_added) html += _detailField('Date Added', k.date_added);
+            if (k.due_date) html += _detailField('Remediation Due', k.due_date);
+            html += _detailField('Ransomware Campaign', k.ransomware ? 'Known' : 'Unknown');
+            html += '</div>';
+        });
+        html += '</div>';
+    }
 
     html += '<div class="form-grid mb-16">';
     if (f.ip) html += _detailField('IP', f.ip);

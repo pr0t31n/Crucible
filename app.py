@@ -4,6 +4,7 @@ import ssl
 import sys
 import signal
 import logging
+import threading
 import traceback
 from datetime import timedelta
 from pathlib import Path
@@ -149,6 +150,19 @@ def create_app():
     imp = ImporterService(socketio=socketio, findings_engine=fe,
                           action_engine=ae, scope_manager=sm)
     app.extensions["importer"] = imp
+
+    from services.kev_enricher import KEVEnricher
+    kev = KEVEnricher()
+    fe.set_kev_enricher(kev)
+    kev.start()
+    app.extensions["kev_enricher"] = kev
+
+    def _kev_backfill():
+        import time as _t
+        _t.sleep(10)
+        kev.backfill(fe, app)
+    threading.Thread(target=_kev_backfill, name="kev-backfill",
+                     daemon=True).start()
 
     from services.scheduler import SchedulerService
     sched = SchedulerService(process_manager=pm, queue_manager=qm, app=app)
