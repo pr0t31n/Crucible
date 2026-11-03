@@ -23,6 +23,7 @@
     <button type="button" class="tab-btn" data-tab="findings">Findings <span class="tab-pill" id="findingsPill"></span></button>
     <button type="button" class="tab-btn" data-tab="action-items">Action Items <span class="tab-pill" id="actionPill"></span></button>
     <button type="button" class="tab-btn" data-tab="intelligence">Intelligence</button>
+    <button type="button" class="tab-btn" data-tab="attack-surface">Attack Surface</button>
     <button type="button" class="tab-btn" data-tab="import">Import</button>
     <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     <button type="button" class="tab-btn" data-tab="logs">Logs</button>
@@ -268,6 +269,7 @@
           <button type="button" class="btn btn-xs btn-secondary" id="btnShowFP">Show FP</button>
           <button type="button" class="btn btn-xs btn-ghost" id="btnReloadFindings">Reload</button>
           <button type="button" class="btn btn-xs btn-ghost" id="btnExportFindings" title="Export findings"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="btnBurpImport" title="Import Burp Suite XML" onclick="window._openBurpWizard()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Burp Import</button>
         </div>
       </div>
 
@@ -442,6 +444,19 @@
     </div>
   </div>
 
+
+  <!-- ══════════════════════════════════════════════════════════
+       ATTACK SURFACE TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="attack-surface">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;font-size:1rem">Attack Surface</h3>
+      <button type="button" class="btn btn-xs btn-ghost" onclick="window._refreshAttackSurface()">Reload</button>
+    </div>
+    <div id="attackSurfaceContainer">
+      <div style="text-align:center;padding:40px;opacity:0.5">Select this tab to load attack surface data.</div>
+    </div>
+  </div>
 
   <!-- ══════════════════════════════════════════════════════════
        IMPORT TAB
@@ -1595,6 +1610,8 @@
 <script src="/static/js/socket.io.min.js"></script>
 <script id="projectConfig" type="application/json">{"pid":{{ project_id|tojson }},"project":{{ project|tojson }},"toolsCfg":{{ tools_config|tojson }}}</script>
 <script src="/static/js/project.js?v={{ app_version }}"></script>
+<script src="/static/js/burp_import.js?v={{ app_version }}"></script>
+<script src="/static/js/attack_surface.js?v={{ app_version }}"></script>
 <script>
 var _selectedReportType = 'full';
 
