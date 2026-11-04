@@ -2437,11 +2437,12 @@ document.getElementById('btnClearFindingsFilters').addEventListener('click', fun
 document.getElementById('btnReloadFindings').addEventListener('click', function() { loadFindings(true); });
 
 function _exportDefaultFilename(format) {
-    var base = PROJECT.client_short || 'findings';
-    if (format === 'csv_merged') return base + '_findings_merged';
+    var eng = (PROJECT.name || PROJECT.client_short || 'findings').replace(/ /g, '_');
+    var base = 'Crucible_' + eng;
+    if (format === 'csv_merged') return base + '_findings';
     if (format === 'csv_unmerged') return base + '_findings_unmerged';
     if (format === 'json') return base + '_findings';
-    return base + '_findings_per_tool';
+    return base + '_findings';
 }
 
 document.getElementById('btnExportFindings').addEventListener('click', function() {

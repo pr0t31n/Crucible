@@ -760,13 +760,17 @@ def api_export_findings_csv(project_id):
     output = io.BytesIO(buf.getvalue().encode("utf-8-sig"))
     name = request.args.get("filename")
     if not name:
-        cs = project.get("client_short", "findings")
-        name = cs + "_findings"
+        name = _export_base(project) + "_findings"
     return send_file(output, mimetype="text/csv", as_attachment=True,
                      download_name=f"{name}.csv")
 
 
 # ── JSON export ─────────────────────────────────────────────
+
+def _export_base(project):
+    eng = project.get("name", project.get("client_short", "findings"))
+    return "Crucible_" + eng.replace(" ", "_")
+
 
 def _get_findings_json_path(project):
     eng_dir = project.get("engagement_dir") or project.get("project_dir", "")
@@ -785,8 +789,7 @@ def api_export_findings_json(project_id):
     if existing:
         name = request.args.get("filename")
         if not name:
-            cs = project.get("client_short", "findings")
-            name = cs + "_findings"
+            name = _export_base(project) + "_findings"
         return send_file(existing, mimetype="application/json",
                          as_attachment=True, download_name=f"{name}.json")
 
@@ -795,8 +798,7 @@ def api_export_findings_json(project_id):
     output = io.BytesIO(payload.encode("utf-8"))
     name = request.args.get("filename")
     if not name:
-        cs = project.get("client_short", "findings")
-        name = cs + "_findings"
+        name = _export_base(project) + "_findings"
     return send_file(output, mimetype="application/json",
                      as_attachment=True, download_name=f"{name}.json")
 
@@ -869,8 +871,7 @@ def api_export_findings_unmerged_csv(project_id):
     output = io.BytesIO(buf.getvalue().encode("utf-8-sig"))
     name = request.args.get("filename")
     if not name:
-        cs = project.get("client_short", "findings")
-        name = cs + "_findings_unmerged"
+        name = _export_base(project) + "_findings_unmerged"
     return send_file(output, mimetype="text/csv", as_attachment=True,
                      download_name=f"{name}.csv")
 
@@ -1055,8 +1056,7 @@ def api_export_findings_xlsx(project_id):
     buf.seek(0)
     name = request.args.get("filename")
     if not name:
-        cs = project.get("client_short", "findings")
-        name = cs + "_findings"
+        name = _export_base(project) + "_findings"
     return send_file(
         buf,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
