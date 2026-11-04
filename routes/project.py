@@ -687,11 +687,12 @@ def api_download_project(project_id):
                                 arcname = f"tools/{tool_id}/{fp.relative_to(tp)}"
                                 zf.write(fp, arcname)
 
-        name = project.get("client_short", "project")
+        eng_name = project.get("name", project.get("client_short", "project"))
+        safe_name = eng_name.replace(" ", "_")
         suffix = f"_{scope_filter}" if scope_filter else ""
         resp = send_file(tmp_path, mimetype="application/zip",
                          as_attachment=True,
-                         download_name=f"{name}{suffix}_crucible_export.zip")
+                         download_name=f"Crucible_{safe_name}{suffix}.zip")
 
         @resp.call_on_close
         def _cleanup():
