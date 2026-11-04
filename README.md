@@ -3,9 +3,9 @@
 Unified Penetration Testing Platform — orchestrate, execute, and manage penetration testing engagements across 12 integrated tools from a single interface.
 
 Crucible v2.0 merges three previously separate Flask applications:
-- **Vantage** (network recon) — Scattershot3 + OSift + Trawler
+- **Network recon** — Scattershot3 + OSift + Trawler
 - **Crucible v1** (web/API) — Fracture + Siphon + Auger + AuthProbe
-- **Spectre** (wireless) — Aether + Aether-B + Aether-Z + Aether-U
+- **Wireless** — Aether + Aether-B + Aether-Z + Aether-U
 
 Plus Nessus vulnerability scanner integration and worker delegation for distributed execution.
 
@@ -61,7 +61,7 @@ Each tool has an adapter class (`adapters/<tool>.py`) implementing the `ToolAdap
 - Command-line argument construction
 - Environment variables
 - Settings schema and defaults
-- Protocol token family (Crucible/Vantage/Spectre)
+- Protocol token family (Crucible)
 - Test connection support
 
 Adapters are lazy-loaded via `adapters/__init__.py` registry.
@@ -280,7 +280,7 @@ Crucible/
 
 ## Port
 
-Crucible v2.0 runs on port **5100** (inherits from Vantage, which previously held this port).
+Crucible v2.0 runs on port **5100**.
 
 ## Integration Points
 
