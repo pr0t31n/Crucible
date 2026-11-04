@@ -2440,6 +2440,7 @@ function _exportDefaultFilename(format) {
     var base = PROJECT.client_short || 'findings';
     if (format === 'csv_merged') return base + '_findings_merged';
     if (format === 'csv_unmerged') return base + '_findings_unmerged';
+    if (format === 'json') return base + '_findings';
     return base + '_findings_per_tool';
 }
 
@@ -2462,7 +2463,7 @@ document.getElementById('btnExportFindings').addEventListener('click', function(
     var fnInput = document.getElementById('exportFilename');
     radios.forEach(function(r) {
         r.addEventListener('change', function() {
-            extSpan.textContent = r.value === 'xlsx' ? '.xlsx' : '.csv';
+            extSpan.textContent = r.value === 'xlsx' ? '.xlsx' : r.value === 'json' ? '.json' : '.csv';
             var def = _exportDefaultFilename(r.value);
             fnInput.value = def;
             fnInput.placeholder = def;
@@ -2483,6 +2484,8 @@ document.getElementById('btnExportFindingsGo').addEventListener('click', functio
         url = '/api/export-findings/' + PID + qp;
     } else if (format === 'csv_unmerged') {
         url = '/api/export-findings-unmerged/' + PID + qp;
+    } else if (format === 'json') {
+        url = '/api/export-findings-json/' + PID + qp;
     } else {
         url = '/api/export-findings-xlsx/' + PID + qp;
     }

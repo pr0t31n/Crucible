@@ -766,6 +766,41 @@ def api_export_findings_csv(project_id):
                      download_name=f"{name}.csv")
 
 
+# ── JSON export ─────────────────────────────────────────────
+
+def _get_findings_json_path(project):
+    eng_dir = project.get("engagement_dir") or project.get("project_dir", "")
+    if eng_dir:
+        p = Path(eng_dir) / "findings.json"
+        if p.exists() and p.stat().st_size > 2:
+            return p
+    return None
+
+
+@findings_bp.route("/api/export-findings-json/<project_id>")
+def api_export_findings_json(project_id):
+    project = require_project(project_id)
+
+    existing = _get_findings_json_path(project)
+    if existing:
+        name = request.args.get("filename")
+        if not name:
+            cs = project.get("client_short", "findings")
+            name = cs + "_findings"
+        return send_file(existing, mimetype="application/json",
+                         as_attachment=True, download_name=f"{name}.json")
+
+    findings = _engine().get_findings(project_id, project)
+    payload = json.dumps(findings, indent=2, default=str)
+    output = io.BytesIO(payload.encode("utf-8"))
+    name = request.args.get("filename")
+    if not name:
+        cs = project.get("client_short", "findings")
+        name = cs + "_findings"
+    return send_file(output, mimetype="application/json",
+                     as_attachment=True, download_name=f"{name}.json")
+
+
 # ── Unmerged CSV export ──────────────────────────────────────
 
 def _load_unmerged_findings(project):

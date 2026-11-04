@@ -113,6 +113,7 @@
   .home-right-panel { display: none; }
 }
 @keyframes dl-rotate { to { transform: rotate(360deg); } }
+.dl-menu a:hover { background: var(--bg-hover, rgba(128,128,128,.12)); }
 </style>
 
 <div class="home-layout">
@@ -147,10 +148,17 @@
             <a href="/edit_project/{{ p.id }}" class="btn-icon" title="Edit">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </a>
-            <button type="button" class="btn-icon" title="Download" onclick="event.stopPropagation(); downloadProject(this, '{{ p.id }}')">
-              <svg class="dl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              <svg class="dl-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;animation:dl-rotate .8s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="50 20" /></svg>
-            </button>
+            <div class="dl-dropdown" style="position:relative;display:inline-block" onclick="event.stopPropagation()">
+              <button type="button" class="btn-icon" title="Download" onclick="toggleDlMenu(this)">
+                <svg class="dl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg class="dl-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;animation:dl-rotate .8s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="50 20" /></svg>
+              </button>
+              <div class="dl-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--card-bg,var(--bg-secondary));border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:100;min-width:160px;padding:4px 0;font-size:.8rem">
+                <a href="#" onclick="dlAction(this,'zip','{{ p.id }}');return false" style="display:block;padding:6px 12px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Full Project ZIP</a>
+                <a href="#" onclick="dlAction(this,'json','{{ p.id }}');return false" style="display:block;padding:6px 12px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Findings JSON</a>
+                <a href="#" onclick="dlAction(this,'csv','{{ p.id }}');return false" style="display:block;padding:6px 12px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Findings CSV</a>
+              </div>
+            </div>
             <button type="button" class="btn-icon" title="Clear results" onclick="clearProject('{{ p.id }}')">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" stroke-width="2"/></svg>
             </button>
@@ -920,20 +928,37 @@ var _lastSystemInfo = null;
 var _selectedReportType = 'full';
 var _reportPid = null;
 
-function downloadProject(btn, pid) {
+function toggleDlMenu(btn) {
+  var menu = btn.parentElement.querySelector('.dl-menu');
+  var open = menu.style.display !== 'none';
+  document.querySelectorAll('.dl-menu').forEach(function(m) { m.style.display = 'none'; });
+  if (!open) menu.style.display = '';
+}
+document.addEventListener('click', function() {
+  document.querySelectorAll('.dl-menu').forEach(function(m) { m.style.display = 'none'; });
+});
+
+function dlAction(link, format, pid) {
+  var dd = link.closest('.dl-dropdown');
+  var btn = dd.querySelector('.btn-icon');
   var icon = btn.querySelector('.dl-icon');
   var spin = btn.querySelector('.dl-spin');
+  dd.querySelector('.dl-menu').style.display = 'none';
   if (spin.style.display !== 'none') return;
   icon.style.display = 'none';
   spin.style.display = '';
   btn.disabled = true;
-  btn.title = 'Exporting…';
-  fetch('/api/download-project/' + pid)
+  var url;
+  if (format === 'json') url = '/api/export-findings-json/' + pid;
+  else if (format === 'csv') url = '/api/export-findings/' + pid;
+  else url = '/api/download-project/' + pid;
+  fetch(url)
     .then(function(r) {
       if (!r.ok) throw new Error('Export failed: ' + r.status);
       var cd = r.headers.get('content-disposition') || '';
       var m = cd.match(/filename="?([^";]+)"?/);
-      var fname = m ? m[1] : 'crucible_export.zip';
+      var fallback = format === 'json' ? 'findings.json' : format === 'csv' ? 'findings.csv' : 'crucible_export.zip';
+      var fname = m ? m[1] : fallback;
       return r.blob().then(function(b) { return {blob: b, fname: fname}; });
     })
     .then(function(o) {
@@ -949,7 +974,6 @@ function downloadProject(btn, pid) {
       icon.style.display = '';
       spin.style.display = 'none';
       btn.disabled = false;
-      btn.title = 'Download';
     });
 }
 

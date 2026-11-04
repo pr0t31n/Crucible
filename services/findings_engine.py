@@ -541,6 +541,10 @@ class FindingsEngine:
             target=self._populate_db,
             args=(project_id, project, list(active)),
             name="fdb-populate", daemon=True).start()
+        threading.Thread(
+            target=self._persist_findings_json,
+            args=(project, list(active)),
+            name="findings-json-persist", daemon=True).start()
         # Phase 8: Ingest intelligence data into DB tables
         try:
             from services.intel_ingestion import ingest_all as _ingest_intel
@@ -567,6 +571,19 @@ class FindingsEngine:
                      project_id, len(findings))
         except Exception:
             log.exception("FindingsDB populate failed for %s", project_id)
+
+    def _persist_findings_json(self, project, findings):
+        """Write enriched findings to findings.json in the engagement dir."""
+        eng_dir = project.get("engagement_dir") or project.get("project_dir", "")
+        if not eng_dir:
+            return
+        out = Path(eng_dir) / "findings.json"
+        try:
+            with open(out, "w") as fh:
+                json.dump(findings, fh, indent=2, default=str)
+            log.info("Persisted %d findings to %s", len(findings), out)
+        except Exception:
+            log.exception("Failed to persist findings.json to %s", out)
 
     # ── Invalidate ───────────────────────────────────────────
 
