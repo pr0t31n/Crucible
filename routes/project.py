@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -641,52 +642,70 @@ def _relativize_findings_json(findings_path, eng_dir):
 
 @project_bp.route("/api/download-project/<project_id>")
 def api_download_project(project_id):
-    """ZIP export of engagement directory (v2.0/v3.0) or project + tools (v1.x)."""
+    """ZIP export of engagement directory (v2.0/v3.0) or project + tools (v1.x).
+
+    Writes the ZIP to a temp file on disk instead of memory so that
+    arbitrarily large projects don't OOM the process.
+    """
     project = require_project(project_id)
     scope_filter = request.args.get("scope")
 
-    buf = io.BytesIO()
     eng_dir = Path(project.get("engagement_dir", project.get("project_dir", "")))
-
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        if project.get("layout_version") == "2.0" and eng_dir.exists():
-            export_meta = prepare_export_meta(project) if _IMPORT_ENGINE else None
-            for fp in eng_dir.rglob("*"):
-                if fp.is_file():
-                    rel = fp.relative_to(eng_dir)
-                    if scope_filter and not str(rel).startswith(scope_filter + "/"):
-                        if fp.name != "engagement.json":
-                            continue
-                    if fp.name == "crucible_meta.json" and export_meta:
-                        zf.writestr(str(rel),
-                                    json.dumps(export_meta, indent=2, default=str))
-                        continue
-                    if fp.name == "findings.json":
-                        zf.writestr(str(rel),
-                                    _relativize_findings_json(fp, eng_dir))
-                        continue
-                    zf.write(fp, str(rel))
-        else:
-            proj_dir = Path(project.get("project_dir", ""))
-            if proj_dir.exists():
-                for fp in proj_dir.rglob("*"):
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".zip", prefix="crucible_export_")
+    try:
+        os.close(tmp_fd)
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            if project.get("layout_version") == "2.0" and eng_dir.exists():
+                export_meta = prepare_export_meta(project) if _IMPORT_ENGINE else None
+                for fp in eng_dir.rglob("*"):
                     if fp.is_file():
-                        arcname = f"project/{fp.relative_to(proj_dir)}"
-                        zf.write(fp, arcname)
-            for tool_id, td in project.get("tool_dirs", {}).items():
-                tp = Path(td)
-                if tp.exists():
-                    for fp in tp.rglob("*"):
+                        rel = fp.relative_to(eng_dir)
+                        if scope_filter and not str(rel).startswith(scope_filter + "/"):
+                            if fp.name != "engagement.json":
+                                continue
+                        if fp.name == "crucible_meta.json" and export_meta:
+                            zf.writestr(str(rel),
+                                        json.dumps(export_meta, indent=2, default=str))
+                            continue
+                        if fp.name == "findings.json":
+                            zf.writestr(str(rel),
+                                        _relativize_findings_json(fp, eng_dir))
+                            continue
+                        zf.write(fp, str(rel))
+            else:
+                proj_dir = Path(project.get("project_dir", ""))
+                if proj_dir.exists():
+                    for fp in proj_dir.rglob("*"):
                         if fp.is_file():
-                            arcname = f"tools/{tool_id}/{fp.relative_to(tp)}"
+                            arcname = f"project/{fp.relative_to(proj_dir)}"
                             zf.write(fp, arcname)
+                for tool_id, td in project.get("tool_dirs", {}).items():
+                    tp = Path(td)
+                    if tp.exists():
+                        for fp in tp.rglob("*"):
+                            if fp.is_file():
+                                arcname = f"tools/{tool_id}/{fp.relative_to(tp)}"
+                                zf.write(fp, arcname)
 
-    buf.seek(0)
-    name = project.get("client_short", "project")
-    suffix = f"_{scope_filter}" if scope_filter else ""
-    return send_file(buf, mimetype="application/zip",
-                     as_attachment=True,
-                     download_name=f"{name}{suffix}_crucible_export.zip")
+        name = project.get("client_short", "project")
+        suffix = f"_{scope_filter}" if scope_filter else ""
+        resp = send_file(tmp_path, mimetype="application/zip",
+                         as_attachment=True,
+                         download_name=f"{name}{suffix}_crucible_export.zip")
+
+        @resp.call_on_close
+        def _cleanup():
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return resp
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 _MAX_IMPORT_SIZE = 500 * 1024 * 1024
