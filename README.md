@@ -8,6 +8,9 @@ https://localhost:5100
 
 ---
 
+
+> **[View full documentation on the Codex Wiki](https://wiki.pr0t31n.com/tools/crucible)** — detailed features, CLI reference, findings catalogue, and integration guides.
+
 ## Features
 
 ### Project Management
