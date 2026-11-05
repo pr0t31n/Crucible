@@ -46,11 +46,11 @@ class FindingsEngine:
 
     def _load_all_from_db(self, project_id, project):
         """Load all non-FP findings from DB into the in-memory cache."""
-        db = self._get_db(project_id, project)
-        if db is None:
+        rdb = self._open_readonly_db(project_id, project)
+        if rdb is None:
             return None
         try:
-            result = db.query_findings(page=1, per_page=500000)
+            result = rdb.query_findings(page=1, per_page=500000)
             findings = result.get("findings", [])
             if not findings:
                 return None
@@ -60,6 +60,8 @@ class FindingsEngine:
         except Exception:
             log.debug("DB load failed for %s, falling back to JSON", project_id)
             return None
+        finally:
+            rdb.close()
 
     def get_findings(self, project_id, project):
         """Get deduplicated findings for a project. Uses cache if available.
@@ -162,26 +164,46 @@ class FindingsEngine:
         threading.Thread(target=self._preload_catalogues,
                          name="catalogue-preload", daemon=True).start()
 
+    def _get_db_path(self, project_id, project):
+        """Return the DB file path for a project, or None."""
+        eng_dir = project.get("project_dir") or project.get("engagement_dir", "")
+        if not eng_dir:
+            return None
+        from config import FINDINGS_DB_FILENAME
+        p = Path(eng_dir) / FINDINGS_DB_FILENAME
+        return str(p) if p.exists() else None
+
     def _get_db(self, project_id, project):
-        """Get or create a FindingsDB handle for a project."""
+        """Get or create a cached read-write FindingsDB handle."""
         if _fdb is None:
             return None
         with self._db_lock:
             db = self._db_handles.get(project_id)
             if db is not None:
                 return db
-        eng_dir = project.get("engagement_dir") or project.get("project_dir", "")
-        if not eng_dir:
+        db_path = self._get_db_path(project_id, project)
+        if not db_path:
             return None
-        from config import FINDINGS_DB_FILENAME
-        db_path = Path(eng_dir) / FINDINGS_DB_FILENAME
         try:
-            db = _fdb.FindingsDB(str(db_path))
+            db = _fdb.FindingsDB(db_path)
             with self._db_lock:
                 self._db_handles[project_id] = db
             return db
         except Exception:
             log.debug("Could not open FindingsDB at %s", db_path)
+            return None
+
+    def _open_readonly_db(self, project_id, project):
+        """Open a fresh readonly FindingsDB for the current request."""
+        if _fdb is None:
+            return None
+        db_path = self._get_db_path(project_id, project)
+        if not db_path:
+            return None
+        try:
+            return _fdb.FindingsDB(db_path, readonly=True)
+        except Exception:
+            log.debug("Could not open readonly FindingsDB at %s", db_path)
             return None
 
     def _close_db(self, project_id):
@@ -197,39 +219,44 @@ class FindingsEngine:
     def query_findings_db(self, project_id, project, **kwargs):
         """Query findings from DB with server-side pagination.
 
+        Opens a fresh readonly connection per query to avoid cross-thread
+        issues with cached handles.
+
         Accepted kwargs: page, per_page, risk, tool, scope, ip, port,
         hostname, category, search, sort, order, oos.
         Returns dict: {findings, total, page, pages, summary}.
         """
-        db = self._get_db(project_id, project)
-        if db is None:
+        rdb = self._open_readonly_db(project_id, project)
+        if rdb is None:
             return None
         try:
-            result = db.query_findings(**kwargs)
-            summary = db.get_summary()
+            result = rdb.query_findings(**kwargs)
+            summary = rdb.get_summary()
             result["summary"] = summary
             return result
         except Exception:
             log.exception("FindingsDB query failed for %s", project_id)
             return None
+        finally:
+            rdb.close()
 
     def get_filter_options(self, project_id, project):
         """Return distinct scopes, tools, and categories for filter dropdowns."""
-        db = self._get_db(project_id, project)
-        if db is not None:
+        rdb = self._open_readonly_db(project_id, project)
+        if rdb is not None:
             try:
-                scopes = [r["name"] for r in db._conn.execute(
+                scopes = [r["name"] for r in rdb._conn.execute(
                     "SELECT DISTINCT s.name FROM findings f "
                     "JOIN scopes s ON f.scope_id=s.id "
                     "WHERE f.is_false_positive=0 ORDER BY s.name"
                 ).fetchall() if r["name"]]
                 tools = [{"id": r["tool_id"], "name": r["tool_name"]} for r in
-                         db._conn.execute(
+                         rdb._conn.execute(
                     "SELECT DISTINCT f.tool_id, t.name as tool_name "
                     "FROM findings f JOIN tools t ON f.tool_id=t.id "
                     "WHERE f.is_false_positive=0 ORDER BY t.name"
                 ).fetchall()]
-                categories = [r["name"] for r in db._conn.execute(
+                categories = [r["name"] for r in rdb._conn.execute(
                     "SELECT DISTINCT c.name FROM findings f "
                     "JOIN categories c ON f.category_id=c.id "
                     "WHERE f.is_false_positive=0 ORDER BY c.name"
@@ -238,6 +265,8 @@ class FindingsEngine:
                         "categories": categories, "source": "db"}
             except Exception:
                 log.debug("DB filter options failed for %s", project_id)
+            finally:
+                rdb.close()
         findings = self.get_findings(project_id, project)
         scopes = sorted({f.get("scope", "") for f in findings} - {""})
         tool_set = {}
@@ -1199,31 +1228,33 @@ class FindingsEngine:
 
     def get_summary(self, project_id, project):
         """Return risk summary dict for a project."""
-        db = self._get_db(project_id, project)
-        if db is not None:
+        rdb = self._open_readonly_db(project_id, project)
+        if rdb is not None:
             try:
-                return db.get_summary()
+                return rdb.get_summary()
             except Exception:
                 pass
+            finally:
+                rdb.close()
         findings = self.get_findings(project_id, project)
         return get_risk_summary(findings)
 
     def get_full_summary(self, project_id, project):
         """Return {risk_counts, tool_breakdown, findings_count, ...}."""
-        db = self._get_db(project_id, project)
-        if db is not None:
+        rdb = self._open_readonly_db(project_id, project)
+        if rdb is not None:
             try:
-                s = db.get_summary()
+                s = rdb.get_summary()
                 rc = {k: s.get(k, 0) for k in
                       ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")}
                 tb = {}
-                for row in db.get_tool_summary():
+                for row in rdb.get_tool_summary():
                     tb[row["tool_id"]] = row["count"]
-                fp_count = db._conn.execute(
+                fp_count = rdb._conn.execute(
                     "SELECT COUNT(*) FROM findings "
                     "WHERE is_false_positive=1").fetchone()[0]
                 try:
-                    accepted = db._conn.execute(
+                    accepted = rdb._conn.execute(
                         "SELECT COUNT(*) FROM findings "
                         "WHERE accepted=1 AND is_false_positive=0"
                     ).fetchone()[0]
@@ -1241,6 +1272,8 @@ class FindingsEngine:
             except Exception:
                 log.exception("DB summary failed for %s, falling back",
                               project_id)
+            finally:
+                rdb.close()
         findings = self.get_findings(project_id, project)
         rc = get_risk_summary(findings)
         return {
