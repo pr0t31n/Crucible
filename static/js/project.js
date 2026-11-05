@@ -99,6 +99,7 @@ var _findingsRefreshTimer = null;
 var _activeToolCount = 0;
 var _findingsDebouncePending = false;
 var _findingsDebounceTimer = null;
+var _findingsMissedWhileInactive = false;
 var _v2Source = null;
 var _serverSummary = null;
 var _serverTotal = 0;
@@ -129,8 +130,16 @@ tabNav.addEventListener('click', function(e) {
         p.classList.toggle('active', p.getAttribute('data-tab') === tab);
     });
 
-    /* lazy-load on first visit */
-    if (tab === 'findings' && !allFindings._loaded) loadFindings();
+    /* lazy-load on first visit, or catch up if findings arrived while away */
+    if (tab === 'findings') {
+        if (!allFindings._loaded) {
+            loadFindings();
+        } else if (_findingsMissedWhileInactive) {
+            _findingsMissedWhileInactive = false;
+            if (_v2Mode) _fetchFindingsV2(_v2Params || _buildV2Params());
+            else loadFindings(true);
+        }
+    }
     if (tab === 'action-items' && !allActionItems._loaded) loadActionItems();
     if (tab === 'logs' && !allLogs._loaded) loadLogs();
     if (tab === 'errors' && !allErrors._loaded) loadErrors();
@@ -482,6 +491,8 @@ socket.on('tool_finding', function(data) {
                 } else {
                     applyFindingsFilter();
                 }
+            } else {
+                _findingsMissedWhileInactive = true;
             }
             updateRiskOverview();
         }, 2000);
