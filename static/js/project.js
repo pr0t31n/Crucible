@@ -137,6 +137,7 @@ tabNav.addEventListener('click', function(e) {
     if (tab === 'settings') initSettingsTabs();
     if (tab === 'import' && !_impState._loaded) initImportTab();
     if (tab === 'attack-surface' && typeof window._initAttackSurface === 'function') window._initAttackSurface();
+    if (tab === 'ai-surface' && typeof window._initAiSurface === 'function') window._initAiSurface();
     if (tab === 'sessions' && !_sessState._loaded) loadSessions();
 });
 

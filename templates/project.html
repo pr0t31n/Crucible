@@ -24,6 +24,7 @@
     <button type="button" class="tab-btn" data-tab="action-items">Action Items <span class="tab-pill" id="actionPill"></span></button>
     <button type="button" class="tab-btn" data-tab="intelligence">Intelligence</button>
     <button type="button" class="tab-btn" data-tab="attack-surface">Attack Surface</button>
+    <button type="button" class="tab-btn" data-tab="ai-surface">AI Surface <span class="tab-pill" id="aiSurfacePill"></span></button>
     <button type="button" class="tab-btn" data-tab="import">Import</button>
     <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     <button type="button" class="tab-btn" data-tab="logs">Logs</button>
@@ -455,6 +456,86 @@
     </div>
     <div id="attackSurfaceContainer">
       <div style="text-align:center;padding:40px;opacity:0.5">Select this tab to load attack surface data.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       AI SURFACE TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="ai-surface">
+    <div class="p-20">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0;font-size:1rem">AI Surface Intelligence</h3>
+        <button type="button" class="btn btn-xs btn-ghost" onclick="window._refreshAiSurface()">Reload</button>
+      </div>
+
+      <!-- ── Empty state ──────────────────────────────────────── -->
+      <div class="empty-state" id="aiSurfaceEmpty">
+        <div class="empty-state-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 017 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 017-7z"/><line x1="9" y1="22" x2="15" y2="22"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>
+        </div>
+        <div class="empty-state-title">AI Surface Intelligence</div>
+        <div class="empty-state-text">AI service discovery data populates as Scattershot3, Fracture, Siphon, and pAIn run and detect AI services, models, and vulnerabilities.</div>
+      </div>
+
+      <!-- ── Main content (hidden until data) ─────────────────── -->
+      <div id="aiSurfaceBody" hidden>
+
+        <!-- Summary cards -->
+        <div class="panel mb-16">
+          <div class="panel-header">
+            <span class="panel-title">Attack Surface Summary</span>
+            <span class="text-xs text-muted" id="aiTotalFindings">0</span>
+          </div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+              <div class="stat-card"><span class="stat-label">AI Services</span><span class="stat-value font-mono" id="aiTotalServices">0</span></div>
+              <div class="stat-card"><span class="stat-label">Unauthenticated</span><span class="stat-value font-mono" id="aiUnauthServices" style="color:var(--red-500)">0</span></div>
+              <div class="stat-card"><span class="stat-label">Models Enumerated</span><span class="stat-value font-mono" id="aiTotalModels">0</span></div>
+              <div class="stat-card"><span class="stat-label">AI Findings</span><span class="stat-value font-mono" id="aiTotalFindings2">0</span></div>
+            </div>
+            <div class="flex gap-12 flex-wrap">
+              <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-critical">CRITICAL</span><span class="font-mono font-bold" id="aiCritical">0</span></div>
+              <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-high">HIGH</span><span class="font-mono font-bold" id="aiHigh">0</span></div>
+              <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-medium">MEDIUM</span><span class="font-mono font-bold" id="aiMedium">0</span></div>
+              <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-low">LOW</span><span class="font-mono font-bold" id="aiLow">0</span></div>
+              <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-info">INFO</span><span class="font-mono font-bold" id="aiInfo">0</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Discovered AI Services -->
+        <div class="panel mb-16">
+          <div class="panel-header"><span class="panel-title">Discovered AI Services</span></div>
+          <div class="panel-body" style="overflow-x:auto" id="aiServicesTable"></div>
+        </div>
+
+        <!-- AI Model Inventory -->
+        <div class="panel mb-16">
+          <div class="panel-header"><span class="panel-title">AI Model Inventory</span></div>
+          <div class="panel-body" style="overflow-x:auto" id="aiModelsTable"></div>
+        </div>
+
+        <!-- AI Findings -->
+        <div class="panel mb-16">
+          <div class="panel-header"><span class="panel-title">AI-Related Findings</span></div>
+          <div class="panel-body" style="overflow-x:auto" id="aiFindingsTable"></div>
+        </div>
+
+        <!-- AI Key Exposure -->
+        <div class="panel mb-16">
+          <div class="panel-header"><span class="panel-title">AI API Key Exposure</span></div>
+          <div class="panel-body" style="overflow-x:auto" id="aiKeyExposureTable"></div>
+        </div>
+
+        <!-- pAIn Test Status -->
+        <div class="panel mb-16">
+          <div class="panel-header"><span class="panel-title">pAIn Test Status</span></div>
+          <div class="panel-body" id="aiPainStatus"></div>
+        </div>
+
+      </div>
     </div>
   </div>
 
@@ -1619,6 +1700,7 @@
 <script src="/static/js/project.js?v={{ app_version }}"></script>
 <script src="/static/js/burp_import.js?v={{ app_version }}"></script>
 <script src="/static/js/attack_surface.js?v={{ app_version }}"></script>
+<script src="/static/js/ai_surface.js?v={{ app_version }}"></script>
 <script>
 var _selectedReportType = 'full';
 

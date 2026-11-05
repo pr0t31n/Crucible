@@ -246,6 +246,12 @@ CATEGORIES = {
         "approval_tier": "confirm",
         "description": "Manual verification required — human testing needed",
     },
+    "ai_discovered": {
+        "recommended_tool": "pain",
+        "priority": "HIGH",
+        "approval_tier": "confirm",
+        "description": "AI/LLM service discovered — run pAIn prompt-injection testing",
+    },
 }
 
 # ── Credential discovery patterns ──────────────────────────────────────
@@ -313,6 +319,18 @@ _WIRELESS_SERVICES = frozenset({
 
 _AD_PORTS = {88: "kerberos", 389: "ldap", 636: "ldaps", 3268: "gc", 3269: "gc-ssl"}
 _AD_SERVICES = frozenset({"kerberos", "ldap", "ldaps", "msrpc", "kpasswd5"})
+
+_AI_PORTS = {
+    11434: "ollama", 7860: "gradio", 8501: "streamlit",
+    5000: "mlflow", 8001: "triton-http", 8002: "triton-grpc",
+    6333: "qdrant-http", 6334: "qdrant-grpc", 19530: "milvus",
+    8188: "comfyui", 7869: "gradio-alt",
+}
+_AI_SERVICES = frozenset({
+    "ollama", "gradio", "streamlit", "mlflow", "vllm", "triton",
+    "bentoml", "litellm", "torchserve", "langflow", "comfyui",
+    "jupyter", "dify", "chromadb", "milvus", "qdrant", "weaviate",
+})
 
 
 class ActionEngine:
@@ -467,6 +485,29 @@ class ActionEngine:
                 "metadata": {
                     "ip": ip, "port": port, "hostname": hostname,
                     "service": ad_svc, "product": product,
+                },
+            })
+            if item:
+                items.append(item)
+
+        # AI/LLM services → pAIn
+        if port in _AI_PORTS or service in _AI_SERVICES:
+            ai_svc = _AI_PORTS.get(port, service)
+            scheme = "https" if port in (443, 8443) else "http"
+            item = add_action_item(project_dir, {
+                "source_tool": source_tool,
+                "recommended_tool": "pain",
+                "category": "ai_discovered",
+                "title": f"AI service ({ai_svc}) on {ip}:{port}",
+                "target": f"{scheme}://{ip}:{port}",
+                "scope": scope,
+                "priority": "HIGH",
+                "approval_tier": "confirm",
+                "in_scope": in_scope,
+                "metadata": {
+                    "ip": ip, "port": port, "hostname": hostname,
+                    "service": ai_svc, "product": product,
+                    "ai_type": "auto",
                 },
             })
             if item:
@@ -749,6 +790,7 @@ class ActionEngine:
         "forge": {"deeper": None, "manual": ["ScoutSuite", "Prowler", "CloudSploit"]},
         "quill": {"deeper": None, "manual": ["MobSF", "frida", "objection"]},
         "isotope": {"deeper": None, "manual": ["binwalk", "strings", "YARA"]},
+        "pain":    {"deeper": None, "manual": ["garak", "nuclei AI templates", "manual prompt testing"]},
     }
 
     _FINDING_TYPE_RECOMMENDATIONS = [

@@ -54,6 +54,7 @@ TOOLS = {
     "isotope":  {"name": "Isotope",       "key": "IS", "domain": "file",     "script": TOOL_DIR / "Isotope/isotope.py",             "sudo": False, "group": "any",      "desc": "Detailed file analysis"},
     "dredge":   {"name": "Dredge",        "key": "DG", "domain": "endpoint", "script": TOOL_DIR / "Dredge/dredge.py",               "sudo": False, "group": "any",      "desc": "Windows endpoint security audit"},
     "vault":    {"name": "Vault",         "key": "VT", "domain": "ad",       "script": TOOL_DIR / "Vault/vault.py",                "sudo": False, "group": "any",      "desc": "Active Directory credential testing"},
+    "pain":     {"name": "pAIn",          "key": "PI", "domain": "ai",       "script": TOOL_DIR / "pAIn/pain.py",                  "sudo": False, "group": "any",      "desc": "AI pipeline prompt-injection red-team testing"},
     # ── External CLI tools ──────────────────────────────────────
     "nuclei":         {"name": "Nuclei",          "key": "NU", "domain": "vuln",    "script": None, "sudo": False, "group": "any", "desc": "Template-based vulnerability scanner"},
     "testssl":        {"name": "testssl.sh",      "key": "TS", "domain": "tls",     "script": None, "sudo": False, "group": "any", "desc": "TLS/SSL cipher and protocol testing"},
@@ -77,7 +78,7 @@ AETHER_TOOLS = {"aether", "aether_b", "aether_z", "aether_u"}
 # any    — independent tools, can run alongside anything
 PARALLEL_GROUPS = {
     "exclusive": {"ss3", "fracture", "siphon", "forge"} | AETHER_TOOLS,
-    "any":       {"trawler", "auger", "authprobe", "nessus", "bastion", "quill", "isotope", "dredge", "vault",
+    "any":       {"trawler", "auger", "authprobe", "nessus", "bastion", "quill", "isotope", "dredge", "vault", "pain",
                   "nuclei", "testssl", "sslscan", "droopescan", "dnstwist",
                   "xurlfind3r", "emailharvester", "asnmap", "webanalyze", "deps"},
 }
@@ -87,7 +88,7 @@ OSIFT_COMPAT = frozenset({"ss3"})
 # Tools eligible for auto-queue (pr0t31n tools + Nessus)
 AUTO_QUEUE_TOOLS = {
     "ss3", "osift", "fracture", "siphon", "auger", "trawler",
-    "authprobe", "nessus", "bastion", "forge", "quill", "isotope", "dredge", "vault",
+    "authprobe", "nessus", "bastion", "forge", "quill", "isotope", "dredge", "vault", "pain",
 } | AETHER_TOOLS
 
 # ── Environment variables per tool ───────────────────────────
@@ -110,6 +111,7 @@ TOOL_ENV = {
     "isotope":  {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "dredge":   {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "vault":    {"VAULT_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
+    "pain":     {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "nuclei":         {},
     "testssl":        {},
     "sslscan":        {},
@@ -128,7 +130,7 @@ TOOL_SETTINGS_PREFIX = {
     "fracture": "fr", "siphon": "si", "auger": "au",
     "aether": "ae", "aether_b": "ab", "aether_z": "az", "aether_u": "aw",
     "authprobe": "ap", "nessus": "nessus",
-    "bastion": "ba", "forge": "fg", "quill": "qu", "isotope": "is", "dredge": "dg", "vault": "vt",
+    "bastion": "ba", "forge": "fg", "quill": "qu", "isotope": "is", "dredge": "dg", "vault": "vt", "pain": "pi",
     "nuclei": "nu", "testssl": "ts", "sslscan": "sl", "droopescan": "ds",
     "dnstwist": "dt", "xurlfind3r": "xu", "emailharvester": "eh",
     "asnmap": "an", "webanalyze": "wa", "deps": "dp",
@@ -173,7 +175,7 @@ TOOL_OUTPUT_DIRS = {
     "fracture": "fracture", "siphon": "siphon", "auger": "auger",
     "aether": "aether", "aether_b": "aether_b", "aether_z": "aether_z",
     "aether_u": "aether_u",
-    "bastion": "bastion", "forge": "forge", "quill": "quill", "isotope": "isotope", "dredge": "dredge", "vault": "vault",
+    "bastion": "bastion", "forge": "forge", "quill": "quill", "isotope": "isotope", "dredge": "dredge", "vault": "vault", "pain": "pain",
     "authprobe": "authprobe", "nessus": "nessus",
     "nuclei": "nuclei", "testssl": "testssl", "sslscan": "sslscan",
     "droopescan": "droopescan", "dnstwist": "dnstwist", "xurlfind3r": "xurlfind3r",
