@@ -341,6 +341,21 @@
                     placeholder="One URL per line&#10;e.g. https://app.example.com&#10;     https://staging.example.com">{% if project and project.scope_definition %}{{ project.scope_definition.target_urls|default([])|join('\n') }}{% endif %}</textarea>
         </div>
 
+        <div class="form-group" id="frPerTargetAuthSection" style="margin-top:12px" hidden>
+          <span class="form-label">Per-Target Authentication</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Each target URL can have independent auth. Use Test Connection below to configure per-URL auth, or leave as Auto-Detect.</span>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+              <thead><tr style="text-align:left;border-bottom:1px solid var(--border)">
+                <th style="padding:6px 8px;width:50%">URL</th>
+                <th style="padding:6px 8px;width:10%;text-align:center">Status</th>
+                <th style="padding:6px 8px;width:40%">Auth</th>
+              </tr></thead>
+              <tbody id="frPerTargetAuthBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="form-group" style="margin-top:16px">
           <span class="form-label">Roles</span>
           <span class="form-hint" style="display:block;margin-bottom:8px;">Add one entry per role. Fracture tests every endpoint with each set of credentials and unauthenticated, comparing access across roles.</span>
@@ -354,15 +369,15 @@
           <div class="form-grid">
             <div class="form-group form-grid-full">
               <div style="display:flex;gap:8px;align-items:flex-start">
-                <input type="text" id="frTcTarget" class="form-control" placeholder="https://app.example.com" style="flex:1">
+                <select id="frTcTarget" class="form-control" style="flex:1"><option value="">— Select a target URL —</option></select>
                 <button type="button" class="btn btn-secondary" id="btnFrTestConn" style="white-space:nowrap">Test Connection</button>
               </div>
             </div>
             <div class="form-group">
               <label class="form-label" for="frTcAuthMethod">Auth Method</label>
               <select id="frTcAuthMethod" class="form-control tc-auth-method-select">
+                <option value="auto" selected>Auto-Detect (try form login → token → basic → digest → NTLM)</option>
                 <option value="none">None</option>
-                <option value="auto">Auto-Detect  (try form login → token → basic → digest → NTLM)</option>
                 <option value="bearer">Bearer Token</option>
                 <option value="basic">Basic Auth</option>
                 <option value="form_login">Form Login</option>
@@ -1233,7 +1248,7 @@
 
 
 {% block scripts %}
-<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }},"mobileAppPaths":{{ ((project.scope_definition or {}).get('mobile_app_paths',[]) if project else [])|tojson }},"mobileAppPath":{{ ((project.scope_definition or {}).get('mobile_app_path','') if project else '')|tojson }},"mobilePlatform":{{ ((project.scope_definition or {}).get('mobile_platform','auto') if project else 'auto')|tojson }},"analysisMode":{{ ((project.scope_definition or {}).get('analysis_mode','static') if project else 'static')|tojson }},"fridaAnalysis":{{ ((project.scope_definition or {}).get('frida_analysis',false) if project else false)|tojson }},"fridaDevice":{{ ((project.scope_definition or {}).get('frida_device','') if project else '')|tojson }},"targetProcess":{{ ((project.scope_definition or {}).get('target_process','') if project else '')|tojson }},"mitmAnalysis":{{ ((project.scope_definition or {}).get('mitm_analysis',false) if project else false)|tojson }},"mitmPort":{{ ((project.scope_definition or {}).get('mitm_port',8080) if project else 8080)|tojson }},"mitmUpstreamProxy":{{ ((project.scope_definition or {}).get('mitm_upstream_proxy','') if project else '')|tojson }},"mitmBurpCa":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_pem','') if project else '')|tojson }},"mitmBurpCaName":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_name','') if project else '')|tojson }}}</script>
+<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }},"mobileAppPaths":{{ ((project.scope_definition or {}).get('mobile_app_paths',[]) if project else [])|tojson }},"mobileAppPath":{{ ((project.scope_definition or {}).get('mobile_app_path','') if project else '')|tojson }},"mobilePlatform":{{ ((project.scope_definition or {}).get('mobile_platform','auto') if project else 'auto')|tojson }},"analysisMode":{{ ((project.scope_definition or {}).get('analysis_mode','static') if project else 'static')|tojson }},"fridaAnalysis":{{ ((project.scope_definition or {}).get('frida_analysis',false) if project else false)|tojson }},"fridaDevice":{{ ((project.scope_definition or {}).get('frida_device','') if project else '')|tojson }},"targetProcess":{{ ((project.scope_definition or {}).get('target_process','') if project else '')|tojson }},"mitmAnalysis":{{ ((project.scope_definition or {}).get('mitm_analysis',false) if project else false)|tojson }},"mitmPort":{{ ((project.scope_definition or {}).get('mitm_port',8080) if project else 8080)|tojson }},"mitmUpstreamProxy":{{ ((project.scope_definition or {}).get('mitm_upstream_proxy','') if project else '')|tojson }},"mitmBurpCa":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_pem','') if project else '')|tojson }},"mitmBurpCaName":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_name','') if project else '')|tojson }},"fracturePerTargetAuth":{{ ((project.scope_definition or {}).get('fracture_per_target_auth',{}) if project else {})|tojson }}}</script>
 <script src="/static/js/wizard.js"></script>
 {% endblock %}
 

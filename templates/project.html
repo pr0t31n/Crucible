@@ -802,12 +802,32 @@
             </div>
             <div class="panel-body">
               <p class="text-muted text-sm mb-8">Test target reachability and authentication using the saved settings above.</p>
+              <div id="stcPerTargetSection" hidden style="margin-bottom:12px">
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+                  <label class="form-label" style="margin:0;white-space:nowrap">Target URL</label>
+                  <select id="stcTargetSelect" class="form-control" style="flex:1;font-size:0.85rem"></select>
+                </div>
+                <div style="overflow-x:auto">
+                  <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+                    <thead><tr style="text-align:left;border-bottom:1px solid var(--border)">
+                      <th style="padding:4px 8px;width:50%">URL</th>
+                      <th style="padding:4px 8px;width:10%;text-align:center">Status</th>
+                      <th style="padding:4px 8px;width:40%">Auth</th>
+                    </tr></thead>
+                    <tbody id="stcPerTargetBody"></tbody>
+                  </table>
+                </div>
+              </div>
               <div id="settingsTestConnResult" hidden>
                 <div class="flex gap-8 mb-4" style="align-items:center">
                   <span class="font-medium" id="stcResultLabel">Result</span>
                   <span id="stcResultBadge"></span>
                 </div>
                 <pre id="stcResultBody" style="max-height:200px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                <div id="stcSaveArea" hidden style="margin-top:8px">
+                  <button type="button" class="btn btn-xs btn-primary" id="btnStcSaveAuth">Save Auth for This URL</button>
+                  <span class="form-hint" id="stcSaveStatus" style="margin-left:8px"></span>
+                </div>
               </div>
               <!-- ── Fingerprint Auth ────────────────────────── -->
               <div id="stcFingerprintArea" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)" hidden>

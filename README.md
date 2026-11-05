@@ -61,6 +61,7 @@ https://localhost:5100
 ### Project Management
 
 - **4-step creation wizard** — Engagement metadata, tool selection, scope definition, and review/confirm with live validation at each step
+- **Per-URL auth configuration** — each Fracture target URL gets independent auth testing via Test Connection, with auto-detect as the default method
 - **7 engagement scopes** — External, OSINT, Internal, Wireless, Web Application, API, and Endpoint; each scope gates which tools, settings, and report types are available
 - **Edit existing projects** — modify scope, targets, tool settings, and engagement metadata after creation
 - **Project export/import** — download project data as ZIP archives; import supports Crucible v2, v1, legacy, raw tool output, and single scanner file formats
@@ -109,6 +110,7 @@ https://localhost:5100
 ### Session Manager
 
 - **Centralized auth keepalive** — captures, stores, and proactively refreshes authentication sessions across tools
+- **Per-target auth table** — wizard and settings page display per-URL auth status (tested/untested) with truncated auth preview; Test Connection uses a URL selector dropdown for multi-target engagements
 - **8 session types**: OAuth2, JWT, Cookie, Basic, API Key, Bearer (static), NTLM, Custom
 - **Automatic refresh** — sessions refreshed 120 seconds before expiry with configurable heartbeat (45s interval)
 - **Cross-tool sharing** — tools receive live credentials from the session store rather than managing their own tokens

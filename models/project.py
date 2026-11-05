@@ -571,6 +571,9 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         fr_roles = scope_def.get("fracture_roles", [])
         if fr_roles:
             settings["scan"]["auth_matrix"] = fr_roles
+        per_target_auth = scope_def.get("fracture_per_target_auth")
+        if per_target_auth and isinstance(per_target_auth, dict):
+            settings["scan"]["per_target_auth"] = per_target_auth
     elif tool_id == "siphon":
         if "scan" not in settings:
             settings["scan"] = {}

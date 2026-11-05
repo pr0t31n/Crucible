@@ -946,7 +946,13 @@
       addR(sg,'Web URLs',valOf('targetUrls'));
       var frR = getRoles('fr');
       addR(sg,'Fracture Roles', frR.length ? frR.map(function(r){return r.role+' ('+r.username+')';}).join(', ') : '—');
-      if (_savedAuth.fracture) addR(sg,'Fracture Auth','Saved ('+(_savedAuth.fracture.method||'none')+')');
+      var _ptaKeys = Object.keys(_perTargetAuth);
+      if (_ptaKeys.length) {
+        var _ptaTested = _ptaKeys.filter(function(u){ return _perTargetAuth[u]._tested; }).length;
+        addR(sg,'Per-Target Auth', _ptaTested + '/' + _ptaKeys.length + ' URLs configured');
+      } else if (_savedAuth.fracture) {
+        addR(sg,'Fracture Auth','Saved ('+(_savedAuth.fracture.method||'none')+')');
+      }
     }
     if (_sec('scopeSiphonSection')) {
       addR(sg,'API URLs',valOf('apiUrls'));
@@ -1165,6 +1171,12 @@
         target_urls: textToArray('targetUrls'),
         fracture_roles: getRoles('fr'),
         fracture_auth: _savedAuth.fracture || null,
+        fracture_per_target_auth: (function() {
+          var c = {}; for (var u in _perTargetAuth) { if (_perTargetAuth.hasOwnProperty(u)) {
+            var a = {}; for (var k in _perTargetAuth[u]) { if (k !== '_tested') a[k] = _perTargetAuth[u][k]; }
+            c[u] = a;
+          }} return Object.keys(c).length ? c : null;
+        })(),
         api_urls: textToArray('apiUrls'),
         api_specs: apiFiles.map(function(f){return f.name;}),
         siphon_roles: getRoles('si'),
@@ -1358,6 +1370,43 @@
   };
 
   var _savedAuth = {};
+  var _perTargetAuth = {};
+
+  function updateFrTargetTable() {
+    var urls = textToArray('targetUrls');
+    var section = document.getElementById('frPerTargetAuthSection');
+    var tbody = document.getElementById('frPerTargetAuthBody');
+    var targetSelect = document.getElementById('frTcTarget');
+    if (!section || !tbody || !targetSelect) return;
+    section.hidden = urls.length === 0;
+    tbody.innerHTML = '';
+    var prevVal = targetSelect.value;
+    targetSelect.innerHTML = '<option value="">— Select a target URL —</option>';
+    urls.forEach(function(url) {
+      var auth = _perTargetAuth[url] || {};
+      var tested = auth._tested;
+      var method = auth.method || 'auto';
+      var preview = method === 'auto' ? 'Auto-Detect' : method;
+      if (auth.username) preview += ' (' + auth.username.substring(0, 20) + (auth.username.length > 20 ? '…' : '') + ')';
+      var tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid var(--border-subtle, var(--border))';
+      tr.innerHTML =
+        '<td style="padding:6px 8px;word-break:break-all;max-width:300px">' + escHtml(url) + '</td>' +
+        '<td style="padding:6px 8px;text-align:center;color:' + (tested ? 'var(--status-success, #22c55e)' : 'var(--text-muted, #888)') + ';font-weight:600">' + (tested ? '✓' : '—') + '</td>' +
+        '<td style="padding:6px 8px;color:var(--text-muted, #888)">' + escHtml(preview) + '</td>';
+      tbody.appendChild(tr);
+      var opt = document.createElement('option');
+      opt.value = url; opt.textContent = url;
+      if (url === prevVal) opt.selected = true;
+      targetSelect.appendChild(opt);
+    });
+  }
+
+  var _frUrlsEl = document.getElementById('targetUrls');
+  if (_frUrlsEl) {
+    _frUrlsEl.addEventListener('input', updateFrTargetTable);
+    _frUrlsEl.addEventListener('blur', updateFrTargetTable);
+  }
 
   function renderTcAuthFields(prefix) {
     var methodEl = document.getElementById(prefix + 'TcAuthMethod');
@@ -1404,7 +1453,7 @@
     if (btnEl) {
       btnEl.addEventListener('click', function() {
         var target = valOf(prefix + 'TcTarget');
-        if (!target) { alert('Enter a target URL.'); return; }
+        if (!target) { alert(prefix === 'fr' ? 'Select a target URL from the dropdown.' : 'Enter a target URL.'); return; }
         var btn = this; btn.disabled = true; btn.textContent = 'Testing...';
         var authPayload = collectTcAuth(prefix);
         fetch('/api/test-connection/' + toolId, {
@@ -1424,6 +1473,10 @@
             : (d.stdout||'')+(d.stderr?'\n--- stderr ---\n'+d.stderr:'')+(d.error?'\nError: '+d.error:'');
           var saveArea = document.getElementById(prefix + 'TcSaveArea');
           if (saveArea) saveArea.hidden = !d.ok;
+          if (d.ok && d.result && d.result.discovered_method && prefix === 'fr') {
+            var methodEl = document.getElementById(prefix + 'TcAuthMethod');
+            if (methodEl) { methodEl.value = d.result.discovered_method; renderTcAuthFields(prefix); }
+          }
           // Enable fingerprint button on test-connection failure (FR only)
           if (!d.ok && prefix === 'fr') {
             var fpBtn = document.getElementById('btnFrFingerprint');
@@ -1448,10 +1501,18 @@
     if (saveBtn) {
       saveBtn.addEventListener('click', function() {
         var auth = collectTcAuth(prefix);
-        auth.target = valOf(prefix + 'TcTarget');
+        var selectedUrl = document.getElementById(prefix + 'TcTarget').value;
+        auth.target = selectedUrl;
+        if (selectedUrl && prefix === 'fr') {
+          auth._tested = true;
+          _perTargetAuth[selectedUrl] = auth;
+          updateFrTargetTable();
+        }
         _savedAuth[toolId] = auth;
         var statusEl = document.getElementById(prefix + 'TcSaveStatus');
-        if (statusEl) statusEl.textContent = 'Saved for ' + toolId.charAt(0).toUpperCase() + toolId.slice(1);
+        if (statusEl) statusEl.textContent = selectedUrl
+          ? 'Auth saved for ' + selectedUrl
+          : 'Saved for ' + toolId.charAt(0).toUpperCase() + toolId.slice(1);
       });
     }
   }
@@ -1585,7 +1646,15 @@
     }
     updateCloudFields();
     updateAwsAuthMethod();
+    var _fpta = _cfg.fracturePerTargetAuth || {};
+    if (Object.keys(_fpta).length) {
+      _perTargetAuth = _fpta;
+      for (var _u in _perTargetAuth) { if (_perTargetAuth.hasOwnProperty(_u)) _perTargetAuth[_u]._tested = true; }
+    }
+    setTimeout(updateFrTargetTable, 100);
   }
+
+  if (!EDIT_MODE) { setTimeout(updateFrTargetTable, 100); }
 
   /* ── Edit mode: load existing engagement hours + scheduled starts ── */
   if (EDIT_MODE && PROJECT_ID) {

@@ -66,8 +66,9 @@ class FractureAdapter(ToolAdapter):
                 "authorization": True, "session": True, "csrf": True,
                 "cross_user": True,
             },
+            "per_target_auth": {},
             "auth": {
-                "enabled": False, "method": "form_login",
+                "enabled": False, "method": "auto",
                 "username": "", "password": "",
                 "login_url": "", "login_mode": "standard",
                 "token": "", "token_header": "Authorization",
@@ -125,6 +126,8 @@ class FractureAdapter(ToolAdapter):
              "type": "auth_config"},
             {"key": "auth_matrix", "label": "Auth Matrix",
              "type": "auth_matrix"},
+            {"key": "per_target_auth", "label": "Per-Target Authentication",
+             "type": "per_target_auth_table"},
         ]}
 
     # ── findings loader ─────────────────────────────────────────

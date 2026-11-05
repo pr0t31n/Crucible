@@ -10665,6 +10665,16 @@ function _checkInvalidation(tid, formData) {
 function _doSaveSettings(formData, archive) {
     var payload = formData;
     if (archive) payload.__archive_and_rescan = true;
+    if (settingsActiveTool === 'fracture' && Object.keys(_stcPerTargetAuth).length) {
+        var cleanPta = {};
+        for (var u in _stcPerTargetAuth) {
+            if (_stcPerTargetAuth.hasOwnProperty(u)) {
+                var a = {}; for (var k in _stcPerTargetAuth[u]) { if (k !== '_tested') a[k] = _stcPerTargetAuth[u][k]; }
+                cleanPta[u] = a;
+            }
+        }
+        payload.per_target_auth = cleanPta;
+    }
     fetch('/api/settings/' + PID + '/' + settingsActiveTool, {
         method: 'POST', credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
@@ -11060,13 +11070,77 @@ function updateSettingsTestConn() {
     document.getElementById('btnStcFingerprint').disabled = true;
     document.getElementById('stcFpResultArea').hidden = true;
     document.getElementById('stcFpReminder').hidden = true;
+    var stcSaveA = document.getElementById('stcSaveArea');
+    if (stcSaveA) stcSaveA.hidden = true;
+    var stcSt = document.getElementById('stcSaveStatus');
+    if (stcSt) stcSt.textContent = '';
 }
 
 var _origLoadToolSettings = loadToolSettings;
 loadToolSettings = function(tid) {
     _origLoadToolSettings(tid);
     updateSettingsTestConn();
+    if (tid === 'fracture') {
+        setTimeout(function() {
+            var urls = [];
+            var tgtEl = document.querySelector('#settingsFields [name="target_url"]');
+            if (tgtEl && tgtEl.value) {
+                tgtEl.value.split(/[\n,]+/).forEach(function(u) {
+                    u = u.trim(); if (u && urls.indexOf(u) === -1) urls.push(u);
+                });
+            }
+            var ptaInput = document.querySelector('#settingsFields [name="per_target_auth"]');
+            if (ptaInput && ptaInput.value) {
+                try { _stcPerTargetAuth = JSON.parse(ptaInput.value); } catch(e) { _stcPerTargetAuth = {}; }
+                for (var u in _stcPerTargetAuth) {
+                    if (_stcPerTargetAuth.hasOwnProperty(u)) {
+                        _stcPerTargetAuth[u]._tested = true;
+                        if (urls.indexOf(u) === -1) urls.push(u);
+                    }
+                }
+            } else { _stcPerTargetAuth = {}; }
+            _stcTargetUrls = urls;
+            stcUpdatePerTargetTable();
+        }, 250);
+    } else {
+        _stcPerTargetAuth = {};
+        _stcTargetUrls = [];
+    }
 };
+
+/* ── Settings tab: Per-target auth state ──────────────────────────── */
+var _stcPerTargetAuth = {};
+var _stcTargetUrls = [];
+
+function stcUpdatePerTargetTable() {
+    var section = document.getElementById('stcPerTargetSection');
+    var tbody = document.getElementById('stcPerTargetBody');
+    var sel = document.getElementById('stcTargetSelect');
+    if (!section || !tbody || !sel) return;
+    var urls = _stcTargetUrls || [];
+    section.hidden = urls.length < 2;
+    tbody.innerHTML = '';
+    var prevVal = sel.value;
+    sel.innerHTML = '';
+    urls.forEach(function(url) {
+        var auth = _stcPerTargetAuth[url] || {};
+        var tested = auth._tested;
+        var method = auth.method || 'auto';
+        var preview = method === 'auto' ? 'Auto-Detect' : method;
+        if (auth.username) preview += ' (' + auth.username.substring(0, 20) + ')';
+        var tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid var(--border-subtle, var(--border))';
+        tr.innerHTML =
+            '<td style="padding:4px 8px;word-break:break-all">' + esc(url.length > 60 ? url.substring(0, 57) + '…' : url) + '</td>' +
+            '<td style="padding:4px 8px;text-align:center;color:' + (tested ? 'var(--status-success, #22c55e)' : 'var(--text-muted, #888)') + ';font-weight:600">' + (tested ? '✓' : '—') + '</td>' +
+            '<td style="padding:4px 8px;color:var(--text-muted, #888)">' + esc(preview) + '</td>';
+        tbody.appendChild(tr);
+        var opt = document.createElement('option');
+        opt.value = url; opt.textContent = url;
+        if (url === prevVal) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
 
 document.getElementById('btnSettingsTestConn').addEventListener('click', function() {
     if (!settingsActiveTool || !STC_TOOLS.has(settingsActiveTool)) return;
@@ -11119,7 +11193,13 @@ document.getElementById('btnSettingsTestConn').addEventListener('click', functio
         else formData[el.name] = el.value;
     });
 
-    var target = formData.target_url || formData.api_base_url || '';
+    var stcSel = document.getElementById('stcTargetSelect');
+    var target = '';
+    if (settingsActiveTool === 'fracture' && stcSel && stcSel.value) {
+        target = stcSel.value;
+    } else {
+        target = formData.target_url || formData.api_base_url || '';
+    }
     if (!target) {
         toast('error', 'No target URL configured in settings.');
         return;
@@ -11160,6 +11240,9 @@ document.getElementById('btnSettingsTestConn').addEventListener('click', functio
             }
         }
 
+        var stcSaveA = document.getElementById('stcSaveArea');
+        if (stcSaveA) stcSaveA.hidden = !(d.ok && settingsActiveTool === 'fracture' && _stcTargetUrls.length > 1);
+
         if (d.result) {
             body.textContent = JSON.stringify(d.result, null, 2);
         } else {
@@ -11172,6 +11255,8 @@ document.getElementById('btnSettingsTestConn').addEventListener('click', functio
         document.getElementById('stcResultLabel').textContent = 'Error';
         document.getElementById('stcResultBadge').innerHTML = '<span class="status-badge" style="background:var(--status-error);color:#fff">ERR</span>';
         document.getElementById('stcResultBody').textContent = e.message || 'Request failed';
+        var stcSaveA2 = document.getElementById('stcSaveArea');
+        if (stcSaveA2) stcSaveA2.hidden = true;
         if (settingsActiveTool === 'fracture') {
             document.getElementById('stcFingerprintArea').hidden = false;
             document.getElementById('btnStcFingerprint').disabled = false;
@@ -11200,7 +11285,8 @@ document.getElementById('btnStcFingerprint').addEventListener('click', function(
         else formData[el.name] = el.value;
     });
 
-    var target = formData.target_url || '';
+    var fpStcSel = document.getElementById('stcTargetSelect');
+    var target = (fpStcSel && fpStcSel.value) ? fpStcSel.value : (formData.target_url || '');
     if (!target) {
         document.getElementById('stcFpStatus').textContent = 'No target URL configured.';
         btn.disabled = false;
@@ -11242,6 +11328,27 @@ document.getElementById('btnStcFingerprint').addEventListener('click', function(
     });
 });
 
+/* ── Settings tab: Save per-target auth ──────────────────────────── */
+var _btnStcSave = document.getElementById('btnStcSaveAuth');
+if (_btnStcSave) {
+    _btnStcSave.addEventListener('click', function() {
+        var stcSel = document.getElementById('stcTargetSelect');
+        var url = stcSel ? stcSel.value : '';
+        if (!url) { toast('warning', 'Select a target URL first.'); return; }
+        var formData = {};
+        document.getElementById('settingsFields').querySelectorAll('[name]').forEach(function(el) {
+            if (el.type === 'checkbox') formData[el.name] = el.checked;
+            else formData[el.name] = el.value;
+        });
+        var auth = {};
+        try { auth = typeof formData.auth === 'string' ? JSON.parse(formData.auth) : (formData.auth || {}); } catch(e) { auth = {}; }
+        auth._tested = true;
+        _stcPerTargetAuth[url] = auth;
+        stcUpdatePerTargetTable();
+        var stEl = document.getElementById('stcSaveStatus');
+        if (stEl) { stEl.textContent = 'Auth saved for ' + url; setTimeout(function() { stEl.textContent = ''; }, 4000); }
+    });
+}
 
 /* ══════════════════════════════════════════════════════════════════
    11. LOGS TAB
