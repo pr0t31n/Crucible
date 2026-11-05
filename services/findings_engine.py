@@ -630,7 +630,8 @@ class FindingsEngine:
                 if db:
                     db.insert_finding(finding)
             except Exception as exc:
-                log.debug("FindingsDB live insert failed: %s", exc)
+                log.warning("FindingsDB live insert failed for %s: %s",
+                            project_id, exc)
 
         with self._lock:
             cached = self._cache.get(project_id)
