@@ -714,10 +714,10 @@ _MAX_IMPORT_SIZE = 500 * 1024 * 1024
 
 @project_bp.route("/api/import_project", methods=["POST"])
 def api_import_project():
-    """Import a project from a Crucible/Vantage ZIP export.
+    """Import a project from a Crucible ZIP export.
 
     Delegates to the version-aware import engine which detects the export
-    format (v3.0 DB-native, v2.0 JSON, v1.x legacy, Vantage, raw output),
+    format (v3.0 DB-native, v2.0 JSON, v1.x legacy, raw output),
     converts to the current layout, and creates a FindingsDB when available.
     Falls back to the legacy v1/v2 import path if the engine is unavailable.
     """

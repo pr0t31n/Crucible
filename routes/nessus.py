@@ -212,7 +212,7 @@ def _require_nessus_client(project_id):
     return project, cfg, client
 
 
-# ── Scope helpers (matching Vantage's implementation) ──────────────
+# ── Scope helpers ──────────────
 
 
 def _extract_hosts_from_xml(nessus_file):

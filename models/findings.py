@@ -33,7 +33,7 @@ def load_findings_from_tool(tool_output_dir, tool_id):
 
 
 _FINDINGS_FILENAMES = (
-    "findings.json", "findings_vantage.json", "findings_report.json",
+    "findings.json", "findings_vantage.json", "findings_report.json",  # findings_vantage.json: legacy backward-compat
 )
 
 
@@ -158,7 +158,7 @@ def load_all_findings(project):
     return deduplicate(all_findings, ip_fqdn_map=ip_fqdn_map)
 
 
-# ── Title Normalization (from Vantage) ──────────────────────
+# ── Title Normalization ──────────────────────
 
 _TITLE_RENAMES = [
     # Full-title rewrites (must come before generic TLS normalizers)
@@ -1184,7 +1184,7 @@ def persist_risk_override(findings_list, finding_id, new_risk, project,
         td_path = Path(td)
         if not td_path.is_dir():
             continue
-        for fn in ("findings.json", "findings_vantage.json",
+        for fn in ("findings.json", "findings_vantage.json",  # legacy compat
                    "findings_report.json"):
             fp = td_path / fn
             if fp.exists():

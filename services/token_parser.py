@@ -24,7 +24,7 @@ _PREFIXES: list[tuple[str, str, str]] = sorted(
         ("__CRUCIBLE_STATUS__:",      "status",      "crucible"),
         ("__CRUCIBLE_LOG__:",         "log",         "crucible"),
         ("__CRUCIBLE_ERR__:",         "error",       "crucible"),
-        # Vantage (colon-delimited) ───────────────────────────────────────
+        # Legacy backward-compat: __VANTAGE_*__ tokens from pre-Crucible tools
         ("__VANTAGE_ACTION_ITEM__:",  "action_item", "vantage"),
         ("__VANTAGE_FINDING__:",      "finding",     "vantage"),
         ("__VANTAGE_PROMPT__:",       "prompt",      "vantage"),
@@ -67,7 +67,7 @@ class TokenParser:
 
         *token_type*:     "log" | "error" | "prompt" | "status" |
                           "action_item" | "target" | "port" | "finding"
-        *prefix_family*:  "crucible" | "vantage" | "spectre"
+        *prefix_family*:  "crucible" | "vantage" (legacy) | "spectre"
         *payload*:        raw string after the prefix (stripped of leading
                           whitespace).
         """
@@ -81,7 +81,7 @@ class TokenParser:
                       payload: str) -> dict:
         """Decode *payload* into a structured dict.
 
-        Crucible / Vantage families expect JSON payloads.  Spectre uses
+        Crucible family (and legacy Vantage) expect JSON payloads.  Spectre uses
         JSON for ``status`` and ``finding`` tokens but plain text for
         ``log``, ``error``, and ``prompt``.
 
@@ -93,7 +93,7 @@ class TokenParser:
         if prefix_family == "spectre":
             result = self._parse_spectre(token_type, payload)
         else:
-            # crucible / vantage — always JSON
+            # crucible / vantage (legacy) — always JSON
             result = self._try_json(payload)
 
         if "ts" not in result:

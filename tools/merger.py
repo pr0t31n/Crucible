@@ -1,6 +1,6 @@
 """Crucible v2 Engagement Merger — standalone tool.
 
-Scans a folder for Crucible v2 exports, Vantage legacy exports, and Nessus
+Scans a folder for Crucible v2 exports, legacy exports, and Nessus
 files, then merges everything into a single unified Crucible v2 engagement.
 """
 
@@ -174,7 +174,7 @@ _INTEL_FILES = [
 ]
 
 _FINDINGS_FILENAMES = (
-    "findings.json", "findings_vantage.json", "findings_report.json",
+    "findings.json", "findings_crucible.json", "findings_vantage.json", "findings_report.json",  # vantage: legacy compat
 )
 
 
@@ -236,7 +236,7 @@ class EngagementMerger:
                         sources.append(src)
                 elif (fp / "project_meta.json").is_file():
                     if not (fp / "crucible_meta.json").is_file():
-                        src = self._probe_vantage_dir(fp)
+                        src = self._probe_legacy_dir(fp)
                         if src:
                             sources.append(src)
 
@@ -248,18 +248,18 @@ class EngagementMerger:
             with zipfile.ZipFile(zip_path, "r") as zf:
                 names = zf.namelist()
                 crucible_metas = [n for n in names if n.endswith("crucible_meta.json")]
-                vantage_metas = [n for n in names if n.endswith("project_meta.json")]
+                legacy_metas = [n for n in names if n.endswith("project_meta.json")]
 
                 if crucible_metas:
                     crucible_metas.sort(key=lambda x: x.count("/"))
                     meta = json.loads(zf.read(crucible_metas[0]))
                     self._log(f"  Found Crucible v2 ZIP: {zip_path.name}")
                     return MergeSource("crucible_v2_zip", zip_path, meta)
-                elif vantage_metas:
-                    vantage_metas.sort(key=lambda x: x.count("/"))
-                    meta = json.loads(zf.read(vantage_metas[0]))
-                    self._log(f"  Found Vantage ZIP: {zip_path.name}")
-                    return MergeSource("vantage_zip", zip_path, meta)
+                elif legacy_metas:
+                    legacy_metas.sort(key=lambda x: x.count("/"))
+                    meta = json.loads(zf.read(legacy_metas[0]))
+                    self._log(f"  Found legacy ZIP: {zip_path.name}")
+                    return MergeSource("legacy_zip", zip_path, meta)
         except (zipfile.BadZipFile, json.JSONDecodeError, KeyError):
             pass
         return None
@@ -272,11 +272,11 @@ class EngagementMerger:
         except (json.JSONDecodeError, OSError):
             return None
 
-    def _probe_vantage_dir(self, dir_path):
+    def _probe_legacy_dir(self, dir_path):
         try:
             meta = json.loads((dir_path / "project_meta.json").read_text())
-            self._log(f"  Found Vantage dir: {dir_path.name}")
-            return MergeSource("vantage_dir", dir_path, meta)
+            self._log(f"  Found legacy dir: {dir_path.name}")
+            return MergeSource("legacy_dir", dir_path, meta)
         except (json.JSONDecodeError, OSError):
             return None
 
@@ -307,7 +307,7 @@ class EngagementMerger:
                 if metas:
                     metas.sort(key=lambda p: len(p.parts))
                     source.path = metas[0].parent
-            elif source.type == "vantage_zip":
+            elif source.type == "legacy_zip":
                 metas = list(td.rglob("project_meta.json"))
                 if metas:
                     metas.sort(key=lambda p: len(p.parts))
@@ -316,8 +316,8 @@ class EngagementMerger:
     def _map_source_scopes(self, source):
         if source.type.startswith("crucible_v2"):
             return self._map_crucible_scopes(source)
-        elif source.type.startswith("vantage"):
-            return self._map_vantage_scopes(source)
+        elif source.type.startswith("legacy"):
+            return self._map_legacy_scopes(source)
         return {}
 
     def _map_crucible_scopes(self, source):
@@ -353,7 +353,7 @@ class EngagementMerger:
         source.scopes = scopes
         return scopes
 
-    def _map_vantage_scopes(self, source):
+    def _map_legacy_scopes(self, source):
         scopes = {}
         root = source.path
         meta = source.meta
@@ -815,7 +815,7 @@ class EngagementMerger:
         self._merge_intel(src_dirs, dst_dir)
 
     _EVIDENCE_SKIP_NAMES = {
-        "findings.json", "findings_vantage.json", "findings_report.json",
+        "findings.json", "findings_crucible.json", "findings_vantage.json", "findings_report.json",  # vantage: legacy compat
         "falsePositives.json", "falsePositives.csv",
         "false_positives.json", "false_positives.csv",
         "project_meta.json", "crucible_meta.json", "scope_meta.json",

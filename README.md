@@ -1,6 +1,6 @@
 # Crucible — Unified Penetration Testing Platform
 
-**Crucible** is the unified orchestration platform for the pr0t31n toolkit. It manages, executes, and correlates penetration testing engagements across 18 integrated tool adapters, 13 standalone quick-action tools, and 9 external CLI tool integrations from a single authenticated HTTPS dashboard. Crucible v2.0 merged three previously separate Flask applications — network recon (Vantage), web/API testing (Crucible v1), and wireless assessment (Spectre) — into one platform with shared findings, unified intelligence, centralized session management, and 49 scope-gated report types.
+**Crucible** is the unified orchestration platform for the pr0t31n toolkit. It manages, executes, and correlates penetration testing engagements across 18 integrated tool adapters, 13 standalone quick-action tools, and 9 external CLI tool integrations from a single authenticated HTTPS dashboard. Crucible v2.0 merged three previously separate Flask applications — network recon (formerly Vantage), web/API testing (Crucible v1), and wireless assessment (Spectre) — into one platform with shared findings, unified intelligence, centralized session management, and 49 scope-gated report types.
 
 ```
 https://localhost:5100
@@ -15,7 +15,7 @@ https://localhost:5100
 - **4-step creation wizard** — Engagement metadata, tool selection, scope definition, and review/confirm with live validation at each step
 - **7 engagement scopes** — External, OSINT, Internal, Wireless, Web Application, API, and Endpoint; each scope gates which tools, settings, and report types are available
 - **Edit existing projects** — modify scope, targets, tool settings, and engagement metadata after creation
-- **Project export/import** — download project data as ZIP archives; import supports Crucible v2, v1, Vantage-era, raw tool output, and single scanner file formats
+- **Project export/import** — download project data as ZIP archives; import supports Crucible v2, v1, legacy, raw tool output, and single scanner file formats
 - **Engagement clear** — reset results (including FindingsDB) without deleting project configuration
 - **Client directory structure** — platform-aware output paths (`/clients` on Linux, `/Users/Shared/clients` on macOS) with per-year, per-tool organization
 
@@ -30,7 +30,7 @@ https://localhost:5100
 ### FindingsDB (SQLite Backend)
 
 - **Server-side pagination** — large finding sets served page-by-page instead of loading thousands of records into the browser
-- **Version-aware import engine** — detects export format (v3.0 DB-native, v2.0 JSON, v1.x legacy, Vantage-era, raw, file import) and converts to current layout
+- **Version-aware import engine** — detects export format (v3.0 DB-native, v2.0 JSON, v1.x legacy, raw, file import) and converts to current layout
 - **Live finding injection** — new findings from running tools are inserted into the SQLite database in real time
 - **DB-aggregate summaries** — risk statistics, tool breakdowns, and intelligence data computed from DB queries rather than JSON file scans
 - **DB-first loading** — all legacy JSON endpoints fall through to FindingsDB when available, with atomic JSON-to-DB migration on first access
@@ -169,7 +169,7 @@ https://localhost:5100
 
 | Tool | Description |
 |------|-------------|
-| Engagement Merger | Merge multiple Crucible/Vantage engagements and Nessus results |
+| Engagement Merger | Merge multiple Crucible engagements and Nessus results |
 | AuthProbe | Detect authentication methods and fingerprint software |
 | Host Discovery | Quick nmap live-host scan (ICMP + TCP + UDP) |
 | Wordlist Generator | Scrape websites and build targeted password-candidate wordlists |
@@ -283,7 +283,7 @@ Tools communicate with Crucible through stdout protocol tokens parsed by `servic
 | Token Family | Tools | Notes |
 |---|---|---|
 | `__CRUCIBLE_*__:` | Fracture, Siphon, Auger, Bastion, Forge, Quill, Isotope, Dredge, Trawler, SS3, OSift | Primary family for all managed tools |
-| `__VANTAGE_*__:` | Scattershot3, OSift, Trawler | Legacy (still parsed for backward compatibility) |
+| `__VANTAGE_*__:` | (none — legacy) | Legacy tokens from pre-Crucible tools (still parsed for backward compatibility) |
 | `__SPECTRE_*__` | Aether, Aether-B, Aether-Z, Aether-U | Space-delimited (legacy, still parsed) |
 | `__VAULT_*__:` | Vault | Vault-specific token family |
 

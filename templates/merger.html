@@ -124,7 +124,7 @@
   white-space: nowrap;
 }
 .source-type.crucible { background: var(--accent-primary); color: #fff; }
-.source-type.vantage { background: #8b5cf6; color: #fff; }
+.source-type.legacy { background: #8b5cf6; color: #fff; }
 .source-type.nessus { background: #f59e0b; color: #1a1a1a; }
 .source-name {
   color: var(--text-primary);
@@ -378,13 +378,13 @@
 <script>
 function _typeClass(t) {
   if (t.startsWith('crucible')) return 'crucible';
-  if (t.startsWith('vantage')) return 'vantage';
+  if (t.startsWith('legacy')) return 'legacy';
   if (t.startsWith('nessus')) return 'nessus';
   return '';
 }
 function _typeLabel(t) {
   const m = {crucible_v2_zip:'Crucible ZIP', crucible_v2_dir:'Crucible Dir',
-             vantage_zip:'Vantage ZIP', vantage_dir:'Vantage Dir',
+             legacy_zip:'Legacy ZIP', legacy_dir:'Legacy Dir',
              nessus_xml:'Nessus XML', nessus_csv:'Nessus CSV'};
   return m[t] || t;
 }

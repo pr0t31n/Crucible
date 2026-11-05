@@ -8,7 +8,7 @@ Supported source formats:
     3.0          – Crucible v2 layout + findings.db (DB-native)
     2.0          – Crucible v2 layout, JSON-only (current production)
     1.x          – Crucible v1 layout (project/ + tools/ subdirs)
-    vantage      – Vantage-era export (project_meta.json)
+    legacy       – Legacy-era export (project_meta.json, pre-Crucible v2)
     raw          – Bare tool output directory with findings.json
     file_import  – Single scanner file (.nessus, .xml, etc.)
 """
@@ -36,7 +36,7 @@ def detect_export_version(contents_dir):
     """Detect the export format from extracted ZIP contents.
 
     Returns a dict:
-        version      – one of "3.0", "2.0", "1.x", "vantage", "raw",
+        version      – one of "3.0", "2.0", "1.x", "legacy", "raw",
                         "file_import", or "unknown"
         meta_path    – Path to the metadata file (or None)
         meta         – parsed metadata dict (or None)
@@ -101,16 +101,16 @@ def detect_export_version(contents_dir):
             "source_db": None,
         }
 
-    # ── 2. Look for Vantage-era project_meta.json ──
+    # ── 2. Look for legacy-era project_meta.json ──
 
     for candidate in cd.rglob("project_meta.json"):
         try:
             vmeta = json.loads(candidate.read_text())
         except (json.JSONDecodeError, OSError):
             continue
-        if vmeta.get("management_app") in ("vantage", None) or "engagement_name" in vmeta:
+        if vmeta.get("management_app") in ("vantage", None) or "engagement_name" in vmeta:  # "vantage": legacy compat value
             return {
-                "version": "vantage",
+                "version": "legacy",
                 "meta_path": candidate,
                 "meta": vmeta,
                 "is_v2": False,
@@ -119,7 +119,7 @@ def detect_export_version(contents_dir):
 
     # ── 3. Look for raw findings output ──
 
-    for pattern in ("findings.json", "findings_vantage.json", "findings.jsonl"):
+    for pattern in ("findings.json", "findings_crucible.json", "findings_vantage.json", "findings.jsonl"):  # vantage: legacy compat
         hits = list(cd.rglob(pattern))
         if hits:
             return {
@@ -159,7 +159,7 @@ def extract_form_data(version_info):
     meta = version_info.get("meta") or {}
     version = version_info["version"]
 
-    if version == "vantage":
+    if version == "legacy":
         return {
             "name": meta.get("engagement_name", meta.get("name", "Imported Engagement")),
             "client_name": meta.get("client_name", ""),
@@ -255,10 +255,10 @@ def place_files_v1(contents_dir, new_meta):
                     shutil.copytree(tool_dir, dest_path, dirs_exist_ok=True)
 
 
-def place_files_vantage(contents_dir, version_info, new_meta):
-    """Copy Vantage-era layout into v2.0 directory structure.
+def place_files_legacy(contents_dir, version_info, new_meta):
+    """Copy legacy-era layout into v2.0 directory structure.
 
-    Vantage layouts have a project_meta.json alongside scope-based tool
+    Legacy layouts have a project_meta.json alongside scope-based tool
     directories (external/ss3, external/osift, etc.) — the same pattern as
     Crucible v2 minus the crucible_meta.json naming.
     """
@@ -499,8 +499,8 @@ def run_import(contents_dir, create_project_fn):
         elif version == "1.x":
             place_files_v1(cd, new_meta)
 
-        elif version == "vantage":
-            place_files_vantage(cd, vi, new_meta)
+        elif version == "legacy":
+            place_files_legacy(cd, vi, new_meta)
             new_td, new_std = rebase_tool_dirs(source_meta, proj_dir)
             _update_project_dirs(pid, new_meta, new_td, new_std, source_meta)
 

@@ -1314,7 +1314,7 @@ STANDALONE_TOOLS = [
     {
         "id": "merger",
         "name": "Engagement Merger",
-        "desc": "Merge multiple Crucible/Vantage engagements and Nessus results into one",
+        "desc": "Merge multiple Crucible engagements and Nessus results into one",
         "icon": "merge",
         "url": "/tools/merger",
     },

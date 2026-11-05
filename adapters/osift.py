@@ -160,8 +160,10 @@ class OSiftAdapter(ToolAdapter):
     def load_findings(self, project_dir, tool_output_dir):
         td = Path(tool_output_dir)
         findings = []
-        for fp in (td / "reports" / "findings_vantage.json",
-                   td / "findings_vantage.json",
+        for fp in (td / "reports" / "findings_crucible.json",
+                   td / "findings_crucible.json",
+                   td / "reports" / "findings_vantage.json",  # legacy compat
+                   td / "findings_vantage.json",  # legacy compat
                    td / "reports" / "findings_report.json",
                    td / "findings.json"):
             if fp.exists():
@@ -190,7 +192,7 @@ class OSiftAdapter(ToolAdapter):
         """Create INFO findings from targets_osint.json for live propagation.
 
         OSift's write_targets_snapshot() skips subdomain/email/IP entries from
-        findings_vantage.json during the scan (_SKIP_SNAP filter).  This method
+        findings_crucible.json during the scan (_SKIP_SNAP filter).  This method
         reads the structured data written to targets_osint.json and synthesises
         the corresponding INFO findings so they appear in real-time."""
         for candidate in (td / "reports" / "targets_osint.json",

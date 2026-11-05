@@ -652,7 +652,7 @@ def delete_project(project_id, delete_files=False):
 
 _PRESERVE_ON_CLEAR = {
     "crucible_meta.json", "engagement.json", "scope_meta.json",
-    "project_meta.json", "gauntlet_meta.json", "vantage_meta.json",
+    "project_meta.json", "gauntlet_meta.json", "vantage_meta.json",  # legacy compat
 }
 
 
