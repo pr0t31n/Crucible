@@ -2761,10 +2761,10 @@ class ProcessManager:
         if self._findings_engine:
             try:
                 project = self._resolve_project(project_id)
-                self._findings_engine.add_live_finding(
+                self._findings_engine.notify_tool_finding(
                     project_id, data, project=project)
             except Exception as exc:
-                log.warning("FindingsEngine live inject error: %s", exc)
+                log.warning("FindingsEngine notify error: %s", exc)
         try:
             self.socketio.emit("tool_finding", data,
                                room=_room(project_id))
