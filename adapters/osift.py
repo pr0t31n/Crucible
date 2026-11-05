@@ -162,8 +162,8 @@ class OSiftAdapter(ToolAdapter):
         findings = []
         for fp in (td / "reports" / "findings_crucible.json",
                    td / "findings_crucible.json",
-                   td / "reports" / "findings_vantage.json",  # legacy compat
-                   td / "findings_vantage.json",  # legacy compat
+                   td / "reports" / "findings_crucible.json",  
+                   td / "findings_crucible.json",  
                    td / "reports" / "findings_report.json",
                    td / "findings.json"):
             if fp.exists():

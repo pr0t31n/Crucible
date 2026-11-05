@@ -110,7 +110,7 @@ TOOL_ENV = {
     "quill":    {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "isotope":  {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "dredge":   {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
-    "vault":    {"VAULT_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
+    "vault":    {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "pain":     {"CRUCIBLE_MANAGED": "1", "PYTHONUNBUFFERED": "1"},
     "nuclei":         {},
     "testssl":        {},

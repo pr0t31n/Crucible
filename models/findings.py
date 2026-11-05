@@ -33,8 +33,7 @@ def load_findings_from_tool(tool_output_dir, tool_id):
 
 
 _FINDINGS_FILENAMES = (
-    "findings.json", "findings_vantage.json", "findings_report.json",  # findings_vantage.json: legacy backward-compat
-)
+    "findings.json", "findings_report.json",)
 
 
 def _has_findings_content(dirpath):
@@ -1184,7 +1183,7 @@ def persist_risk_override(findings_list, finding_id, new_risk, project,
         td_path = Path(td)
         if not td_path.is_dir():
             continue
-        for fn in ("findings.json", "findings_vantage.json",  # legacy compat
+        for fn in ("findings.json",  
                    "findings_report.json"):
             fp = td_path / fn
             if fp.exists():

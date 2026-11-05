@@ -1,8 +1,6 @@
 """Unified protocol-token parser for Crucible v2.
 
 All tools emit __CRUCIBLE_*__ tokens when CRUCIBLE_MANAGED=1.
-Legacy __VANTAGE_*__ and __SPECTRE_*__ prefixes are still parsed
-for backward compatibility with older tool versions.
 
 Thread-safe: no mutable instance state.
 """
@@ -15,7 +13,6 @@ from services.utils import now_iso as _now_iso
 
 _PREFIXES: list[tuple[str, str, str]] = sorted(
     [
-        # Crucible (colon-delimited) ──────────────────────────────────────
         ("__CRUCIBLE_ACTION_ITEM__:", "action_item", "crucible"),
         ("__CRUCIBLE_FINDING__:",     "finding",     "crucible"),
         ("__CRUCIBLE_PORT__:",        "port",        "crucible"),
@@ -24,21 +21,6 @@ _PREFIXES: list[tuple[str, str, str]] = sorted(
         ("__CRUCIBLE_STATUS__:",      "status",      "crucible"),
         ("__CRUCIBLE_LOG__:",         "log",         "crucible"),
         ("__CRUCIBLE_ERR__:",         "error",       "crucible"),
-        # Legacy backward-compat: __VANTAGE_*__ tokens from pre-Crucible tools
-        ("__VANTAGE_ACTION_ITEM__:",  "action_item", "vantage"),
-        ("__VANTAGE_FINDING__:",      "finding",     "vantage"),
-        ("__VANTAGE_PROMPT__:",       "prompt",      "vantage"),
-        ("__VANTAGE_STATUS__:",       "status",      "vantage"),
-        ("__VANTAGE_TARGET__:",       "target",      "vantage"),
-        ("__VANTAGE_LOG__:",          "log",         "vantage"),
-        ("__VANTAGE_ERR__:",          "error",       "vantage"),
-        ("__VANTAGE_PORT__:",         "port",        "vantage"),
-        # Spectre (space-delimited) ───────────────────────────────────────
-        ("__SPECTRE_FINDING__ ",      "finding",     "spectre"),
-        ("__SPECTRE_PROMPT__ ",       "prompt",      "spectre"),
-        ("__SPECTRE_STATUS__ ",       "status",      "spectre"),
-        ("__SPECTRE_LOG__ ",          "log",         "spectre"),
-        ("__SPECTRE_ERR__ ",          "error",       "spectre"),
     ],
     key=lambda t: -len(t[0]),
 )
@@ -67,7 +49,7 @@ class TokenParser:
 
         *token_type*:     "log" | "error" | "prompt" | "status" |
                           "action_item" | "target" | "port" | "finding"
-        *prefix_family*:  "crucible" | "vantage" (legacy) | "spectre"
+        *prefix_family*:  "crucible"
         *payload*:        raw string after the prefix (stripped of leading
                           whitespace).
         """
@@ -81,20 +63,12 @@ class TokenParser:
                       payload: str) -> dict:
         """Decode *payload* into a structured dict.
 
-        Crucible family (and legacy Vantage) expect JSON payloads.  Spectre uses
-        JSON for ``status`` and ``finding`` tokens but plain text for
-        ``log``, ``error``, and ``prompt``.
+        All tokens use JSON payloads.
 
         A ``"ts"`` key is always present in the returned dict (set to
         *now* when the payload does not supply one).
         """
-        result: dict
-
-        if prefix_family == "spectre":
-            result = self._parse_spectre(token_type, payload)
-        else:
-            # crucible / vantage (legacy) — always JSON
-            result = self._try_json(payload)
+        result = self._try_json(payload)
 
         if "ts" not in result:
             result["ts"] = _now_iso()
@@ -113,20 +87,3 @@ class TokenParser:
             return {"message": obj}
         except (json.JSONDecodeError, ValueError):
             return {"message": payload}
-
-    @staticmethod
-    def _parse_spectre(token_type: str, payload: str) -> dict:
-        """Decode a Spectre-family payload.
-
-        ``status`` and ``finding`` tokens are JSON; everything else is
-        plain text wrapped in ``{"message": ...}``.
-        """
-        if token_type in ("status", "finding"):
-            try:
-                obj = json.loads(payload)
-                if isinstance(obj, dict):
-                    return obj
-                return {"message": obj}
-            except (json.JSONDecodeError, ValueError):
-                return {"message": payload}
-        return {"message": payload}

@@ -13,7 +13,7 @@ class VaultAdapter(ToolAdapter):
     domain = "ad"
     script_path = str(TOOL_DIR / "Vault/vault.py")
     requires_sudo = False
-    env_vars = {"VAULT_MANAGED": "1", "PYTHONUNBUFFERED": "1"}
+    env_vars = {"CRUCIBLE_MANAGED": "1", "CRUCIBLE_TOOL_ID": "vault", "PYTHONUNBUFFERED": "1"}
     parallel_group = "any"
 
     def supports_pause(self):

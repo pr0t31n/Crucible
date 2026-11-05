@@ -1977,7 +1977,7 @@ def _scan_fracture_screenshots(project, scope_filter=None):
 
         # Fallback: scan findings for PNG evidence (pre-2.66.0 runs)
         if not (ss_dir.is_dir() and any(ss_dir.glob("*.json"))):
-            for fn in ("findings.json", "findings_crucible.json", "findings_vantage.json"):  # vantage: legacy compat
+            for fn in ("findings.json", "findings_crucible.json"):
                 fp = td / fn
                 if not fp.exists():
                     continue

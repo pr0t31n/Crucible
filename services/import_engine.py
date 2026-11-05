@@ -108,7 +108,7 @@ def detect_export_version(contents_dir):
             vmeta = json.loads(candidate.read_text())
         except (json.JSONDecodeError, OSError):
             continue
-        if vmeta.get("management_app") in ("vantage", None) or "engagement_name" in vmeta:  # "vantage": legacy compat value
+        if vmeta.get("management_app") in ("crucible", "vantage", None) or "engagement_name" in vmeta:
             return {
                 "version": "legacy",
                 "meta_path": candidate,
@@ -119,7 +119,7 @@ def detect_export_version(contents_dir):
 
     # ── 3. Look for raw findings output ──
 
-    for pattern in ("findings.json", "findings_crucible.json", "findings_vantage.json", "findings.jsonl"):  # vantage: legacy compat
+    for pattern in ("findings.json", "findings_crucible.json", "findings.jsonl"):
         hits = list(cd.rglob(pattern))
         if hits:
             return {

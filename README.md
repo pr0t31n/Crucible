@@ -45,7 +45,7 @@ Security testing is a professional discipline with significant ethical and legal
 
 # Crucible — Unified Penetration Testing Platform
 
-**Crucible** is the unified orchestration platform for the pr0t31n toolkit. It manages, executes, and correlates penetration testing engagements across 18 integrated tool adapters, 13 standalone quick-action tools, and 9 external CLI tool integrations from a single authenticated HTTPS dashboard. Crucible v2.0 merged three previously separate Flask applications — network recon (formerly Vantage), web/API testing (Crucible v1), and wireless assessment (Spectre) — into one platform with shared findings, unified intelligence, centralized session management, and 49 scope-gated report types.
+**Crucible** is the unified orchestration platform for the pr0t31n toolkit. It manages, executes, and correlates penetration testing engagements across 18 integrated tool adapters, 13 standalone quick-action tools, and 9 external CLI tool integrations from a single authenticated HTTPS dashboard. Crucible v2.0 merged three previously separate Flask applications — network recon, web/API testing, and wireless assessment — into one platform with shared findings, unified intelligence, centralized session management, and 49 scope-gated report types.
 
 ```
 https://localhost:5100
@@ -330,9 +330,7 @@ Tools communicate with Crucible through stdout protocol tokens parsed by `servic
 
 | Token Family | Tools | Notes |
 |---|---|---|
-| `__CRUCIBLE_*__:` | Fracture, Siphon, Auger, Bastion, Forge, Quill, Isotope, Dredge, Trawler, SS3, OSift | Primary family for all managed tools |
-| `__VANTAGE_*__:` | (none — legacy) | Legacy tokens from pre-Crucible tools (still parsed for backward compatibility) |
-| `__SPECTRE_*__` | Aether, Aether-B, Aether-Z, Aether-U | Space-delimited (legacy, still parsed) |
+| `__CRUCIBLE_*__:` | Fracture, Siphon, Auger, Bastion, Forge, Quill, Isotope, Dredge, Trawler, SS3, OSift, Aether, Aether-B, Aether-Z, Aether-U | Primary family for all managed tools |
 | `__VAULT_*__:` | Vault | Vault-specific token family |
 
 Token types: `LOG`, `ERR`, `STATUS`, `PROMPT`, `FINDING`, `ACTION_ITEM`, `TARGET`, `PORT`
