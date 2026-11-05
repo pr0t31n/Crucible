@@ -135,29 +135,25 @@ def api_findings_v2(project_id):
         kwargs["include_oos"] = include_oos
 
         result = _engine().query_findings_db(project_id, project, **kwargs)
-        if result is not None and result.get("total", 0) > 0:
+        if result is not None:
+            if result.get("total", 0) == 0:
+                _engine().refresh(project_id, project)
+                result = _engine().query_findings_db(
+                    project_id, project, **kwargs)
+                if result is None:
+                    return jsonify({"findings": [], "total": 0,
+                                    "page": 1, "per_page": per_page,
+                                    "pages": 1, "source": "db"})
             result["source"] = "db"
             return jsonify(result)
-        findings = _engine().get_findings(project_id, project)
-        summary = _engine().get_full_summary(project_id, project)
-        total = len(findings)
-        if total and result is not None and result.get("total", 0) == 0:
-            import threading
-            threading.Thread(
-                target=_engine()._populate_db,
-                args=(project_id, project, list(findings)),
-                name="fdb-catchup", daemon=True).start()
-        start = (kwargs["page"] - 1) * per_page
-        page_findings = findings[start:start + per_page]
-        return jsonify({
-            "findings": page_findings,
-            "total": total,
-            "page": kwargs["page"],
-            "per_page": per_page,
-            "pages": (total + per_page - 1) // per_page if per_page else 1,
-            "summary": summary,
-            "source": "cache",
-        })
+        _engine().refresh(project_id, project)
+        result = _engine().query_findings_db(project_id, project, **kwargs)
+        if result is not None:
+            result["source"] = "db"
+            return jsonify(result)
+        return jsonify({"findings": [], "total": 0,
+                        "page": 1, "per_page": per_page,
+                        "pages": 1, "source": "db"})
     except Exception as exc:
         log.exception("Error in findings v2 for %s", project_id)
         return jsonify({"error": str(exc)}), 500

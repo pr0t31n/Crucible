@@ -142,12 +142,16 @@ class FindingsEngine:
 
     _NESSUS_AUTHORITATIVE = frozenset({"cvss_score", "cvss_vector"})
 
+    _REFRESH_DEBOUNCE_SEC = 2.0
+
     def __init__(self):
         self._cache = {}
         self._fp_cache = {}
         self._lock = threading.Lock()
         self._refresh_locks = {}
         self._refresh_locks_mu = threading.Lock()
+        self._refresh_timers = {}
+        self._refresh_timers_lock = threading.Lock()
         self._action_engine = None
         self._kev_enricher = None
         self._catalogues = {}
@@ -519,34 +523,6 @@ class FindingsEngine:
         except RuntimeError as exc:
             log.debug("scope exclusion outside flask context: %s", exc)
 
-        with self._lock:
-            prev = self._cache.get(project_id) or []
-        if prev:
-            disk_ids = {f.get("id") for f in active if f.get("id")}
-            disk_titles = set()
-            for f in active:
-                dt = ((f.get("title") or "").strip().lower(),
-                      (f.get("tool") or "").split(":")[0].lower(),
-                      (f.get("ip") or ""))
-                disk_titles.add(dt)
-            live_only = []
-            for f in prev:
-                fid = f.get("id")
-                if fid and fid in disk_ids:
-                    continue
-                dt = ((f.get("title") or "").strip().lower(),
-                      (f.get("tool") or "").split(":")[0].lower(),
-                      (f.get("ip") or ""))
-                if dt in disk_titles:
-                    continue
-                live_only.append(f)
-            if live_only:
-                for f in live_only:
-                    self._sanitize_finding(f)
-                active.extend(live_only)
-                log.info("refresh: preserved %d live-only findings for %s",
-                         len(live_only), project_id)
-
         tsm = self._build_tool_scope_map(project)
         if tsm:
             for f in active:
@@ -629,15 +605,67 @@ class FindingsEngine:
             self._cache.clear()
             self._fp_cache.clear()
 
-    # ── Live finding injection ───────────────────────────────
+    # ── Debounced refresh from disk ─────────────────────────────
+
+    def _schedule_refresh(self, project_id, project):
+        """Schedule a debounced refresh() so findings are read from disk.
+
+        Multiple findings arriving within _REFRESH_DEBOUNCE_SEC collapse
+        into a single refresh.
+        """
+        if not project:
+            return
+        with self._refresh_timers_lock:
+            prev = self._refresh_timers.get(project_id)
+            if prev is not None:
+                prev.cancel()
+            t = threading.Timer(
+                self._REFRESH_DEBOUNCE_SEC,
+                self._bg_refresh, args=(project_id, project))
+            t.daemon = True
+            t.name = f"fdb-debounce-{project_id[:8]}"
+            self._refresh_timers[project_id] = t
+            t.start()
+
+    def _bg_refresh(self, project_id, project):
+        """Background refresh triggered by finding notification."""
+        with self._refresh_timers_lock:
+            self._refresh_timers.pop(project_id, None)
+        try:
+            self.refresh(project_id, project)
+            log.debug("Debounced refresh completed for %s", project_id)
+        except Exception:
+            log.exception("Debounced refresh failed for %s", project_id)
+
+    # ── Live finding from tool stream ─────────────────────────
+
+    def notify_tool_finding(self, project_id, finding, project=None):
+        """Handle a finding notification from a managed tool's stream.
+
+        Tools own their own DBs and write findings immediately.
+        Crucible does NOT insert into its engagement DB here — instead
+        it schedules a debounced refresh() that reads from tool files
+        on disk and populates the engagement DB from that authoritative
+        source.
+        """
+        if self._action_engine and project:
+            project_dir = project.get("project_dir", "")
+            if project_dir:
+                source = finding.get("tool") or finding.get("source_tool", "")
+                try:
+                    self._action_engine.process_finding(
+                        project_dir, finding, source, project=project)
+                except Exception:
+                    log.exception("Failed to generate action for live finding")
+        self._schedule_refresh(project_id, project)
+
+    # ── Live finding injection (imports/manual) ─────────────
 
     def add_live_finding(self, project_id, finding, project=None):
-        """Add a finding from a live tool stream (before it's written to disk).
+        """Insert a finding from an external import or manual creation.
 
-        When FindingsDB is available, inserts directly into DB (O(1) via
-        UNIQUE dedup_key constraint) instead of re-deduplicating the entire
-        in-memory cache.  The cache is still updated for backward compat
-        with the legacy /api/findings/ endpoint.
+        Used by Nessus/Burp importers, manual checks, and recovery —
+        cases where Crucible is the authoritative source.
         """
         if project:
             try:

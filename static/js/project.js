@@ -164,6 +164,21 @@ socket.on('connect', function() {
 socket.on('reconnect', function() {
     socket.emit('join_project', {project_id: PID});
     socket.emit('get_status', {project_id: PID});
+    var _b = document.getElementById('socketBanner');
+    if (_b) _b.hidden = true;
+});
+
+socket.on('disconnect', function() {
+    var _b = document.getElementById('socketBanner');
+    if (!_b) {
+        _b = document.createElement('div');
+        _b.id = 'socketBanner';
+        _b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#d32f2f;color:#fff;text-align:center;padding:4px 12px;font-size:13px;cursor:pointer';
+        _b.textContent = 'Live connection lost — controls will use HTTP fallback. Click to reconnect.';
+        _b.onclick = function() { socket.connect(); };
+        document.body.prepend(_b);
+    }
+    _b.hidden = false;
 });
 
 /* ── all_status: bulk tool status on connect ───────────────────── */
@@ -1480,7 +1495,17 @@ document.getElementById('btnToolStart').addEventListener('click', function() {
 document.getElementById('btnToolKill').addEventListener('click', function() {
     if (!selectedTool) return;
     if (!confirm('Kill ' + (TOOLS_CFG[selectedTool] ? TOOLS_CFG[selectedTool].name : selectedTool) + '?')) return;
-    socket.emit('tool_kill', {project_id: PID, tool_id: selectedTool});
+    if (socket && socket.connected) {
+        socket.emit('tool_kill', {project_id: PID, tool_id: selectedTool});
+    } else {
+        fetch('/api/kill_subprocess', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({project_id: PID, tool_id: selectedTool})
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.ok) refreshToolStatuses();
+        });
+    }
 });
 
 document.getElementById('btnToolPause').addEventListener('click', function() {
