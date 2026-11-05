@@ -309,6 +309,7 @@ https://localhost:5100
             | Quill, Isotope   |        | Frida USB     |
             | Dredge, Vault    |        |               |
             | Trawler, AuthPrb |        |               |
+            | pAIn             |        |               |
             +------------------+        +---------------+
 ```
 
@@ -330,7 +331,7 @@ Tools communicate with Crucible through stdout protocol tokens parsed by `servic
 
 | Token Family | Tools | Notes |
 |---|---|---|
-| `__CRUCIBLE_*__:` | Fracture, Siphon, Auger, Bastion, Forge, Quill, Isotope, Dredge, Trawler, SS3, OSift, Aether, Aether-B, Aether-Z, Aether-U | Primary family for all managed tools |
+| `__CRUCIBLE_*__:` | Fracture, Siphon, Auger, Bastion, Forge, Quill, Isotope, Dredge, Trawler, SS3, OSift, Aether, Aether-B, Aether-Z, Aether-U, pAIn | Primary family for all managed tools |
 | `__VAULT_*__:` | Vault | Vault-specific token family |
 
 Token types: `LOG`, `ERR`, `STATUS`, `PROMPT`, `FINDING`, `ACTION_ITEM`, `TARGET`, `PORT`
@@ -342,7 +343,7 @@ Tool execution is governed by parallelism groups to prevent resource conflicts:
 | Group | Tools | Behavior |
 |---|---|---|
 | exclusive | SS3, Fracture, Siphon, Forge, Aether family | Only one exclusive tool at a time (OSift can run alongside SS3) |
-| any | Trawler, Auger, AuthProbe, Nessus, Bastion, Quill, Isotope, Dredge, Vault, all CLI tools | Independent; can run alongside anything |
+| any | Trawler, Auger, AuthProbe, Nessus, Bastion, Quill, Isotope, Dredge, Vault, pAIn, all CLI tools | Independent; can run alongside anything |
 
 ### Auto-Queue
 
@@ -352,7 +353,7 @@ When a tool completes, its output is analyzed by the `ActionEngine`, which gener
 
 ## Tool Registry
 
-### Managed Tools (18)
+### Managed Tools (19)
 
 | ID | Tool | Key | Domain | Sudo | Description |
 |---|---|---|---|---|---|
@@ -373,6 +374,7 @@ When a tool completes, its output is analyzed by the `ActionEngine`, which gener
 | `isotope` | Isotope | IS | File | No | Detailed file analysis |
 | `dredge` | Dredge | DG | Endpoint | No | Windows endpoint security audit |
 | `vault` | Vault | VT | AD | No | Active Directory credential testing |
+| `pain` | pAIn | PI | AI | No | AI pipeline prompt-injection red-team testing |
 | `nessus` | Nessus | NE | Vuln Scan | No | Vulnerability scanning (external API) |
 
 ### External CLI Tools (9)
@@ -602,7 +604,7 @@ Crucible/
 ├── VERSION                     # Version file (2.219.3)
 ├── LICENSE                     # GPLv3 license
 │
-├── adapters/                   # 18 tool adapter classes + shared bases + registry
+├── adapters/                   # 19 tool adapter classes + shared bases + registry
 │   ├── __init__.py             # Lazy-loading adapter registry
 │   ├── base.py                 # ToolAdapter ABC
 │   ├── aether_base.py          # Shared Aether-family base class
@@ -625,7 +627,8 @@ Crucible/
 │   ├── quill.py                # Quill adapter
 │   ├── isotope.py              # Isotope adapter
 │   ├── dredge.py               # Dredge adapter
-│   └── vault.py                # Vault adapter
+│   ├── vault.py                # Vault adapter
+│   └── pain.py                 # pAIn adapter
 │
 ├── models/                     # Data access layer
 │   ├── project.py              # Project CRUD + directory management
