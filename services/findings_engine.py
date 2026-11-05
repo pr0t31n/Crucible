@@ -530,6 +530,23 @@ class FindingsEngine:
         self._apply_oos_flags(active, project)
         apply_risk_overrides(active, project)
         with self._lock:
+            prev = self._cache.get(project_id) or []
+            if prev:
+                disk_keys = set()
+                for f in active:
+                    dk = (f.get("title", ""), f.get("ip", ""),
+                          str(f.get("port", 0)), f.get("tool", ""))
+                    disk_keys.add(dk)
+                live_only = []
+                for f in prev:
+                    dk = (f.get("title", ""), f.get("ip", ""),
+                          str(f.get("port", 0)), f.get("tool", ""))
+                    if dk not in disk_keys:
+                        live_only.append(f)
+                if live_only:
+                    active = deduplicate(active + live_only)
+                    log.info("refresh: preserved %d live-only findings for %s",
+                             len(live_only), project_id)
             self._cache[project_id] = active
             self._fp_cache[project_id] = fps
         if self._action_engine and project_dir:
