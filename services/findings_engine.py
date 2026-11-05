@@ -519,6 +519,34 @@ class FindingsEngine:
         except RuntimeError as exc:
             log.debug("scope exclusion outside flask context: %s", exc)
 
+        with self._lock:
+            prev = self._cache.get(project_id) or []
+        if prev:
+            disk_ids = {f.get("id") for f in active if f.get("id")}
+            disk_titles = set()
+            for f in active:
+                dt = ((f.get("title") or "").strip().lower(),
+                      (f.get("tool") or "").split(":")[0].lower(),
+                      (f.get("ip") or ""))
+                disk_titles.add(dt)
+            live_only = []
+            for f in prev:
+                fid = f.get("id")
+                if fid and fid in disk_ids:
+                    continue
+                dt = ((f.get("title") or "").strip().lower(),
+                      (f.get("tool") or "").split(":")[0].lower(),
+                      (f.get("ip") or ""))
+                if dt in disk_titles:
+                    continue
+                live_only.append(f)
+            if live_only:
+                for f in live_only:
+                    self._sanitize_finding(f)
+                active.extend(live_only)
+                log.info("refresh: preserved %d live-only findings for %s",
+                         len(live_only), project_id)
+
         tsm = self._build_tool_scope_map(project)
         if tsm:
             for f in active:
@@ -529,24 +557,8 @@ class FindingsEngine:
         self._enrich_from_catalogue(active)
         self._apply_oos_flags(active, project)
         apply_risk_overrides(active, project)
+        active = deduplicate(active)
         with self._lock:
-            prev = self._cache.get(project_id) or []
-            if prev:
-                disk_keys = set()
-                for f in active:
-                    dk = (f.get("title", ""), f.get("ip", ""),
-                          str(f.get("port", 0)), f.get("tool", ""))
-                    disk_keys.add(dk)
-                live_only = []
-                for f in prev:
-                    dk = (f.get("title", ""), f.get("ip", ""),
-                          str(f.get("port", 0)), f.get("tool", ""))
-                    if dk not in disk_keys:
-                        live_only.append(f)
-                if live_only:
-                    active = deduplicate(active + live_only)
-                    log.info("refresh: preserved %d live-only findings for %s",
-                             len(live_only), project_id)
             self._cache[project_id] = active
             self._fp_cache[project_id] = fps
         if self._action_engine and project_dir:
