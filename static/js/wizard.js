@@ -1200,23 +1200,37 @@
           textToArray('activeSSIDs').forEach(function(s) { activeSet[s] = true; });
           var passiveSet = {};
           textToArray('passiveSSIDs').forEach(function(s) { passiveSet[s] = true; });
-          nets.sort(function(a, b) { return (b.signal || 0) - (a.signal || 0); });
-          nets.forEach(function(n, i) {
+          var bySSID = {};
+          nets.forEach(function(n) {
             var ssid = n.ssid || '(hidden)';
-            var bssid = n.bssid || '';
+            var prev = bySSID[ssid];
+            if (!prev || (n.signal || 0) > (prev.signal || 0)) {
+              bySSID[ssid] = {ssid: ssid, signal: n.signal, channel: n.channel,
+                              security: n.security || (n.encrypted ? 'Encrypted' : 'Open'),
+                              count: prev ? prev.count + 1 : 1};
+            } else {
+              prev.count = (prev.count || 1) + 1;
+            }
+          });
+          var unique = Object.keys(bySSID).map(function(k) { return bySSID[k]; });
+          unique.sort(function(a, b) { return (b.signal || 0) - (a.signal || 0); });
+          if (status) status.textContent = unique.length + ' unique SSID(s) found (' + nets.length + ' AP instances)';
+          unique.forEach(function(n, i) {
+            var ssid = n.ssid;
             var sig = n.signal != null ? n.signal + ' dBm' : '';
             var ch = n.channel || '';
-            var sec = n.security || (n.encrypted ? 'Encrypted' : 'Open');
+            var sec = n.security || '';
             var alreadyActive = activeSet[ssid];
             var alreadyPassive = passiveSet[ssid];
             var preAssign = alreadyActive ? 'active' : alreadyPassive ? 'passive' : 'active';
+            var countBadge = n.count > 1 ? ' <span style="color:var(--text-muted);font-size:0.72rem">(' + n.count + ' APs)</span>' : '';
             var row = document.createElement('tr');
             row.innerHTML =
               '<td style="text-align:center"><input type="checkbox" class="ssid-scan-check" data-idx="' + i + '"' +
                 (alreadyActive || alreadyPassive ? ' checked' : '') + '></td>' +
-              '<td>' + _esc(ssid) + (alreadyActive ? ' <span style="color:var(--risk-info);font-size:0.75rem">(in active)</span>' :
+              '<td>' + _esc(ssid) + countBadge +
+                (alreadyActive ? ' <span style="color:var(--risk-info);font-size:0.75rem">(in active)</span>' :
                 alreadyPassive ? ' <span style="color:var(--text-muted);font-size:0.75rem">(in passive)</span>' : '') + '</td>' +
-              '<td style="font-family:monospace;font-size:0.78rem">' + _esc(bssid) + '</td>' +
               '<td style="text-align:center">' + _esc(sig) + '</td>' +
               '<td style="text-align:center">' + _esc(String(ch)) + '</td>' +
               '<td>' + _esc(sec) + '</td>' +

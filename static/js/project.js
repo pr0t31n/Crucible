@@ -10624,8 +10624,8 @@ function renderSettingsFields(container, settings, schema) {
                   '<table class="findings-table" style="font-size:0.82rem;margin-bottom:10px">' +
                     '<thead><tr>' +
                       '<th style="width:30px;text-align:center"><input type="checkbox" class="st-ssid-all" title="Select all"></th>' +
-                      '<th>SSID</th><th style="width:130px">BSSID</th>' +
-                      '<th style="width:55px;text-align:center">Signal</th>' +
+                      '<th>SSID</th>' +
+                      '<th style="width:70px;text-align:center">Signal</th>' +
                       '<th style="width:45px;text-align:center">Ch</th>' +
                       '<th style="width:140px">Security</th>' +
                       '<th style="width:90px;text-align:center">Assign</th>' +
@@ -10651,20 +10651,31 @@ function renderSettingsFields(container, settings, schema) {
                         .then(function(d) {
                             var nets = d.networks || [];
                             if (!nets.length) { status.textContent = 'No networks found.'; scanBtn.disabled = false; return; }
-                            status.textContent = nets.length + ' network(s)';
-                            nets.sort(function(a, b) { return (b.signal || 0) - (a.signal || 0); });
-                            body.innerHTML = '';
+                            var bySSID = {};
                             nets.forEach(function(n) {
                                 var ssid = n.ssid || '(hidden)';
+                                var prev = bySSID[ssid];
+                                if (!prev || (n.signal || 0) > (prev.signal || 0)) {
+                                    bySSID[ssid] = {ssid: ssid, signal: n.signal, channel: n.channel,
+                                        security: n.security || (n.encrypted ? 'Encrypted' : 'Open'),
+                                        count: prev ? prev.count + 1 : 1};
+                                } else { prev.count = (prev.count || 1) + 1; }
+                            });
+                            var unique = Object.keys(bySSID).map(function(k) { return bySSID[k]; });
+                            unique.sort(function(a, b) { return (b.signal || 0) - (a.signal || 0); });
+                            status.textContent = unique.length + ' unique SSID(s) (' + nets.length + ' APs)';
+                            body.innerHTML = '';
+                            unique.forEach(function(n) {
+                                var ssid = n.ssid;
+                                var countBadge = n.count > 1 ? ' <span style="color:var(--text-muted);font-size:.72rem">(' + n.count + ' APs)</span>' : '';
                                 var tr = document.createElement('tr');
                                 tr.dataset.ssid = ssid;
                                 tr.innerHTML =
                                     '<td style="text-align:center"><input type="checkbox" class="st-ssid-check" checked></td>' +
-                                    '<td>' + esc(ssid) + '</td>' +
-                                    '<td style="font-family:monospace;font-size:.78rem">' + esc(n.bssid || '') + '</td>' +
+                                    '<td>' + esc(ssid) + countBadge + '</td>' +
                                     '<td style="text-align:center">' + (n.signal != null ? n.signal + ' dBm' : '') + '</td>' +
                                     '<td style="text-align:center">' + esc(String(n.channel || '')) + '</td>' +
-                                    '<td>' + esc(n.security || (n.encrypted ? 'Encrypted' : 'Open')) + '</td>' +
+                                    '<td>' + esc(n.security || '') + '</td>' +
                                     '<td style="text-align:center"><select class="st-ssid-assign form-control" style="font-size:.78rem;padding:2px 4px">' +
                                       '<option value="active" selected>Active</option><option value="passive">Passive</option></select></td>';
                                 body.appendChild(tr);
