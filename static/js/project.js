@@ -10777,7 +10777,11 @@ function _stLoadWifiInterfaces(selId, preselect) {
             }
             ifaces.forEach(function(iface) {
                 var lbl = iface.interface;
-                if (iface.mode && iface.mode !== 'unknown') lbl += ' (' + iface.mode + ')';
+                var det = [];
+                if (iface.bus && iface.bus !== 'Unknown') det.push(iface.bus);
+                if (iface.manufacturer) det.push(iface.manufacturer);
+                if (det.length) lbl += ' (' + det.join(' — ') + ')';
+                if (iface.mode && iface.mode !== 'unknown') lbl += ' [' + iface.mode + ']';
                 if (iface.channel) lbl += ' ch' + iface.channel;
                 var opt = document.createElement('option');
                 opt.value = iface.interface;
@@ -10790,6 +10794,8 @@ function _stLoadWifiInterfaces(selId, preselect) {
                 var m = ifaces.find(function(i) { return i.interface === sel.value; });
                 if (m) {
                     var parts = [];
+                    if (m.manufacturer) parts.push(m.manufacturer);
+                    if (m.bus && m.bus !== 'Unknown') parts.push(m.bus);
                     if (m.mode && m.mode !== 'unknown') parts.push('Mode: ' + m.mode);
                     if (m.channel) parts.push('Channel: ' + m.channel);
                     info.textContent = parts.join(' · ');

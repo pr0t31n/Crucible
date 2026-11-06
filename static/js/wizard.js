@@ -1116,7 +1116,11 @@
         }
         _wifiInterfaces.forEach(function(iface) {
           var label = iface.interface;
-          if (iface.mode && iface.mode !== 'unknown') label += ' (' + iface.mode + ')';
+          var details = [];
+          if (iface.bus && iface.bus !== 'Unknown') details.push(iface.bus);
+          if (iface.manufacturer) details.push(iface.manufacturer);
+          if (details.length) label += ' (' + details.join(' — ') + ')';
+          if (iface.mode && iface.mode !== 'unknown') label += ' [' + iface.mode + ']';
           if (iface.channel) label += ' ch' + iface.channel;
           var opt = document.createElement('option');
           opt.value = iface.interface;
@@ -1149,6 +1153,8 @@
     var iface = _wifiInterfaces.find(function(i) { return i.interface === v; });
     if (iface) {
       var parts = [];
+      if (iface.manufacturer) parts.push(iface.manufacturer);
+      if (iface.bus && iface.bus !== 'Unknown') parts.push(iface.bus);
       if (iface.mode && iface.mode !== 'unknown') parts.push('Mode: ' + iface.mode);
       if (iface.channel) parts.push('Channel: ' + iface.channel);
       if (iface.type && iface.type !== 'unknown') parts.push('Type: ' + iface.type);

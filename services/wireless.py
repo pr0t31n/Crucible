@@ -77,9 +77,101 @@ def get_wifi_interfaces():
     return interfaces
 
 
+_USB_VENDOR_IDS = {
+    "0cf3": "Qualcomm/Atheros", "148f": "Ralink/MediaTek", "0bda": "Realtek",
+    "2357": "TP-Link", "0846": "NETGEAR", "0b05": "ASUS",
+    "13b1": "Linksys", "2001": "D-Link", "050d": "Belkin",
+    "7392": "Edimax", "0e8d": "MediaTek", "0586": "ZyXEL",
+    "2c4e": "Alfa Network", "0ace": "ZyDAS", "0df6": "Sitecom",
+    "1737": "Linksys", "20f4": "TRENDnet", "1eda": "AirPcap",
+    "0b3b": "Tekram", "1740": "EnGenius", "0e66": "Hawking",
+    "15a9": "Gemtek", "057c": "AVM", "0411": "BUFFALO",
+    "0471": "Philips", "083a": "Accton", "1385": "NETGEAR",
+    "0cde": "Z-Com", "167b": "ZyDAS", "0db0": "Micro Star",
+    "04bb": "I-O DATA", "07d1": "D-Link", "1044": "LITE-ON",
+    "1286": "Marvell", "1a3b": "Alfa Network",
+}
+
+_PCI_VENDOR_IDS = {
+    "8086": "Intel", "168c": "Qualcomm/Atheros", "14e4": "Broadcom",
+    "1814": "Ralink/MediaTek", "10ec": "Realtek", "1b4b": "Marvell",
+    "11ab": "Marvell", "1ae9": "Wilocity", "17cb": "Qualcomm",
+    "02d0": "Broadcom", "14c3": "MediaTek",
+}
+
+
+def _detect_bus_and_vendor_linux(interface):
+    """Detect bus type (USB/PCI/Integrated) and manufacturer on Linux."""
+    bus = "Unknown"
+    vendor = ""
+    dev_path = f"/sys/class/net/{interface}/device"
+    try:
+        real = os.path.realpath(dev_path)
+        if "/usb" in real:
+            bus = "USB"
+            vid_path = os.path.join(dev_path, "idVendor")
+            if os.path.isfile(vid_path):
+                vid = open(vid_path).read().strip().lower()
+                vendor = _USB_VENDOR_IDS.get(vid, "")
+            if not vendor:
+                try:
+                    r = subprocess.run(
+                        ["lsusb"], capture_output=True, text=True, timeout=5,
+                    )
+                    for line in r.stdout.splitlines():
+                        parts = line.split("ID ")
+                        if len(parts) > 1:
+                            tokens = parts[1].split(None, 1)
+                            if len(tokens) > 1 and tokens[0].split(":")[0].lower() == vid:
+                                vendor = tokens[1].split("[")[0].strip()[:30]
+                                break
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    pass
+        else:
+            bus = "Integrated"
+            vid_path = os.path.join(dev_path, "vendor")
+            if os.path.isfile(vid_path):
+                vid = open(vid_path).read().strip().lower().replace("0x", "")
+                vendor = _PCI_VENDOR_IDS.get(vid, "")
+            if not vendor:
+                subsys = os.path.join(dev_path, "subsystem_vendor")
+                if os.path.isfile(subsys):
+                    svid = open(subsys).read().strip().lower().replace("0x", "")
+                    vendor = _PCI_VENDOR_IDS.get(svid, "")
+    except (OSError, IOError):
+        pass
+    return bus, vendor
+
+
+def _detect_bus_and_vendor_darwin(interface):
+    """Detect bus type and manufacturer on macOS."""
+    bus = "Integrated"
+    vendor = "Apple"
+    try:
+        r = subprocess.run(
+            ["system_profiler", "SPUSBDataType"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if interface.lower() in r.stdout.lower() or "wireless" in r.stdout.lower():
+            for line in r.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("Manufacturer:"):
+                    usb_mfr = line.split(":", 1)[1].strip()
+                    if usb_mfr:
+                        bus = "USB"
+                        vendor = usb_mfr[:30]
+                        break
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return bus, vendor
+
+
 def get_interface_info(interface):
-    """Get interface details (mode, channel, etc.). Returns dict."""
-    info = {"interface": interface, "mode": "unknown", "channel": None, "type": "unknown"}
+    """Get interface details (mode, channel, bus, manufacturer). Returns dict."""
+    info = {
+        "interface": interface, "mode": "unknown", "channel": None,
+        "type": "unknown", "bus": "Unknown", "manufacturer": "",
+    }
     system = platform.system()
 
     if system == "Linux":
@@ -98,6 +190,7 @@ def get_interface_info(interface):
                         info["channel"] = int(m.group(1))
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
+        info["bus"], info["manufacturer"] = _detect_bus_and_vendor_linux(interface)
 
     elif system == "Darwin":
         try:
@@ -116,6 +209,7 @@ def get_interface_info(interface):
                     info["mode"] = line.split(":")[1].strip()
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
+        info["bus"], info["manufacturer"] = _detect_bus_and_vendor_darwin(interface)
 
     return info
 
