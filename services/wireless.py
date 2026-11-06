@@ -498,6 +498,21 @@ def fix_interface(interface):
         return False, "; ".join(steps)
 
 
+def detect_monitor_interfaces():
+    """Return list of wireless interfaces currently in monitor mode."""
+    if platform.system() != "Linux":
+        return []
+    monitors = []
+    for iface in get_wifi_interfaces():
+        try:
+            info = get_interface_info(iface)
+            if info.get("mode") == "monitor":
+                monitors.append(iface)
+        except Exception:
+            pass
+    return monitors
+
+
 def force_radio_cleanup():
     """Kill straggler wireless processes and restore interfaces.
     Called after every Aether tool exit (even crashes).
@@ -521,6 +536,15 @@ def force_radio_cleanup():
         log.info("Killed straggler processes: %s", ", ".join(killed))
 
     if platform.system() == "Linux":
-        subprocess.run(["systemctl", "restart", "NetworkManager"],
-                        capture_output=True, check=False)
-        log.info("NetworkManager restarted")
+        monitors = detect_monitor_interfaces()
+        for mon_iface in monitors:
+            ok, msg = fix_interface(mon_iface)
+            if ok:
+                log.info("Restored monitor interface %s: %s", mon_iface, msg)
+            else:
+                log.warning("Failed to restore %s: %s", mon_iface, msg)
+
+        if not monitors:
+            subprocess.run(["systemctl", "restart", "NetworkManager"],
+                            capture_output=True, check=False)
+            log.info("NetworkManager restarted")

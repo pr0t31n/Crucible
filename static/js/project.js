@@ -1355,6 +1355,7 @@ function updateConsoleHeader() {
     } else {
         document.getElementById('btnToolPause').textContent = 'Pause';
     }
+    _updateFixWirelessButton();
 }
 
 function openInstanceDetail(tid) {
@@ -1572,6 +1573,83 @@ document.getElementById('btnMitmStop').addEventListener('click', function() {
         }
     }).catch(function() { btn.textContent = 'Error'; btn.disabled = false; });
 });
+
+/* ── Fix Wireless Interface ───────────────────────────────────── */
+var _AETHER_IDS = {'aether':1, 'aether_b':1, 'aether_z':1, 'aether_u':1};
+var _wifiInScope = PROJECT_TOOLS.some(function(t) { return _AETHER_IDS.hasOwnProperty(t); });
+var _wifiMonitorIfaces = [];
+
+function _isAetherTool(tid) {
+    if (!tid) return false;
+    var base = tid.indexOf(':') !== -1 ? tid.substring(0, tid.indexOf(':')) : tid;
+    return _AETHER_IDS.hasOwnProperty(base);
+}
+
+function _anyAetherRunning() {
+    for (var tid in toolStatuses) {
+        if (_isAetherTool(tid)) {
+            var st = (toolStatuses[tid] || {}).status || '';
+            if (st === 'running' || st === 'pausing') return true;
+        }
+    }
+    return false;
+}
+
+function _pollWirelessMonitorStatus() {
+    if (!_wifiInScope) return;
+    fetch('/api/wifi/status', {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _wifiMonitorIfaces = d.monitor_interfaces || [];
+            _updateFixWirelessButton();
+        })
+        .catch(function() {});
+}
+
+function _updateFixWirelessButton() {
+    var btn = document.getElementById('btnFixWireless');
+    if (!btn) return;
+    btn.style.display = _wifiInScope ? '' : 'none';
+    if (_wifiInScope) {
+        btn.disabled = _anyAetherRunning() || _wifiMonitorIfaces.length === 0;
+    }
+}
+
+document.getElementById('btnFixWireless').addEventListener('click', function() {
+    var btn = this;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = 'Fixing…';
+    var iface = _wifiMonitorIfaces[0] || 'wlan0mon';
+    fetch('/api/wifi/fix', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({interface: iface})
+    }).then(function(r) {
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        return r.json();
+    }).then(function(d) {
+        if (d && d.ok) {
+            toast('success', 'Wireless interface restored: ' + d.message);
+            btn.textContent = 'Fix Wireless';
+            setTimeout(_pollWirelessMonitorStatus, 2000);
+        } else {
+            toast('error', d && d.message ? d.message : 'Fix failed');
+            btn.textContent = 'Fix Wireless';
+            btn.disabled = false;
+        }
+    }).catch(function(e) {
+        toast('error', 'Fix request failed: ' + e.message);
+        btn.textContent = 'Fix Wireless';
+        btn.disabled = false;
+    });
+});
+
+if (_wifiInScope) {
+    setInterval(_pollWirelessMonitorStatus, 10000);
+    _pollWirelessMonitorStatus();
+}
 
 function _updatePauseAllButtons() {
     var hasRunning = false, hasResumable = false;

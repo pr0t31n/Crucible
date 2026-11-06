@@ -608,6 +608,14 @@ def api_wifi_fix():
     return jsonify({"ok": ok, "message": message})
 
 
+@settings_bp.route("/api/wifi/status")
+def api_wifi_status():
+    """Detect wireless interfaces in monitor mode (for Fix Wireless button)."""
+    from services.wireless import detect_monitor_interfaces
+    monitors = detect_monitor_interfaces()
+    return jsonify({"monitor_interfaces": monitors})
+
+
 @settings_bp.route("/api/beacon/test", methods=["POST"])
 def api_beacon_test():
     """Test connectivity to a Beacon status server."""
