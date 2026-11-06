@@ -13166,6 +13166,10 @@ window._initAttackSurface = function() {
     _asLoad();
 };
 
+window._refreshAttackSurface = function() {
+    _asLoad();
+};
+
 function _asBindEvents() {
     var sortSel = document.getElementById('asSortSelect');
     var filterSel = document.getElementById('asFilterRisk');
