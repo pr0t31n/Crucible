@@ -1527,7 +1527,7 @@ document.getElementById('btnToolKill').addEventListener('click', function() {
         if (r.status === 401) { window.location.href = '/login'; return; }
         return r.json();
     }).then(function(d) {
-        if (d && d.ok) refreshToolStatuses();
+        if (d && d.ok) updateConsoleHeader();
         else if (d && d.error) toast('error', d.error);
     }).catch(function(e) {
         toast('error', 'Kill request failed: ' + e.message);
