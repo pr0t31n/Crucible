@@ -1064,6 +1064,50 @@ var _queueData = [];
 var _ACTIVE_STATUSES = {'running':1,'pausing':1,'paused':1,'idle':1,'queued':1};
 var _COMPLETE_STATUSES = {'complete':1,'failed':1,'killed':1};
 
+/* ── Queue prediction — mirrors queue_manager.can_launch() rules ── */
+var _EXCLUSIVE_TOOLS = {ss3:1,fracture:1,siphon:1,forge:1,aether:1,aether_b:1,aether_z:1,aether_u:1};
+var _OSIFT_COMPAT = {ss3:1};
+
+function _wouldQueue(toolId) {
+    if (!toolId) return false;
+    var sci = toolId.indexOf(':');
+    var baseTid = sci !== -1 ? toolId.substring(0, sci) : toolId;
+
+    if (baseTid === 'deps') return false;
+    if (!_EXCLUSIVE_TOOLS[baseTid] && baseTid !== 'osift') return false;
+
+    var running = {};
+    for (var tid in toolStatuses) {
+        var st = (toolStatuses[tid].status || '').toLowerCase();
+        if (st === 'running' || st === 'pausing') {
+            var bsci = tid.indexOf(':');
+            var btid = bsci !== -1 ? tid.substring(0, bsci) : tid;
+            running[btid] = 1;
+        }
+    }
+    var runningKeys = Object.keys(running);
+    if (runningKeys.length === 0) return false;
+
+    if (running[baseTid]) return true;
+
+    if (baseTid === 'osift') {
+        for (var i = 0; i < runningKeys.length; i++) {
+            if (_EXCLUSIVE_TOOLS[runningKeys[i]] && !_OSIFT_COMPAT[runningKeys[i]]) return true;
+        }
+        return false;
+    }
+
+    if (_EXCLUSIVE_TOOLS[baseTid]) {
+        for (var j = 0; j < runningKeys.length; j++) {
+            var rk = runningKeys[j];
+            if (rk !== baseTid && _EXCLUSIVE_TOOLS[rk]) return true;
+        }
+        if (running['osift'] && !_OSIFT_COMPAT[baseTid]) return true;
+    }
+
+    return false;
+}
+
 function _fetchQueueData() {
     fetch('/api/queue/' + PID, {credentials: 'same-origin'})
         .then(function(r) { return r.json(); })
@@ -1339,6 +1383,7 @@ function updateConsoleHeader() {
     document.getElementById('btnToolPause').disabled = !selectedTool || !isRunning || isDeps;
     document.getElementById('btnToolResume').disabled = !selectedTool || !canResume || isDeps;
     document.getElementById('btnToolStart').style.display = isDeps ? 'none' : '';
+    document.getElementById('btnToolStart').textContent = (!isDeps && selectedTool && !isActive && !isPaused && _wouldQueue(selectedTool)) ? 'Enqueue' : 'Start';
     document.getElementById('btnToolPause').style.display = isDeps ? 'none' : '';
     document.getElementById('btnToolResume').style.display = isDeps ? 'none' : '';
     document.getElementById('btnConsoleClear').disabled = !selectedTool;
