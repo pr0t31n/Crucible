@@ -183,6 +183,31 @@ class IntelService:
         """Load traffic.json from Trawler output."""
         return _safe_load(Path(tool_output_dir) / "traffic.json")
 
+    # ── Aether (wireless) outputs ──────────────────────────────────────
+
+    def get_wireless_aps(self, tool_output_dir):
+        """Load AP inventory from Aether output."""
+        td = Path(tool_output_dir)
+        inv = _safe_load(td / "contextual_intel" / "inventory.json")
+        if inv is not None:
+            return inv
+        return _safe_load(td / "access_points.json")
+
+    def get_wireless_fingerprints(self, tool_output_dir):
+        """Load AP fingerprint data from Aether vendor recon."""
+        return _safe_load(
+            Path(tool_output_dir) / "vendor_recon" / "ap_fingerprints.json")
+
+    def get_wireless_vendor_inventory(self, tool_output_dir):
+        """Load vendor identification results."""
+        return _safe_load(
+            Path(tool_output_dir) / "vendor_recon" / "vendor_inventory.json")
+
+    def get_wireless_firmware_risk(self, tool_output_dir):
+        """Load firmware vulnerability correlation results."""
+        return _safe_load(
+            Path(tool_output_dir) / "firmware_risk.json")
+
     # ── Aggregation helpers ─────────────────────────────────────────────
 
     @staticmethod
@@ -258,6 +283,16 @@ class IntelService:
         if tr_dir:
             result["traffic_analysis"] = self.get_traffic_analysis(tr_dir)
 
+        ae_dir = self._resolve_dir(project, "aether")
+        if ae_dir:
+            result["wireless_aps"] = self.get_wireless_aps(ae_dir)
+            result["wireless_fingerprints"] = self.get_wireless_fingerprints(
+                ae_dir)
+            result["wireless_vendor_inventory"] = \
+                self.get_wireless_vendor_inventory(ae_dir)
+            result["wireless_firmware_risk"] = \
+                self.get_wireless_firmware_risk(ae_dir)
+
         result = {k: v for k, v in result.items() if v is not None}
         return result
 
@@ -293,6 +328,12 @@ class IntelService:
             ],
             "trawler": [
                 ("traffic_analysis", "traffic.json"),
+            ],
+            "aether": [
+                ("wireless_aps", "contextual_intel/inventory.json"),
+                ("wireless_fingerprints",
+                 "vendor_recon/ap_fingerprints.json"),
+                ("wireless_firmware_risk", "firmware_risk.json"),
             ],
         }
 

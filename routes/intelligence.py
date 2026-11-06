@@ -796,6 +796,15 @@ _PANEL_MAP = {
     "endpoint-cis":        ("dredge", ["cis_assessment.json"]),
     "endpoint-nist":       ("dredge", ["nist_assessment.json"]),
     "endpoint-stig":       ("dredge", ["stig_assessment.json"]),
+    # Aether (wireless)
+    "wifi-aps":            ("aether", ["contextual_intel/inventory.json", "access_points.json"]),
+    "wifi-clients":        ("aether", ["contextual_intel/inventory.json", "access_points.json"]),
+    "wifi-encryption":     ("aether", ["contextual_intel/inventory.json", "access_points.json"]),
+    "wifi-vendors":        ("aether", ["vendor_recon/vendor_inventory.json", "vendor_recon/ap_fingerprints.json", "contextual_intel/inventory.json"]),
+    "wifi-channels":       ("aether", ["contextual_intel/inventory.json", "access_points.json"]),
+    "wifi-probes":         ("aether", ["contextual_intel/inventory.json", "access_points.json"]),
+    "wifi-wps":            ("aether", ["contextual_intel/inventory.json", "access_points.json"]),
+    "wifi-firmware":       ("aether", ["firmware_risk.json"]),
 }
 
 
@@ -1317,6 +1326,260 @@ def _aggregate_osift_wayback(td):
     return {"domains": results}
 
 
+
+# ── Aether (wireless) aggregators ──────────────────────────────────────────
+
+def _load_wifi_inventory(td):
+    """Load the Aether wireless inventory from contextual_intel or root."""
+    for candidate in (td / "contextual_intel" / "inventory.json",
+                      td / "access_points.json"):
+        if candidate.exists():
+            data = _safe_load_json(candidate)
+            if data:
+                return data
+    return None
+
+
+def _safe_load_json(fp):
+    try:
+        with open(fp) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _aggregate_wifi_aps(td):
+    """AP inventory table: BSSID, SSID, vendor, model, encryption, channel, signal, clients."""
+    inv = _load_wifi_inventory(td)
+    if not inv:
+        return None
+    aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+    rows = []
+    for ap in aps:
+        fp = ap.get("fingerprint") or {}
+        rows.append({
+            "bssid": ap.get("bssid", ""),
+            "ssid": ap.get("ssid") or ap.get("essid", ""),
+            "vendor": fp.get("vendor") or ap.get("vendor", "Unknown"),
+            "model": fp.get("model", ""),
+            "encryption": ap.get("encryption") or ap.get("privacy", ""),
+            "cipher": ap.get("cipher", ""),
+            "auth": ap.get("auth") or ap.get("authentication", ""),
+            "channel": ap.get("channel", ""),
+            "signal": ap.get("signal") or ap.get("power", ""),
+            "clients": ap.get("client_count") or len(ap.get("clients") or []),
+            "wps": ap.get("wps", False),
+            "laa": ap.get("laa", False),
+        })
+    return {"aps": rows, "total": len(rows)}
+
+
+def _aggregate_wifi_clients(td):
+    """Client table: MAC, vendor, associated AP, signal, probed SSIDs."""
+    inv = _load_wifi_inventory(td)
+    if not inv:
+        return None
+    clients = inv.get("clients", [])
+    if not clients:
+        aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+        for ap in aps:
+            for c in (ap.get("clients") or []):
+                c_copy = dict(c)
+                c_copy["associated_ap"] = ap.get("bssid", "")
+                c_copy["associated_ssid"] = ap.get("ssid") or ap.get("essid", "")
+                clients.append(c_copy)
+    rows = []
+    for c in clients:
+        probed = c.get("probed") or c.get("probed_essids", [])
+        if isinstance(probed, str):
+            probed = [s.strip() for s in probed.split(",") if s.strip()]
+        rows.append({
+            "mac": c.get("mac") or c.get("station", ""),
+            "vendor": c.get("vendor", "Unknown"),
+            "associated_ap": c.get("associated_ap") or c.get("bssid", ""),
+            "associated_ssid": c.get("associated_ssid", ""),
+            "signal": c.get("signal") or c.get("power", ""),
+            "packets": c.get("packets", 0),
+            "probed_ssids": probed,
+        })
+    return {"clients": rows, "total": len(rows)}
+
+
+def _aggregate_wifi_encryption(td):
+    """Encryption posture breakdown: auth types, cipher distribution."""
+    inv = _load_wifi_inventory(td)
+    if not inv:
+        return None
+    aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+    auth_counts = {}
+    cipher_counts = {}
+    enc_counts = {}
+    for ap in aps:
+        enc = (ap.get("encryption") or ap.get("privacy") or "Open").strip()
+        auth = (ap.get("auth") or ap.get("authentication") or "").strip() or enc
+        cipher = (ap.get("cipher") or "").strip() or "Unknown"
+        enc_counts[enc] = enc_counts.get(enc, 0) + 1
+        auth_counts[auth] = auth_counts.get(auth, 0) + 1
+        cipher_counts[cipher] = cipher_counts.get(cipher, 0) + 1
+    return {
+        "encryption": sorted(enc_counts.items(), key=lambda x: -x[1]),
+        "auth_types": sorted(auth_counts.items(), key=lambda x: -x[1]),
+        "ciphers": sorted(cipher_counts.items(), key=lambda x: -x[1]),
+        "total_aps": len(aps),
+        "open_count": enc_counts.get("Open", 0) + enc_counts.get("OPN", 0),
+        "wep_count": enc_counts.get("WEP", 0),
+    }
+
+
+def _aggregate_wifi_vendors(td):
+    """Vendor distribution from AP fingerprints."""
+    fp_data = _safe_load_json(td / "vendor_recon" / "ap_fingerprints.json")
+    inv = _load_wifi_inventory(td)
+    if not fp_data and not inv:
+        return None
+    vendor_counts = {}
+    vendor_models = {}
+    if fp_data and isinstance(fp_data, list):
+        for fp in fp_data:
+            v = fp.get("vendor") or "Unknown"
+            vendor_counts[v] = vendor_counts.get(v, 0) + 1
+            m = fp.get("model", "")
+            if m:
+                vendor_models.setdefault(v, set()).add(m)
+    elif inv:
+        aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+        for ap in aps:
+            fp = ap.get("fingerprint") or {}
+            v = fp.get("vendor") or ap.get("vendor", "Unknown")
+            vendor_counts[v] = vendor_counts.get(v, 0) + 1
+            m = fp.get("model", "")
+            if m:
+                vendor_models.setdefault(v, set()).add(m)
+    rows = []
+    for v, count in sorted(vendor_counts.items(), key=lambda x: -x[1]):
+        rows.append({
+            "vendor": v,
+            "ap_count": count,
+            "models": sorted(vendor_models.get(v, set())),
+        })
+    return {"vendors": rows, "total": len(rows)}
+
+
+def _aggregate_wifi_channels(td):
+    """Channel analysis: utilisation, overlap, band distribution."""
+    inv = _load_wifi_inventory(td)
+    if not inv:
+        return None
+    aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+    channel_aps = {}
+    for ap in aps:
+        ch = ap.get("channel")
+        if ch is None:
+            continue
+        try:
+            ch = int(str(ch).split("+")[0].split(",")[0])
+        except (ValueError, TypeError):
+            continue
+        channel_aps.setdefault(ch, []).append({
+            "bssid": ap.get("bssid", ""),
+            "ssid": ap.get("ssid") or ap.get("essid", ""),
+            "signal": ap.get("signal") or ap.get("power", ""),
+        })
+    band_24 = sum(len(v) for k, v in channel_aps.items() if k <= 14)
+    band_5 = sum(len(v) for k, v in channel_aps.items() if 36 <= k <= 177)
+    band_6 = sum(len(v) for k, v in channel_aps.items() if k > 177)
+    channels = []
+    for ch in sorted(channel_aps):
+        channels.append({
+            "channel": ch,
+            "band": "2.4 GHz" if ch <= 14 else ("5 GHz" if ch <= 177 else "6 GHz"),
+            "ap_count": len(channel_aps[ch]),
+            "aps": channel_aps[ch],
+        })
+    return {
+        "channels": channels,
+        "band_2_4_count": band_24,
+        "band_5_count": band_5,
+        "band_6_count": band_6,
+        "total_aps": len(aps),
+    }
+
+
+def _aggregate_wifi_probes(td):
+    """Probe request intelligence: preferred network lists disclosed by clients."""
+    inv = _load_wifi_inventory(td)
+    if not inv:
+        return None
+    probes_set = set()
+    ssid_clients = {}
+    clients = inv.get("clients", [])
+    if not clients:
+        aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+        for ap in aps:
+            for c in (ap.get("clients") or []):
+                clients.append(c)
+    for c in clients:
+        probed = c.get("probed") or c.get("probed_essids", [])
+        if isinstance(probed, str):
+            probed = [s.strip() for s in probed.split(",") if s.strip()]
+        mac = c.get("mac") or c.get("station", "")
+        for ssid in probed:
+            if not ssid:
+                continue
+            probes_set.add(ssid)
+            ssid_clients.setdefault(ssid, set()).add(mac)
+    rows = []
+    for ssid in sorted(probes_set):
+        macs = ssid_clients.get(ssid, set())
+        rows.append({
+            "ssid": ssid,
+            "client_count": len(macs),
+            "clients": sorted(macs),
+        })
+    return {"probed_ssids": rows, "total": len(rows),
+            "unique_clients": len({m for ms in ssid_clients.values() for m in ms})}
+
+
+def _aggregate_wifi_wps(td):
+    """WPS exposure: APs with WPS enabled and their lock status."""
+    inv = _load_wifi_inventory(td)
+    if not inv:
+        return None
+    aps = inv.get("aps") or inv if isinstance(inv, list) else inv.get("aps", [])
+    wps_aps = []
+    for ap in aps:
+        wps = ap.get("wps")
+        wps_data = ap.get("wps_data") or {}
+        wps_info = ap.get("wps_info") or {}
+        if not wps and not wps_data:
+            continue
+        wps_aps.append({
+            "bssid": ap.get("bssid", ""),
+            "ssid": ap.get("ssid") or ap.get("essid", ""),
+            "vendor": (ap.get("fingerprint") or {}).get("vendor") or ap.get("vendor", "Unknown"),
+            "wps_version": wps_data.get("wps_version", ""),
+            "wps_locked": wps_data.get("locked", False),
+            "manufacturer": wps_info.get("manufacturer", ""),
+            "model_name": wps_info.get("model_name", ""),
+            "model_number": wps_info.get("model_number", ""),
+            "device_name": wps_info.get("device_name", ""),
+        })
+    return {"wps_aps": wps_aps, "total": len(wps_aps),
+            "locked_count": sum(1 for a in wps_aps if a.get("wps_locked")),
+            "unlocked_count": sum(1 for a in wps_aps if not a.get("wps_locked"))}
+
+
+_WIFI_AGGREGATORS = {
+    "wifi_aps": _aggregate_wifi_aps,
+    "wifi_clients": _aggregate_wifi_clients,
+    "wifi_encryption": _aggregate_wifi_encryption,
+    "wifi_vendors": _aggregate_wifi_vendors,
+    "wifi_channels": _aggregate_wifi_channels,
+    "wifi_probes": _aggregate_wifi_probes,
+    "wifi_wps": _aggregate_wifi_wps,
+}
+
+
 _OSIFT_AGGREGATORS = {
     "osint_domains": _aggregate_osift_domains,
     "osint_dns": _aggregate_osift_dns,
@@ -1508,6 +1771,11 @@ def api_intel_panel(panel, project_id):
             data = aggregator(td)
             if data is not None:
                 return jsonify({key: _maybe_filter(data), "available": True})
+        wifi_agg = _WIFI_AGGREGATORS.get(key)
+        if wifi_agg and tool_key == "aether":
+            data = wifi_agg(td)
+            if data is not None:
+                return jsonify({key: data, "available": True})
         if file_data is not None:
             return jsonify({key: _maybe_filter(file_data), "available": True})
     # Fallback: people dorking from findings cache
@@ -2263,6 +2531,11 @@ def _fetch_panel_data(panel_key, project, project_id):
         aggregator = _OSIFT_AGGREGATORS.get(key)
         if aggregator and tool_key == "osift":
             data = aggregator(td)
+            if data is not None:
+                return data
+        wifi_agg = _WIFI_AGGREGATORS.get(key)
+        if wifi_agg and tool_key == "aether":
+            data = wifi_agg(td)
             if data is not None:
                 return data
     return None
