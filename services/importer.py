@@ -42,12 +42,13 @@ class ImporterService:
     @property
     def registry(self):
         if self._registry is None:
-            import sys
-            _app_dir = str(Path(__file__).resolve().parent.parent)
-            if _app_dir not in sys.path:
-                sys.path.insert(0, _app_dir)
-            from parsers.registry import ParserRegistry
-            self._registry = ParserRegistry()
+            import importlib.util
+            _reg_file = Path(__file__).resolve().parent.parent / "parsers" / "registry.py"
+            spec = importlib.util.spec_from_file_location(
+                "crucible_parsers_registry", str(_reg_file))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            self._registry = mod.ParserRegistry()
         return self._registry
 
     # ── Job creation ────────────────────────────────────────────
