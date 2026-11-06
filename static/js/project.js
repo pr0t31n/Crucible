@@ -11059,6 +11059,39 @@ function renderSettingsFields(container, settings, schema) {
             group.innerHTML += '<span class="form-hint">' + esc(fieldSchema.hint) + '</span>';
         }
 
+        if (key === 'api_key_file') {
+            var _akfBtns = document.createElement('div');
+            _akfBtns.style.cssText = 'display:flex;gap:6px;margin-top:6px';
+            _akfBtns.innerHTML = '<button type="button" class="btn btn-xs btn-ghost" id="stgOsiftCreateTpl">Create Template</button>';
+            group.appendChild(_akfBtns);
+            var _akfStatus = document.createElement('span');
+            _akfStatus.className = 'form-hint';
+            _akfStatus.style.display = 'none';
+            _akfStatus.id = 'stgOsiftAkfStatus';
+            group.appendChild(_akfStatus);
+            (function() {
+                setTimeout(function() {
+                    var btn = document.getElementById('stgOsiftCreateTpl');
+                    if (btn) btn.addEventListener('click', function() {
+                        var inp = document.getElementById('s_api_key_file');
+                        var path = inp ? inp.value.trim() : '';
+                        var st = document.getElementById('stgOsiftAkfStatus');
+                        if (!path) { if (st) { st.style.display='block'; st.textContent='Enter a file path first'; st.style.color='var(--danger)'; } return; }
+                        fetch('/api/osift_api_key_template', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path})})
+                        .then(function(r){return r.json();})
+                        .then(function(d) {
+                            if (!st) return;
+                            st.style.display='block';
+                            if (d.ok && d.created) { st.textContent='Template created at '+d.path; st.style.color='var(--success)'; }
+                            else if (d.ok && d.exists) { st.textContent='File already exists'; st.style.color='var(--success)'; }
+                            else { st.textContent=d.error||'Failed'; st.style.color='var(--danger)'; }
+                            setTimeout(function(){st.style.display='none';},5000);
+                        });
+                    });
+                }, 0);
+            })();
+        }
+
         if (fieldSchema.depends_on) {
             group.dataset.dependsOn = JSON.stringify(fieldSchema.depends_on);
         }
