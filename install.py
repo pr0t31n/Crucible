@@ -70,10 +70,17 @@ def install_pip_deps():
     if not missing:
         print("  ✓ all Python packages already installed")
         return
+    failed = []
     for pkg in missing:
         print(f"  Installing {pkg} ...")
-        _run([sys.executable, "-m", "pip", "install",
-              "--break-system-packages", pkg])
+        try:
+            _run([sys.executable, "-m", "pip", "install",
+                  "--break-system-packages", pkg])
+        except subprocess.CalledProcessError:
+            print(f"  ⚠ {pkg} install failed (non-fatal)")
+            failed.append(pkg)
+    if failed:
+        print(f"  ⚠ {len(failed)} package(s) failed: {', '.join(failed)}")
 
 
 def vendor_shared_modules():

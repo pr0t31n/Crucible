@@ -533,7 +533,9 @@ class FindingsEngine:
         project_dir = project.get("project_dir", "")
         fps = load_false_positives(project_dir) if project_dir else []
         fp_ids = {fp.get("id") for fp in fps if fp.get("id")}
-        active = [f for f in findings if f.get("id") not in fp_ids]
+        active = [f for f in findings
+                  if f.get("id") not in fp_ids
+                  and (f.get("title") or "").strip()]
         for f in active:
             self._sanitize_finding(f)
 
