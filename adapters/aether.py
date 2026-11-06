@@ -57,6 +57,7 @@ class AetherAdapter(AetherBaseAdapter):
         return {"fields": [
             {"key": "interface", "label": "Wireless Interface", "type": "interface_picker"},
             {"key": "ap_interface", "label": "AP Interface (optional)", "type": "interface_picker"},
+            {"key": "_ssid_scan", "label": "Nearby Networks", "type": "ssid_scan"},
             {"key": "scope_default_mode", "label": "Default Scope Mode", "type": "select",
              "options": [{"value": "active", "label": "Active"}, {"value": "passive", "label": "Passive"}]},
             {"key": "target_ssids", "label": "Active Scope SSIDs", "type": "tag_list"},

@@ -1003,6 +1003,10 @@
       if (dgExtToolFiles.length) addR(sg,'External Files',dgExtToolFiles.map(function(f){return f.name;}).join(', '));
     }
     if (_sec('scopeWirelessSection')) {
+        var _wiSel = document.getElementById('wirelessInterface');
+        var _wiAp = document.getElementById('wirelessApInterface');
+        if (_wiSel && _wiSel.value) addR(sg,'Primary Interface',_wiSel.value);
+        if (_wiAp && _wiAp.value) addR(sg,'AP Interface',_wiAp.value);
         addR(sg,'Default Scope Mode',document.getElementById('wirelessDefaultMode').value);
         addR(sg,'Active SSIDs',valOf('activeSSIDs'));
         addR(sg,'Passive SSIDs',valOf('passiveSSIDs'));
@@ -1086,6 +1090,231 @@
     var raw = valOf(id); if (!raw) return [];
     return raw.split('\n').map(function(l){return l.trim();}).filter(Boolean);
   }
+
+  /* ── Wireless interface selection + SSID scanning ─────── */
+  var _wifiInterfaces = [];
+
+  function refreshWifiInterfaces(preselect, preselectAp) {
+    var sel = document.getElementById('wirelessInterface');
+    var selAp = document.getElementById('wirelessApInterface');
+    var scanBtn = document.getElementById('btnScanSSIDs');
+    var info = document.getElementById('wirelessIfaceInfo');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Loading...</option>';
+    if (selAp) selAp.innerHTML = '<option value="">Loading...</option>';
+    fetch('/api/wifi-interfaces', {credentials: 'same-origin'})
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        _wifiInterfaces = d.interfaces || [];
+        sel.innerHTML = '<option value="">— Select interface —</option>';
+        if (selAp) selAp.innerHTML = '<option value="">— None (use primary) —</option>';
+        if (!_wifiInterfaces.length) {
+          sel.innerHTML = '<option value="">No wireless interfaces detected</option>';
+          if (info) info.textContent = 'No wireless interfaces found on this system.';
+          if (scanBtn) scanBtn.disabled = true;
+          return;
+        }
+        _wifiInterfaces.forEach(function(iface) {
+          var label = iface.interface;
+          if (iface.mode && iface.mode !== 'unknown') label += ' (' + iface.mode + ')';
+          if (iface.channel) label += ' ch' + iface.channel;
+          var opt = document.createElement('option');
+          opt.value = iface.interface;
+          opt.textContent = label;
+          sel.appendChild(opt);
+          if (selAp) {
+            var opt2 = opt.cloneNode(true);
+            selAp.appendChild(opt2);
+          }
+        });
+        if (preselect) sel.value = preselect;
+        if (preselectAp && selAp) selAp.value = preselectAp;
+        _updateIfaceInfo();
+        if (scanBtn) scanBtn.disabled = !sel.value;
+      })
+      .catch(function() {
+        sel.innerHTML = '<option value="">— Failed to load —</option>';
+        if (info) info.textContent = 'Could not reach the server to list interfaces.';
+      });
+  }
+
+  function _updateIfaceInfo() {
+    var sel = document.getElementById('wirelessInterface');
+    var info = document.getElementById('wirelessIfaceInfo');
+    var scanBtn = document.getElementById('btnScanSSIDs');
+    if (!sel || !info) return;
+    var v = sel.value;
+    if (scanBtn) scanBtn.disabled = !v;
+    if (!v) { info.textContent = ''; return; }
+    var iface = _wifiInterfaces.find(function(i) { return i.interface === v; });
+    if (iface) {
+      var parts = [];
+      if (iface.mode && iface.mode !== 'unknown') parts.push('Mode: ' + iface.mode);
+      if (iface.channel) parts.push('Channel: ' + iface.channel);
+      if (iface.type && iface.type !== 'unknown') parts.push('Type: ' + iface.type);
+      info.textContent = parts.join(' · ') || '';
+    } else {
+      info.textContent = '';
+    }
+  }
+
+  var _ifSel = document.getElementById('wirelessInterface');
+  if (_ifSel) _ifSel.addEventListener('change', _updateIfaceInfo);
+
+  var _refreshBtn = document.getElementById('btnRefreshWifiIfaces');
+  if (_refreshBtn) {
+    _refreshBtn.addEventListener('click', function() {
+      refreshWifiInterfaces();
+    });
+  }
+
+  /* SSID Scanning */
+  var _btnScan = document.getElementById('btnScanSSIDs');
+  if (_btnScan) {
+    _btnScan.addEventListener('click', function() {
+      var iface = (document.getElementById('wirelessInterface') || {}).value;
+      if (!iface) return;
+      var status = document.getElementById('ssidScanStatus');
+      var resultsDiv = document.getElementById('ssidScanResults');
+      var body = document.getElementById('ssidScanBody');
+      _btnScan.disabled = true;
+      if (status) status.textContent = 'Scanning...';
+      fetch('/api/wifi-scan?interface=' + encodeURIComponent(iface), {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          var nets = d.networks || [];
+          if (!nets.length) {
+            if (status) status.textContent = 'No networks found. Try a different interface or check monitor mode.';
+            _btnScan.disabled = false;
+            return;
+          }
+          if (status) status.textContent = nets.length + ' network(s) found';
+          body.innerHTML = '';
+          var activeSet = {};
+          textToArray('activeSSIDs').forEach(function(s) { activeSet[s] = true; });
+          var passiveSet = {};
+          textToArray('passiveSSIDs').forEach(function(s) { passiveSet[s] = true; });
+          nets.sort(function(a, b) { return (b.signal || 0) - (a.signal || 0); });
+          nets.forEach(function(n, i) {
+            var ssid = n.ssid || '(hidden)';
+            var bssid = n.bssid || '';
+            var sig = n.signal != null ? n.signal + ' dBm' : '';
+            var ch = n.channel || '';
+            var sec = n.security || (n.encrypted ? 'Encrypted' : 'Open');
+            var alreadyActive = activeSet[ssid];
+            var alreadyPassive = passiveSet[ssid];
+            var preAssign = alreadyActive ? 'active' : alreadyPassive ? 'passive' : 'active';
+            var row = document.createElement('tr');
+            row.innerHTML =
+              '<td style="text-align:center"><input type="checkbox" class="ssid-scan-check" data-idx="' + i + '"' +
+                (alreadyActive || alreadyPassive ? ' checked' : '') + '></td>' +
+              '<td>' + _esc(ssid) + (alreadyActive ? ' <span style="color:var(--risk-info);font-size:0.75rem">(in active)</span>' :
+                alreadyPassive ? ' <span style="color:var(--text-muted);font-size:0.75rem">(in passive)</span>' : '') + '</td>' +
+              '<td style="font-family:monospace;font-size:0.78rem">' + _esc(bssid) + '</td>' +
+              '<td style="text-align:center">' + _esc(sig) + '</td>' +
+              '<td style="text-align:center">' + _esc(String(ch)) + '</td>' +
+              '<td>' + _esc(sec) + '</td>' +
+              '<td style="text-align:center"><select class="ssid-assign form-control" style="font-size:0.78rem;padding:2px 4px" data-idx="' + i + '">' +
+                '<option value="active"' + (preAssign === 'active' ? ' selected' : '') + '>Active</option>' +
+                '<option value="passive"' + (preAssign === 'passive' ? ' selected' : '') + '>Passive</option>' +
+              '</select></td>';
+            row.dataset.ssid = ssid;
+            body.appendChild(row);
+          });
+          if (resultsDiv) resultsDiv.hidden = false;
+          _btnScan.disabled = false;
+        })
+        .catch(function(err) {
+          if (status) status.textContent = 'Scan failed: ' + (err.message || 'network error');
+          _btnScan.disabled = false;
+        });
+    });
+  }
+
+  function _esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  var _selectAll = document.getElementById('ssidSelectAll');
+  if (_selectAll) {
+    _selectAll.addEventListener('change', function() {
+      var checks = document.querySelectorAll('.ssid-scan-check');
+      var v = this.checked;
+      checks.forEach(function(c) { c.checked = v; });
+    });
+  }
+
+  var _applyBtn = document.getElementById('btnApplySSIDs');
+  if (_applyBtn) {
+    _applyBtn.addEventListener('click', function() {
+      var rows = document.querySelectorAll('#ssidScanBody tr');
+      var activeTA = document.getElementById('activeSSIDs');
+      var passiveTA = document.getElementById('passiveSSIDs');
+      var activeList = textToArray('activeSSIDs');
+      var passiveList = textToArray('passiveSSIDs');
+      var activeSet = {}; activeList.forEach(function(s) { activeSet[s] = true; });
+      var passiveSet = {}; passiveList.forEach(function(s) { passiveSet[s] = true; });
+      rows.forEach(function(row) {
+        var check = row.querySelector('.ssid-scan-check');
+        var assign = row.querySelector('.ssid-assign');
+        if (!check || !check.checked || !assign) return;
+        var ssid = row.dataset.ssid;
+        if (!ssid || ssid === '(hidden)') return;
+        var target = assign.value;
+        if (target === 'active' && !activeSet[ssid]) {
+          activeList.push(ssid);
+          activeSet[ssid] = true;
+          if (passiveSet[ssid]) {
+            passiveList = passiveList.filter(function(s) { return s !== ssid; });
+            delete passiveSet[ssid];
+          }
+        } else if (target === 'passive' && !passiveSet[ssid]) {
+          passiveList.push(ssid);
+          passiveSet[ssid] = true;
+          if (activeSet[ssid]) {
+            activeList = activeList.filter(function(s) { return s !== ssid; });
+            delete activeSet[ssid];
+          }
+        }
+      });
+      if (activeTA) activeTA.value = activeList.join('\n');
+      if (passiveTA) passiveTA.value = passiveList.join('\n');
+      validateSSIDExclusivity();
+      checkWirelessAutoQueueGating();
+    });
+  }
+
+  var _clearScanBtn = document.getElementById('btnClearScanResults');
+  if (_clearScanBtn) {
+    _clearScanBtn.addEventListener('click', function() {
+      var resultsDiv = document.getElementById('ssidScanResults');
+      if (resultsDiv) resultsDiv.hidden = true;
+      var body = document.getElementById('ssidScanBody');
+      if (body) body.innerHTML = '';
+      var status = document.getElementById('ssidScanStatus');
+      if (status) status.textContent = '';
+    });
+  }
+
+  /* Auto-load interfaces when wireless section becomes visible */
+  var _wifiIfacesLoaded = false;
+  var _scopeObs = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      if (m.attributeName === 'hidden') {
+        var el = m.target;
+        if (el.id === 'scopeWirelessSection' && !el.hidden && !_wifiIfacesLoaded) {
+          _wifiIfacesLoaded = true;
+          var preIface = '';
+          var preApIface = '';
+          if (EDIT_MODE && _cfg) {
+            preIface = _cfg.wirelessInterface || '';
+            preApIface = _cfg.wirelessApInterface || '';
+          }
+          refreshWifiInterfaces(preIface, preApIface);
+        }
+      }
+    });
+  });
+  var _scopeEl = document.getElementById('scopeWirelessSection');
+  if (_scopeEl) _scopeObs.observe(_scopeEl, {attributes: true, attributeFilter: ['hidden']});
 
   /* ── SSID mutual exclusivity validation ────────────────── */
   function validateSSIDExclusivity() {
@@ -1207,6 +1436,8 @@
         dredge_skip_sections: valOf('dgSkipSections'),
         dredge_ext_parsers: getDgExtParsers(),
         dredge_ext_files: dgExtToolFiles.map(function(f){return f.name;}),
+        wireless_interface: (document.getElementById('wirelessInterface') || {}).value || '',
+        wireless_ap_interface: (document.getElementById('wirelessApInterface') || {}).value || '',
         wireless_active_ssids: textToArray('activeSSIDs'),
         wireless_passive_ssids: textToArray('passiveSSIDs'),
         wireless_default_scope_mode: document.getElementById('wirelessDefaultMode').value,

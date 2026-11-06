@@ -224,6 +224,14 @@ def _backfill_from_project(settings, project, tool_id):
         if depth and settings.get("archive_depth", 5) == 5:
             settings["archive_depth"] = depth
     elif tool_id in ("aether", "aether_b", "aether_z", "aether_u"):
+        if not settings.get("interface"):
+            iface = scope_def.get("wireless_interface", "")
+            if iface:
+                settings["interface"] = iface
+        if not settings.get("ap_interface"):
+            ap = scope_def.get("wireless_ap_interface", "")
+            if ap:
+                settings["ap_interface"] = ap
         if not settings.get("target_ssids"):
             active = scope_def.get("wireless_active_ssids", [])
             passive = scope_def.get("wireless_passive_ssids", [])

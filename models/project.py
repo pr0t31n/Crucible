@@ -606,6 +606,24 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         settings["output_dir"] = tool_dirs.get("auger", project_dir)
     elif tool_id == "trawler":
         settings["output_dir"] = tool_dirs.get("trawler", project_dir)
+    elif tool_id in ("aether", "aether_b", "aether_z", "aether_u"):
+        iface = scope_def.get("wireless_interface", "")
+        ap_iface = scope_def.get("wireless_ap_interface", "")
+        if iface:
+            settings["interface"] = iface
+        if ap_iface:
+            settings["ap_interface"] = ap_iface
+        active_ssids = scope_def.get("wireless_active_ssids", [])
+        passive_ssids = scope_def.get("wireless_passive_ssids", [])
+        if active_ssids:
+            settings["target_ssids"] = active_ssids
+        if passive_ssids:
+            settings["passive_ssids"] = passive_ssids
+        def_mode = scope_def.get("wireless_default_scope_mode", "")
+        if def_mode:
+            settings["scope_default_mode"] = def_mode
+        settings["client_name"] = client_name
+        settings["client_short"] = client_short
     elif tool_id == "quill":
         settings["mobile_platform"] = scope_def.get("mobile_platform", "auto")
         settings["dynamic_analysis"] = scope_def.get("mobile_dynamic", False)

@@ -10393,9 +10393,9 @@ function renderSettingsFields(container, settings, schema) {
             continue;
         }
 
-        if (!settings.hasOwnProperty(key)) continue;
+        if (!settings.hasOwnProperty(key) && fieldSchema.type !== 'ssid_scan') continue;
         var val = settings[key];
-        if (val !== null && typeof val === 'object' && !Array.isArray(val)) continue;
+        if (val !== null && typeof val === 'object' && !Array.isArray(val) && fieldSchema.type !== 'phase_toggles') continue;
         var label = fieldSchema.label || key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
         var type = fieldSchema.type || (typeof val === 'boolean' ? 'checkbox' : typeof val === 'number' ? 'number' : 'text');
 
@@ -10598,6 +10598,149 @@ function renderSettingsFields(container, settings, schema) {
             group.innerHTML =
                 '<label class="form-label" for="s_' + esc(key) + '">' + esc(label) + '</label>' +
                 '<textarea class="form-control" name="' + esc(key) + '" id="s_' + esc(key) + '" rows="3">' + esc(val || '') + '</textarea>';
+        } else if (type === 'interface_picker') {
+            group.innerHTML =
+                '<label class="form-label" for="s_' + esc(key) + '">' + esc(label) + '</label>' +
+                '<div style="display:flex;gap:6px">' +
+                  '<select class="form-control" name="' + esc(key) + '" id="s_' + esc(key) + '" style="flex:1">' +
+                    '<option value="">Loading...</option>' +
+                  '</select>' +
+                  '<button type="button" class="btn btn-secondary btn-sm st-refresh-ifaces" data-target="s_' + esc(key) + '" title="Refresh">&#x21bb;</button>' +
+                '</div>' +
+                '<span class="form-hint st-iface-info" id="s_' + esc(key) + '_info"></span>';
+            (function(k, savedVal) {
+                var selId = 's_' + k;
+                _stLoadWifiInterfaces(selId, savedVal);
+            })(key, val || '');
+        } else if (type === 'ssid_scan') {
+            group.className += ' form-grid-full';
+            group.innerHTML =
+                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+                  '<span class="form-label" style="margin:0">' + esc(label) + '</span>' +
+                  '<button type="button" class="btn btn-secondary btn-sm st-scan-ssids">Scan SSIDs</button>' +
+                  '<span class="form-hint st-scan-status"></span>' +
+                '</div>' +
+                '<div class="st-scan-results" hidden>' +
+                  '<table class="findings-table" style="font-size:0.82rem;margin-bottom:10px">' +
+                    '<thead><tr>' +
+                      '<th style="width:30px;text-align:center"><input type="checkbox" class="st-ssid-all" title="Select all"></th>' +
+                      '<th>SSID</th><th style="width:130px">BSSID</th>' +
+                      '<th style="width:55px;text-align:center">Signal</th>' +
+                      '<th style="width:45px;text-align:center">Ch</th>' +
+                      '<th style="width:140px">Security</th>' +
+                      '<th style="width:90px;text-align:center">Assign</th>' +
+                    '</tr></thead>' +
+                    '<tbody class="st-ssid-body"></tbody>' +
+                  '</table>' +
+                  '<button type="button" class="btn btn-primary btn-sm st-apply-ssids">Apply Selected</button>' +
+                '</div>';
+            (function(grp) {
+                var scanBtn = grp.querySelector('.st-scan-ssids');
+                var status = grp.querySelector('.st-scan-status');
+                var results = grp.querySelector('.st-scan-results');
+                var body = grp.querySelector('.st-ssid-body');
+                var allCb = grp.querySelector('.st-ssid-all');
+                var applyBtn = grp.querySelector('.st-apply-ssids');
+                scanBtn.addEventListener('click', function() {
+                    var ifSel = document.querySelector('[name="interface"]');
+                    var iface = ifSel ? ifSel.value : '';
+                    scanBtn.disabled = true;
+                    status.textContent = 'Scanning...';
+                    fetch('/api/wifi-scan' + (iface ? '?interface=' + encodeURIComponent(iface) : ''), {credentials: 'same-origin'})
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            var nets = d.networks || [];
+                            if (!nets.length) { status.textContent = 'No networks found.'; scanBtn.disabled = false; return; }
+                            status.textContent = nets.length + ' network(s)';
+                            nets.sort(function(a, b) { return (b.signal || 0) - (a.signal || 0); });
+                            body.innerHTML = '';
+                            nets.forEach(function(n) {
+                                var ssid = n.ssid || '(hidden)';
+                                var tr = document.createElement('tr');
+                                tr.dataset.ssid = ssid;
+                                tr.innerHTML =
+                                    '<td style="text-align:center"><input type="checkbox" class="st-ssid-check" checked></td>' +
+                                    '<td>' + esc(ssid) + '</td>' +
+                                    '<td style="font-family:monospace;font-size:.78rem">' + esc(n.bssid || '') + '</td>' +
+                                    '<td style="text-align:center">' + (n.signal != null ? n.signal + ' dBm' : '') + '</td>' +
+                                    '<td style="text-align:center">' + esc(String(n.channel || '')) + '</td>' +
+                                    '<td>' + esc(n.security || (n.encrypted ? 'Encrypted' : 'Open')) + '</td>' +
+                                    '<td style="text-align:center"><select class="st-ssid-assign form-control" style="font-size:.78rem;padding:2px 4px">' +
+                                      '<option value="active" selected>Active</option><option value="passive">Passive</option></select></td>';
+                                body.appendChild(tr);
+                            });
+                            results.hidden = false;
+                            scanBtn.disabled = false;
+                        })
+                        .catch(function(err) { status.textContent = 'Failed: ' + (err.message || ''); scanBtn.disabled = false; });
+                });
+                if (allCb) allCb.addEventListener('change', function() {
+                    body.querySelectorAll('.st-ssid-check').forEach(function(c) { c.checked = allCb.checked; });
+                });
+                if (applyBtn) applyBtn.addEventListener('click', function() {
+                    var activeTa = document.querySelector('#s_target_ssids_ta');
+                    var passiveTa = document.querySelector('#s_passive_ssids_ta');
+                    var activeHid = document.querySelector('input[name="target_ssids"]');
+                    var passiveHid = document.querySelector('input[name="passive_ssids"]');
+                    var aList = activeTa ? activeTa.value.split('\n').filter(Boolean) : [];
+                    var pList = passiveTa ? passiveTa.value.split('\n').filter(Boolean) : [];
+                    var aSet = {}; aList.forEach(function(s) { aSet[s] = true; });
+                    var pSet = {}; pList.forEach(function(s) { pSet[s] = true; });
+                    body.querySelectorAll('tr').forEach(function(row) {
+                        var cb = row.querySelector('.st-ssid-check');
+                        var assign = row.querySelector('.st-ssid-assign');
+                        if (!cb || !cb.checked || !assign) return;
+                        var ssid = row.dataset.ssid;
+                        if (!ssid || ssid === '(hidden)') return;
+                        if (assign.value === 'active' && !aSet[ssid]) { aList.push(ssid); aSet[ssid] = true; }
+                        else if (assign.value === 'passive' && !pSet[ssid]) { pList.push(ssid); pSet[ssid] = true; }
+                    });
+                    if (activeTa) activeTa.value = aList.join('\n');
+                    if (passiveTa) passiveTa.value = pList.join('\n');
+                    if (activeHid) activeHid.value = JSON.stringify(aList);
+                    if (passiveHid) passiveHid.value = JSON.stringify(pList);
+                    toast('success', 'SSIDs applied to scope lists.');
+                });
+            })(group);
+        } else if (type === 'tag_list') {
+            var tags = Array.isArray(val) ? val : (val ? String(val).split('\n').filter(Boolean) : []);
+            group.className += ' form-grid-full';
+            group.innerHTML =
+                '<label class="form-label" for="s_' + esc(key) + '_ta">' + esc(label) + '</label>' +
+                '<textarea class="form-control" id="s_' + esc(key) + '_ta" rows="3" placeholder="One item per line">' + esc(tags.join('\n')) + '</textarea>' +
+                '<input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(tags)) + '">';
+            (function(k) {
+                var ta = group.querySelector('#s_' + k + '_ta');
+                var hid = group.querySelector('input[name="' + k + '"]');
+                if (ta && hid) {
+                    ta.addEventListener('input', function() {
+                        var arr = ta.value.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+                        hid.value = JSON.stringify(arr);
+                    });
+                }
+            })(key);
+        } else if (type === 'phase_toggles') {
+            var phases = (typeof val === 'object' && val && !Array.isArray(val)) ? val : {};
+            group.className += ' form-grid-full';
+            var phHtml = '<label class="form-label">' + esc(label) + '</label>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:6px 16px">';
+            Object.keys(phases).forEach(function(pk) {
+                var pLabel = pk.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                phHtml += '<label style="font-weight:400;display:flex;align-items:center;gap:4px;font-size:0.85rem">' +
+                    '<input type="checkbox" class="pt-' + esc(key) + '" value="' + esc(pk) + '"' +
+                    (phases[pk] ? ' checked' : '') + '> ' + esc(pLabel) + '</label>';
+            });
+            phHtml += '</div><input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(phases)) + '">';
+            group.innerHTML = phHtml;
+            (function(k) {
+                group.addEventListener('change', function() {
+                    var obj = {};
+                    group.querySelectorAll('.pt-' + k).forEach(function(cb) {
+                        obj[cb.value] = cb.checked;
+                    });
+                    group.querySelector('input[name="' + k + '"]').value = JSON.stringify(obj);
+                });
+            })(key);
         } else {
             group.innerHTML =
                 '<label class="form-label" for="s_' + esc(key) + '">' + esc(label) + '</label>' +
@@ -10617,6 +10760,53 @@ function renderSettingsFields(container, settings, schema) {
 
     _applySettingsDeps();
 }
+
+/* ── Settings: wireless interface picker helpers ──────────── */
+function _stLoadWifiInterfaces(selId, preselect) {
+    var sel = document.getElementById(selId);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Loading...</option>';
+    fetch('/api/wifi-interfaces', {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var ifaces = d.interfaces || [];
+            sel.innerHTML = '<option value="">— Select interface —</option>';
+            if (!ifaces.length) {
+                sel.innerHTML = '<option value="">No wireless interfaces detected</option>';
+                return;
+            }
+            ifaces.forEach(function(iface) {
+                var lbl = iface.interface;
+                if (iface.mode && iface.mode !== 'unknown') lbl += ' (' + iface.mode + ')';
+                if (iface.channel) lbl += ' ch' + iface.channel;
+                var opt = document.createElement('option');
+                opt.value = iface.interface;
+                opt.textContent = lbl;
+                sel.appendChild(opt);
+            });
+            if (preselect) sel.value = preselect;
+            var info = document.getElementById(selId + '_info');
+            if (info && sel.value) {
+                var m = ifaces.find(function(i) { return i.interface === sel.value; });
+                if (m) {
+                    var parts = [];
+                    if (m.mode && m.mode !== 'unknown') parts.push('Mode: ' + m.mode);
+                    if (m.channel) parts.push('Channel: ' + m.channel);
+                    info.textContent = parts.join(' · ');
+                }
+            }
+        })
+        .catch(function() {
+            sel.innerHTML = '<option value="">— Failed to load —</option>';
+        });
+}
+
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.st-refresh-ifaces');
+    if (!btn) return;
+    var targetId = btn.dataset.target;
+    if (targetId) _stLoadWifiInterfaces(targetId, '');
+});
 
 function _applySettingsDeps() {
     var allGroups = document.querySelectorAll('#settingsFields .form-group[data-depends-on], #settingsAdvancedFields .form-group[data-depends-on]');
