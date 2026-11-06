@@ -181,6 +181,14 @@ socket.on('disconnect', function() {
     _b.hidden = false;
 });
 
+socket.on('connect_error', function() {
+    fetch('/api/session-check', {credentials: 'same-origin'})
+        .then(function(r) {
+            if (r.status === 401) window.location.href = '/login';
+        })
+        .catch(function() {});
+});
+
 /* ── all_status: bulk tool status on connect ───────────────────── */
 socket.on('all_status', function(data) {
     if (data.project_id !== PID) return;
@@ -806,7 +814,21 @@ socket.on('checkpoint_status', function(data) {
 
 /* ── error: generic SocketIO error ─────────────────────────────── */
 socket.on('error', function(data) {
-    toast('error', data.message || 'An error occurred.');
+    var msg = data.message || 'An error occurred.';
+    if (msg === 'Not authenticated') {
+        fetch('/api/session-check', {credentials: 'same-origin'})
+            .then(function(r) {
+                if (r.status === 401) {
+                    window.location.href = '/login';
+                } else {
+                    socket.disconnect();
+                    socket.connect();
+                }
+            })
+            .catch(function() { window.location.href = '/login'; });
+        return;
+    }
+    toast('error', msg);
 });
 
 
@@ -1495,17 +1517,20 @@ document.getElementById('btnToolStart').addEventListener('click', function() {
 document.getElementById('btnToolKill').addEventListener('click', function() {
     if (!selectedTool) return;
     if (!confirm('Kill ' + (TOOLS_CFG[selectedTool] ? TOOLS_CFG[selectedTool].name : selectedTool) + '?')) return;
-    if (socket && socket.connected) {
-        socket.emit('tool_kill', {project_id: PID, tool_id: selectedTool});
-    } else {
-        fetch('/api/kill_subprocess', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({project_id: PID, tool_id: selectedTool})
-        }).then(function(r) { return r.json(); }).then(function(d) {
-            if (d.ok) refreshToolStatuses();
-        });
-    }
+    fetch('/api/kill_subprocess', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, tool_id: selectedTool})
+    }).then(function(r) {
+        if (r.status === 401) { window.location.href = '/login'; return; }
+        return r.json();
+    }).then(function(d) {
+        if (d && d.ok) refreshToolStatuses();
+        else if (d && d.error) toast('error', d.error);
+    }).catch(function(e) {
+        toast('error', 'Kill request failed: ' + e.message);
+    });
 });
 
 document.getElementById('btnToolPause').addEventListener('click', function() {
@@ -1514,8 +1539,11 @@ document.getElementById('btnToolPause').addEventListener('click', function() {
     if (!confirm('Pause ' + name + '? It will checkpoint and stop gracefully.')) return;
     fetch('/api/pause_tool', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({project_id: PID, tool_id: selectedTool})
+    }).then(function(r) {
+        if (r.status === 401) window.location.href = '/login';
     });
 });
 
@@ -1691,8 +1719,13 @@ var _findingsRetries = 0;
 
 function _buildV2Params() {
     var p = {};
-    p.page = findingsPage || 1;
-    p.per_page = FINDINGS_PER_PAGE;
+    if (categoryViewActive) {
+        p.page = 1;
+        p.per_page = 100000;
+    } else {
+        p.page = findingsPage || 1;
+        p.per_page = FINDINGS_PER_PAGE;
+    }
     var scope = (document.getElementById('findingsFilterScope') || {}).value || '';
     if (scope) p.scope = scope;
     var tool = (document.getElementById('findingsFilterTool') || {}).value || '';
@@ -1853,10 +1886,6 @@ function loadFindings(forceRefresh) {
         }
         return;
     }
-    if (categoryViewActive) {
-        _ensureAllFindings(function() { applyFindingsFilter(); });
-        return;
-    }
     _v2Mode = true;
     if (forceRefresh) {
         fetch('/api/reload-findings/' + PID, {method: 'POST', credentials: 'same-origin'})
@@ -1973,7 +2002,7 @@ var _kevFilterActive = false;
 var categoryViewActive = false;
 
 function applyFindingsFilter() {
-    if (_v2Mode && !showFP && !categoryViewActive) {
+    if (_v2Mode && !showFP) {
         findingsPage = 1;
         _fetchFindingsV2(_buildV2Params());
         return;
@@ -2038,14 +2067,15 @@ function applyFindingsFilter() {
 
 function updateFindingsStats() {
     var kevCount = 0;
-    if (_v2Mode && _serverSummary && !showFP && !categoryViewActive) {
+    if (_v2Mode && _serverSummary && !showFP) {
         document.getElementById('fStatCrit').textContent = _serverSummary.CRITICAL || 0;
         document.getElementById('fStatHigh').textContent = _serverSummary.HIGH || 0;
         document.getElementById('fStatMed').textContent = _serverSummary.MEDIUM || 0;
         document.getElementById('fStatLow').textContent = _serverSummary.LOW || 0;
         document.getElementById('fStatInfo').textContent = _serverSummary.INFO || 0;
-        document.getElementById('findingsCount').textContent = _serverTotal + ' finding' + (_serverTotal !== 1 ? 's' : '');
-        kevCount = (allFindings || []).filter(function(f) { return f.kev; }).length;
+        var _statsTotal = categoryViewActive ? filteredFindings.length : _serverTotal;
+        document.getElementById('findingsCount').textContent = _statsTotal + ' finding' + (_statsTotal !== 1 ? 's' : '');
+        kevCount = filteredFindings.filter(function(f) { return f.kev; }).length;
         var kevEl = document.getElementById('fStatKev');
         if (kevEl) kevEl.textContent = kevCount;
         return;
@@ -2563,19 +2593,16 @@ document.getElementById('btnToggleCategoryView').addEventListener('click', funct
     var catWrap = document.getElementById('findingsCategoryView');
     var pag = document.getElementById('findingsPagination');
     if (categoryViewActive) {
-        _v2Mode = false;
         tableWrap.hidden = true;
         pag.hidden = true;
-        _ensureAllFindings(function() {
-            applyFindingsFilter();
-        });
+        findingsPage = 1;
+        _fetchFindingsV2(_buildV2Params());
     } else {
         catWrap.hidden = true;
         catWrap.innerHTML = '';
         tableWrap.hidden = false;
-        _v2Mode = true;
         findingsPage = 1;
-        loadFindings(false);
+        _fetchFindingsV2(_buildV2Params());
     }
 });
 
@@ -6769,7 +6796,7 @@ function _loadScopeOverview(body, empty) {
     body.hidden = false;
     empty.style.display = 'none';
     Promise.all([
-        fetch('/api/findings/' + PID, {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
+        fetch('/api/findings/v2/' + PID + '?per_page=100000', {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
         fetch('/api/intel/' + PID, {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
         fetch('/api/targets/' + PID, {credentials: 'same-origin'}).then(function(r) { return r.json(); })
     ]).then(function(results) {

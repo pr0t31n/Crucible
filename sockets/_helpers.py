@@ -1,15 +1,28 @@
 """Shared helpers for SocketIO event modules."""
 
+import logging
+
 from flask import session
 from flask_socketio import emit
 
 from config import TOOLS
 from models.project import get_project
 
+_log = logging.getLogger(__name__)
+
 
 def socket_auth_check():
     if session.get("authenticated"):
         return True
+    tok = session.get("session_token")
+    if tok:
+        try:
+            import _auth
+            if _auth._validate_session_token(tok):
+                session["authenticated"] = True
+                return True
+        except Exception:
+            _log.debug("socket_auth_check token fallback failed", exc_info=True)
     emit("error", {"message": "Not authenticated"})
     return False
 

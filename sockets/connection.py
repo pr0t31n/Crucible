@@ -1,9 +1,13 @@
 """SocketIO connection events — connect, disconnect, join/leave project rooms."""
 
+import logging
+
 from flask import session, request
 from flask_socketio import join_room, leave_room, emit
 
 from services.utils import project_room as _room
+
+_log = logging.getLogger(__name__)
 
 _sid_to_project = {}
 
@@ -12,8 +16,18 @@ def register_connection_events(socketio):
 
     @socketio.on("connect")
     def on_connect():
-        if not session.get("authenticated"):
-            return False
+        if session.get("authenticated"):
+            return
+        tok = session.get("session_token")
+        if tok:
+            try:
+                import _auth
+                if _auth._validate_session_token(tok):
+                    session["authenticated"] = True
+                    return
+            except Exception:
+                _log.debug("on_connect token fallback failed", exc_info=True)
+        return False
 
     @socketio.on("disconnect")
     def on_disconnect():
