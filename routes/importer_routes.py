@@ -23,9 +23,10 @@ def api_import_tools():
     try:
         tools = imp.registry.list_tools()
     except Exception as exc:
-        import logging
-        logging.getLogger("crucible.importer").exception("Failed to list import tools")
-        return jsonify({"error": str(exc), "tools": []}), 500
+        import traceback
+        tb = traceback.format_exc()
+        log.error("Failed to list import tools:\n%s", tb)
+        return jsonify({"error": str(exc), "traceback": tb, "tools": []}), 500
     return jsonify({"tools": tools})
 
 

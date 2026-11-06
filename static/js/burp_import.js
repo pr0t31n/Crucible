@@ -506,7 +506,7 @@
 
   // ── Public entry point ─────────────────────────────────────────────
 
-  window._openBurpWizard = function () {
+  window._openBurpWizard = function (file) {
     _ensureModal();
     _bwState.cacheKey = '';
     _bwState.hosts = [];
@@ -516,6 +516,7 @@
     _bwState.step = 0;
     _show();
     _renderStep1();
+    if (file) _handleFile(file);
   };
 
 })();

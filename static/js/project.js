@@ -11880,6 +11880,31 @@ function _impBindEvents() {
     fileInput.addEventListener('change', function() {
         if (!fileInput.files.length) return;
         var toolOverride = document.getElementById('importToolSelect').value;
+        var hasBurpWizard = typeof window._openBurpWizard === 'function';
+
+        if (fileInput.files.length === 1 && hasBurpWizard) {
+            var file = fileInput.files[0];
+            if (toolOverride === 'burp') {
+                window._openBurpWizard(file);
+                fileInput.value = '';
+                return;
+            }
+            if (!toolOverride && file.name.toLowerCase().endsWith('.xml')) {
+                var reader = new FileReader();
+                reader.onload = function() {
+                    var chunk = reader.result || '';
+                    if (chunk.indexOf('<issues') !== -1 && chunk.indexOf('<issue>') !== -1) {
+                        window._openBurpWizard(file);
+                    } else {
+                        _impUploadFile(file, toolOverride);
+                    }
+                    fileInput.value = '';
+                };
+                reader.readAsText(file.slice(0, 8192));
+                return;
+            }
+        }
+
         Array.from(fileInput.files).forEach(function(f) {
             _impUploadFile(f, toolOverride);
         });

@@ -42,6 +42,10 @@ class ImporterService:
     @property
     def registry(self):
         if self._registry is None:
+            import sys
+            _app_dir = str(Path(__file__).resolve().parent.parent)
+            if _app_dir not in sys.path:
+                sys.path.insert(0, _app_dir)
             from parsers.registry import ParserRegistry
             self._registry = ParserRegistry()
         return self._registry
