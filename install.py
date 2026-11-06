@@ -152,14 +152,19 @@ def install_playwright():
     except ImportError:
         print("  ⚠ playwright not installed — report PDF generation unavailable")
         return
+    env = os.environ.copy()
+    env.pop("NODE_PATH", None)
     result = subprocess.run(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
-        capture_output=True, text=True,
+        [sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"],
+        capture_output=True, text=True, env=env,
     )
     if result.returncode == 0:
         print("  ✓ Playwright Chromium browser installed")
     else:
         print(f"  ⚠ Playwright browser install failed: {result.stderr[:200]}")
+        if "Cannot find module" in (result.stderr or ""):
+            print("    Hint: a stale node-playwright package may conflict.")
+            print("    Try: sudo apt remove node-playwright && rerun install.py")
 
 
 def main():
@@ -172,13 +177,13 @@ def main():
     print(f"  {TOOL_NAME} v2.0 — Installation")
     print(f"{'=' * 50}\n")
 
-    print("[1/5] Creating directories...")
+    print("[1/6] Creating directories...")
     create_directories()
 
-    print("\n[2/5] Installing Python dependencies...")
+    print("\n[2/6] Installing Python dependencies...")
     install_pip_deps()
 
-    print("\n[3/5] Vendoring shared modules...")
+    print("\n[3/6] Vendoring shared modules...")
     vendor_shared_modules()
 
     print("\n[4/6] Downloading static assets...")
