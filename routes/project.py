@@ -465,11 +465,14 @@ def _sync_scope_to_tool_settings(data, project):
             modes[s] = "active"
         for s in passive_ssids:
             modes[s] = "passive"
+        ae_domains = scope_def.get("wireless_domains", [])
         def _apply_ae_scope(d):
             d["target_ssids"] = all_ssids
             d["passive_ssids"] = passive_ssids
             d["scope_default_mode"] = default_mode
             d["scope_modes"] = modes
+            if ae_domains:
+                d["domains"] = ae_domains
             _sc = d.setdefault("scope", {})
             _sc["ssids"] = all_ssids
             _sc["modes"] = modes

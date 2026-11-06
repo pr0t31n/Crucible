@@ -1010,6 +1010,7 @@
         addR(sg,'Default Scope Mode',document.getElementById('wirelessDefaultMode').value);
         addR(sg,'Active SSIDs',valOf('activeSSIDs'));
         addR(sg,'Passive SSIDs',valOf('passiveSSIDs'));
+        addR(sg,'Wordlist Domains',valOf('wirelessDomains'));
     }
     if (_sec('scopeBastionSection')) {
       addR(sg,'FW Vendor',selText('fwVendor'));
@@ -1465,6 +1466,7 @@
         wireless_passive_ssids: textToArray('passiveSSIDs'),
         wireless_default_scope_mode: document.getElementById('wirelessDefaultMode').value,
         wireless_ssids: textToArray('activeSSIDs').concat(textToArray('passiveSSIDs')),
+        wireless_domains: textToArray('wirelessDomains'),
         exclusions: textToArray('exclusions'),
         firewall_vendor: document.getElementById('fwVendor').value,
         firewall_configs: fwFiles.map(function(f){return f.name;}),
