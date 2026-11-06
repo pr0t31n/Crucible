@@ -46,7 +46,31 @@ _osift_global_cache = None
 
 
 def _backfill_osift_api_keys(settings):
-    """Pre-populate empty API key fields from OSift's global settings file."""
+    """Pre-populate empty API key fields from OSift's global settings file
+    or from a user-specified API key file (which takes priority)."""
+    akf = settings.get("api_key_file", "")
+    if akf:
+        p = Path(akf)
+        if p.exists():
+            try:
+                raw = json.loads(p.read_text())
+                flat = {}
+                if isinstance(raw, dict):
+                    for section in raw.values():
+                        if isinstance(section, dict):
+                            flat.update(section)
+                        elif isinstance(raw.get("shodan_key"), str):
+                            flat = raw
+                            break
+                reverse_map = {v: k for k, v in _OSIFT_KEY_MAP.items()}
+                for osift_key, val in flat.items():
+                    if val and osift_key in reverse_map:
+                        crucible_key = reverse_map[osift_key]
+                        if not settings.get(crucible_key):
+                            settings[crucible_key] = val
+            except (json.JSONDecodeError, OSError) as exc:
+                log.debug("osift api key file read failed: %s", exc)
+            return
     global _osift_global_cache
     if _osift_global_cache is None:
         _osift_global_cache = {}
@@ -120,12 +144,20 @@ def _backfill_from_project(settings, project, tool_id):
             domains = scope_def.get("domains", [])
             if domains:
                 settings["target_domains"] = "\n".join(domains)
+        if not settings.get("api_key_file"):
+            akf = scope_def.get("osift_api_key_file", "")
+            if akf:
+                settings["api_key_file"] = akf
         _backfill_osift_api_keys(settings)
     elif tool_id == "fracture":
         if not settings.get("target_url"):
             urls = scope_def.get("target_urls", [])
             if urls:
-                settings["target_url"] = urls[0]
+                settings["target_url"] = "\n".join(urls)
+        if scope_def.get("fracture_unauthenticated"):
+            settings.setdefault("unauthenticated", True)
+        if scope_def.get("fracture_no_browser_assist"):
+            settings.setdefault("no_browser_assist", True)
     elif tool_id == "siphon":
         if not settings.get("api_base_url"):
             api_urls = scope_def.get("api_urls", [])
@@ -649,3 +681,59 @@ def api_beacon_test():
         return jsonify({"ok": False, "error": "Connection timed out"})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)})
+
+
+@settings_bp.route("/api/osift_api_key_template", methods=["POST"])
+def api_osift_api_key_template():
+    """Create a blank OSift API key template at the specified path."""
+    data = request.get_json(force=True, silent=True) or {}
+    path = data.get("path", "").strip()
+    if not path:
+        return jsonify(ok=False, error="No path specified"), 400
+    if ".." in path:
+        return jsonify(ok=False, error="Invalid path"), 400
+    p = Path(path)
+    if p.exists():
+        return jsonify(ok=True, exists=True, path=str(p))
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        template = {
+            "breach_intelligence": {
+                "hibp_key": "",
+                "dehashed_user": "",
+                "dehashed_key": "",
+            },
+            "api_tier1_infrastructure": {
+                "shodan_key": "",
+                "censys_id": "",
+                "censys_secret": "",
+                "fullhunt_key": "",
+                "securitytrails_key": "",
+                "netlas_key": "",
+            },
+            "api_tier2_threat_intel": {
+                "virustotal_key": "",
+                "urlscan_key": "",
+                "otx_key": "",
+            },
+            "api_tier3_email_people": {
+                "hunter_key": "",
+            },
+            "projectdiscovery": {
+                "chaos_key": "",
+                "cloudlist_config": "",
+            },
+            "uncover_engine_env_vars": {
+                "FOFA_EMAIL": "",
+                "FOFA_KEY": "",
+                "QUAKE_TOKEN": "",
+                "ZOOMEYE_API_KEY": "",
+                "NETLAS_API_KEY": "",
+                "CRIMINALIP_API_KEY": "",
+            },
+        }
+        with open(p, "w") as f:
+            json.dump(template, f, indent=2)
+        return jsonify(ok=True, created=True, path=str(p))
+    except OSError as exc:
+        return jsonify(ok=False, error=str(exc)), 500

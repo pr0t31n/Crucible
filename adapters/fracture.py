@@ -48,6 +48,7 @@ class FractureAdapter(ToolAdapter):
     def default_settings(self):
         return {
             "target_url": "", "output_dir": "",
+            "unauthenticated": False, "no_browser_assist": False,
             "consultant": "", "client_name": "", "client_short": "",
             "email": "", "start_date": "", "end_date": "",
             "proxy": "", "user_agent": "", "verify_ssl": True,
@@ -92,8 +93,15 @@ class FractureAdapter(ToolAdapter):
 
     def settings_schema(self):
         return {"fields": [
-            {"key": "target_url", "label": "Target URL",
-             "type": "text", "required": True},
+            {"key": "target_url", "label": "Target URLs",
+             "type": "textarea", "required": True,
+             "hint": "One URL per line"},
+            {"key": "unauthenticated", "label": "Unauthenticated",
+             "type": "checkbox", "required": False,
+             "hint": "Skip all authentication — test as an unauthenticated user only"},
+            {"key": "no_browser_assist", "label": "No Browser-Assist",
+             "type": "checkbox", "required": False,
+             "hint": "Skip browser-assisted login — fall back to unauthenticated if automation fails"},
             {"key": "proxy", "label": "HTTP Proxy",
              "type": "text", "required": False},
             {"key": "user_agent", "label": "User-Agent",
@@ -129,6 +137,29 @@ class FractureAdapter(ToolAdapter):
             {"key": "per_target_auth", "label": "Per-Target Authentication",
              "type": "per_target_auth_table"},
         ]}
+
+    # ── format converters (nested scan.* ↔ flat UI keys) ────────
+
+    def from_tool_format(self, settings):
+        scan = settings.get("scan", {})
+        if isinstance(scan, dict):
+            urls = scan.get("target_urls", [])
+            main = scan.get("target_url", "")
+            if urls:
+                all_urls = [main] + [u for u in urls if u != main] if main else urls
+                settings["target_url"] = "\n".join(u for u in all_urls if u)
+            elif main:
+                settings["target_url"] = main
+        return settings
+
+    def to_tool_format(self, settings):
+        raw = settings.get("target_url", "")
+        if isinstance(raw, str) and raw.strip():
+            urls = [u.strip() for u in raw.split("\n") if u.strip()]
+            scan = settings.setdefault("scan", {})
+            scan["target_url"] = urls[0] if urls else ""
+            scan["target_urls"] = urls
+        return settings
 
     # ── findings loader ─────────────────────────────────────────
 

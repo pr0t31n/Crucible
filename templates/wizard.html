@@ -341,6 +341,19 @@
                     placeholder="One URL per line&#10;e.g. https://app.example.com&#10;     https://staging.example.com">{% if project and project.scope_definition %}{{ project.scope_definition.target_urls|default([])|join('\n') }}{% endif %}</textarea>
         </div>
 
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-check">
+            <input type="checkbox" id="frUnauthenticated" {% if project and project.scope_definition and project.scope_definition.get('fracture_unauthenticated') %}checked{% endif %}>
+            <label for="frUnauthenticated">Unauthenticated</label>
+            <span class="form-hint" style="display:block;margin-top:2px">Skip all authentication attempts. Fracture will test as an unauthenticated user only.</span>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" id="frNoBrowserAssist" {% if project and project.scope_definition and project.scope_definition.get('fracture_no_browser_assist') %}checked{% endif %}>
+            <label for="frNoBrowserAssist">No Browser-Assist</label>
+            <span class="form-hint" style="display:block;margin-top:2px">Skip browser-assisted login. If all other auth methods fail, jump straight to unauthenticated testing.</span>
+          </div>
+        </div>
+
         <div class="form-group" id="frPerTargetAuthSection" style="margin-top:12px" hidden>
           <span class="form-label">Per-Target Authentication</span>
           <span class="form-hint" style="display:block;margin-bottom:8px;">Each target URL can have independent auth. Use Test Connection below to configure per-URL auth, or leave as Auto-Detect.</span>
@@ -537,6 +550,18 @@
           <label class="form-label" for="domains">Domains</label>
           <textarea id="domains" class="form-control" rows="4"
                     placeholder="One domain per line&#10;e.g. example.com&#10;     sub.example.com">{% if project and project.scope_definition %}{{ project.scope_definition.domains|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label" for="osiftApiKeyFile">API Key File</label>
+          <span class="form-hint" style="display:block;margin-bottom:6px">Path to a JSON file containing OSift API keys. If the file doesn't exist, a blank template will be created.</span>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <input type="text" id="osiftApiKeyFile" class="form-control" style="flex:1"
+                   placeholder="/path/to/osift_api_keys.json"
+                   value="{% if project and project.scope_definition %}{{ project.scope_definition.osift_api_key_file|default('') }}{% endif %}">
+            <button type="button" class="btn btn-secondary btn-sm" id="btnOsiftBrowseApiKey" style="white-space:nowrap">Browse</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnOsiftCreateTemplate" style="white-space:nowrap" title="Create a blank API key template at the specified path">Create Template</button>
+          </div>
+          <span class="form-hint" id="osiftApiKeyStatus" style="margin-top:4px;display:none"></span>
         </div>
       </div>
 
@@ -1302,7 +1327,7 @@
 
 
 {% block scripts %}
-<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }},"mobileAppPaths":{{ ((project.scope_definition or {}).get('mobile_app_paths',[]) if project else [])|tojson }},"mobileAppPath":{{ ((project.scope_definition or {}).get('mobile_app_path','') if project else '')|tojson }},"mobilePlatform":{{ ((project.scope_definition or {}).get('mobile_platform','auto') if project else 'auto')|tojson }},"analysisMode":{{ ((project.scope_definition or {}).get('analysis_mode','static') if project else 'static')|tojson }},"fridaAnalysis":{{ ((project.scope_definition or {}).get('frida_analysis',false) if project else false)|tojson }},"fridaDevice":{{ ((project.scope_definition or {}).get('frida_device','') if project else '')|tojson }},"targetProcess":{{ ((project.scope_definition or {}).get('target_process','') if project else '')|tojson }},"mitmAnalysis":{{ ((project.scope_definition or {}).get('mitm_analysis',false) if project else false)|tojson }},"mitmPort":{{ ((project.scope_definition or {}).get('mitm_port',8080) if project else 8080)|tojson }},"mitmUpstreamProxy":{{ ((project.scope_definition or {}).get('mitm_upstream_proxy','') if project else '')|tojson }},"mitmBurpCa":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_pem','') if project else '')|tojson }},"mitmBurpCaName":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_name','') if project else '')|tojson }},"fracturePerTargetAuth":{{ ((project.scope_definition or {}).get('fracture_per_target_auth',{}) if project else {})|tojson }},"wirelessInterface":{{ ((project.scope_definition or {}).get('wireless_interface','') if project else '')|tojson }},"wirelessApInterface":{{ ((project.scope_definition or {}).get('wireless_ap_interface','') if project else '')|tojson }}}</script>
+<script id="wizardConfig" type="application/json">{"editMode":{{ 'true' if edit_mode else 'false' }},"projectId":{{ project.id|tojson if edit_mode and project else 'null' }},"presetTools":{{ (project.tools|default([]))|tojson if edit_mode and project else '[]' }},"dredgeCollectionPath":{{ ((project.scope_definition or {}).get('dredge_collection_path','') if project else '')|tojson }},"fractureRoles":{{ ((project.scope_definition or {}).get('fracture_roles',[]) if project else [])|tojson }},"siphonRoles":{{ ((project.scope_definition or {}).get('siphon_roles',[]) if project else [])|tojson }},"cloudProvider":{{ ((project.scope_definition or {}).get('cloud_provider','all') if project else 'all')|tojson }},"awsAuthMethod":{{ ((project.scope_definition or {}).get('aws_auth_method','') if project else '')|tojson }},"mobileAppPaths":{{ ((project.scope_definition or {}).get('mobile_app_paths',[]) if project else [])|tojson }},"mobileAppPath":{{ ((project.scope_definition or {}).get('mobile_app_path','') if project else '')|tojson }},"mobilePlatform":{{ ((project.scope_definition or {}).get('mobile_platform','auto') if project else 'auto')|tojson }},"analysisMode":{{ ((project.scope_definition or {}).get('analysis_mode','static') if project else 'static')|tojson }},"fridaAnalysis":{{ ((project.scope_definition or {}).get('frida_analysis',false) if project else false)|tojson }},"fridaDevice":{{ ((project.scope_definition or {}).get('frida_device','') if project else '')|tojson }},"targetProcess":{{ ((project.scope_definition or {}).get('target_process','') if project else '')|tojson }},"mitmAnalysis":{{ ((project.scope_definition or {}).get('mitm_analysis',false) if project else false)|tojson }},"mitmPort":{{ ((project.scope_definition or {}).get('mitm_port',8080) if project else 8080)|tojson }},"mitmUpstreamProxy":{{ ((project.scope_definition or {}).get('mitm_upstream_proxy','') if project else '')|tojson }},"mitmBurpCa":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_pem','') if project else '')|tojson }},"mitmBurpCaName":{{ ((project.scope_definition or {}).get('mitm_proxy_ca_name','') if project else '')|tojson }},"fracturePerTargetAuth":{{ ((project.scope_definition or {}).get('fracture_per_target_auth',{}) if project else {})|tojson }},"wirelessInterface":{{ ((project.scope_definition or {}).get('wireless_interface','') if project else '')|tojson }},"wirelessApInterface":{{ ((project.scope_definition or {}).get('wireless_ap_interface','') if project else '')|tojson }},"fractureUnauthenticated":{{ ((project.scope_definition or {}).get('fracture_unauthenticated',false) if project else false)|tojson }},"fractureNoBrowserAssist":{{ ((project.scope_definition or {}).get('fracture_no_browser_assist',false) if project else false)|tojson }},"osiftApiKeyFile":{{ ((project.scope_definition or {}).get('osift_api_key_file','') if project else '')|tojson }}}</script>
 <script src="/static/js/wizard.js"></script>
 {% endblock %}
 

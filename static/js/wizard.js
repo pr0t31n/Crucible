@@ -1426,11 +1426,14 @@
             c[u] = a;
           }} return Object.keys(c).length ? c : null;
         })(),
+        fracture_unauthenticated: !!(document.getElementById('frUnauthenticated') || {}).checked,
+        fracture_no_browser_assist: !!(document.getElementById('frNoBrowserAssist') || {}).checked,
         api_urls: textToArray('apiUrls'),
         api_specs: apiFiles.map(function(f){return f.name;}),
         siphon_roles: getRoles('si'),
         siphon_auth: _savedAuth.siphon || null,
         domains: textToArray('domains'),
+        osift_api_key_file: (document.getElementById('osiftApiKeyFile') || {}).value || '',
         db_targets: textToArray('dbTargets'),
         auger_mode: document.getElementById('augerMode') ? document.getElementById('augerMode').value : 'remote',
         auger_db_type: valOf('augerDbType'),
@@ -1881,6 +1884,18 @@
   if (EDIT_MODE) {
     (_cfg.fractureRoles || []).forEach(function(r) { addRoleRow('fr', r.role, r.username, r.password); });
     (_cfg.siphonRoles || []).forEach(function(r) { addRoleRow('si', r.role, r.username, r.password); });
+    if (_cfg.fractureUnauthenticated) {
+      var _frUnauth = document.getElementById('frUnauthenticated');
+      if (_frUnauth) _frUnauth.checked = true;
+    }
+    if (_cfg.fractureNoBrowserAssist) {
+      var _frNoBa = document.getElementById('frNoBrowserAssist');
+      if (_frNoBa) _frNoBa.checked = true;
+    }
+    if (_cfg.osiftApiKeyFile) {
+      var _oAkf = document.getElementById('osiftApiKeyFile');
+      if (_oAkf) _oAkf.value = _cfg.osiftApiKeyFile;
+    }
 
     if (_cfg.cloudProvider && _cfg.cloudProvider !== 'all') {
       cloudProviderEl.value = _cfg.cloudProvider;
@@ -1906,6 +1921,100 @@
   }
 
   if (!EDIT_MODE) { setTimeout(updateFrTargetTable, 100); }
+
+  /* ── OSift API Key file browse + create template ─────────── */
+  (function() {
+    var _osBrowseBtn = document.getElementById('btnOsiftBrowseApiKey');
+    var _osCreateBtn = document.getElementById('btnOsiftCreateTemplate');
+    var _osInput = document.getElementById('osiftApiKeyFile');
+    var _osStatus = document.getElementById('osiftApiKeyStatus');
+    var _osBrowseOpen = false;
+    var _osBrowseDropdown = null;
+
+    function _osShowStatus(msg, isErr) {
+      if (!_osStatus) return;
+      _osStatus.style.display = 'block';
+      _osStatus.textContent = msg;
+      _osStatus.style.color = isErr ? 'var(--danger)' : 'var(--success)';
+      setTimeout(function(){ _osStatus.style.display = 'none'; }, 5000);
+    }
+
+    function _osBrowseNav(folder) {
+      if (!_osBrowseDropdown) {
+        _osBrowseDropdown = document.createElement('div');
+        _osBrowseDropdown.style.cssText = 'position:absolute;z-index:200;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);max-height:280px;overflow-y:auto;width:100%;box-shadow:var(--shadow-md);font-size:.84rem';
+        _osInput.parentElement.style.position = 'relative';
+        _osInput.parentElement.appendChild(_osBrowseDropdown);
+      }
+      _osBrowseDropdown.innerHTML = '<div style="padding:8px 12px;color:var(--text-muted)">Loading...</div>';
+      _osBrowseDropdown.hidden = false;
+
+      fetch('/api/merger/browse', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder:folder})})
+      .then(function(r){return r.json();})
+      .then(function(data) {
+        _osBrowseDropdown.innerHTML = '';
+        var hdr = document.createElement('div');
+        hdr.style.cssText = 'padding:6px 12px;font-size:.78rem;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);display:flex;justify-content:space-between';
+        hdr.innerHTML = '<span>' + escHtml(data.current) + '</span><span style="cursor:pointer;color:var(--accent-primary)" id="_osBrowseClose">&times; Close</span>';
+        _osBrowseDropdown.appendChild(hdr);
+        hdr.querySelector('#_osBrowseClose').addEventListener('click', function(){ _osBrowseDropdown.hidden = true; });
+
+        if (data.parent) {
+          var pItem = document.createElement('div');
+          pItem.style.cssText = 'padding:6px 12px;cursor:pointer;color:var(--text-muted)';
+          pItem.textContent = '.. (up)';
+          pItem.addEventListener('click', function(){ _osBrowseNav(data.parent); });
+          _osBrowseDropdown.appendChild(pItem);
+        }
+
+        data.entries.forEach(function(entry) {
+          var item = document.createElement('div');
+          item.style.cssText = 'padding:6px 12px;cursor:pointer;display:flex;gap:8px;align-items:center';
+          item.onmouseenter = function(){ item.style.background='var(--bg-hover)'; };
+          item.onmouseleave = function(){ item.style.background=''; };
+          if (entry.is_dir) {
+            item.innerHTML = '&#128193; <span style="flex:1">' + escHtml(entry.name) + '</span>';
+            item.addEventListener('click', function(){ _osBrowseNav(entry.path); });
+          } else {
+            var isJson = entry.name.toLowerCase().indexOf('.json') !== -1;
+            if (!isJson) return;
+            item.innerHTML = '&#128196; <span style="flex:1">' + escHtml(entry.name) + '</span>';
+            item.addEventListener('click', function(){
+              _osInput.value = entry.path;
+              _osBrowseDropdown.hidden = true;
+              _osShowStatus('Selected: ' + entry.name, false);
+            });
+          }
+          _osBrowseDropdown.appendChild(item);
+        });
+      })
+      .catch(function(err) {
+        _osBrowseDropdown.innerHTML = '<div style="padding:8px 12px;color:var(--danger)">Error: ' + escHtml(err.message) + '</div>';
+      });
+    }
+
+    if (_osBrowseBtn) _osBrowseBtn.addEventListener('click', function() {
+      if (_osBrowseDropdown && !_osBrowseDropdown.hidden) {
+        _osBrowseDropdown.hidden = true;
+        return;
+      }
+      var startPath = (_osInput && _osInput.value) ? _osInput.value.replace(/\/[^/]*$/, '') || '/' : '/';
+      _osBrowseNav(startPath);
+    });
+
+    if (_osCreateBtn) _osCreateBtn.addEventListener('click', function() {
+      var path = _osInput ? _osInput.value.trim() : '';
+      if (!path) { _osShowStatus('Enter a file path first', true); return; }
+      fetch('/api/osift_api_key_template', {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path})})
+      .then(function(r){return r.json();})
+      .then(function(d) {
+        if (d.ok && d.created) _osShowStatus('Template created at ' + d.path, false);
+        else if (d.ok && d.exists) _osShowStatus('File already exists at ' + d.path, false);
+        else _osShowStatus(d.error || 'Failed to create template', true);
+      })
+      .catch(function(e) { _osShowStatus('Error: ' + e.message, true); });
+    });
+  })();
 
   /* ── Edit mode: load existing engagement hours + scheduled starts ── */
   if (EDIT_MODE && PROJECT_ID) {

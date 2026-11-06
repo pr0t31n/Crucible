@@ -994,6 +994,11 @@ class QueueManager:
         service = meta.get("service", "")
 
         if tool in ("fracture", "siphon"):
+            if tool == "fracture" and settings.get("unauthenticated"):
+                auth = settings.get("auth", {})
+                auth["enabled"] = False
+                settings["auth"] = auth
+                return
             target_url = ""
             if tool == "fracture":
                 target_url = settings.get("target_url", "")
