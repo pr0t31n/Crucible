@@ -40,21 +40,39 @@ AETHER_PHASES = [
 def get_wifi_interfaces():
     """Detect wireless interfaces. Returns list of interface name strings."""
     system = platform.system()
+    seen = set()
     interfaces = []
+
+    def _add(name):
+        if name and name not in seen:
+            seen.add(name)
+            interfaces.append(name)
 
     if system == "Linux":
         net_dir = "/sys/class/net"
         if os.path.isdir(net_dir):
             for iface in os.listdir(net_dir):
-                if os.path.exists(os.path.join(net_dir, iface, "wireless")):
-                    interfaces.append(iface)
+                iface_path = os.path.join(net_dir, iface)
+                if (os.path.exists(os.path.join(iface_path, "wireless"))
+                        or os.path.exists(os.path.join(iface_path, "phy80211"))):
+                    _add(iface)
         if not interfaces:
             try:
                 r = subprocess.run(["iw", "dev"], capture_output=True, text=True, timeout=10)
                 for line in r.stdout.splitlines():
                     line = line.strip()
                     if line.startswith("Interface "):
-                        interfaces.append(line.split()[1])
+                        _add(line.split()[1])
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        if not interfaces:
+            try:
+                r = subprocess.run(["iwconfig"], capture_output=True, text=True, timeout=10)
+                for line in r.stdout.splitlines():
+                    if "IEEE 802.11" in line or "ESSID:" in line:
+                        name = line.split()[0].strip()
+                        if name:
+                            _add(name)
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 pass
 
@@ -69,7 +87,7 @@ def get_wifi_interfaces():
                 if "Wi-Fi" in line or "AirPort" in line:
                     for j in range(i + 1, min(i + 3, len(lines))):
                         if lines[j].startswith("Device:"):
-                            interfaces.append(lines[j].split(":")[1].strip())
+                            _add(lines[j].split(":")[1].strip())
                             break
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
@@ -100,20 +118,34 @@ _PCI_VENDOR_IDS = {
 }
 
 
+def _read_sysfs(path):
+    """Read a single-line sysfs file safely. Returns stripped string or ''."""
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except (OSError, IOError):
+        return ""
+
+
 def _detect_bus_and_vendor_linux(interface):
     """Detect bus type (USB/PCI/Integrated) and manufacturer on Linux."""
     bus = "Unknown"
     vendor = ""
+    vid = ""
     dev_path = f"/sys/class/net/{interface}/device"
     try:
+        if not os.path.exists(dev_path):
+            return bus, vendor
         real = os.path.realpath(dev_path)
         if "/usb" in real:
             bus = "USB"
-            vid_path = os.path.join(dev_path, "idVendor")
-            if os.path.isfile(vid_path):
-                vid = open(vid_path).read().strip().lower()
+            vid = _read_sysfs(os.path.join(dev_path, "idVendor")).lower()
+            if not vid:
+                parent = os.path.dirname(real)
+                vid = _read_sysfs(os.path.join(parent, "idVendor")).lower()
+            if vid:
                 vendor = _USB_VENDOR_IDS.get(vid, "")
-            if not vendor:
+            if not vendor and vid:
                 try:
                     r = subprocess.run(
                         ["lsusb"], capture_output=True, text=True, timeout=5,
@@ -127,18 +159,31 @@ def _detect_bus_and_vendor_linux(interface):
                                 break
                 except (FileNotFoundError, subprocess.TimeoutExpired):
                     pass
+            if not vendor and not vid:
+                try:
+                    r = subprocess.run(
+                        ["lsusb"], capture_output=True, text=True, timeout=5,
+                    )
+                    for line in r.stdout.splitlines():
+                        if "wireless" in line.lower() or "wifi" in line.lower() or "wlan" in line.lower():
+                            parts = line.split("ID ")
+                            if len(parts) > 1:
+                                tokens = parts[1].split(None, 1)
+                                if len(tokens) > 1:
+                                    vendor = tokens[1].split("[")[0].strip()[:30]
+                                    break
+                except (FileNotFoundError, subprocess.TimeoutExpired):
+                    pass
         else:
             bus = "Integrated"
-            vid_path = os.path.join(dev_path, "vendor")
-            if os.path.isfile(vid_path):
-                vid = open(vid_path).read().strip().lower().replace("0x", "")
+            vid = _read_sysfs(os.path.join(dev_path, "vendor")).lower().replace("0x", "")
+            if vid:
                 vendor = _PCI_VENDOR_IDS.get(vid, "")
             if not vendor:
-                subsys = os.path.join(dev_path, "subsystem_vendor")
-                if os.path.isfile(subsys):
-                    svid = open(subsys).read().strip().lower().replace("0x", "")
+                svid = _read_sysfs(os.path.join(dev_path, "subsystem_vendor")).lower().replace("0x", "")
+                if svid:
                     vendor = _PCI_VENDOR_IDS.get(svid, "")
-    except (OSError, IOError):
+    except Exception:
         pass
     return bus, vendor
 
@@ -166,11 +211,20 @@ def _detect_bus_and_vendor_darwin(interface):
     return bus, vendor
 
 
+def _get_driver_name(interface):
+    """Return kernel driver module name for a Linux interface, or ''."""
+    p = os.path.join("/sys/class/net", interface, "device/driver/module")
+    try:
+        return os.path.basename(os.path.realpath(p))
+    except (OSError, IOError):
+        return ""
+
+
 def get_interface_info(interface):
-    """Get interface details (mode, channel, bus, manufacturer). Returns dict."""
+    """Get interface details (mode, channel, bus, manufacturer, driver). Returns dict."""
     info = {
         "interface": interface, "mode": "unknown", "channel": None,
-        "type": "unknown", "bus": "Unknown", "manufacturer": "",
+        "type": "unknown", "bus": "Unknown", "manufacturer": "", "driver": "",
     }
     system = platform.system()
 
@@ -190,26 +244,80 @@ def get_interface_info(interface):
                         info["channel"] = int(m.group(1))
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
-        info["bus"], info["manufacturer"] = _detect_bus_and_vendor_linux(interface)
+        if info["mode"] == "unknown":
+            try:
+                r = subprocess.run(
+                    ["iwconfig", interface],
+                    capture_output=True, text=True, timeout=10,
+                )
+                for line in r.stdout.splitlines():
+                    if "Mode:" in line:
+                        m = re.search(r"Mode:(\S+)", line)
+                        if m:
+                            info["mode"] = m.group(1).lower()
+                    if "Frequency:" in line and info["channel"] is None:
+                        m = re.search(r"Channel[=:\s]+(\d+)", line)
+                        if m:
+                            info["channel"] = int(m.group(1))
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        info["driver"] = _get_driver_name(interface)
+        try:
+            info["bus"], info["manufacturer"] = _detect_bus_and_vendor_linux(interface)
+        except Exception:
+            pass
 
     elif system == "Darwin":
+        _airport = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+        if os.path.isfile(_airport):
+            try:
+                r = subprocess.run(
+                    [_airport, "-I"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                for line in r.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("channel:"):
+                        try:
+                            info["channel"] = int(line.split(":")[1].strip())
+                        except ValueError:
+                            pass
+                    elif line.startswith("state:"):
+                        info["mode"] = line.split(":")[1].strip()
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        else:
+            try:
+                r = subprocess.run(
+                    ["system_profiler", "SPAirPortDataType"],
+                    capture_output=True, text=True, timeout=15,
+                )
+                in_iface = False
+                for line in r.stdout.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(interface + ":"):
+                        in_iface = True
+                    elif in_iface:
+                        if stripped.startswith("Status:"):
+                            info["mode"] = stripped.split(":", 1)[1].strip().lower()
+                        elif stripped.startswith("Channel:"):
+                            m = re.match(r"(\d+)", stripped.split(":", 1)[1].strip())
+                            if m:
+                                info["channel"] = int(m.group(1))
+                        elif stripped.startswith("Card Type:"):
+                            ct = stripped.split(":", 1)[1].strip()
+                            m = re.search(r"\(0x([0-9A-Fa-f]+)", ct)
+                            if m:
+                                vid = m.group(1).lower()
+                                info["manufacturer"] = _PCI_VENDOR_IDS.get(vid, "")
+                        elif not stripped.startswith(" ") and ":" in stripped and not stripped.startswith(interface):
+                            break
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
         try:
-            r = subprocess.run(
-                ["/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport", "-I"],
-                capture_output=True, text=True, timeout=10,
-            )
-            for line in r.stdout.splitlines():
-                line = line.strip()
-                if line.startswith("channel:"):
-                    try:
-                        info["channel"] = int(line.split(":")[1].strip())
-                    except ValueError:
-                        pass
-                elif line.startswith("state:"):
-                    info["mode"] = line.split(":")[1].strip()
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+            info["bus"], info["manufacturer"] = _detect_bus_and_vendor_darwin(interface)
+        except Exception:
             pass
-        info["bus"], info["manufacturer"] = _detect_bus_and_vendor_darwin(interface)
 
     return info
 
@@ -220,30 +328,68 @@ def scan_ssids(interface=None):
     aps = []
 
     if system == "Darwin":
-        try:
-            cmd = [
-                "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport",
-                "-s",
-            ]
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            lines = r.stdout.strip().splitlines()
-            if len(lines) < 2:
-                return aps
-            for line in lines[1:]:
-                parts = line.split()
-                if len(parts) >= 7:
-                    ssid = parts[0]
-                    bssid = parts[1]
-                    rssi = parts[2]
-                    channel = parts[3]
-                    security = " ".join(parts[6:])
-                    aps.append({
-                        "ssid": ssid, "bssid": bssid,
-                        "signal": int(rssi) if rssi.lstrip("-").isdigit() else 0,
-                        "channel": channel, "security": security,
-                    })
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+        _airport = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+        if os.path.isfile(_airport):
+            try:
+                r = subprocess.run([_airport, "-s"],
+                                   capture_output=True, text=True, timeout=30)
+                lines = r.stdout.strip().splitlines()
+                if len(lines) >= 2:
+                    for line in lines[1:]:
+                        parts = line.split()
+                        if len(parts) >= 7:
+                            aps.append({
+                                "ssid": parts[0], "bssid": parts[1],
+                                "signal": int(parts[2]) if parts[2].lstrip("-").isdigit() else 0,
+                                "channel": parts[3],
+                                "security": " ".join(parts[6:]),
+                            })
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        if not aps:
+            try:
+                r = subprocess.run(
+                    ["system_profiler", "SPAirPortDataType"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                in_other = False
+                in_current = False
+                current_ssid = None
+                for line in r.stdout.splitlines():
+                    stripped = line.strip()
+                    if stripped == "Other Local Wi-Fi Networks:":
+                        in_other = True
+                        in_current = False
+                        continue
+                    if "Current Network Information:" in stripped:
+                        in_current = True
+                        in_other = False
+                        continue
+                    if (in_other or in_current) and stripped.endswith(":") and not stripped.startswith(" "):
+                        if current_ssid and current_ssid.get("ssid"):
+                            aps.append(current_ssid)
+                        name = stripped.rstrip(":")
+                        current_ssid = {"ssid": name, "bssid": "", "signal": 0,
+                                        "channel": "", "security": ""}
+                    elif current_ssid and stripped.startswith("PHY Mode:"):
+                        pass
+                    elif current_ssid and stripped.startswith("Channel:"):
+                        ch = stripped.split(":", 1)[1].strip()
+                        m = re.match(r"(\d+)", ch)
+                        current_ssid["channel"] = m.group(1) if m else ch
+                    elif current_ssid and stripped.startswith("Security:"):
+                        current_ssid["security"] = stripped.split(":", 1)[1].strip()
+                    elif current_ssid and stripped.startswith("Signal / Noise:"):
+                        m = re.search(r"(-?\d+)\s*dBm", stripped)
+                        if m:
+                            current_ssid["signal"] = int(m.group(1))
+                    elif (in_other or in_current) and stripped and not stripped[0].isspace() and ":" not in stripped:
+                        in_other = False
+                        in_current = False
+                if current_ssid and current_ssid.get("ssid"):
+                    aps.append(current_ssid)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
 
     elif system == "Linux":
         iface = interface or "wlan0"
@@ -275,6 +421,36 @@ def scan_ssids(interface=None):
                 aps.append(current)
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
+        if not aps:
+            try:
+                r = subprocess.run(
+                    ["sudo", "iw", "dev", iface, "scan"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                current = {}
+                for line in r.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("BSS "):
+                        if current.get("bssid"):
+                            aps.append(current)
+                        bssid = line.split()[1].split("(")[0]
+                        current = {"bssid": bssid, "signal": 0, "channel": "", "security": ""}
+                    elif line.startswith("SSID:"):
+                        current["ssid"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("signal:"):
+                        m = re.search(r"(-?\d+)", line)
+                        if m:
+                            current["signal"] = int(m.group(1))
+                    elif line.startswith("DS Parameter set: channel"):
+                        m = re.search(r"channel\s+(\d+)", line)
+                        if m:
+                            current["channel"] = m.group(1)
+                    elif "RSN:" in line or "WPA:" in line:
+                        current.setdefault("security", line.strip())
+                if current.get("bssid"):
+                    aps.append(current)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
 
     return aps
 
