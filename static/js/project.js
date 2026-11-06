@@ -5676,7 +5676,7 @@ var TOOL_SUBTABS = {
     quill:    [['status','Mobile Status'],['mobile-components','Mobile Component Map'],['mobile-perms','Mobile Permission Matrix'],['mobile-hardening','Mobile Binary Hardening'],['mobile-data','Mobile Data Flow'],['mobile-domains','Domains & URLs'],['mobile-emails','Emails'],['mitm-cert','MITM CA Cert']],
     isotope:  [['status','File Status'],['iso-properties','File Properties'],['iso-entropy','Entropy Analysis'],['iso-contents','Archive Contents'],['iso-strings','String Analysis'],['iso-code','Code Analysis'],['iso-metadata','Metadata'],['iso-binary','Binary Analysis'],['iso-secrets','Secrets Detection'],['iso-ioc','IOC Matches']],
     dredge:   [['status','Endpoint Status'],['endpoint-overview','System Overview'],['endpoint-hardening','Hardening Assessment'],['endpoint-cis','CIS Benchmark'],['endpoint-nist','NIST 800-123'],['endpoint-stig','DISA STIG'],['endpoint-software','Software Inventory'],['endpoint-ad','Active Directory'],['endpoint-network','Network Posture'],['endpoint-browser','Browser Security'],['endpoint-disk','Disk & Storage'],['endpoint-hardware','Hardware Inventory']],
-    aether:   [['status','Wi-Fi Status']], aether_b: [['status','Bluetooth Status']], aether_z: [['status','Zigbee Status']], aether_u: [['status','UWB Status']]
+    aether:   [['status','Wi-Fi Status'],['wifi-aps','AP Inventory'],['wifi-clients','Client Map'],['wifi-encryption','Encryption Posture'],['wifi-vendors','Vendor Distribution'],['wifi-channels','Channel Analysis'],['wifi-probes','Probe Request Intel'],['wifi-wps','WPS Exposure'],['wifi-firmware','Firmware Risk']], aether_b: [['status','Bluetooth Status']], aether_z: [['status','Zigbee Status']], aether_u: [['status','UWB Status']]
 };
 
 /* ── Native scope for each tool (used as default when scope_tools is absent) */
@@ -9621,6 +9621,217 @@ function _copyElText(elId, label) {
 }
 
 
+/* ── Wireless (Aether) Panel Renderers ────────────────────────── */
+
+function _renderWifiAps(data) {
+    var payload = data.wifi_aps || data;
+    var aps = payload.aps || payload;
+    if (!aps || !aps.length) return '<div class="empty-state"><div class="empty-state-text">No wireless access points discovered.</div></div>';
+    var total = payload.total || aps.length;
+    var h = '<div style="margin-bottom:12px;font-weight:600">'+total+' Access Points Discovered</div>';
+    var cols = ['BSSID','SSID','Vendor','Model','Encryption','Auth','Channel','Signal','Clients','WPS','LAA'];
+    var rows = aps.map(function(ap) {
+        return [
+            '<code>'+esc(ap.bssid||'')+'</code>',
+            esc(ap.ssid||'<hidden>'),
+            esc(ap.vendor||'Unknown'),
+            esc(ap.model||'—'),
+            _wifiEncBadge(ap.encryption||''),
+            esc(ap.auth||'—'),
+            ap.channel||'—',
+            _wifiSignalBadge(ap.signal),
+            ap.clients||0,
+            ap.wps ? '<span style="color:var(--danger)">Yes</span>' : 'No',
+            ap.laa ? '<span style="color:var(--warning)">Yes</span>' : 'No'
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+function _wifiEncBadge(enc) {
+    var e = (enc||'').toUpperCase();
+    if (e.indexOf('WPA3')>=0) return '<span class="badge" style="background:var(--success)">'+esc(enc)+'</span>';
+    if (e.indexOf('WPA2')>=0) return '<span class="badge" style="background:var(--info)">'+esc(enc)+'</span>';
+    if (e.indexOf('WPA')>=0) return '<span class="badge" style="background:var(--warning)">'+esc(enc)+'</span>';
+    if (e.indexOf('WEP')>=0) return '<span class="badge" style="background:var(--danger)">'+esc(enc)+'</span>';
+    if (e==='OPEN'||e==='OPN'||e==='') return '<span class="badge" style="background:var(--danger)">Open</span>';
+    return '<span class="badge">'+esc(enc)+'</span>';
+}
+
+function _wifiSignalBadge(sig) {
+    var n = parseInt(sig, 10);
+    if (isNaN(n)) return '—';
+    var cls = n >= -50 ? 'success' : n >= -70 ? 'info' : n >= -80 ? 'warning' : 'danger';
+    return '<span style="color:var(--'+cls+')">'+n+' dBm</span>';
+}
+
+function _renderWifiClients(data) {
+    var payload = data.wifi_clients || data;
+    var clients = payload.clients || payload;
+    if (!clients || !clients.length) return '<div class="empty-state"><div class="empty-state-text">No wireless clients detected.</div></div>';
+    var total = payload.total || clients.length;
+    var h = '<div style="margin-bottom:12px;font-weight:600">'+total+' Wireless Clients Detected</div>';
+    var cols = ['MAC','Vendor','Associated AP','Associated SSID','Signal','Packets','Probed SSIDs'];
+    var rows = clients.map(function(c) {
+        var probed = c.probed_ssids || [];
+        return [
+            '<code>'+esc(c.mac||'')+'</code>',
+            esc(c.vendor||'Unknown'),
+            '<code>'+esc(c.associated_ap||'')+'</code>',
+            esc(c.associated_ssid||'—'),
+            _wifiSignalBadge(c.signal),
+            c.packets||0,
+            probed.length ? probed.map(function(s){return esc(s);}).join(', ') : '—'
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+function _renderWifiEncryption(data) {
+    var payload = data.wifi_encryption || data;
+    if (!payload || !payload.encryption) return '<div class="empty-state"><div class="empty-state-text">No encryption data available.</div></div>';
+    var h = '<div style="margin-bottom:16px;font-weight:600">Encryption Posture — '+payload.total_aps+' Access Points</div>';
+    if (payload.open_count > 0 || payload.wep_count > 0) {
+        h += '<div class="alert" style="background:var(--danger-bg);border:1px solid var(--danger);padding:8px 12px;border-radius:6px;margin-bottom:12px">';
+        if (payload.open_count > 0) h += '<strong>'+payload.open_count+'</strong> open (unencrypted) APs detected. ';
+        if (payload.wep_count > 0) h += '<strong>'+payload.wep_count+'</strong> WEP APs detected (trivially crackable).';
+        h += '</div>';
+    }
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">';
+    h += _wifiDistCard('Encryption', payload.encryption);
+    h += _wifiDistCard('Authentication', payload.auth_types);
+    h += _wifiDistCard('Ciphers', payload.ciphers);
+    h += '</div>';
+    return h;
+}
+
+function _wifiDistCard(title, pairs) {
+    if (!pairs || !pairs.length) return '';
+    var h = '<div style="border:1px solid var(--border);border-radius:8px;padding:12px">';
+    h += '<div style="font-weight:600;margin-bottom:8px">'+esc(title)+'</div>';
+    var total = pairs.reduce(function(s,p){return s+(p[1]||0);},0);
+    pairs.forEach(function(p) {
+        var pct = total > 0 ? Math.round(p[1]/total*100) : 0;
+        h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px">';
+        h += '<span>'+_wifiEncBadge(p[0])+' '+esc(p[0])+'</span>';
+        h += '<span><strong>'+p[1]+'</strong> ('+pct+'%)</span>';
+        h += '</div>';
+        h += '<div style="background:var(--bg-secondary);border-radius:4px;height:6px;margin-bottom:8px">';
+        h += '<div style="background:var(--accent);border-radius:4px;height:100%;width:'+pct+'%"></div>';
+        h += '</div>';
+    });
+    h += '</div>';
+    return h;
+}
+
+function _renderWifiVendors(data) {
+    var payload = data.wifi_vendors || data;
+    var vendors = payload.vendors || payload;
+    if (!vendors || !vendors.length) return '<div class="empty-state"><div class="empty-state-text">No vendor data available.</div></div>';
+    var h = '<div style="margin-bottom:12px;font-weight:600">'+payload.total+' Vendors Identified</div>';
+    var cols = ['Vendor','AP Count','Models'];
+    var rows = vendors.map(function(v) {
+        return [
+            '<strong>'+esc(v.vendor||'Unknown')+'</strong>',
+            v.ap_count||0,
+            (v.models||[]).length ? v.models.map(function(m){return esc(m);}).join(', ') : '—'
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+function _renderWifiChannels(data) {
+    var payload = data.wifi_channels || data;
+    if (!payload || !payload.channels) return '<div class="empty-state"><div class="empty-state-text">No channel data available.</div></div>';
+    var h = '<div style="margin-bottom:12px;font-weight:600">Channel Utilisation — '+payload.total_aps+' Access Points</div>';
+    h += '<div style="display:flex;gap:16px;margin-bottom:16px">';
+    h += '<div class="stat-card"><div class="stat-value">'+payload.band_2_4_count+'</div><div class="stat-label">2.4 GHz</div></div>';
+    h += '<div class="stat-card"><div class="stat-value">'+payload.band_5_count+'</div><div class="stat-label">5 GHz</div></div>';
+    h += '<div class="stat-card"><div class="stat-value">'+payload.band_6_count+'</div><div class="stat-label">6 GHz</div></div>';
+    h += '</div>';
+    var cols = ['Channel','Band','AP Count','SSIDs'];
+    var rows = payload.channels.map(function(ch) {
+        var ssids = ch.aps.map(function(a){return esc(a.ssid||'?');}).join(', ');
+        var crowded = ch.ap_count > 3;
+        return [
+            (crowded ? '<span style="color:var(--warning)">⚠ ' : '') + ch.channel + (crowded ? '</span>' : ''),
+            ch.band,
+            ch.ap_count,
+            ssids
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+function _renderWifiProbes(data) {
+    var payload = data.wifi_probes || data;
+    var probes = payload.probed_ssids || payload;
+    if (!probes || !probes.length) return '<div class="empty-state"><div class="empty-state-text">No probe requests captured.</div></div>';
+    var h = '<div style="margin-bottom:12px;font-weight:600">'+payload.total+' Probed SSIDs from '+payload.unique_clients+' Clients</div>';
+    h += '<div class="alert" style="background:var(--info-bg);border:1px solid var(--info);padding:8px 12px;border-radius:6px;margin-bottom:12px">';
+    h += 'Probe requests reveal networks clients have connected to previously — useful for evil twin attacks and profiling.</div>';
+    var cols = ['Probed SSID','Client Count','Client MACs'];
+    var rows = probes.map(function(p) {
+        return [
+            '<strong>'+esc(p.ssid)+'</strong>',
+            p.client_count,
+            p.clients.map(function(m){return '<code>'+esc(m)+'</code>';}).join(', ')
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+function _renderWifiWps(data) {
+    var payload = data.wifi_wps || data;
+    var aps = payload.wps_aps || payload;
+    if (!aps || !aps.length) return '<div class="empty-state"><div class="empty-state-text">No WPS-enabled access points detected.</div></div>';
+    var h = '<div style="margin-bottom:12px;font-weight:600">'+payload.total+' WPS-Enabled Access Points</div>';
+    if (payload.unlocked_count > 0) {
+        h += '<div class="alert" style="background:var(--danger-bg);border:1px solid var(--danger);padding:8px 12px;border-radius:6px;margin-bottom:12px">';
+        h += '<strong>'+payload.unlocked_count+'</strong> APs have WPS unlocked — vulnerable to Reaver/Bully PIN brute-force.</div>';
+    }
+    var cols = ['BSSID','SSID','Vendor','WPS Version','Locked','Manufacturer','Model','Device Name'];
+    var rows = aps.map(function(ap) {
+        return [
+            '<code>'+esc(ap.bssid||'')+'</code>',
+            esc(ap.ssid||''),
+            esc(ap.vendor||'Unknown'),
+            ap.wps_version||'—',
+            ap.wps_locked ? '<span style="color:var(--success)">Locked</span>' : '<span style="color:var(--danger)">Unlocked</span>',
+            esc(ap.manufacturer||'—'),
+            esc(ap.model_name||'—'),
+            esc(ap.device_name||'—')
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+function _renderWifiFirmware(data) {
+    var payload = data.wifi_firmware || data;
+    if (!payload) return '<div class="empty-state"><div class="empty-state-text">No firmware risk data available. Run Aether with firmware-CVE correlation enabled.</div></div>';
+    var matches = payload.matches || payload;
+    if (Array.isArray(matches) && !matches.length) return '<div class="empty-state"><div class="empty-state-text">No firmware vulnerabilities matched against discovered APs.</div></div>';
+    if (!Array.isArray(matches)) return _renderIntelGeneric(data);
+    var h = '<div style="margin-bottom:12px;font-weight:600">'+matches.length+' Firmware Risk Matches</div>';
+    var cols = ['AP (BSSID)','SSID','Vendor','Model','CVEs','Risk','Title','Remediation'];
+    var rows = matches.map(function(m) {
+        var risk = (m.risk||'INFO').toUpperCase();
+        var riskCls = risk==='CRITICAL'?'danger':risk==='HIGH'?'danger':risk==='MEDIUM'?'warning':'info';
+        return [
+            '<code>'+esc(m.bssid||'')+'</code>',
+            esc(m.ssid||''),
+            esc(m.vendor||''),
+            esc(m.model||''),
+            (m.cves||[]).map(function(c){return '<code>'+esc(c)+'</code>';}).join(', ')||'—',
+            '<span class="badge" style="background:var(--'+riskCls+')">'+risk+'</span>',
+            esc(m.title||''),
+            esc(m.remediation||'—')
+        ];
+    });
+    return h + _intelTable(cols, rows, true);
+}
+
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -9670,6 +9881,14 @@ var _INTEL_RENDERERS = {
     'mobile-domains': _renderMobileDomains,
     'mobile-emails': _renderMobileEmails,
     'mitm-cert': _renderMitmCert,
+    'wifi-aps': _renderWifiAps,
+    'wifi-clients': _renderWifiClients,
+    'wifi-encryption': _renderWifiEncryption,
+    'wifi-vendors': _renderWifiVendors,
+    'wifi-channels': _renderWifiChannels,
+    'wifi-probes': _renderWifiProbes,
+    'wifi-wps': _renderWifiWps,
+    'wifi-firmware': _renderWifiFirmware,
 };
 
 
