@@ -279,6 +279,10 @@ def _backfill_from_project(settings, project, tool_id):
             dm = scope_def.get("wireless_default_scope_mode", "")
             if dm:
                 settings["scope_default_mode"] = dm
+        if not settings.get("domains"):
+            doms = scope_def.get("wireless_domains", [])
+            if doms:
+                settings["domains"] = doms
 
 
 def _archive_tool_output(project, tool_id):
