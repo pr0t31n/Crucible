@@ -27,6 +27,7 @@ class AetherAdapter(AetherBaseAdapter):
             "client_short": "",
             "phases": {
                 "contextual_intel": True,
+                "vendor_recon": True,
                 "meraki_recon": True,
                 "wep": True,
                 "pmkid": True,

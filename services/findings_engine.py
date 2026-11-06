@@ -530,8 +530,22 @@ class FindingsEngine:
         return False
 
     def refresh(self, project_id, project):
-        """Force refresh findings from disk. Returns the refreshed list."""
-        findings = load_all_findings(project)
+        """Refresh findings. DB is source of truth; disk is fallback."""
+        findings = None
+        if _fdb:
+            rdb = self._open_readonly_db(project_id, project)
+            if rdb is not None:
+                try:
+                    result = rdb.query_findings(page=1, per_page=500000)
+                    db_findings = result.get("findings", [])
+                    if db_findings:
+                        findings = db_findings
+                except Exception:
+                    log.debug("DB read in refresh failed for %s", project_id)
+                finally:
+                    rdb.close()
+        if findings is None:
+            findings = load_all_findings(project)
         project_dir = project.get("project_dir", "")
         fps = load_false_positives(project_dir) if project_dir else []
         fp_ids = {fp.get("id") for fp in fps if fp.get("id")}
