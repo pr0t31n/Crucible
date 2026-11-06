@@ -30,5 +30,4 @@ class AetherBaseAdapter(ToolAdapter):
         return cmd
 
     def load_findings(self, project_dir, tool_output_dir):
-        return self._load_findings_file(tool_output_dir,
-                                        "findings.json", "findings_crucible.json")
+        return self._load_findings_file(tool_output_dir, "findings.json")

@@ -160,15 +160,9 @@ class OSiftAdapter(ToolAdapter):
     def load_findings(self, project_dir, tool_output_dir):
         td = Path(tool_output_dir)
         findings = []
-        for fp in (td / "reports" / "findings_crucible.json",
-                   td / "findings_crucible.json",
-                   td / "reports" / "findings_crucible.json",  
-                   td / "findings_crucible.json",  
-                   td / "reports" / "findings_report.json",
-                   td / "findings.json"):
-            if fp.exists():
-                findings = self._load_findings_file(str(fp.parent), fp.name)
-                break
+        fp = td / "findings.json"
+        if fp.exists():
+            findings = self._load_findings_file(str(fp.parent), fp.name)
         findings = [f for f in findings if not self._is_unresolved_typosquat(f)]
         synth = self._synthesize_from_targets(td)
         if synth:
@@ -192,7 +186,7 @@ class OSiftAdapter(ToolAdapter):
         """Create INFO findings from targets_osint.json for live propagation.
 
         OSift's write_targets_snapshot() skips subdomain/email/IP entries from
-        findings_crucible.json during the scan (_SKIP_SNAP filter).  This method
+        findings.json during the scan (_SKIP_SNAP filter).  This method
         reads the structured data written to targets_osint.json and synthesises
         the corresponding INFO findings so they appear in real-time."""
         for candidate in (td / "reports" / "targets_osint.json",

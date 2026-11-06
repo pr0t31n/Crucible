@@ -174,7 +174,7 @@ _INTEL_FILES = [
 ]
 
 _FINDINGS_FILENAMES = (
-    "findings.json", "findings_crucible.json", "findings_report.json",)
+    "findings.json", "findings_report.json",)
 
 
 class MergeSource:
@@ -814,7 +814,7 @@ class EngagementMerger:
         self._merge_intel(src_dirs, dst_dir)
 
     _EVIDENCE_SKIP_NAMES = {
-        "findings.json", "findings_crucible.json", "findings_report.json","falsePositives.json", "falsePositives.csv",
+        "findings.json", "findings_report.json", "falsePositives.json", "falsePositives.csv",
         "false_positives.json", "false_positives.csv",
         "project_meta.json", "crucible_meta.json", "scope_meta.json",
     }

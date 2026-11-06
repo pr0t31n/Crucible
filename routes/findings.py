@@ -136,19 +136,6 @@ def api_findings_v2(project_id):
 
         result = _engine().query_findings_db(project_id, project, **kwargs)
         if result is not None:
-            if result.get("total", 0) == 0:
-                _engine().refresh(project_id, project)
-                result = _engine().query_findings_db(
-                    project_id, project, **kwargs)
-                if result is None:
-                    return jsonify({"findings": [], "total": 0,
-                                    "page": 1, "per_page": per_page,
-                                    "pages": 1, "source": "db"})
-            result["source"] = "db"
-            return jsonify(result)
-        _engine().refresh(project_id, project)
-        result = _engine().query_findings_db(project_id, project, **kwargs)
-        if result is not None:
             result["source"] = "db"
             return jsonify(result)
         return jsonify({"findings": [], "total": 0,

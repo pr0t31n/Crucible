@@ -627,7 +627,7 @@ class ProcessManager:
 
         ended_at = entry.get("ended_at", "")
         output_files = ["findings.json", "findings_report.json",
-                        "findings_crucible.json","action_items.json",
+                        "action_items.json",
                         "targets_osint.json", "summary.json"]
         td = Path(tool_dir)
         has_newer = False

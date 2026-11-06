@@ -119,7 +119,7 @@ def detect_export_version(contents_dir):
 
     # ── 3. Look for raw findings output ──
 
-    for pattern in ("findings.json", "findings_crucible.json", "findings.jsonl"):
+    for pattern in ("findings.json", "findings.jsonl"):
         hits = list(cd.rglob(pattern))
         if hits:
             return {

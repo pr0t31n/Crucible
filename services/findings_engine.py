@@ -150,6 +150,7 @@ class FindingsEngine:
         self._cache = {}
         self._fp_cache = {}
         self._lock = threading.Lock()
+        self._json_lock = threading.Lock()
         self._refresh_locks = {}
         self._refresh_locks_mu = threading.Lock()
         self._refresh_timers = {}
@@ -621,6 +622,26 @@ class FindingsEngine:
         except Exception:
             log.exception("Failed to persist findings.json to %s", out)
 
+    def _append_finding_json(self, project, finding):
+        """Append a single finding to the engagement findings.json."""
+        eng_dir = project.get("engagement_dir") or project.get("project_dir", "")
+        if not eng_dir:
+            return
+        out = Path(eng_dir) / "findings.json"
+        with self._json_lock:
+            try:
+                arr = []
+                if out.exists():
+                    with open(out) as fh:
+                        arr = json.load(fh)
+                    if not isinstance(arr, list):
+                        arr = arr.get("findings", [])
+                arr.append(finding)
+                with open(out, "w") as fh:
+                    json.dump(arr, fh, indent=2, default=str)
+            except Exception:
+                log.exception("Failed to append finding to %s", out)
+
     # ── Invalidate ───────────────────────────────────────────
 
     def invalidate(self, project_id):
@@ -671,14 +692,50 @@ class FindingsEngine:
     # ── Live finding from tool stream ─────────────────────────
 
     def notify_tool_finding(self, project_id, finding, project=None):
-        """Handle a finding notification from a managed tool's stream.
+        """Handle a finding from a managed tool's stdout token stream.
 
-        Tools own their own DBs and write findings immediately.
-        Crucible does NOT insert into its engagement DB here — instead
-        it schedules a debounced refresh() that reads from tool files
-        on disk and populates the engagement DB from that authoritative
-        source.
+        Direct pipeline: enrich → DB insert → JSON append → cache update.
+        The DB is the sole intake path — Crucible never reads tool JSON
+        files back into the DB.
         """
+        title = (finding.get("title") or "").strip()
+        if not title:
+            return
+
+        if project:
+            try:
+                from flask import current_app
+                sm = current_app.extensions.get("scope_manager")
+                if sm and self._is_finding_excluded(finding, sm, project):
+                    return
+            except RuntimeError:
+                pass
+
+        self._enrich_from_catalogue([finding])
+        if project:
+            apply_risk_overrides([finding], project)
+        if self._kev_enricher:
+            self._kev_enricher.enrich(finding)
+
+        if _fdb and project:
+            try:
+                db = self._get_db(project_id, project)
+                if db:
+                    db.insert_finding(finding)
+            except Exception as exc:
+                log.warning("DB insert failed for finding '%s': %s", title, exc)
+
+        self._append_finding_json(project, finding)
+
+        with self._lock:
+            cached = self._cache.get(project_id)
+            if cached is None:
+                self._cache[project_id] = deduplicate([finding])
+            else:
+                merged = list(cached)
+                merged.append(finding)
+                self._cache[project_id] = deduplicate(merged)
+
         if self._action_engine and project:
             project_dir = project.get("project_dir", "")
             if project_dir:
@@ -688,7 +745,6 @@ class FindingsEngine:
                         project_dir, finding, source, project=project)
                 except Exception:
                     log.exception("Failed to generate action for live finding")
-        self._schedule_refresh(project_id, project)
 
     # ── Live finding injection (imports/manual) ─────────────
 
@@ -853,51 +909,29 @@ class FindingsEngine:
             self.add_live_finding(project_id, f, project=project)
 
     def ingest_stragglers(self, project_id, project, tool_id=None):
-        """Ingest findings from final JSON files that weren't live-injected.
+        """Post-completion hook: persist DB contents to engagement JSON.
 
-        Called by _post_completion() before the full refresh.  The DB's UNIQUE
-        dedup_key constraint makes this idempotent — duplicates of
-        already-injected findings are silently skipped.
+        The DB is the sole intake path — findings entered via
+        notify_tool_finding() during the live stream.  This method
+        only dumps the current DB state to engagement findings.json
+        so external consumers (Prometheus, etc.) have a final snapshot.
         """
-        if not _fdb or not project:
+        if not project:
             return
-        try:
-            db = self._get_db(project_id, project)
-            if not db:
-                return
-        except Exception:
-            return
-        tool_dirs = project.get("tool_dirs", {})
-        scope_tool_dirs = project.get("scope_tool_dirs", {})
-        loaded = set()
-
-        for scope_name, dirs in scope_tool_dirs.items():
-            for tid, td in dirs.items():
-                if tool_id and tid != tool_id:
-                    continue
-                if (tid, td) in loaded:
-                    continue
-                loaded.add((tid, td))
-                fp = Path(td) / "findings.json"
-                if fp.exists():
-                    try:
-                        db.ingest_findings_json(str(fp), tool_id=tid,
-                                                scope=scope_name)
-                    except Exception:
-                        pass
-
-        for tid, td in tool_dirs.items():
-            if tool_id and tid != tool_id:
-                continue
-            if (tid, td) in loaded:
-                continue
-            loaded.add((tid, td))
-            fp = Path(td) / "findings.json"
-            if fp.exists():
-                try:
-                    db.ingest_findings_json(str(fp), tool_id=tid)
-                except Exception:
-                    pass
+        db = None
+        if _fdb:
+            try:
+                db = self._get_db(project_id, project)
+            except Exception:
+                pass
+        if db:
+            try:
+                result = db.query_findings(page=1, per_page=500000)
+                findings = result.get("findings", [])
+                if findings:
+                    self._persist_findings_json(project, findings)
+            except Exception:
+                log.debug("Final JSON dump failed for %s", project_id)
 
     # ── Mutations ────────────────────────────────────────────
 
