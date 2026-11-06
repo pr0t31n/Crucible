@@ -452,10 +452,50 @@
   <div class="tab-content" data-tab="attack-surface">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h3 style="margin:0;font-size:1rem">Attack Surface</h3>
-      <button type="button" class="btn btn-xs btn-ghost" onclick="window._refreshAttackSurface()">Reload</button>
+      <div class="flex gap-8" style="align-items:center">
+        <select id="asSortSelect" class="form-select form-select-sm">
+          <option value="severity">Sort: Severity</option>
+          <option value="ip">Sort: IP</option>
+          <option value="ports">Sort: Ports</option>
+          <option value="findings">Sort: Findings</option>
+        </select>
+        <select id="asFilterRisk" class="form-select form-select-sm">
+          <option value="">All Risks</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="HIGH">High</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="LOW">Low</option>
+          <option value="INFO">Info</option>
+        </select>
+        <button type="button" class="btn btn-xs btn-ghost" onclick="window._refreshAttackSurface()">Reload</button>
+      </div>
     </div>
+
     <div id="attackSurfaceContainer">
-      <div style="text-align:center;padding:40px;opacity:0.5">Select this tab to load attack surface data.</div>
+      <!-- Summary panel -->
+      <div class="panel mb-16">
+        <div class="panel-header">
+          <span class="panel-title">Surface Summary</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+            <div class="stat-card"><span class="stat-label">Hosts</span><span class="stat-value font-mono" id="asTotalHosts">0</span></div>
+            <div class="stat-card"><span class="stat-label">Ports</span><span class="stat-value font-mono" id="asTotalPorts">0</span></div>
+            <div class="stat-card"><span class="stat-label">Findings</span><span class="stat-value font-mono" id="asTotalFindings">0</span></div>
+            <div class="stat-card"><span class="stat-label">Coverage</span><span class="stat-value font-mono" id="asCoverage">0%</span></div>
+          </div>
+          <div class="flex gap-12 flex-wrap">
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-critical">CRITICAL</span><span class="font-mono font-bold" id="asCritical">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-high">HIGH</span><span class="font-mono font-bold" id="asHigh">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-medium">MEDIUM</span><span class="font-mono font-bold" id="asMedium">0</span></div>
+            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-low">LOW</span><span class="font-mono font-bold" id="asLow">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Host table -->
+      <div id="asHostTable"></div>
+      <div id="asEmpty" hidden style="text-align:center;padding:40px;opacity:0.5">No host data available. Run a scan to populate the attack surface.</div>
     </div>
   </div>
 

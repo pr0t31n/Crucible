@@ -242,6 +242,11 @@ class FindingsEngine:
         finally:
             rdb.close()
 
+    _FILTER_HIDDEN_TOOLS = frozenset({
+        "nuclei", "testssl", "sslscan", "droopescan", "dnstwist",
+        "xurlfind3r", "emailharvester", "asnmap", "webanalyze", "deps",
+    })
+
     def get_filter_options(self, project_id, project):
         """Return distinct scopes, tools, and categories for filter dropdowns."""
         rdb = self._open_readonly_db(project_id, project)
@@ -249,19 +254,27 @@ class FindingsEngine:
             try:
                 scopes = [r["name"] for r in rdb._conn.execute(
                     "SELECT DISTINCT s.name FROM findings f "
-                    "JOIN scopes s ON f.scope_id=s.id "
-                    "WHERE f.is_false_positive=0 ORDER BY s.name"
+                    "LEFT JOIN scopes s ON f.scope_id=s.id "
+                    "WHERE f.is_false_positive=0 AND s.name IS NOT NULL "
+                    "ORDER BY s.name"
                 ).fetchall() if r["name"]]
-                tools = [{"id": r["tool_id"], "name": r["tool_name"]} for r in
-                         rdb._conn.execute(
-                    "SELECT DISTINCT f.tool_id, t.name as tool_name "
-                    "FROM findings f JOIN tools t ON f.tool_id=t.id "
-                    "WHERE f.is_false_positive=0 ORDER BY t.name"
-                ).fetchall()]
+                tools = [
+                    {"id": r["tool_id"], "name": r["tool_name"]}
+                    for r in rdb._conn.execute(
+                        "SELECT DISTINCT f.tool_id, "
+                        "COALESCE(t.name, f.tool_id) AS tool_name "
+                        "FROM findings f "
+                        "LEFT JOIN tools t ON f.tool_id=t.id "
+                        "WHERE f.is_false_positive=0 AND f.tool_id != '' "
+                        "ORDER BY tool_name"
+                    ).fetchall()
+                    if r["tool_id"] not in self._FILTER_HIDDEN_TOOLS
+                ]
                 categories = [r["name"] for r in rdb._conn.execute(
                     "SELECT DISTINCT c.name FROM findings f "
-                    "JOIN categories c ON f.category_id=c.id "
-                    "WHERE f.is_false_positive=0 ORDER BY c.name"
+                    "LEFT JOIN categories c ON f.category_id=c.id "
+                    "WHERE f.is_false_positive=0 AND c.name IS NOT NULL "
+                    "ORDER BY c.name"
                 ).fetchall() if r["name"]]
                 return {"scopes": scopes, "tools": tools,
                         "categories": categories, "source": "db"}
@@ -274,7 +287,7 @@ class FindingsEngine:
         tool_set = {}
         for f in findings:
             t = f.get("tool", "")
-            if t and t not in tool_set:
+            if t and t not in tool_set and t not in self._FILTER_HIDDEN_TOOLS:
                 tool_set[t] = t
         tools = [{"id": t, "name": t} for t in sorted(tool_set)]
         categories = sorted({f.get("category", "") for f in findings} - {""})
