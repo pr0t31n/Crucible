@@ -575,10 +575,6 @@ class FindingsEngine:
                 args=(project_dir, list(active), project),
                 name="ai-gen-refresh", daemon=True).start()
         threading.Thread(
-            target=self._populate_db,
-            args=(project_id, project, list(active)),
-            name="fdb-populate", daemon=True).start()
-        threading.Thread(
             target=self._persist_findings_json,
             args=(project, list(active)),
             name="findings-json-persist", daemon=True).start()
@@ -615,12 +611,13 @@ class FindingsEngine:
         if not eng_dir:
             return
         out = Path(eng_dir) / "findings.json"
-        try:
-            with open(out, "w") as fh:
-                json.dump(findings, fh, indent=2, default=str)
-            log.info("Persisted %d findings to %s", len(findings), out)
-        except Exception:
-            log.exception("Failed to persist findings.json to %s", out)
+        with self._json_lock:
+            try:
+                with open(out, "w") as fh:
+                    json.dump(findings, fh, indent=2, default=str)
+                log.info("Persisted %d findings to %s", len(findings), out)
+            except Exception:
+                log.exception("Failed to persist findings.json to %s", out)
 
     def _append_finding_json(self, project, finding):
         """Append a single finding to the engagement findings.json."""
@@ -932,6 +929,77 @@ class FindingsEngine:
                     self._persist_findings_json(project, findings)
             except Exception:
                 log.debug("Final JSON dump failed for %s", project_id)
+
+    def validate_tool_findings(self, project_id, project, tool_id):
+        """Post-completion validation: verify every finding the tool wrote
+        to its own output also exists in the engagement DB.
+
+        Uses the tool's adapter to load findings (same path as refresh()
+        but for a single tool), then checks each against the engagement
+        DB by dedup key.  Any straggler that the token stream missed
+        gets inserted with proper tool_id and scope.
+        """
+        if not _fdb or not project:
+            return
+        db = self._get_db(project_id, project)
+        if db is None:
+            return
+
+        tool_findings = self._load_tool_adapter_findings(project, tool_id)
+        if not tool_findings:
+            return
+
+        scope = self._get_tool_scope_from_project(project, tool_id)
+
+        inserted = 0
+        for f in tool_findings:
+            title = (f.get("title") or "").strip()
+            if not title:
+                continue
+            if not f.get("tool"):
+                f["tool"] = tool_id
+            if scope and not f.get("scope"):
+                f["scope"] = scope
+            dk = _fdb.compute_dedup_key(f)
+            existing = db._conn.execute(
+                "SELECT id FROM findings WHERE dedup_key=?", (dk,)
+            ).fetchone()
+            if not existing:
+                try:
+                    db.insert_finding(f)
+                    inserted += 1
+                except Exception:
+                    pass
+        if inserted:
+            db.rebuild_fts()
+            log.info("Validated %s for %s: inserted %d stragglers",
+                     tool_id, project_id, inserted)
+
+    @staticmethod
+    def _load_tool_adapter_findings(project, tool_id):
+        """Load findings for one tool via its adapter."""
+        from models.findings import load_findings_from_tool
+        findings = []
+        seen = set()
+        for scope_dirs in (project.get("scope_tool_dirs") or {}).values():
+            td = scope_dirs.get(tool_id)
+            if td and (tool_id, td) not in seen and Path(td).exists():
+                seen.add((tool_id, td))
+                findings.extend(load_findings_from_tool(td, tool_id))
+        td = (project.get("tool_dirs") or {}).get(tool_id)
+        if td and (tool_id, td) not in seen and Path(td).exists():
+            seen.add((tool_id, td))
+            findings.extend(load_findings_from_tool(td, tool_id))
+        return findings
+
+    @staticmethod
+    def _get_tool_scope_from_project(project, tool_id):
+        """Return the scope a tool is registered under, or ''."""
+        scope_tools = project.get("scope_tools") or {}
+        for scope_key, tools in scope_tools.items():
+            if tool_id in tools:
+                return scope_key
+        return ""
 
     # ── Mutations ────────────────────────────────────────────
 

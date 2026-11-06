@@ -1019,16 +1019,6 @@ class ProcessManager:
         if extra:
             env["PATH"] = extra + (":" + cur_path if cur_path else "")
 
-        try:
-            from config import FINDINGS_DB_FILENAME, FINDINGS_DB_AVAILABLE
-            if FINDINGS_DB_AVAILABLE:
-                _db_proj_dir = project.get("project_dir", "")
-                if _db_proj_dir:
-                    env["PR0T31N_FINDINGS_DB"] = str(
-                        Path(_db_proj_dir) / FINDINGS_DB_FILENAME)
-        except ImportError:
-            pass
-
         # -- Build command (adapter preferred, inline fallback) ---------------
         from adapters import get_adapter
         adapter = get_adapter(tool_id)
@@ -3216,9 +3206,10 @@ class ProcessManager:
                 except Exception:
                     pass
                 try:
-                    self._findings_engine.refresh(project_id, _proj)
+                    self._findings_engine.validate_tool_findings(
+                        project_id, _proj, base_tool)
                 except Exception as exc:
-                    log.warning("post-completion findings refresh: %s", exc)
+                    log.warning("post-completion findings validation: %s", exc)
             self.socketio.emit("findings_updated",
                                {"project_id": project_id},
                                room=_room(project_id))

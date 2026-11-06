@@ -256,15 +256,6 @@ class Scattershot3Adapter(ToolAdapter):
             except ValueError:
                 prefix = scope_dir.name
             self._prefix_scope_paths(items, prefix, td)
-        root_fp = td / "findings.json"
-        if root_fp.exists():
-            with open(root_fp) as f:
-                data = json.load(f)
-            items = (data if isinstance(data, list)
-                     else data.get("findings", []))
-            for finding in items:
-                finding["tool"] = "scattershot3"
-                findings.append(finding)
         return findings
 
     @staticmethod
