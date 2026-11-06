@@ -344,12 +344,26 @@ Tool execution is governed by parallelism groups to prevent resource conflicts:
 
 | Group | Tools | Behavior |
 |---|---|---|
-| exclusive | SS3, Fracture, Siphon, Forge, Aether family | Only one exclusive tool at a time (OSift can run alongside SS3) |
-| any | Trawler, Auger, AuthProbe, Nessus, Bastion, Quill, Isotope, Dredge, Vault, pAIn, all CLI tools | Independent; can run alongside anything |
+| exclusive | Scattershot3, OSift, Fracture, Siphon, Auger, Trawler, Forge, Quill, Isotope, Dredge | Serial execution — only one exclusive tool runs at a time. OSift has a compatibility exception and can run alongside other exclusive tools. |
+| wireless | Aether, Aether-B, Aether-Z, Aether-U | Serial — single radio hardware constraint prevents concurrent wireless tools |
+| any | Bastion, Basalt, pAIn | Can run alongside anything, including exclusive and wireless tools |
 
 ### Auto-Queue
 
 When a tool completes, its output is analyzed by the `ActionEngine`, which generates action items. Items tagged AUTO are immediately queued for the recommended follow-up tool. Items tagged CONFIRM require analyst approval. Auto-queue stops on tool failure to prevent cascading errors.
+
+The execution queue is disk-persisted to `execute_queue.json` on every state change, so queued jobs survive Crucible crashes and restarts. The Start button dynamically shows **Enqueue** when the selected tool would be queued (due to parallelism constraints) rather than started immediately.
+
+### OOM Watchdog
+
+A psutil-based resource watchdog monitors system RAM every 15 seconds. When system memory exceeds 85%, the queue manager blocks new tool launches — running tools continue execution but no new jobs are started until memory drops below the threshold. At 93% utilization, the process manager's watchdog identifies the largest-RSS tool process tree and terminates it to prevent system-wide out-of-memory conditions.
+
+### Scheduled Engagements
+
+The `SchedulerService` supports two scheduling capabilities:
+
+- **Scheduled engagement starts** — schedule a future date/time to automatically begin an engagement and launch its queued tools
+- **Engagement hours** — define a daily testing window (`start_time` / `end_time` in HH:MM format) that restricts when tools may run. Tools are auto-paused when the current time falls outside the configured window and auto-resumed when the window reopens. This ensures testing activity stays within authorized timeframes.
 
 ---
 
