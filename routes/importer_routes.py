@@ -19,8 +19,14 @@ def _imp():
 def api_import_tools():
     imp = _imp()
     if not imp:
-        return jsonify({"error": "Importer not available"}), 503
-    return jsonify({"tools": imp.registry.list_tools()})
+        return jsonify({"error": "Importer not available", "tools": []}), 503
+    try:
+        tools = imp.registry.list_tools()
+    except Exception as exc:
+        import logging
+        logging.getLogger("crucible.importer").exception("Failed to list import tools")
+        return jsonify({"error": str(exc), "tools": []}), 500
+    return jsonify({"tools": tools})
 
 
 @importer_bp.route("/api/import/<project_id>/file", methods=["POST"])

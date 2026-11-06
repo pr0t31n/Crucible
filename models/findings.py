@@ -168,7 +168,6 @@ _TITLE_RENAMES = [
     (re.compile(r'^Deprecated Protocol Enabled:\s*SSLv2/SSLv3$', re.IGNORECASE), 'SSL/TLS Vulnerability: SSLv2/SSLv3 is Deprecated'),
     (re.compile(r'^SSL/TLS: TLSv1\.3 Not Supported$', re.IGNORECASE), 'SSL/TLS Vulnerability: TLSv1.3 Not Supported'),
     (re.compile(r'^SSL/TLS Certificate Information$', re.IGNORECASE), 'Discovery: SSL/TLS Certificate'),
-    (re.compile(r'^Unconfirmed UDP Ports.*', re.IGNORECASE), 'Discovery: UDP Ports [UNCONFIRMED]'),
     (re.compile(r'^Web Page Identified$', re.IGNORECASE), 'Discovery: Web Page Identified'),
     (re.compile(r'^Hostname Identified$', re.IGNORECASE), 'Discovery: Hostname Identified'),
     (re.compile(r'^Open Ports Identified$', re.IGNORECASE), 'Discovery: Open Ports'),
@@ -335,7 +334,6 @@ _TITLE_RENAMES = [
     (re.compile(r'^Telnet Service Exposed\b.*', re.IGNORECASE), 'Insecure Protocol Detected: Telnet'),
     (re.compile(r'^AMQP Service Detected$', re.IGNORECASE), 'Discovery: AMQP Service'),
     (re.compile(r'^Non-Standard Web Port Detected$', re.IGNORECASE), 'Discovery: Non-Standard Web Port'),
-    (re.compile(r'^Unconfirmed UDP Ports\b.*', re.IGNORECASE), 'Discovery: Unconfirmed UDP Ports'),
     # ── Exposed files / pages ────────────────────────────────────────────
     (re.compile(r'^PHP Info Page Exposed$', re.IGNORECASE), 'Sensitive File Exposed: phpinfo()'),
     (re.compile(r'^(?:Exposed \.git Repository|Git Repository Exposed via Web)$', re.IGNORECASE), 'Sensitive File Exposed: .git Repository'),

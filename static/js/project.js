@@ -11847,7 +11847,10 @@ function _impLoadToolList() {
     fetch('/api/import/tools')
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            if (!d.tools) return;
+            if (!d.tools || !d.tools.length) {
+                console.warn('Import: no tool parsers returned', d);
+                return;
+            }
             var sel = document.getElementById('importToolSelect');
             d.tools.forEach(function(t) {
                 var o = document.createElement('option');
@@ -11856,7 +11859,7 @@ function _impLoadToolList() {
                 sel.appendChild(o);
             });
         })
-        .catch(function() {});
+        .catch(function(e) { console.error('Import tool list failed:', e); });
 }
 
 function _impLoadJobs() {

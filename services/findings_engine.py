@@ -22,6 +22,7 @@ from models.findings import (
     apply_risk_overrides,
     accept_finding, unaccept_finding, add_note, get_risk_summary,
     get_tool_breakdown, deduplicate, _risk_sort_key,
+    _apply_title_renames,
 )
 
 log = logging.getLogger("crucible.findings_engine")
@@ -699,6 +700,11 @@ class FindingsEngine:
         if not title:
             return
 
+        renamed = _apply_title_renames(title)
+        if renamed != title:
+            finding["_original_title"] = title
+            finding["title"] = renamed
+
         if project:
             try:
                 from flask import current_app
@@ -751,6 +757,12 @@ class FindingsEngine:
         Used by Nessus/Burp importers, manual checks, and recovery —
         cases where Crucible is the authoritative source.
         """
+        title = (finding.get("title") or "").strip()
+        if title:
+            renamed = _apply_title_renames(title)
+            if renamed != title:
+                finding["_original_title"] = title
+                finding["title"] = renamed
         if project:
             try:
                 from flask import current_app
@@ -956,6 +968,9 @@ class FindingsEngine:
             title = (f.get("title") or "").strip()
             if not title:
                 continue
+            renamed = _apply_title_renames(title)
+            if renamed != title:
+                f["title"] = renamed
             if not f.get("tool"):
                 f["tool"] = tool_id
             if scope and not f.get("scope"):
