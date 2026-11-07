@@ -123,4 +123,4 @@ def api_convert_engagement(project_id):
                     wal.unlink()
         except OSError:
             pass
-        return jsonify({"error": str(exc), "traceback": tb_str}), 500
+        return jsonify({"error": "Internal error"}), 500

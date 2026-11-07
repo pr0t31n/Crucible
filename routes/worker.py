@@ -131,7 +131,7 @@ def api_delegate_tool():
         )
         return jsonify({"ok": True, "delegation_id": delegation_id})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @worker_bp.route("/api/workers/recall", methods=["POST"])

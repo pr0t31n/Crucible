@@ -498,7 +498,7 @@ def api_test_connection(tool_id):
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Connection test timed out"})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"ok": False, "error": "Internal error"})
 
 
 @settings_bp.route("/api/fingerprint-auth", methods=["POST"])
@@ -546,7 +546,7 @@ def api_fingerprint_auth():
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Fingerprint recording timed out (5m)"})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"ok": False, "error": "Internal error"})
 
 
 @settings_bp.route("/api/authprobe", methods=["POST"])
@@ -606,7 +606,7 @@ def api_authprobe():
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "AuthProbe timed out"})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"ok": False, "error": "Internal error"})
 
 
 @settings_bp.route("/api/wifi-interfaces")
@@ -684,7 +684,7 @@ def api_beacon_test():
     except _req.exceptions.Timeout:
         return jsonify({"ok": False, "error": "Connection timed out"})
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)})
+        return jsonify({"ok": False, "error": "Internal error"})
 
 
 @settings_bp.route("/api/osift_api_key_template", methods=["POST"])
@@ -740,4 +740,4 @@ def api_osift_api_key_template():
             json.dump(template, f, indent=2)
         return jsonify(ok=True, created=True, path=str(p))
     except OSError as exc:
-        return jsonify(ok=False, error=str(exc)), 500
+        return jsonify(ok=False, error="Internal error"), 500

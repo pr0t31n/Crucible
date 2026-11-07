@@ -87,7 +87,7 @@ def api_findings(project_id):
         return jsonify({"findings": findings, "summary": summary})
     except Exception as exc:
         log.exception("Error loading findings for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/findings/v2/<project_id>")
@@ -143,7 +143,7 @@ def api_findings_v2(project_id):
                         "pages": 1, "source": "db"})
     except Exception as exc:
         log.exception("Error in findings v2 for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/findings/v2/<project_id>/filters")
@@ -155,7 +155,7 @@ def api_findings_v2_filters(project_id):
         return jsonify(filters)
     except Exception as exc:
         log.exception("Error getting filter options for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/reload-findings/<project_id>", methods=["POST"])
@@ -168,7 +168,7 @@ def api_reload_findings(project_id):
         return jsonify({"findings": findings, "summary": summary})
     except Exception as exc:
         log.exception("Error reloading findings for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/findings-count/<project_id>")
@@ -374,7 +374,7 @@ def api_finding_workflow(project_id):
         return jsonify({"workflow": workflow})
     except Exception as exc:
         log.exception("Error building finding workflow for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/host-correlation/<project_id>")
@@ -386,7 +386,7 @@ def api_host_correlation(project_id):
         return jsonify({"hosts": hosts, "total": len(hosts)})
     except Exception as exc:
         log.exception("Error building host correlation for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/finding/attach-evidence/<project_id>", methods=["POST"])
@@ -524,7 +524,7 @@ def api_cve_correlation(project_id):
         return jsonify({"cves": cves, "total": len(cves)})
     except Exception as exc:
         log.exception("Error building CVE correlation for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/compare-scans", methods=["POST"])
@@ -586,7 +586,7 @@ def api_compare_scans():
         })
     except Exception as exc:
         log.exception("Error comparing scans")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/snapshot-findings/<project_id>", methods=["POST"])
@@ -606,7 +606,7 @@ def api_snapshot_findings(project_id):
         return jsonify({"ok": True, "snapshot": ts, "count": len(findings)})
     except Exception as exc:
         log.exception("Error creating snapshot for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @findings_bp.route("/api/snapshots/<project_id>")
@@ -695,7 +695,7 @@ def api_diff_findings(project_id):
         })
     except Exception as exc:
         log.exception("Error diffing findings for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 _CSV_COLUMNS = [

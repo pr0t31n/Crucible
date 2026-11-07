@@ -505,7 +505,7 @@ def nessus_test(project_id):
     try:
         inline_client = _client_from_inline(body)
     except Exception as e:
-        return jsonify({"ok": False, "message": str(e)})
+        return jsonify({"ok": False, "message": "Internal error"})
 
     if inline_client:
         ok, msg = inline_client.test_connection()
@@ -537,7 +537,7 @@ def nessus_templates(project_id):
         templates = client.list_templates()
         return jsonify({"templates": templates})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/policies/<project_id>")
@@ -552,7 +552,7 @@ def nessus_policies(project_id):
             for p in policies
         ]})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/scan/<project_id>", methods=["POST"])
@@ -563,7 +563,7 @@ def nessus_scan(project_id):
     try:
         inline_client = _client_from_inline(data)
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
     if inline_client:
         client = inline_client
@@ -651,7 +651,7 @@ def nessus_scan(project_id):
                 json.dump(state, f, indent=2)
         return jsonify({"scan_id": scan_id, "scan_uuid": scan_uuid})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/status/<project_id>")
@@ -677,7 +677,7 @@ def nessus_status(project_id):
             json.dump(state, f, indent=2)
         return jsonify(info)
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/export/<project_id>", methods=["POST"])
@@ -712,7 +712,7 @@ def nessus_export(project_id):
             json.dump(state, f, indent=2)
         return jsonify({"ok": True, "file": str(out_file), "size": len(content)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/download/<project_id>")
@@ -850,7 +850,7 @@ def nessus_import(project_id):
         result = client.import_scan(file_key, cfg.get("folder_id"))
         return jsonify({"ok": True, "result": result})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/scans/<project_id>")
@@ -872,7 +872,7 @@ def nessus_scans(project_id):
         result.sort(key=lambda x: x.get("last_modification_date") or 0, reverse=True)
         return jsonify({"scans": result})
     except Exception as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/fetch/<project_id>", methods=["POST"])
@@ -897,7 +897,7 @@ def nessus_fetch(project_id):
                 "status": status,
             }), 400
     except Exception as e:
-        return jsonify({"error": "Cannot check scan status: %s" % str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
     ndir = _nessus_dir(project_id)
     if not ndir:
@@ -934,7 +934,7 @@ def nessus_fetch(project_id):
         return jsonify({"ok": True, "finding_count": len(findings)})
     except Exception as e:
         log.error("Nessus fetch failed: %s", e)
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"error": "Internal error"}), 502
 
 
 @nessus_bp.route("/api/nessus/purge/<project_id>", methods=["DELETE"])

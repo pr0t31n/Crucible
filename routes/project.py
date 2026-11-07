@@ -354,7 +354,7 @@ def api_create_project():
     try:
         pid, meta = create_project(data)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal error"}), 500
     from services.audit_logger import audit
     audit(meta.get("project_dir", ""), "PROJECT_CREATE",
           project_id=pid, name=meta.get("name", ""))
@@ -549,7 +549,7 @@ def api_beacon_test():
             return jsonify({"ok": True, "status": r.status_code})
         return jsonify({"ok": False, "error": f"HTTP {r.status_code}"})
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 502
+        return jsonify({"ok": False, "error": "Internal error"}), 502
 
 
 @project_bp.route("/api/delete_project/<project_id>", methods=["DELETE"])
