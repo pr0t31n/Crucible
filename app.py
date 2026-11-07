@@ -69,7 +69,7 @@ def create_app():
     def _handle_http_error(exc):
         from flask import jsonify as _jf, request as _req
         if _req.path.startswith("/api/"):
-            return _jf({"error": exc.description}), exc.code
+            return _jf({"error": exc.name}), exc.code
         return exc
 
     @app.errorhandler(Exception)

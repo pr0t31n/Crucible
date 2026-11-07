@@ -800,7 +800,7 @@ def api_action_items(project_id):
         return jsonify({"items": items, "summary": summary})
     except Exception as exc:
         log.exception("Error loading action items for %s", project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/action-item/execute", methods=["POST"])
@@ -907,7 +907,7 @@ def api_execute_action():
                             "reason": reason})
     except Exception as exc:
         log.exception("Error executing action item %s", item_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/action-item/dismiss", methods=["POST"])
@@ -923,7 +923,7 @@ def api_dismiss_action():
         return jsonify({"ok": True})
     except Exception as exc:
         log.exception("Error dismissing action item %s", item_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/action-item/queue", methods=["POST"])
@@ -942,7 +942,7 @@ def api_queue_action():
         return jsonify({"ok": True})
     except Exception as exc:
         log.exception("Error queueing action item %s", item_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/dequeue", methods=["POST"])
@@ -964,7 +964,7 @@ def api_dequeue():
         return jsonify({"ok": True, "removed": False})
     except Exception as exc:
         log.exception("Error dequeuing %s for %s", tool_id, project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/action-item/reset", methods=["POST"])
@@ -1046,7 +1046,7 @@ def api_reset_action():
         return jsonify(resp)
     except Exception as exc:
         log.exception("Error resetting action item %s", item_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 def _cleanup_tool_session(project, project_id, tool_id):
@@ -1149,7 +1149,7 @@ def api_bulk_dismiss_actions():
         return jsonify({"ok": True, "dismissed": len(item_ids)})
     except Exception as exc:
         log.exception("Error bulk dismissing action items")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/bulk-queue-actions", methods=["POST"])
@@ -1165,7 +1165,7 @@ def api_bulk_queue_actions():
         return jsonify({"ok": True, "queued": len(item_ids)})
     except Exception as exc:
         log.exception("Error bulk queueing action items")
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/action-item/note", methods=["POST"])
@@ -1183,7 +1183,7 @@ def api_action_item_note():
         return jsonify({"ok": True})
     except Exception as exc:
         log.exception("Error adding note to action item %s", item_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/bulk-launch-tool", methods=["POST"])
@@ -1244,7 +1244,7 @@ def api_bulk_launch_tool():
                             "reason": reason, "count": len(item_ids)})
     except Exception as exc:
         log.exception("Error bulk launching %s", tool_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/launch-tool/<project_id>", methods=["POST"])
@@ -1291,7 +1291,7 @@ def api_launch_tool(project_id):
         return jsonify({"ok": True, "tool_id": tool_id})
     except Exception as exc:
         log.exception("Error launching tool %s for %s", tool_id, project_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/preview-command", methods=["POST"])
@@ -1347,7 +1347,7 @@ def api_preview_command():
         return jsonify({"command": cmd_str})
     except Exception as exc:
         log.exception("Error previewing command for %s", tool_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @action_items_bp.route("/api/action-item/resolve-manual", methods=["POST"])
@@ -1403,4 +1403,4 @@ def api_resolve_manual_check():
         return jsonify({"ok": True, "status": new_status, "finding_id": finding_id})
     except Exception as exc:
         log.exception("Error resolving manual check %s", item_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500

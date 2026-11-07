@@ -273,10 +273,11 @@ def make_ssl_context() -> ssl.SSLContext:
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(str(cert), str(key))
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.options |= ssl.OP_NO_COMPRESSION
     try:
         ctx.set_ciphers(_CIPHERS)
     except ssl.SSLError:
-        pass  # fall back to platform defaults if the cipher string is rejected
+        pass
     return ctx
 
 # ── Security headers ──────────────────────────────────────────────────────────
@@ -302,11 +303,10 @@ def apply_security_headers(response):
     h["Referrer-Policy"]           = "strict-origin-when-cross-origin"
     h["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
     h["X-XSS-Protection"]          = "1; mode=block"
-    # Prevent browsers from caching HTML pages — a cached login page
-    # carries a stale CSRF token, causing the first login attempt after
-    # session timeout to fail with "Invalid request token."
     h["Cache-Control"]             = "no-store, no-cache, must-revalidate, max-age=0"
     h["Pragma"]                    = "no-cache"
+    h.pop("Server", None)
+    h.pop("X-Powered-By", None)
     return response
 
 # ── Request gate ──────────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ def api_import_tools():
         import traceback
         tb = traceback.format_exc()
         log.error("Failed to list import tools:\n%s", tb)
-        return jsonify({"error": str(exc), "traceback": tb, "tools": []}), 500
+        return jsonify({"error": "Internal error", "tools": []}), 500
     return jsonify({"tools": tools})
 
 
@@ -62,7 +62,7 @@ def api_import_file(project_id):
         )
     except Exception as exc:
         log.exception("Import submit failed for %s", safe_name)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
     return jsonify(job)
 
@@ -184,6 +184,6 @@ def api_import_retry(project_id, job_id):
         )
     except Exception as exc:
         log.exception("Retry failed for job %s", job_id)
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
     return jsonify(new_job)

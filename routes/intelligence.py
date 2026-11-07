@@ -2417,11 +2417,7 @@ def api_webapp_intel(project_id):
         return jsonify(result)
     except Exception as _wi_exc:
         import traceback as _tb
-        return jsonify({
-            "error": str(_wi_exc),
-            "traceback": _tb.format_exc(),
-            "fr_dir": str(fr_dir) if 'fr_dir' in dir() else None,
-        }), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 _SCOPE_SUBTAB_MAP = {

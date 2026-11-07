@@ -88,7 +88,7 @@ def _err_503():
 
 def _err_500(e):
     log.warning("intel_v2 error: %s", e, exc_info=True)
-    return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "Internal error"}), 500
 
 
 def _empty_page(page=1):

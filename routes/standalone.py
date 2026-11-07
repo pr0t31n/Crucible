@@ -212,7 +212,7 @@ def api_host_discovery():
         except subprocess.TimeoutExpired:
             return jsonify({"error": "Host discovery timed out (120s)"}), 504
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Internal error"}), 500
 
         raw_xml = ""
         raw_gnmap = ""
@@ -285,7 +285,7 @@ def api_wordlist():
             log_fn=lambda m: logs.append(m),
         )
     except Exception as e:
-        return jsonify({"error": str(e), "logs": logs}), 500
+        return jsonify({"error": "Internal error", "logs": logs}), 500
 
     if not result_path:
         return jsonify({"error": "Wordlist generation failed", "logs": logs}), 500
@@ -350,7 +350,7 @@ def api_port_probe():
         except subprocess.TimeoutExpired:
             return jsonify({"error": f"Port scan timed out ({timeout}s)"}), 504
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Internal error"}), 500
 
         raw_xml = ""
         raw_gnmap = ""
@@ -438,7 +438,7 @@ def api_ssl_audit():
     except subprocess.TimeoutExpired:
         return jsonify({"error": f"{tool_used} timed out (120s)"}), 504
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
     output = result.stdout
     if result.returncode != 0 and not output:
@@ -718,7 +718,7 @@ def api_traffic_interfaces():
         return jsonify({"ok": True, "interfaces": interfaces,
                         "tool": os.path.basename(tool)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Internal error"}), 500
 
 
 @standalone_bp.route("/api/standalone/traffic-dump", methods=["POST"])
@@ -1298,7 +1298,7 @@ def api_phish_analyzer():
 
         return jsonify(ok=True, report=report, csv_rows=csv_rows)
     except Exception as exc:
-        return jsonify(ok=False, error=str(exc)), 500
+        return jsonify(ok=False, error="Internal error"), 500
     finally:
         for f in (tmp_events, tmp_results):
             if f and os.path.exists(f.name):
