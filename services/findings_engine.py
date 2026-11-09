@@ -84,6 +84,11 @@ class FindingsEngine:
                 return db_result
             return self.refresh(project_id, project)
 
+    def cached_count(self, project_id):
+        with self._lock:
+            cached = self._cache.get(project_id)
+            return len(cached) if cached is not None else None
+
     def get_false_positives(self, project_id, project):
         """Get false positives for a project."""
         with self._lock:

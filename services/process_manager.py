@@ -2755,6 +2755,9 @@ class ProcessManager:
                     project_id, data, project=project)
             except Exception as exc:
                 log.warning("FindingsEngine notify error: %s", exc)
+            cc = self._findings_engine.cached_count(project_id)
+            if cc is not None:
+                data["findings_total"] = cc
         try:
             self.socketio.emit("tool_finding", data,
                                room=_room(project_id))

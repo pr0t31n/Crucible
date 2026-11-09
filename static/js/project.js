@@ -491,7 +491,10 @@ socket.on('console_buffer', function(data) {
 socket.on('tool_finding', function(data) {
     if (data.project_id !== PID) return;
     var pill = document.getElementById('findingsPill');
-    if (_v2Mode) {
+    if (typeof data.findings_total === 'number') {
+        _serverTotal = data.findings_total;
+        if (pill) pill.textContent = _serverTotal || '';
+    } else if (_v2Mode) {
         _serverTotal = (_serverTotal || 0) + 1;
         if (pill) pill.textContent = _serverTotal || '';
     } else {
