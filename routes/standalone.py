@@ -1,5 +1,6 @@
 """Standalone tools — routes for tools accessible from the homepage."""
 
+import collections
 import json
 import os
 import platform
@@ -10,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
+import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -19,6 +22,9 @@ standalone_bp = Blueprint("standalone", __name__)
 
 _merge_jobs = {}
 _merge_lock = threading.Lock()
+
+_upgrade_jobs: dict = {}
+_upgrade_lock = threading.Lock()
 
 _SAFE_TARGET_RE = re.compile(r'^[a-zA-Z0-9.:\-/\s,]+$')
 _PYTHON3 = shutil.which("python3") or sys.executable
@@ -1413,9 +1419,125 @@ STANDALONE_TOOLS = [
         "url": None,
         "modal": True,
     },
+    {
+        "id": "safe-upgrade",
+        "name": "Safe Upgrade",
+        "desc": "Tiered apt upgrade with dependency recovery and connectivity protection",
+        "icon": "shield-check",
+        "url": None,
+        "modal": True,
+    },
 ]
 
 
 @standalone_bp.route("/api/standalone_tools")
 def api_standalone_tools():
     return jsonify(STANDALONE_TOOLS)
+
+
+# ── Safe Upgrade ──────────────────────────────────────────────────────────
+
+_SAFE_UPGRADE_SCRIPT = Path(__file__).resolve().parent.parent / "safe_upgrade.py"
+
+
+def _upgrade_worker(job_id: str, flags: list):
+    job = _upgrade_jobs[job_id]
+    cmd = ["sudo", sys.executable, "-u", str(_SAFE_UPGRADE_SCRIPT), "--no-color"] + flags
+    if os.geteuid() == 0:
+        cmd = [sys.executable, "-u", str(_SAFE_UPGRADE_SCRIPT), "--no-color"] + flags
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            bufsize=1, universal_newlines=True,
+        )
+        job["pid"] = proc.pid
+        for line in proc.stdout:
+            with _upgrade_lock:
+                job["lines"].append(line.rstrip("\n"))
+        proc.wait()
+        job["exit_code"] = proc.returncode
+    except Exception as exc:
+        with _upgrade_lock:
+            job["lines"].append(f"[!] Internal error: {exc}")
+        job["exit_code"] = -1
+    finally:
+        job["status"] = "complete"
+
+
+@standalone_bp.route("/api/standalone/safe-upgrade", methods=["POST"])
+def api_safe_upgrade_start():
+    with _upgrade_lock:
+        running = [j for j in _upgrade_jobs.values() if j["status"] == "running"]
+        if running:
+            return jsonify({"error": "An upgrade is already running"}), 409
+
+    data = request.get_json(silent=True) or {}
+    flags = []
+    if data.get("dry_run"):
+        flags.append("--dry-run")
+    if data.get("repair_only"):
+        flags.append("--repair-only")
+    if data.get("skip_critical"):
+        flags.append("--skip-critical")
+    if data.get("skip_sensitive"):
+        flags.append("--skip-sensitive")
+    if data.get("no_cleanup"):
+        flags.append("--no-cleanup")
+    if data.get("include_held"):
+        flags.append("--include-held")
+    chunk = data.get("chunk_size")
+    if chunk and str(chunk).isdigit() and 1 <= int(chunk) <= 100:
+        flags.extend(["--chunk-size", str(int(chunk))])
+
+    if not _SAFE_UPGRADE_SCRIPT.exists():
+        return jsonify({"error": "safe_upgrade.py not found"}), 500
+
+    job_id = uuid.uuid4().hex[:12]
+    job = {
+        "id": job_id,
+        "status": "running",
+        "lines": [],
+        "exit_code": None,
+        "pid": None,
+        "started": time.time(),
+        "flags": flags,
+    }
+    with _upgrade_lock:
+        _upgrade_jobs[job_id] = job
+
+    t = threading.Thread(target=_upgrade_worker, args=(job_id, flags), daemon=True)
+    t.start()
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@standalone_bp.route("/api/standalone/safe-upgrade/log")
+def api_safe_upgrade_log():
+    job_id = request.args.get("job_id", "")
+    offset = int(request.args.get("offset", 0))
+    job = _upgrade_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Unknown job"}), 404
+    with _upgrade_lock:
+        new_lines = job["lines"][offset:]
+    return jsonify({
+        "status": job["status"],
+        "lines": new_lines,
+        "offset": offset + len(new_lines),
+        "exit_code": job["exit_code"],
+    })
+
+
+@standalone_bp.route("/api/standalone/safe-upgrade/cancel", methods=["POST"])
+def api_safe_upgrade_cancel():
+    data = request.get_json(silent=True) or {}
+    job_id = data.get("job_id", "")
+    job = _upgrade_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Unknown job"}), 404
+    if job["status"] != "running" or not job["pid"]:
+        return jsonify({"error": "Job not running"}), 400
+    try:
+        os.kill(job["pid"], 15)
+    except ProcessLookupError:
+        pass
+    return jsonify({"ok": True})
