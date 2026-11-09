@@ -1387,6 +1387,56 @@
   var wdm = document.getElementById('wirelessDefaultMode');
   if (wdm) wdm.addEventListener('change', function() { checkWirelessAutoQueueGating(); });
 
+  /* ── Scope IP classification validation ───────────────── */
+  var _RFC1918 = [
+    /^10\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^192\.168\./,
+    /^127\./,
+    /^0\./,
+    /^169\.254\./
+  ];
+  function _isPrivateIP(ip) {
+    return _RFC1918.some(function(r) { return r.test(ip); });
+  }
+  var _scopeIPConfirmed = false;
+  function _checkScopeIPClassification(callback) {
+    var scope = scopeTypeEl.value;
+    if (scope !== 'internal') { callback(); return; }
+    var cidrs = textToArray('cidrs');
+    if (!cidrs.length) { callback(); return; }
+    var nonPrivate = cidrs.filter(function(c) {
+      var ip = c.split('/')[0].trim();
+      return ip && !_isPrivateIP(ip);
+    });
+    if (!nonPrivate.length || _scopeIPConfirmed) { callback(); return; }
+    var existing = document.getElementById('scopeIPModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'scopeIPModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6)';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-secondary,#1e1e2e);border:1px solid var(--border-color,#444);border-radius:12px;padding:28px 32px;max-width:540px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+    box.innerHTML = '<div style="font-size:1.15rem;font-weight:700;margin-bottom:12px;color:var(--clr-medium,#f0ad4e)">⚠ Non-Private IPs in Internal Scope</div>'
+      + '<div style="margin-bottom:16px;line-height:1.6;color:var(--text-primary,#e0e0e0)">The following IP ranges are <strong>not RFC1918 private addresses</strong> but are assigned to the <strong>Internal</strong> scope:</div>'
+      + '<div style="background:var(--bg-primary,#0d0d1a);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-family:var(--font-mono,monospace);font-size:0.9rem;max-height:160px;overflow-y:auto;color:var(--text-secondary,#bbb)">'
+      + nonPrivate.map(function(c) { return escHtml(c); }).join('<br>') + '</div>'
+      + '<div style="margin-bottom:20px;line-height:1.6;color:var(--text-primary,#e0e0e0)">Confirm that these addresses should be treated as <strong>internal</strong> for this engagement. Scattershot3 will scan them under the internal scope.</div>'
+      + '<div style="display:flex;gap:12px;justify-content:flex-end">'
+      + '<button id="scopeIPCancel" type="button" class="btn btn-secondary" style="min-width:100px">Cancel</button>'
+      + '<button id="scopeIPConfirm" type="button" class="btn btn-primary" style="min-width:160px">Yes, Mark as Internal</button>'
+      + '</div>';
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    document.getElementById('scopeIPCancel').addEventListener('click', function() { modal.remove(); });
+    document.getElementById('scopeIPConfirm').addEventListener('click', function() {
+      _scopeIPConfirmed = true;
+      modal.remove();
+      callback();
+    });
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+  }
+
   /* ── Submit ──────────────────────────────────────────── */
   btnSubmit.addEventListener('click', function() {
     if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
@@ -1395,6 +1445,9 @@
     if (!validateSSIDExclusivity()) {
       return;
     }
+    _checkScopeIPClassification(function() { _doSubmit(); });
+  });
+  function _doSubmit() {
     btnSubmit.disabled = true;
     btnSubmit.textContent = EDIT_MODE ? 'Saving…' : 'Creating…';
 
@@ -1530,7 +1583,7 @@
       btnSubmit.textContent = EDIT_MODE ? 'Save Changes' : 'Create Engagement';
       alert('Error: ' + err.message);
     });
-  });
+  }
 
   /* ── Helpers ─────────────────────────────────────────── */
   function valOf(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }

@@ -1653,14 +1653,32 @@ def api_intel_panel(panel, project_id):
         return jsonify({"error": f"Unknown intel panel: {panel}"}), 404
     tool_key, filenames = spec
     project = require_project(project_id)
-    all_tool_dirs = _resolve_tool_dirs(project, tool_key)
+
+    scope_param = request.args.get("scope", "").strip().lower()
+    _SCOPE_KEY_MAP = {"internal": "internal", "external": "external",
+                      "webapp": "webapp", "int": "internal", "ext": "external"}
+    scope_key = _SCOPE_KEY_MAP.get(scope_param)
+
+    if scope_key:
+        eng_dir = project.get("engagement_dir", project.get("project_dir", ""))
+        if eng_dir:
+            tool_dirname = TOOL_OUTPUT_DIRS.get(tool_key, tool_key)
+            scope_tool_dir = str(Path(eng_dir) / scope_key / tool_dirname)
+            if Path(scope_tool_dir).is_dir():
+                all_tool_dirs = [scope_tool_dir]
+            else:
+                all_tool_dirs = _resolve_tool_dirs(project, tool_key)
+        else:
+            all_tool_dirs = _resolve_tool_dirs(project, tool_key)
+    else:
+        all_tool_dirs = _resolve_tool_dirs(project, tool_key)
+
     key = panel.replace("-", "_")
 
     # Retroactive exclusion + OOS scope filter + payload projection
     sm = get_ext("scope_manager")
     _net_panels = frozenset(("net-hosts", "net-services", "net-ports"))
     _SLIM_FN = {"net-hosts": _slim_hosts_payload,
-                "net-services": _slim_services_payload,
                 "net-ports": _slim_hosts_payload}
 
     def _maybe_filter(d):

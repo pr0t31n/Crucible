@@ -1866,6 +1866,7 @@ function _buildV2Params() {
         if (_riskToggles[rk]) activeRisks.push(rk);
     }
     if (activeRisks.length < 5) p.risk = activeRisks.join(',');
+    if (_kevFilterActive) p.kev = '1';
     var sortMode = (document.getElementById('findingsSortOrder') || {}).value || 'risk';
     if (sortMode === 'alpha') { p.sort = 'title,risk_id'; }
     else { p.sort = 'risk_id,title'; }
@@ -5991,13 +5992,27 @@ function _addToolToIntelScope(toolId, scopeKey, originScope) {
         dn = SCOPE_DISPLAY_NAMES[scopeKey] || scopeKey;
     }
     if (!_scopeToolsMap[dn]) {
-        _scopeToolsMap[dn] = [];
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'tab-btn';
-        btn.setAttribute('data-scope', dn);
-        btn.textContent = dn;
-        intelScopeNav.appendChild(btn);
+        var activeScopes = PROJECT.active_scopes || [];
+        var isConfiguredScope = activeScopes.some(function(s) {
+            return (SCOPE_DISPLAY_NAMES[s] || s) === dn;
+        });
+        if (!isConfiguredScope) {
+            var fallback = null;
+            for (var existing in _scopeToolsMap) {
+                if (_scopeToolsMap[existing].length) { fallback = existing; break; }
+            }
+            if (fallback) { dn = fallback; }
+            else { return; }
+        }
+        if (!_scopeToolsMap[dn]) {
+            _scopeToolsMap[dn] = [];
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'tab-btn';
+            btn.setAttribute('data-scope', dn);
+            btn.textContent = dn;
+            intelScopeNav.appendChild(btn);
+        }
     }
     if (_scopeToolsMap[dn].indexOf(toolId) === -1) {
         _scopeToolsMap[dn].push(toolId);
@@ -10488,6 +10503,47 @@ function _stInfoRow(label, value) {
 }
 
 
+/* ── Scope IP classification check (shared by settings + scope modals) ── */
+var _RFC1918_SETTINGS = [/^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^127\./, /^0\./, /^169\.254\./];
+function _isPrivateIPSettings(ip) { return _RFC1918_SETTINGS.some(function(r) { return r.test(ip); }); }
+var _scopeIPSettingsConfirmed = false;
+
+function _checkScopeIPSettingsClassification(scopeKey, cidrs, callback) {
+    if (_scopeIPSettingsConfirmed) { callback(); return; }
+    if (scopeKey !== 'internal') { callback(); return; }
+    if (!cidrs || !cidrs.length) { callback(); return; }
+    var external = [];
+    cidrs.forEach(function(c) {
+        var ip = c.replace(/\/\d+$/, '').trim();
+        if (ip && !_isPrivateIPSettings(ip)) external.push(c);
+    });
+    if (!external.length) { callback(); return; }
+    var listHtml = external.slice(0, 10).map(function(c) { return '<li style="font-family:var(--font-mono);font-size:13px">' + esc(c) + '</li>'; }).join('');
+    if (external.length > 10) listHtml += '<li style="color:var(--text-muted)">… and ' + (external.length - 10) + ' more</li>';
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.innerHTML =
+        '<div class="modal" style="max-width:520px">' +
+        '<div class="modal-header"><h3>External IPs in Internal Scope</h3></div>' +
+        '<div class="modal-body" style="font-size:14px">' +
+        '<p>The following IPs are not in RFC 1918 private ranges but are assigned to the <strong>Internal</strong> scope:</p>' +
+        '<ul style="max-height:200px;overflow-y:auto;margin:12px 0">' + listHtml + '</ul>' +
+        '<p>If this client uses public address space for internal networks, confirm below to proceed.</p>' +
+        '</div>' +
+        '<div class="modal-footer">' +
+        '<button type="button" class="btn btn-secondary" id="scopeIPSCancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="scopeIPSConfirm">Confirm — Mark as Internal</button>' +
+        '</div></div>';
+    document.body.appendChild(overlay);
+    document.getElementById('scopeIPSCancel').addEventListener('click', function() { overlay.remove(); });
+    document.getElementById('scopeIPSConfirm').addEventListener('click', function() {
+        _scopeIPSettingsConfirmed = true;
+        overlay.remove();
+        callback();
+    });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+}
+
 /* ══════════════════════════════════════════════════════════════════
    10. SETTINGS TAB
    ══════════════════════════════════════════════════════════════════ */
@@ -11340,6 +11396,29 @@ function _doSaveSettings(formData, archive) {
 
 var _pendingSaveData = null;
 
+function _getToolScope(tid) {
+    var st = PROJECT.scope_tools || {};
+    for (var sk in st) {
+        if ((st[sk] || []).indexOf(tid) !== -1) return sk;
+    }
+    return TOOL_NATIVE_SCOPES[tid] || '';
+}
+
+function _settingsSubmitWithIPCheck(formData, archive) {
+    if (settingsActiveTool === 'ss3') {
+        var scopeKey = _getToolScope('ss3');
+        var cidrs = formData.network_cidrs;
+        if (typeof cidrs === 'string') cidrs = cidrs.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+        if (cidrs && cidrs.length) {
+            _checkScopeIPSettingsClassification(scopeKey, cidrs, function() {
+                _doSaveSettings(formData, archive);
+            });
+            return;
+        }
+    }
+    _doSaveSettings(formData, archive);
+}
+
 document.getElementById('settingsForm').addEventListener('submit', function(e) {
     e.preventDefault();
     if (!settingsActiveTool) return;
@@ -11357,14 +11436,15 @@ document.getElementById('settingsForm').addEventListener('submit', function(e) {
         return;
     }
 
-    _doSaveSettings(formData, false);
+    _settingsSubmitWithIPCheck(formData, false);
 });
 
 document.getElementById('btnInvalidateConfirm').addEventListener('click', function() {
     document.getElementById('settingsInvalidateModal').classList.remove('open');
     if (_pendingSaveData) {
-        _doSaveSettings(_pendingSaveData, true);
+        var data = _pendingSaveData;
         _pendingSaveData = null;
+        _settingsSubmitWithIPCheck(data, true);
     }
 });
 
@@ -11457,6 +11537,16 @@ document.getElementById('btnScopeModalSave').addEventListener('click', function(
 });
 
 function _submitScopeChanges() {
+    var hasInternal = _desiredScopes.indexOf('internal') !== -1;
+    var cidrs = _pendingScopeData.network_cidrs;
+    if (hasInternal && cidrs && cidrs.length) {
+        _checkScopeIPSettingsClassification('internal', cidrs, function() { _doSubmitScopeChanges(); });
+        return;
+    }
+    _doSubmitScopeChanges();
+}
+
+function _doSubmitScopeChanges() {
     fetch('/api/update_scopes/' + PID, {
         method: 'POST', credentials: 'same-origin',
         headers: {'Content-Type': 'application/json'},
