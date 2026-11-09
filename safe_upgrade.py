@@ -303,8 +303,12 @@ def _force_configure_pkg(pkg: str) -> bool:
     rc, _, _ = _dpkg(["--force-depends", "--configure", pkg], timeout=120)
     return rc == 0
 
-def _purge_reinstall(pkg: str) -> bool:
-    """Last resort: purge a broken package and reinstall it."""
+def _purge_reinstall(pkg: str, protected: set[str] | None = None) -> bool:
+    """Last resort: purge a broken package and reinstall it.
+    REFUSES to purge connectivity-protected packages."""
+    if protected and _is_protected(pkg, protected):
+        _log("-", f"  REFUSED purge of protected package {pkg}")
+        return False
     _dpkg(["--purge", "--force-remove-reinstreq", "--force-depends", pkg], timeout=60)
     rc, _, _ = _apt(["install", "-y", pkg], timeout=300)
     return rc == 0
@@ -313,15 +317,19 @@ def _download_install(pkg: str) -> bool:
     """Download .deb via apt and install via dpkg directly."""
     dl_dir = "/tmp/_safe_upgrade_debs"
     os.makedirs(dl_dir, exist_ok=True)
-    rc, out, _ = _apt(["download", pkg], timeout=120)
-    if rc != 0:
-        rc2, _, _ = _run(["apt-get", "download", pkg], timeout=120,
-                         env={**_APT_ENV, "PWD": dl_dir})
-        if rc2 != 0:
+    try:
+        r = subprocess.run(
+            ["apt-get", "download", pkg],
+            capture_output=True, text=True, timeout=120,
+            env=_APT_ENV, cwd=dl_dir,
+        )
+        if r.returncode != 0:
             return False
+    except (subprocess.TimeoutExpired, Exception):
+        return False
     import glob
-    debs = sorted(glob.glob(f"{dl_dir}/{pkg}_*.deb") +
-                  glob.glob(f"./{pkg}_*.deb"), key=os.path.getmtime, reverse=True)
+    debs = sorted(glob.glob(f"{dl_dir}/{pkg}_*.deb"),
+                  key=os.path.getmtime, reverse=True)
     if not debs:
         return False
     rc, _, _ = _dpkg(["-i", "--force-depends", debs[0]], timeout=120)
@@ -331,23 +339,58 @@ def _download_install(pkg: str) -> bool:
         pass
     return rc == 0
 
-def _deep_repair(broken: dict[str, str]) -> dict[str, str]:
+def _is_protected(pkg: str, protected: set[str]) -> bool:
+    """Check if a package is connectivity-protected (exact match or TLS prefix)."""
+    if pkg in protected:
+        return True
+    for pfx in _TLS_CRITICAL_PREFIXES:
+        if pkg.startswith(pfx) and protected:
+            return True
+    return False
+
+def _deep_repair(broken: dict[str, str], protected: set[str] | None = None,
+                 active_methods: list[dict] | None = None) -> dict[str, str]:
     """Escalating repair for packages that survived multi-pass configure.
-    Tries: force-configure → download+dpkg -i → purge+reinstall."""
+    Protected packages (connectivity-critical) get limited escalation:
+    force-configure only, with connectivity checks before/after.
+    Unprotected packages get full escalation: force-configure → download+dpkg-i → purge+reinstall."""
     remaining = dict(broken)
     if not remaining:
         return remaining
+    if protected is None:
+        protected = set()
 
-    _log("*", f"Deep repair: {len(remaining)} stubborn packages")
+    n_prot = sum(1 for p in remaining if _is_protected(p, protected))
+    n_unprot = len(remaining) - n_prot
+    _log("*", f"Deep repair: {len(remaining)} stubborn packages "
+         f"({n_prot} protected, {n_unprot} unprotected)")
 
+    # Stage 1: force-configure — safe for all packages
     ordered = _topo_sort_broken(set(remaining.keys()))
     for pkg in ordered:
         if pkg not in remaining:
             continue
-        _log("*", f"  Force-configure {pkg}…")
+        is_prot = _is_protected(pkg, protected)
+        label = f"{_Y}[P]{_R} " if is_prot else ""
+        # For protected packages, verify connectivity before touching them
+        if is_prot and active_methods:
+            pre = _verify_all_conn(active_methods)
+            if not all(c["ok"] for c in pre):
+                _log("~", f"  {label}SKIP force-configure {pkg} — connectivity already degraded")
+                continue
+        _log("*", f"  {label}Force-configure {pkg}…")
         if _force_configure_pkg(pkg):
-            _log("+", f"  {pkg} force-configured")
+            _log("+", f"  {label}{pkg} force-configured")
             del remaining[pkg]
+            # Check connectivity didn't break
+            if is_prot and active_methods:
+                post = _verify_all_conn(active_methods)
+                if not all(c["ok"] for c in post):
+                    _log("-", f"  {_RD}CONNECTIVITY DEGRADED{_R} after force-configuring {pkg}")
+                    for m in active_methods:
+                        if not m["verify"]():
+                            _log("*", f"  Restarting {m['name']}…")
+                            _restart_services(m)
             continue
 
     if remaining:
@@ -357,18 +400,47 @@ def _deep_repair(broken: dict[str, str]) -> dict[str, str]:
             if pkg not in still_broken:
                 del remaining[pkg]
 
+    # Stage 2: download+dpkg-i and purge+reinstall — ONLY for unprotected packages
     for pkg in list(remaining.keys()):
+        if _is_protected(pkg, protected):
+            _log("~", f"  {_Y}[P]{_R} {pkg} — protected, skipping destructive repair")
+            continue
         _log("*", f"  Download + dpkg -i {pkg}…")
         if _download_install(pkg):
             _log("+", f"  {pkg} reinstalled via dpkg -i")
             del remaining[pkg]
             continue
         _log("*", f"  Purge + reinstall {pkg}…")
-        if _purge_reinstall(pkg):
+        if _purge_reinstall(pkg, protected=protected):
             _log("+", f"  {pkg} purge-reinstalled")
             del remaining[pkg]
         else:
             _log("-", f"  {pkg} UNRECOVERABLE")
+
+    # Stage 3: protected packages that are still broken — try download+dpkg-i
+    # with connectivity checks (no purge — too dangerous)
+    for pkg in list(remaining.keys()):
+        if not _is_protected(pkg, protected):
+            continue
+        if active_methods:
+            pre = _verify_all_conn(active_methods)
+            if not all(c["ok"] for c in pre):
+                _log("~", f"  {_Y}[P]{_R} SKIP {pkg} — connectivity degraded")
+                continue
+        _log("*", f"  {_Y}[P]{_R} Download + dpkg -i {pkg} (no purge)…")
+        if _download_install(pkg):
+            _log("+", f"  {_Y}[P]{_R} {pkg} reinstalled via dpkg -i")
+            del remaining[pkg]
+            if active_methods:
+                post = _verify_all_conn(active_methods)
+                if not all(c["ok"] for c in post):
+                    _log("-", f"  {_RD}CONNECTIVITY DEGRADED{_R} after reinstalling {pkg}")
+                    for m in active_methods:
+                        if not m["verify"]():
+                            _log("*", f"  Restarting {m['name']}…")
+                            _restart_services(m)
+        else:
+            _log("-", f"  {_Y}[P]{_R} {pkg} — cannot repair without purge, SKIPPING")
 
     if remaining:
         _dpkg(["--configure", "-a"], timeout=300)
@@ -389,8 +461,11 @@ def _repair_quick() -> None:
         _dpkg(["--configure", "-a"], timeout=120)
     _apt(["install", "-f", "-y"], timeout=300)
 
-def _resolve_deps(pkg: str) -> bool:
-    """Resolve dependencies for a single package using the full repair stack."""
+def _resolve_deps(pkg: str, protected: set[str] | None = None) -> bool:
+    """Resolve dependencies for a single package using the full repair stack.
+    Protected packages skip purge-based recovery."""
+    if protected is None:
+        protected = set()
     rc, _, err = _dpkg(["--configure", pkg], timeout=120)
     if rc == 0:
         return True
@@ -416,6 +491,8 @@ def _resolve_deps(pkg: str) -> bool:
 
 # ── Upgrade engine ───────────────────────────────────────────────────────────
 _stopping = False
+_PROTECTED_PKGS: set[str] = set()  # populated by phase_preflight
+_ACTIVE_METHODS: list[dict] = []   # populated by phase_preflight
 
 def _apt_install(pkgs: list[str]) -> tuple[int, str, str]:
     return _apt(["install", "-y"] + pkgs, timeout=600)
@@ -450,7 +527,7 @@ def _upgrade_single(pkg: str) -> bool:
     rc, out, err = _apt_install([pkg])
     if rc == 0:
         return True
-    _resolve_deps(pkg)
+    _resolve_deps(pkg, protected=_PROTECTED_PKGS)
     rc, out, err = _apt_install([pkg])
     if rc == 0:
         return True
@@ -555,6 +632,9 @@ def phase_preflight(args: argparse.Namespace) -> dict:
         all_critical_pkgs |= _NET_CRITICAL
     if not active_methods:
         _log("~", "No remote connectivity detected — critical tier will be empty")
+    global _PROTECTED_PKGS, _ACTIVE_METHODS
+    _PROTECTED_PKGS = set(all_critical_pkgs)
+    _ACTIVE_METHODS = list(active_methods)
     snap = _snapshot()
     _log("", f"Snapshot:    {_DIM}{snap}{_R}")
     return {
@@ -595,7 +675,9 @@ def phase_repair(ctx: dict) -> None:
         remaining = _get_broken_packages()
     if remaining:
         _log("*", f"{len(remaining)} packages still broken — escalating")
-        still_bad = _deep_repair(remaining)
+        still_bad = _deep_repair(remaining,
+                                 protected=ctx.get("critical_pkgs", set()),
+                                 active_methods=ctx.get("active_methods", []))
         if still_bad:
             _log("-", f"{len(still_bad)} packages UNRECOVERABLE:")
             for name in sorted(still_bad.keys()):
