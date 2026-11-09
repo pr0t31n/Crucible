@@ -153,7 +153,7 @@
                 <svg class="dl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <svg class="dl-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;animation:dl-rotate .8s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="50 20" /></svg>
               </button>
-              <div class="dl-menu" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:var(--card-bg,var(--bg-secondary));border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:100;min-width:160px;padding:4px 0;font-size:.8rem">
+              <div class="dl-menu" style="display:none;position:fixed;background:var(--card-bg,var(--bg-secondary));border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:9999;min-width:160px;padding:4px 0;font-size:.8rem">
                 <a href="#" onclick="dlAction(this,'zip','{{ p.id }}');return false" style="display:block;padding:6px 12px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Full Project ZIP</a>
                 <a href="#" onclick="dlAction(this,'json','{{ p.id }}');return false" style="display:block;padding:6px 12px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Findings JSON</a>
                 <a href="#" onclick="dlAction(this,'csv','{{ p.id }}');return false" style="display:block;padding:6px 12px;color:var(--text-primary);text-decoration:none;white-space:nowrap">Findings CSV</a>
@@ -229,6 +229,7 @@
           <option value="merger">Engagement Merger</option>
           <option value="phish-analyzer">Phish Analyzer</option>
           <option value="port-probe">Port Probe</option>
+          <option value="safe-upgrade">Safe Upgrade</option>
           <option value="sec-headers">Security Headers</option>
           <option value="ssl-audit">SSL/TLS Audit</option>
           <option value="system-info">System Info</option>
@@ -778,6 +779,47 @@
   </div>
 </div>
 
+<!-- ── Safe Upgrade modal ──────────────────────────────── -->
+<div class="modal-overlay" id="safeUpgradeModal">
+  <div class="modal-box modal-wide" style="max-width:780px">
+    <div class="modal-header">
+      <h3 class="modal-title">Safe System Upgrade</h3>
+      <button type="button" class="modal-close" onclick="closeSafeUpgradeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:14px;">Tiered package upgrade with dependency recovery and connectivity protection. Upgrades packages in safe chunks without dist-upgrade or full-upgrade.</p>
+      <div id="suOptionsPanel">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:14px;">
+          <div class="form-check"><input type="checkbox" id="suDryRun" checked><label for="suDryRun">Analyze only (dry run)</label></div>
+          <div class="form-check"><input type="checkbox" id="suSkipCritical"><label for="suSkipCritical">Skip critical tier</label></div>
+          <div class="form-check"><input type="checkbox" id="suSkipSensitive"><label for="suSkipSensitive">Skip sensitive tier</label></div>
+          <div class="form-check"><input type="checkbox" id="suNoCleanup"><label for="suNoCleanup">Skip autoremove/clean</label></div>
+          <div class="form-check"><input type="checkbox" id="suIncludeHeld"><label for="suIncludeHeld">Include held packages</label></div>
+          <div class="form-check"><input type="checkbox" id="suRepairOnly"><label for="suRepairOnly">Repair only (no upgrade)</label></div>
+        </div>
+        <div class="form-group" style="margin-bottom:14px;max-width:200px;">
+          <label class="form-label">Chunk size</label>
+          <input type="number" id="suChunkSize" class="form-control" value="25" min="1" max="100" style="width:80px;">
+          <span class="form-hint">Packages per batch (1–100)</span>
+        </div>
+      </div>
+      <div id="suOutputPanel" style="display:none;margin-top:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:0.78rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Output</span>
+          <span id="suStatusBadge" style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:var(--accent-muted);color:var(--accent-primary);font-weight:600;"></span>
+        </div>
+        <pre id="suOutputContent" style="background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:12px;font-size:0.74rem;max-height:55vh;overflow-y:auto;font-family:var(--font-mono);white-space:pre-wrap;word-break:break-word;line-height:1.5;margin:0;"></pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary" id="suRunBtn" onclick="startSafeUpgrade()">Analyze</button>
+      <button type="button" class="btn btn-ghost" id="suCancelBtn" style="display:none;" onclick="cancelSafeUpgrade()">Cancel</button>
+      <button type="button" class="btn btn-ghost" id="suSaveBtn" style="display:none;" onclick="saveSafeUpgrade()">Save .txt</button>
+      <button type="button" class="btn btn-ghost" onclick="closeSafeUpgradeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Incomplete report warning modal ──────────────────── -->
 <div class="modal-overlay" id="reportIncompleteModal">
   <div class="modal-box" style="max-width:520px">
@@ -928,15 +970,29 @@ var _lastSystemInfo = null;
 var _selectedReportType = 'full';
 var _reportPid = null;
 
+function _closeDlMenus() {
+  document.querySelectorAll('.dl-menu').forEach(function(m) { m.style.display = 'none'; });
+}
 function toggleDlMenu(btn) {
   var menu = btn.parentElement.querySelector('.dl-menu');
   var open = menu.style.display !== 'none';
-  document.querySelectorAll('.dl-menu').forEach(function(m) { m.style.display = 'none'; });
-  if (!open) menu.style.display = '';
+  _closeDlMenus();
+  if (!open) {
+    menu.style.display = 'block';
+    var r = btn.getBoundingClientRect();
+    var mw = menu.offsetWidth;
+    var mh = menu.offsetHeight;
+    var left = r.right - mw;
+    if (left < 4) left = 4;
+    var top = r.bottom + 4;
+    if (top + mh > window.innerHeight - 4) top = r.top - mh - 4;
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
 }
-document.addEventListener('click', function() {
-  document.querySelectorAll('.dl-menu').forEach(function(m) { m.style.display = 'none'; });
-});
+document.addEventListener('click', _closeDlMenus);
+var _sbList = document.querySelector('.home-sidebar-list');
+if (_sbList) _sbList.addEventListener('scroll', _closeDlMenus);
 
 function dlAction(link, format, pid) {
   var dd = link.closest('.dl-dropdown');
@@ -1819,6 +1875,97 @@ function savePhishAnalyzerCsv() {
   _downloadBlob(lines.join('\n'), 'phish_analysis_' + _ts() + '.csv', 'text/csv');
 }
 
+/* ── Safe Upgrade modal ──────────────────────────────── */
+var _suJobId = null, _suPollTimer = null, _suOffset = 0, _suFullOutput = '';
+function openSafeUpgradeModal() {
+  document.getElementById('safeUpgradeModal').classList.add('open');
+  document.getElementById('suOutputPanel').style.display = 'none';
+  document.getElementById('suOptionsPanel').style.display = '';
+  document.getElementById('suRunBtn').disabled = false;
+  document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
+  document.getElementById('suCancelBtn').style.display = 'none';
+  document.getElementById('suSaveBtn').style.display = 'none';
+}
+function closeSafeUpgradeModal() { document.getElementById('safeUpgradeModal').classList.remove('open'); }
+document.getElementById('suDryRun').addEventListener('change', function() {
+  document.getElementById('suRunBtn').textContent = this.checked ? 'Analyze' : 'Upgrade';
+});
+function startSafeUpgrade() {
+  var btn = document.getElementById('suRunBtn');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  document.getElementById('suCancelBtn').style.display = '';
+  document.getElementById('suSaveBtn').style.display = 'none';
+  document.getElementById('suOutputPanel').style.display = '';
+  document.getElementById('suOutputContent').textContent = '';
+  document.getElementById('suStatusBadge').textContent = 'Running';
+  document.getElementById('suStatusBadge').style.background = 'var(--accent-muted)';
+  document.getElementById('suStatusBadge').style.color = 'var(--accent-primary)';
+  _suFullOutput = '';
+  _suOffset = 0;
+  var body = {
+    dry_run: document.getElementById('suDryRun').checked,
+    repair_only: document.getElementById('suRepairOnly').checked,
+    skip_critical: document.getElementById('suSkipCritical').checked,
+    skip_sensitive: document.getElementById('suSkipSensitive').checked,
+    no_cleanup: document.getElementById('suNoCleanup').checked,
+    include_held: document.getElementById('suIncludeHeld').checked,
+    chunk_size: parseInt(document.getElementById('suChunkSize').value) || 25,
+  };
+  fetch('/api/standalone/safe-upgrade', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+  .then(function(r){ return r.json(); }).then(function(data){
+    if (data.error) {
+      btn.disabled = false; btn.textContent = 'Retry';
+      document.getElementById('suOutputContent').textContent = 'Error: ' + data.error;
+      document.getElementById('suStatusBadge').textContent = 'Error';
+      document.getElementById('suStatusBadge').style.background = 'var(--red-muted, rgba(239,68,68,.15))';
+      document.getElementById('suStatusBadge').style.color = 'var(--status-error)';
+      document.getElementById('suCancelBtn').style.display = 'none';
+      return;
+    }
+    _suJobId = data.job_id;
+    _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
+  }).catch(function(err){
+    btn.disabled = false; btn.textContent = 'Retry';
+    document.getElementById('suOutputContent').textContent = 'Network error: ' + err.message;
+    document.getElementById('suCancelBtn').style.display = 'none';
+  });
+}
+function _pollSafeUpgrade() {
+  if (!_suJobId) return;
+  fetch('/api/standalone/safe-upgrade/log?job_id=' + _suJobId + '&offset=' + _suOffset)
+  .then(function(r){ return r.json(); }).then(function(data){
+    if (data.lines && data.lines.length) {
+      var pre = document.getElementById('suOutputContent');
+      var chunk = data.lines.join('\n');
+      _suFullOutput += (_suFullOutput ? '\n' : '') + chunk;
+      pre.textContent = _suFullOutput;
+      _suOffset = data.offset;
+      pre.scrollTop = pre.scrollHeight;
+    }
+    if (data.status === 'complete') {
+      clearInterval(_suPollTimer);
+      _suPollTimer = null;
+      document.getElementById('suRunBtn').disabled = false;
+      document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
+      document.getElementById('suCancelBtn').style.display = 'none';
+      document.getElementById('suSaveBtn').style.display = '';
+      var ok = data.exit_code === 0;
+      document.getElementById('suStatusBadge').textContent = ok ? 'Complete' : 'Finished (errors)';
+      document.getElementById('suStatusBadge').style.background = ok ? 'var(--green-muted, rgba(34,197,94,.15))' : 'var(--red-muted, rgba(239,68,68,.15))';
+      document.getElementById('suStatusBadge').style.color = ok ? 'var(--status-success)' : 'var(--status-error)';
+    }
+  }).catch(function(){});
+}
+function cancelSafeUpgrade() {
+  if (!_suJobId) return;
+  fetch('/api/standalone/safe-upgrade/cancel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({job_id:_suJobId}) });
+  document.getElementById('suStatusBadge').textContent = 'Cancelling…';
+}
+function saveSafeUpgrade() {
+  if (_suFullOutput) _downloadBlob(_suFullOutput, 'safe_upgrade_' + _ts() + '.txt');
+}
+
 /* ── Quick Tools dropdown dispatcher ───────────────── */
 function runQuickTool() {
   var val = document.getElementById('quickToolSelect').value;
@@ -1831,6 +1978,7 @@ function runQuickTool() {
     'merger': function(){ window.location.href='/tools/merger'; },
     'phish-analyzer': openPhishAnalyzerModal,
     'port-probe': openPortProbeModal,
+    'safe-upgrade': openSafeUpgradeModal,
     'sec-headers': openSecHeadersModal,
     'ssl-audit': openSslAuditModal,
     'system-info': openSystemInfoModal,
