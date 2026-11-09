@@ -133,6 +133,9 @@ def api_findings_v2(project_id):
         kwargs["include_fp"] = include_fp
         include_oos = request.args.get("include_oos", "1") != "0"
         kwargs["include_oos"] = include_oos
+        kev = request.args.get("kev")
+        if kev:
+            kwargs["kev"] = True
 
         result = _engine().query_findings_db(project_id, project, **kwargs)
         if result is not None:
