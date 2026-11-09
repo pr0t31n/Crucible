@@ -174,28 +174,245 @@ def _classify(pkg_name: str, active_critical: set[str]) -> str:
     return "normal"
 
 # ── Repair helpers ───────────────────────────────────────────────────────────
+# Package states that indicate trouble (dpkg -l first-two-char status field)
+_BAD_STATES = {"iU", "iF", "iH", "iR", "uU", "uF", "uH", "uR",
+               "rU", "rF", "rH", "rR", "hF", "hU", "hR",
+               "pU", "pF", "pH", "pR"}
+# 'rc' (removed, config-files) is normal — not broken
+
+# All the ways dpkg/apt tell you about missing deps
+_DEP_PATTERNS = [
+    re.compile(r"depends on (\S+)"),
+    re.compile(r"dependency problems.+?Package (\S+)"),
+    re.compile(r"(\S+) is not configured"),
+    re.compile(r"(\S+) is not installed"),
+    re.compile(r"Depends:\s+(\S+)\s+but"),
+    re.compile(r"Pre-Depends:\s+(\S+)\s+but"),
+    re.compile(r"Package (\S+) is not configured yet"),
+    re.compile(r"Errors were encountered while processing:\s*\n((?:\s+\S+\s*\n?)+)"),
+]
+
+def _extract_deps_from_error(err: str) -> set[str]:
+    deps: set[str] = set()
+    for pat in _DEP_PATTERNS:
+        for m in pat.finditer(err):
+            text = m.group(1).strip()
+            for token in text.split():
+                name = token.split(":")[0].strip()
+                if name and not name.startswith("(") and not name.startswith("-"):
+                    deps.add(name)
+    return deps
+
+def _get_broken_packages() -> dict[str, str]:
+    """Return {pkg_name: status} for all packages in a bad dpkg state."""
+    broken = {}
+    rc, out, _ = _run(["dpkg", "-l"], timeout=30, env=_APT_ENV)
+    for line in out.splitlines():
+        if len(line) < 4 or line[0] == '+' or line[0] == '|':
+            continue
+        status = line[:2]
+        if status in _BAD_STATES:
+            parts = line.split()
+            if len(parts) >= 2:
+                name = parts[1].split(":")[0]
+                broken[name] = status
+    rc2, audit_out, _ = _dpkg(["--audit"], timeout=60)
+    for line in audit_out.splitlines():
+        parts = line.split()
+        if parts:
+            name = parts[0].split(":")[0]
+            if name and name not in broken:
+                broken[name] = "audit"
+    return broken
+
+def _get_pkg_deps(pkg: str) -> set[str]:
+    """Get direct dependencies of a package from apt-cache."""
+    rc, out, _ = _run(["apt-cache", "depends", "--installed", pkg], timeout=10)
+    deps: set[str] = set()
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("Depends:") or line.startswith("Pre-Depends:"):
+            dep = line.split(":", 1)[1].strip().split(":")[0]
+            if dep and not dep.startswith("<"):
+                deps.add(dep)
+    return deps
+
+def _topo_sort_broken(broken_set: set[str]) -> list[str]:
+    """Topological sort of broken packages by their deps — leaves first."""
+    dep_map: dict[str, set[str]] = {}
+    for pkg in broken_set:
+        deps = _get_pkg_deps(pkg)
+        dep_map[pkg] = deps & broken_set
+    ordered: list[str] = []
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+    cycle_breakers: list[str] = []
+
+    def _visit(p: str) -> None:
+        if p in visited:
+            return
+        if p in in_stack:
+            cycle_breakers.append(p)
+            return
+        in_stack.add(p)
+        for d in dep_map.get(p, set()):
+            _visit(d)
+        in_stack.discard(p)
+        visited.add(p)
+        ordered.append(p)
+
+    for pkg in sorted(broken_set):
+        _visit(pkg)
+    if cycle_breakers:
+        for cb in cycle_breakers:
+            if cb not in ordered:
+                ordered.insert(0, cb)
+    return ordered
+
+def _configure_with_progress(broken: dict[str, str], max_passes: int = 8) -> dict[str, str]:
+    """Multi-pass dpkg --configure with progress tracking.
+    Returns dict of packages that remain broken after all passes."""
+    remaining = dict(broken)
+    for pass_num in range(1, max_passes + 1):
+        if not remaining:
+            break
+        before = len(remaining)
+        ordered = _topo_sort_broken(set(remaining.keys()))
+        for pkg in ordered:
+            if pkg not in remaining:
+                continue
+            rc, _, err = _dpkg(["--configure", pkg], timeout=120)
+            if rc == 0:
+                del remaining[pkg]
+                continue
+            dep_names = _extract_deps_from_error(err)
+            for dep in dep_names:
+                if dep in remaining and dep != pkg:
+                    _dpkg(["--configure", dep], timeout=60)
+            rc2, _, _ = _dpkg(["--configure", pkg], timeout=120)
+            if rc2 == 0:
+                del remaining[pkg]
+        after = len(remaining)
+        _log("*", f"Pass {pass_num}: {before - after} configured, {after} remaining")
+        if after == before:
+            break
+    return remaining
+
+def _force_configure_pkg(pkg: str) -> bool:
+    """Force-configure a package to break dependency cycles."""
+    rc, _, _ = _dpkg(["--force-depends", "--configure", pkg], timeout=120)
+    return rc == 0
+
+def _purge_reinstall(pkg: str) -> bool:
+    """Last resort: purge a broken package and reinstall it."""
+    _dpkg(["--purge", "--force-remove-reinstreq", "--force-depends", pkg], timeout=60)
+    rc, _, _ = _apt(["install", "-y", pkg], timeout=300)
+    return rc == 0
+
+def _download_install(pkg: str) -> bool:
+    """Download .deb via apt and install via dpkg directly."""
+    dl_dir = "/tmp/_safe_upgrade_debs"
+    os.makedirs(dl_dir, exist_ok=True)
+    rc, out, _ = _apt(["download", pkg], timeout=120)
+    if rc != 0:
+        rc2, _, _ = _run(["apt-get", "download", pkg], timeout=120,
+                         env={**_APT_ENV, "PWD": dl_dir})
+        if rc2 != 0:
+            return False
+    import glob
+    debs = sorted(glob.glob(f"{dl_dir}/{pkg}_*.deb") +
+                  glob.glob(f"./{pkg}_*.deb"), key=os.path.getmtime, reverse=True)
+    if not debs:
+        return False
+    rc, _, _ = _dpkg(["-i", "--force-depends", debs[0]], timeout=120)
+    try:
+        os.unlink(debs[0])
+    except OSError:
+        pass
+    return rc == 0
+
+def _deep_repair(broken: dict[str, str]) -> dict[str, str]:
+    """Escalating repair for packages that survived multi-pass configure.
+    Tries: force-configure → download+dpkg -i → purge+reinstall."""
+    remaining = dict(broken)
+    if not remaining:
+        return remaining
+
+    _log("*", f"Deep repair: {len(remaining)} stubborn packages")
+
+    ordered = _topo_sort_broken(set(remaining.keys()))
+    for pkg in ordered:
+        if pkg not in remaining:
+            continue
+        _log("*", f"  Force-configure {pkg}…")
+        if _force_configure_pkg(pkg):
+            _log("+", f"  {pkg} force-configured")
+            del remaining[pkg]
+            continue
+
+    if remaining:
+        _dpkg(["--configure", "-a"], timeout=300)
+        still_broken = _get_broken_packages()
+        for pkg in list(remaining.keys()):
+            if pkg not in still_broken:
+                del remaining[pkg]
+
+    for pkg in list(remaining.keys()):
+        _log("*", f"  Download + dpkg -i {pkg}…")
+        if _download_install(pkg):
+            _log("+", f"  {pkg} reinstalled via dpkg -i")
+            del remaining[pkg]
+            continue
+        _log("*", f"  Purge + reinstall {pkg}…")
+        if _purge_reinstall(pkg):
+            _log("+", f"  {pkg} purge-reinstalled")
+            del remaining[pkg]
+        else:
+            _log("-", f"  {pkg} UNRECOVERABLE")
+
+    if remaining:
+        _dpkg(["--configure", "-a"], timeout=300)
+        _apt(["install", "-f", "-y"], timeout=300)
+        still_broken = _get_broken_packages()
+        for pkg in list(remaining.keys()):
+            if pkg not in still_broken:
+                del remaining[pkg]
+
+    return remaining
+
 def _repair_quick() -> None:
-    _dpkg(["--configure", "-a"], timeout=120)
+    """Quick repair pass — multi-pass configure + apt fix."""
+    broken = _get_broken_packages()
+    if broken:
+        _configure_with_progress(broken, max_passes=3)
+    else:
+        _dpkg(["--configure", "-a"], timeout=120)
     _apt(["install", "-f", "-y"], timeout=300)
 
-_DEP_RE = re.compile(r"depends on (\S+)")
-
-def _resolve_deps(pkg: str, visited: set | None = None, depth: int = 0) -> bool:
-    if depth > 10:
-        return False
-    if visited is None:
-        visited = set()
-    if pkg in visited:
-        return False
-    visited.add(pkg)
-    rc, _, err = _dpkg(["--configure", pkg], timeout=60)
+def _resolve_deps(pkg: str) -> bool:
+    """Resolve dependencies for a single package using the full repair stack."""
+    rc, _, err = _dpkg(["--configure", pkg], timeout=120)
     if rc == 0:
         return True
-    for m in _DEP_RE.finditer(err):
-        dep = m.group(1).split(":")[0]
-        _resolve_deps(dep, visited, depth + 1)
-    rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
-    return rc == 0
+    deps = _extract_deps_from_error(err)
+    if deps:
+        ordered = _topo_sort_broken(deps)
+        for dep in ordered:
+            _dpkg(["--configure", dep], timeout=60)
+        rc2, _, err2 = _dpkg(["--configure", pkg], timeout=120)
+        if rc2 == 0:
+            return True
+        new_deps = _extract_deps_from_error(err2) - deps
+        for dep in new_deps:
+            _dpkg(["--configure", dep], timeout=60)
+        rc3, _, _ = _dpkg(["--configure", pkg], timeout=120)
+        if rc3 == 0:
+            return True
+    if _force_configure_pkg(pkg):
+        return True
+    if _download_install(pkg):
+        return True
+    return False
 
 # ── Upgrade engine ───────────────────────────────────────────────────────────
 _stopping = False
@@ -223,13 +440,25 @@ def _upgrade_single(pkg: str) -> bool:
     rc, out, err = _apt_install([pkg])
     if rc == 0:
         return True
+    deps = _extract_deps_from_error(err)
+    if deps:
+        _log("*", f"  Resolving {len(deps)} deps for {pkg}…")
+        ordered = _topo_sort_broken(deps)
+        for dep in ordered:
+            _dpkg(["--configure", dep], timeout=60)
     _repair_quick()
     rc, out, err = _apt_install([pkg])
     if rc == 0:
         return True
     _resolve_deps(pkg)
     rc, out, err = _apt_install([pkg])
-    return rc == 0
+    if rc == 0:
+        return True
+    _log("*", f"  Trying download + dpkg -i for {pkg}…")
+    if _download_install(pkg):
+        _dpkg(["--configure", pkg], timeout=60)
+        return True
+    return False
 
 def _verify_all_conn(active_methods: list[dict]) -> list[dict]:
     results = []
@@ -340,28 +569,46 @@ def phase_preflight(args: argparse.Namespace) -> dict:
 
 def phase_repair(ctx: dict) -> None:
     _phase_hdr(1, "Repair")
-    _log("*", "dpkg --configure -a")
-    rc, out, err = _dpkg(["--configure", "-a"], timeout=300)
-    if rc != 0:
-        _log("~", "dpkg configure had issues — attempting deeper repair")
-        _log("", f"{_DIM}{err.strip()[-200:]}{_R}" if err.strip() else "")
-        rc2, audit_out, _ = _dpkg(["--audit"], timeout=60)
-        broken = re.findall(r'^(\S+)\s', audit_out, re.MULTILINE)
-        for bpkg in broken[:10]:
-            _log("*", f"Purging broken package: {bpkg}")
-            _dpkg(["--purge", "--force-remove-reinstreq", bpkg], timeout=60)
-        _dpkg(["--configure", "-a"], timeout=300)
+
+    broken = _get_broken_packages()
+    if broken:
+        _log("~", f"{len(broken)} packages in bad state:")
+        for name, st in sorted(broken.items()):
+            _log("", f"  {_RD}{name}{_R} ({st})")
     else:
-        _log("+", "dpkg clean")
+        _log("+", "No broken packages detected")
+
+    _log("*", "Multi-pass dpkg --configure")
+    remaining = _configure_with_progress(broken, max_passes=8) if broken else {}
+
     _log("*", "apt-get install -f")
     rc, _, err = _apt(["install", "-f", "-y"], timeout=300)
     if rc == 0:
-        _log("+", "Dependencies clean")
+        _log("+", "apt fix-broken clean")
     else:
-        _log("~", "apt install -f reported issues")
+        _log("~", "apt install -f had issues")
         if err.strip():
             for line in err.strip().splitlines()[-3:]:
                 _log("", f"  {_DIM}{line.strip()}{_R}")
+
+    if remaining:
+        remaining = _get_broken_packages()
+    if remaining:
+        _log("*", f"{len(remaining)} packages still broken — escalating")
+        still_bad = _deep_repair(remaining)
+        if still_bad:
+            _log("-", f"{len(still_bad)} packages UNRECOVERABLE:")
+            for name in sorted(still_bad.keys()):
+                _log("", f"  {_RD}{name}{_R}")
+            _log("~", "Continuing — these may block related upgrades")
+        else:
+            _log("+", "All broken packages repaired")
+    else:
+        final = _get_broken_packages()
+        if final:
+            _log("~", f"{len(final)} packages still in bad state after repair")
+        else:
+            _log("+", "Package state clean")
 
 def phase_update(ctx: dict) -> None:
     _phase_hdr(2, "Update")
