@@ -1068,8 +1068,8 @@ def api_update_scopes(project_id):
             scope_def[key] = val
 
     scope_tool_map = {
-        "external": ["ss3", "osift", "trawler", "auger", "isotope"],
-        "internal": ["ss3", "trawler", "auger", "isotope"],
+        "external": ["ss3", "osift"],
+        "internal": ["ss3"],
         "webapp": ["fracture"],
         "api": ["siphon"],
         "osint": ["osift"],

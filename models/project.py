@@ -330,7 +330,7 @@ def create_project(form_data):
             "isotope": "file", "dredge": "endpoint", "aether": "wifi",
             "aether_b": "bluetooth", "aether_z": "zigbee", "aether_u": "uwb",
         }
-        _NETWORK_DUAL_SCOPE = {"ss3", "trawler", "auger", "isotope"}
+        _NETWORK_DUAL_SCOPE = {"ss3"}
         _has_int = bool(scope_def.get("network_cidrs_int"))
         _has_ext = bool(scope_def.get("network_cidrs_ext"))
         resolved_scopes = []
