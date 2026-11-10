@@ -1543,9 +1543,14 @@ function classifyLine(text, level) {
         if (lv === 'WARN') return 'warn';
         if (lv === 'EVENT') return 'phase';
     }
-    if (/\[!]|ERROR|FAIL|EXCEPTION/i.test(text)) return 'error';
-    if (/WARN/i.test(text)) return 'warn';
-    if (/\[\+]|SUCCESS|COMPLETE/i.test(text)) return 'ok';
+    if (/\[!]|\[ERR(?:OR)?]/i.test(text) ||
+        /(?:^|\s)ERROR[:\s!]/.test(text) || /\bFAILED?:/.test(text) ||
+        /\bEXCEPTION\b/.test(text)) {
+        if (/^\[(?:INFO|SUCCESS|\+)]|\[screenshot]/i.test(text)) return 'ok';
+        return 'error';
+    }
+    if (/\[WARN(?:ING)?]/i.test(text) || /(?:^|\s)WARN(?:ING)?[:\s!]/.test(text)) return 'warn';
+    if (/\[\+]|\[SUCCESS]|SUCCESS/i.test(text)) return 'ok';
     if (/PHASE|={3,}|---.*Phase/i.test(text)) return 'phase';
     if (/^\[SYS]|\[i\]/i.test(text)) return 'sys';
     return '';
