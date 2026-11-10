@@ -2,7 +2,7 @@
   "version": "1.7.1",
   "tool": "scattershot3",
   "generated": "(complete: upgraded existing + scaffolded missing)",
-  "total": 279,
+  "total": 286,
   "from_existing": 110,
   "newly_scaffolded": 68,
   "findings": [
@@ -396,7 +396,7 @@
         38176
       ],
       "owasp_web": "OWASP-A02:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.DS-01"
       ],
@@ -1266,7 +1266,7 @@
       "nessus_plugin_ids": [],
       "qualys_qids": [],
       "owasp_web": "OWASP-A07:2021",
-      "owasp_api": "API2:2023 – Broken Authentication",
+      "owasp_api": "API2:2023 \u2013 Broken Authentication",
       "nist_csf2": [
         "PR.AA-01",
         "DE.CM-01"
@@ -1742,7 +1742,7 @@
         86002
       ],
       "owasp_web": "OWASP-A05:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.PS-01",
         "DE.CM-01"
@@ -3040,7 +3040,7 @@
       "id": "SS3-042",
       "title": "Authentication Bypass: IPMI Authentication Bypass",
       "aliases": [
-        "IPMI 2.0 Cipher Suite 0 — Authentication Bypass and Hash Capture",
+        "IPMI 2.0 Cipher Suite 0 \u2014 Authentication Bypass and Hash Capture",
         "IPMI Cipher Suite 0 Auth Bypass Confirmed",
         "IPMI Authentication Bypass"
       ],
@@ -3534,7 +3534,7 @@
     },
     {
       "id": "SS3-047",
-      "title": "SMB Vulnerability: EternalBlue (MS17-010) — Host Confirmed Vulnerable",
+      "title": "SMB Vulnerability: EternalBlue (MS17-010) \u2014 Host Confirmed Vulnerable",
       "aliases": [],
       "source_tools": [
         "scattershot3"
@@ -3611,7 +3611,7 @@
     },
     {
       "id": "SS3-048",
-      "title": "SMB Vulnerability: EternalBlue (MS17-010) — Likely Vulnerable (SMBv1 + Unpatched)",
+      "title": "SMB Vulnerability: EternalBlue (MS17-010) \u2014 Likely Vulnerable (SMBv1 + Unpatched)",
       "aliases": [],
       "source_tools": [
         "scattershot3"
@@ -3793,9 +3793,9 @@
     },
     {
       "id": "SS3-050",
-      "title": "Authentication Bypass: IPMI 2.0 Cipher Suite 0 — Authentication Bypass and Hash Capture",
+      "title": "Authentication Bypass: IPMI 2.0 Cipher Suite 0 \u2014 Authentication Bypass and Hash Capture",
       "aliases": [
-        "IPMI 2.0 Cipher Suite 0 — Authentication Bypass and Hash Capture",
+        "IPMI 2.0 Cipher Suite 0 \u2014 Authentication Bypass and Hash Capture",
         "IPMI Cipher Suite 0 Auth Bypass Confirmed",
         "IPMI Authentication Bypass"
       ],
@@ -4097,7 +4097,7 @@
         "auxiliary/scanner/ssh/libssh_auth_bypass"
       ],
       "kev": false,
-      "remediation_brief": "Upgrade libSSH to version 0.7.6 or 0.8.4 or later. For systems using OpenSSH this vulnerability does not apply — verify the SSH daemon in use. Apply vendor-supplied security patches immediately.",
+      "remediation_brief": "Upgrade libSSH to version 0.7.6 or 0.8.4 or later. For systems using OpenSSH this vulnerability does not apply \u2014 verify the SSH daemon in use. Apply vendor-supplied security patches immediately.",
       "remediation_component": "Server",
       "remediation_category": "Patch Management",
       "remediation_effort": "Low",
@@ -4110,7 +4110,7 @@
       "impact": "An attacker could exploit this to gain full system compromise, execute arbitrary code, or obtain complete unauthorized access to sensitive data and systems. Unpatched software contains known vulnerabilities with potentially available exploit code.",
       "_x_severity": "CRITICAL",
       "_x_category": "SSH",
-      "_x_remediation": "Upgrade libSSH to version 0.7.6 or 0.8.4 or later. For systems using OpenSSH this vulnerability does not apply — verify the SSH daemon in use. Apply vendor-supplied security patches immediately.",
+      "_x_remediation": "Upgrade libSSH to version 0.7.6 or 0.8.4 or later. For systems using OpenSSH this vulnerability does not apply \u2014 verify the SSH daemon in use. Apply vendor-supplied security patches immediately.",
       "_x_references": [
         "CVE-2018-10933",
         "CWE-287",
@@ -4238,7 +4238,7 @@
       "id": "SS3-054",
       "title": "RDP: RDP Without NLA (BlueKeep) (MS12-020)",
       "aliases": [
-        "RDP Without NLA (Network Level Authentication) — BlueKeep Exposure",
+        "RDP Without NLA (Network Level Authentication) \u2014 BlueKeep Exposure",
         "MS12-020 RDP Vulnerability Detected",
         "RDP Weak or No Encryption Configured"
       ],
@@ -4359,7 +4359,7 @@
       "id": "SS3-055",
       "title": "RDP: RDP Weak or No Encryption Configured",
       "aliases": [
-        "RDP Without NLA (Network Level Authentication) — BlueKeep Exposure",
+        "RDP Without NLA (Network Level Authentication) \u2014 BlueKeep Exposure",
         "MS12-020 RDP Vulnerability Detected",
         "RDP Weak or No Encryption Configured"
       ],
@@ -4473,7 +4473,7 @@
       "id": "SS3-056",
       "title": "RDP: RDP Without NLA (BlueKeep) (MS12-020)",
       "aliases": [
-        "RDP Without NLA (Network Level Authentication) — BlueKeep Exposure",
+        "RDP Without NLA (Network Level Authentication) \u2014 BlueKeep Exposure",
         "MS12-020 RDP Vulnerability Detected",
         "RDP Weak or No Encryption Configured"
       ],
@@ -4588,13 +4588,13 @@
     },
     {
       "id": "SS3-057",
-      "title": "Enumeration: NFS Export Points Enumerated — Potentially Unauthenticated Access",
+      "title": "Enumeration: NFS Export Points Enumerated \u2014 Potentially Unauthenticated Access",
       "aliases": [
         "NFS Share Exposed",
         "NFS World-Readable Export",
         "NFS Insecure Export Options",
         "NFS Directory Listing Accessible",
-        "NFS Export Points Enumerated — Potentially Unauthenticated Access",
+        "NFS Export Points Enumerated \u2014 Potentially Unauthenticated Access",
         "NFS Enumeration"
       ],
       "source_tools": [
@@ -4715,7 +4715,7 @@
         "NFS World-Readable Export",
         "NFS Insecure Export Options",
         "NFS Directory Listing Accessible",
-        "NFS Export Points Enumerated — Potentially Unauthenticated Access",
+        "NFS Export Points Enumerated \u2014 Potentially Unauthenticated Access",
         "NFS Enumeration"
       ],
       "source_tools": [
@@ -5366,7 +5366,7 @@
         370038
       ],
       "owasp_web": "OWASP-A07:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.AC-01",
         "PR.AC-04"
@@ -5451,9 +5451,9 @@
     },
     {
       "id": "SS3-065",
-      "title": "Unauthenticated Access: MySQL Unauthenticated Access — Root with No Password",
+      "title": "Unauthenticated Access: MySQL Unauthenticated Access \u2014 Root with No Password",
       "aliases": [
-        "MySQL Unauthenticated Access — Root with No Password",
+        "MySQL Unauthenticated Access \u2014 Root with No Password",
         "MySQL Root No Password",
         "MySQL Unauthenticated Access"
       ],
@@ -5998,7 +5998,7 @@
         "CWE-284",
         "CWE-200"
       ],
-      "description": "The SMB server permits null session connections — unauthenticated connections using an empty username and password. Via a null session, an attacker can enumerate share names, user accounts, group memberships, local policies, and domain SID information using tools such as enum4linux, rpcclient, or CrackMapExec. This information provides the reconnaissance foundation for subsequent targeted attacks including password spraying, credential brute-force, and Kerberoasting.",
+      "description": "The SMB server permits null session connections \u2014 unauthenticated connections using an empty username and password. Via a null session, an attacker can enumerate share names, user accounts, group memberships, local policies, and domain SID information using tools such as enum4linux, rpcclient, or CrackMapExec. This information provides the reconnaissance foundation for subsequent targeted attacks including password spraying, credential brute-force, and Kerberoasting.",
       "impact": "An attacker could leverage this to gain significant unauthorized access, escalate privileges, or exfiltrate sensitive data from affected systems.",
       "_x_severity": "HIGH",
       "_x_category": "SMB",
@@ -6046,7 +6046,7 @@
       ],
       "qualys_qids": [],
       "owasp_web": "OWASP-A07:2021",
-      "owasp_api": "API1:2023 – Broken Object Level Authorization",
+      "owasp_api": "API1:2023 \u2013 Broken Object Level Authorization",
       "nist_csf2": [
         "PR.AA-02",
         "PR.AA-05"
@@ -6156,7 +6156,7 @@
       ],
       "qualys_qids": [],
       "owasp_web": "OWASP-A01:2021",
-      "owasp_api": "API1:2023 – Broken Object Level Authorization",
+      "owasp_api": "API1:2023 \u2013 Broken Object Level Authorization",
       "nist_csf2": [
         "PR.AA-02",
         "PR.AA-05"
@@ -6796,7 +6796,7 @@
       "nessus_plugin_ids": [],
       "qualys_qids": [],
       "owasp_web": "OWASP-A01:2021",
-      "owasp_api": "API1:2023 – Broken Object Level Authorization",
+      "owasp_api": "API1:2023 \u2013 Broken Object Level Authorization",
       "nist_csf2": [
         "PR.AA-02",
         "PR.AA-05"
@@ -7870,7 +7870,7 @@
       "nessus_plugin_ids": [],
       "qualys_qids": [],
       "owasp_web": "OWASP-A07:2021",
-      "owasp_api": "API2:2023 – Broken Authentication",
+      "owasp_api": "API2:2023 \u2013 Broken Authentication",
       "nist_csf2": [
         "PR.AA-01",
         "DE.CM-01"
@@ -8191,7 +8191,7 @@
         38177
       ],
       "owasp_web": "OWASP-A02:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.DS-01",
         "PR.DS-02"
@@ -8305,7 +8305,7 @@
         38177
       ],
       "owasp_web": "OWASP-A02:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.DS-01",
         "PR.DS-02"
@@ -8419,7 +8419,7 @@
         38177
       ],
       "owasp_web": "OWASP-A02:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.DS-01",
         "PR.DS-02"
@@ -8541,7 +8541,7 @@
         38172
       ],
       "owasp_web": "OWASP-A02:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.DS-01",
         "PR.DS-02"
@@ -8658,7 +8658,7 @@
         38172
       ],
       "owasp_web": "OWASP-A02:2021",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.DS-01",
         "PR.DS-02"
@@ -9667,7 +9667,7 @@
       "searchsploit_terms": [],
       "metasploit_modules": [],
       "kev": false,
-      "remediation_brief": "Upgrade OpenSSL to version 1.0.1g or later (or 1.0.2 branch). Revoke and replace the server's TLS certificate and private key immediately — the private key must be assumed compromised. Invalidate all active user sessions. Reissue any client certificates if a client PKI is in use.",
+      "remediation_brief": "Upgrade OpenSSL to version 1.0.1g or later (or 1.0.2 branch). Revoke and replace the server's TLS certificate and private key immediately \u2014 the private key must be assumed compromised. Invalidate all active user sessions. Reissue any client certificates if a client PKI is in use.",
       "remediation_component": "",
       "remediation_category": "Cryptography",
       "remediation_effort": "",
@@ -9676,11 +9676,11 @@
         "CWE-125",
         "CWE-126"
       ],
-      "description": "The target server is confirmed vulnerable to Heartbleed (CVE-2014-0160). The OpenSSL heartbeat extension does not properly validate the length field in TLS heartbeat requests, allowing an unauthenticated attacker to read up to 64 KB of server process memory per request. Repeated exploitation can expose TLS private keys, session tokens, plaintext credentials, and other sensitive in-memory data without leaving log entries. This vulnerability is distinct from SS3-010 (which covers testssl detection) — this entry is raised when the Scattershot3 Heartbleed probe module independently confirms the vulnerability.",
+      "description": "The target server is confirmed vulnerable to Heartbleed (CVE-2014-0160). The OpenSSL heartbeat extension does not properly validate the length field in TLS heartbeat requests, allowing an unauthenticated attacker to read up to 64 KB of server process memory per request. Repeated exploitation can expose TLS private keys, session tokens, plaintext credentials, and other sensitive in-memory data without leaving log entries. This vulnerability is distinct from SS3-010 (which covers testssl detection) \u2014 this entry is raised when the Scattershot3 Heartbleed probe module independently confirms the vulnerability.",
       "impact": "Heartbleed (CVE-2014-0160) is a critical memory disclosure vulnerability in OpenSSL that allows an attacker to read up to 64KB of server memory per request without authentication or logging. Leaked memory routinely contains private keys, session tokens, and user credentials, enabling complete compromise of the affected server.",
       "_x_severity": "CRITICAL",
       "_x_category": "SSL/TLS",
-      "_x_remediation": "Upgrade OpenSSL to version 1.0.1g or later (or 1.0.2 branch). Revoke and replace the server's TLS certificate and private key immediately — the private key must be assumed compromised. Invalidate all active user sessions. Reissue any client certificates if a client PKI is in use.",
+      "_x_remediation": "Upgrade OpenSSL to version 1.0.1g or later (or 1.0.2 branch). Revoke and replace the server's TLS certificate and private key immediately \u2014 the private key must be assumed compromised. Invalidate all active user sessions. Reissue any client certificates if a client PKI is in use.",
       "_x_references": [
         "CVE-2014-0160",
         "CWE-125",
@@ -9735,7 +9735,7 @@
         86002
       ],
       "owasp_web": "N/A",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.PS-01",
         "DE.CM-01"
@@ -9993,7 +9993,7 @@
         "CWE-1329",
         "OWASP-A06:2021"
       ],
-      "description": "The operating system is within its Extended Support (or Extended Security Updates) period, meaning the vendor continues to provide security patches but only under a paid extended support programme or with limited scope. Standard feature updates and non-security bug fixes may no longer be available. Extended support is a transitional state — the OS will reach full EOL at the extended support end date, and migrations to supported platforms should be planned urgently.",
+      "description": "The operating system is within its Extended Support (or Extended Security Updates) period, meaning the vendor continues to provide security patches but only under a paid extended support programme or with limited scope. Standard feature updates and non-security bug fixes may no longer be available. Extended support is a transitional state \u2014 the OS will reach full EOL at the extended support end date, and migrations to supported platforms should be planned urgently.",
       "impact": "An attacker could leverage this to gain significant unauthorized access, escalate privileges, or exfiltrate sensitive data from affected systems. Unpatched software contains known vulnerabilities with potentially available exploit code.",
       "_x_severity": "HIGH",
       "_x_category": "Patch Management",
@@ -10045,7 +10045,7 @@
         86002
       ],
       "owasp_web": "N/A",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.PS-01",
         "DE.CM-01"
@@ -10702,7 +10702,7 @@
       "id": "SS-010",
       "title": "Authentication Bypass: IPMI Cipher Suite 0 Auth Bypass Confirmed",
       "aliases": [
-        "Authentication Bypass: IPMI Cipher Suite 0 Auth Bypass Confirmed — user={user}"
+        "Authentication Bypass: IPMI Cipher Suite 0 Auth Bypass Confirmed \u2014 user={user}"
       ],
       "source_tools": [
         "scattershot3"
@@ -10736,7 +10736,7 @@
       "remediation_category": "Cryptography",
       "remediation_effort": "",
       "validation_tools": [],
-      "description": "scattershot3 detected: IPMI Cipher Suite 0 Auth Bypass Confirmed — user=<value>. This finding indicates a security concern that requires review.",
+      "description": "scattershot3 detected: IPMI Cipher Suite 0 Auth Bypass Confirmed \u2014 user=<value>. This finding indicates a security concern that requires review.",
       "impact": "An attacker could leverage this to gain significant unauthorized access, escalate privileges, or exfiltrate sensitive data from affected systems. Weak cryptographic implementations may allow interception, decryption, or forgery of protected communications.",
       "_scaffold_from": "scattershot3.py:17519",
       "_template": true,
@@ -10746,7 +10746,7 @@
       "id": "SS-011",
       "title": "Known Vulnerability",
       "aliases": [
-        "Known Vulnerability: {software_name} {version} — {cve_desc}"
+        "Known Vulnerability: {software_name} {version} \u2014 {cve_desc}"
       ],
       "source_tools": [
         "scattershot3"
@@ -10778,7 +10778,7 @@
       "remediation_category": "Patch Management",
       "remediation_effort": "",
       "validation_tools": [],
-      "description": "scattershot3 detected: <value> <value> — <value>. This finding indicates a security concern that requires review.",
+      "description": "scattershot3 detected: <value> <value> \u2014 <value>. This finding indicates a security concern that requires review.",
       "impact": "An attacker could potentially exploit this weakness to gain partial access, disclose sensitive information, or degrade the security posture of the affected system.",
       "_scaffold_from": "scattershot3.py:10299",
       "_template": true,
@@ -10788,7 +10788,7 @@
       "id": "SS-012",
       "title": "SSH Vulnerability: libSSH Authentication Bypass (CVE-2018-10933)",
       "aliases": [
-        "SSH Vulnerability: libSSH Authentication Bypass (CVE-2018-10933) — v{ver}"
+        "SSH Vulnerability: libSSH Authentication Bypass (CVE-2018-10933) \u2014 v{ver}"
       ],
       "source_tools": [
         "scattershot3"
@@ -10822,7 +10822,7 @@
       "remediation_category": "Patch Management",
       "remediation_effort": "",
       "validation_tools": [],
-      "description": "scattershot3 detected: libSSH Authentication Bypass (CVE-2018-10933) — v<value>. This finding indicates a security concern that requires review.",
+      "description": "scattershot3 detected: libSSH Authentication Bypass (CVE-2018-10933) \u2014 v<value>. This finding indicates a security concern that requires review.",
       "impact": "An attacker could exploit this to gain full system compromise, execute arbitrary code, or obtain complete unauthorized access to sensitive data and systems.",
       "_scaffold_from": "scattershot3.py:15902",
       "_template": true,
@@ -11424,7 +11424,7 @@
       "id": "SS-027",
       "title": "SSL/TLS Ciphers: Obsolete Ciphers",
       "aliases": [
-        "SSL/TLS Ciphers: Obsolete Cipher — {_obs_cipher}"
+        "SSL/TLS Ciphers: Obsolete Cipher \u2014 {_obs_cipher}"
       ],
       "source_tools": [
         "scattershot3"
@@ -11955,7 +11955,7 @@
       "qualys_qids": [
         42430
       ],
-      "owasp_web": "A06:2021 – Vulnerable and Outdated Components",
+      "owasp_web": "A06:2021 \u2013 Vulnerable and Outdated Components",
       "owasp_api": "",
       "nist_csf2": [
         "PR.PS-01",
@@ -12036,7 +12036,7 @@
           "url": "https://github.com/rapid7/metasploit-framework",
           "install": "curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && bash msfinstall",
           "command": "msfconsole -x 'use auxiliary/scanner/mysql/mysql_login; set RHOSTS TARGET; set PASS_FILE /usr/share/metasploit-framework/data/wordlists/unix_passwords.txt; run'",
-          "description": "World's most used penetration testing framework — modules for DB auth testing, exploitation"
+          "description": "World's most used penetration testing framework \u2014 modules for DB auth testing, exploitation"
         },
         {
           "name": "testssl.sh",
@@ -12112,7 +12112,7 @@
       "searchsploit_terms": [],
       "metasploit_modules": [],
       "kev": false,
-      "remediation_brief": "Informational finding — no immediate remediation required. Ensure discovered hostnames and subdomains are included in the asset inventory and covered by patch management and security scanning. Decommission or remove DNS records for unused or orphaned subdomains to prevent subdomain takeover.",
+      "remediation_brief": "Informational finding \u2014 no immediate remediation required. Ensure discovered hostnames and subdomains are included in the asset inventory and covered by patch management and security scanning. Decommission or remove DNS records for unused or orphaned subdomains to prevent subdomain takeover.",
       "remediation_component": "Process",
       "remediation_category": "Asset Management",
       "remediation_effort": "Low",
@@ -12268,7 +12268,7 @@
           "url": "https://hashcat.net",
           "install": "apt-get install hashcat  OR  brew install hashcat",
           "command": "hashcat -m 0 hashes.txt /usr/share/wordlists/rockyou.txt  # MD5\nhashcat -m 1000 hashes.txt rockyou.txt  # NTLM",
-          "description": "World's fastest password recovery tool — GPU-accelerated with 300+ hash types"
+          "description": "World's fastest password recovery tool \u2014 GPU-accelerated with 300+ hash types"
         }
       ],
       "description": "scattershot3 detected: LLMNR/NBT-NS Broadcast Poisoning Possible. This finding indicates a security concern that requires review.",
@@ -12302,7 +12302,7 @@
         84502
       ],
       "qualys_qids": [],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -12412,7 +12412,7 @@
         84502
       ],
       "qualys_qids": [],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -12522,7 +12522,7 @@
         84502
       ],
       "qualys_qids": [],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -12632,7 +12632,7 @@
         84502
       ],
       "qualys_qids": [],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -12788,7 +12788,7 @@
         19001,
         19003
       ],
-      "owasp_web": "A07:2021 – Identification and Authentication Failures",
+      "owasp_web": "A07:2021 \u2013 Identification and Authentication Failures",
       "owasp_api": "",
       "nist_csf2": [
         "PR.AA-01",
@@ -12850,7 +12850,7 @@
           "url": "https://github.com/SecureAuthCorp/impacket",
           "install": "pip install impacket",
           "command": "impacket-mssqlclient TARGET/sa@TARGET -p 1433 -windows-auth\nimpacket-mssqlclient TARGET/sa@TARGET -p 1433 -db master",
-          "description": "MSSQL client tool — test credentials, enumerate databases, enable xp_cmdshell"
+          "description": "MSSQL client tool \u2014 test credentials, enumerate databases, enable xp_cmdshell"
         },
         {
           "name": "CrackMapExec",
@@ -12866,7 +12866,7 @@
           "url": "https://nmap.org",
           "install": "apt-get install nmap",
           "command": "nmap -sV -p 3306 --script mysql-info,mysql-empty-password,mysql-brute TARGET\nnmap -sV -p 5432 --script pgsql-brute TARGET\nnmap -sV -p 27017 --script mongodb-info TARGET",
-          "description": "nmap NSE database scripts — enumerate version, test default/empty credentials, list databases"
+          "description": "nmap NSE database scripts \u2014 enumerate version, test default/empty credentials, list databases"
         },
         {
           "name": "Metasploit Framework",
@@ -12874,7 +12874,7 @@
           "url": "https://github.com/rapid7/metasploit-framework",
           "install": "curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && bash msfinstall",
           "command": "msfconsole -x 'use auxiliary/scanner/mysql/mysql_login; set RHOSTS TARGET; set PASS_FILE /usr/share/metasploit-framework/data/wordlists/unix_passwords.txt; run'",
-          "description": "World's most used penetration testing framework — modules for DB auth testing, exploitation"
+          "description": "World's most used penetration testing framework \u2014 modules for DB auth testing, exploitation"
         },
         {
           "name": "nuclei",
@@ -13002,7 +13002,7 @@
         19009,
         19010
       ],
-      "owasp_web": "A07:2021 – Identification and Authentication Failures",
+      "owasp_web": "A07:2021 \u2013 Identification and Authentication Failures",
       "owasp_api": "",
       "nist_csf2": [
         "PR.AA-01",
@@ -13074,7 +13074,7 @@
           "url": "https://github.com/quentinhardy/odat",
           "install": "git clone https://github.com/quentinhardy/odat.git && pip3 install -r requirements.txt",
           "command": "python3 odat.py all -s TARGET -p 1521 --sysdba\npython3 odat.py passwordguesser -s TARGET -p 1521 -d ORCL",
-          "description": "Oracle database penetration testing tool — password guessing, privilege escalation, file I/O"
+          "description": "Oracle database penetration testing tool \u2014 password guessing, privilege escalation, file I/O"
         },
         {
           "name": "nmap (DB scripts)",
@@ -13082,7 +13082,7 @@
           "url": "https://nmap.org",
           "install": "apt-get install nmap",
           "command": "nmap -sV -p 3306 --script mysql-info,mysql-empty-password,mysql-brute TARGET\nnmap -sV -p 5432 --script pgsql-brute TARGET\nnmap -sV -p 27017 --script mongodb-info TARGET",
-          "description": "nmap NSE database scripts — enumerate version, test default/empty credentials, list databases"
+          "description": "nmap NSE database scripts \u2014 enumerate version, test default/empty credentials, list databases"
         },
         {
           "name": "Metasploit Framework",
@@ -13090,7 +13090,7 @@
           "url": "https://github.com/rapid7/metasploit-framework",
           "install": "curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && bash msfinstall",
           "command": "msfconsole -x 'use auxiliary/scanner/mysql/mysql_login; set RHOSTS TARGET; set PASS_FILE /usr/share/metasploit-framework/data/wordlists/unix_passwords.txt; run'",
-          "description": "World's most used penetration testing framework — modules for DB auth testing, exploitation"
+          "description": "World's most used penetration testing framework \u2014 modules for DB auth testing, exploitation"
         }
       ],
       "description": "scattershot3 detected: Oracle Database Vulnerability. This finding indicates a security concern that requires review.",
@@ -13181,8 +13181,8 @@
         150013,
         150014
       ],
-      "owasp_web": "A03:2021 – Injection",
-      "owasp_api": "API3:2023 – Injection",
+      "owasp_web": "A03:2021 \u2013 Injection",
+      "owasp_api": "API3:2023 \u2013 Injection",
       "nist_csf2": [
         "PR.DS-02",
         "DE.CM-01"
@@ -13450,8 +13450,8 @@
         150023,
         150024
       ],
-      "owasp_web": "A03:2021 – Injection",
-      "owasp_api": "API3:2023 – Injection",
+      "owasp_web": "A03:2021 \u2013 Injection",
+      "owasp_api": "API3:2023 \u2013 Injection",
       "nist_csf2": [
         "DE.CM-01",
         "PR.DS-02"
@@ -13524,7 +13524,7 @@
           "url": "https://github.com/r0oth3x49/ghauri",
           "install": "pip install ghauri",
           "command": "ghauri -u 'https://TARGET/page?id=1' --dbs --batch",
-          "description": "Advanced SQL injection detection tool — alternative to sqlmap with improved WAF bypass"
+          "description": "Advanced SQL injection detection tool \u2014 alternative to sqlmap with improved WAF bypass"
         },
         {
           "name": "nuclei",
@@ -13540,7 +13540,7 @@
           "url": "https://github.com/rapid7/metasploit-framework",
           "install": "curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && bash msfinstall",
           "command": "msfconsole -x 'use auxiliary/scanner/mysql/mysql_login; set RHOSTS TARGET; set PASS_FILE /usr/share/metasploit-framework/data/wordlists/unix_passwords.txt; run'",
-          "description": "World's most used penetration testing framework — modules for DB auth testing, exploitation"
+          "description": "World's most used penetration testing framework \u2014 modules for DB auth testing, exploitation"
         }
       ],
       "description": "scattershot3 detected: SQL Injection (Error-Based). This finding indicates a security concern that requires review.",
@@ -13692,7 +13692,7 @@
       "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N",
       "nessus_plugin_ids": [],
       "qualys_qids": [],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -14015,7 +14015,7 @@
         38170,
         38601
       ],
-      "owasp_web": "A02:2021 – Cryptographic Failures",
+      "owasp_web": "A02:2021 \u2013 Cryptographic Failures",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -14140,7 +14140,7 @@
         38170,
         38601
       ],
-      "owasp_web": "A02:2021 – Cryptographic Failures",
+      "owasp_web": "A02:2021 \u2013 Cryptographic Failures",
       "owasp_api": "",
       "nist_csf2": [
         "PR.DS-02",
@@ -14269,8 +14269,8 @@
         150100,
         150101
       ],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
-      "owasp_api": "API2:2023 – Broken Authentication",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
+      "owasp_api": "API2:2023 \u2013 Broken Authentication",
       "nist_csf2": [
         "PR.AA-01",
         "DE.CM-01"
@@ -14352,7 +14352,7 @@
           "url": "https://github.com/rapid7/metasploit-framework",
           "install": "curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && bash msfinstall",
           "command": "msfconsole -x 'use auxiliary/scanner/mysql/mysql_login; set RHOSTS TARGET; set PASS_FILE /usr/share/metasploit-framework/data/wordlists/unix_passwords.txt; run'",
-          "description": "World's most used penetration testing framework — modules for DB auth testing, exploitation"
+          "description": "World's most used penetration testing framework \u2014 modules for DB auth testing, exploitation"
         },
         {
           "name": "nuclei",
@@ -14380,7 +14380,7 @@
       ],
       "risk": "HIGH",
       "description": "ssh-audit matched the SSH server's banner against its built-in CVE database and identified one or more known vulnerabilities affecting the running version of OpenSSH, Dropbear, or Tectia SSH. The CVE ID, CVSS score, and a short description are recorded in the finding Output field; full details are available in the saved ssh-audit JSON report.",
-      "impact": "Depending on the specific CVE, an attacker may achieve remote code execution, authentication bypass, user enumeration, host-key spoofing, denial of service, or memory disclosure. Banner-matched CVEs are pre-exploit indicators — the host running an affected version is the necessary precondition for exploitation, even when no public PoC has been tested against this specific deployment.",
+      "impact": "Depending on the specific CVE, an attacker may achieve remote code execution, authentication bypass, user enumeration, host-key spoofing, denial of service, or memory disclosure. Banner-matched CVEs are pre-exploit indicators \u2014 the host running an affected version is the necessary precondition for exploitation, even when no public PoC has been tested against this specific deployment.",
       "cwe": [
         "CWE-1395",
         "CWE-1104"
@@ -14788,7 +14788,7 @@
     },
     {
       "id": "SS3-186",
-      "title": "Insecure Protocol Detected: Telnet Service Exposed — Cleartext Protocol",
+      "title": "Insecure Protocol Detected: Telnet Service Exposed \u2014 Cleartext Protocol",
       "aliases": [
         "Telnet Exposed",
         "Telnet Cleartext"
@@ -14943,7 +14943,7 @@
         "curl"
       ],
       "description": "The Kubernetes API server is accessible without authentication. Unauthenticated requests can list, create, and modify cluster resources including pods, secrets, and deployments.",
-      "impact": "An attacker can fully compromise the Kubernetes cluster — deploying malicious containers, exfiltrating secrets (including cloud credentials and TLS keys), pivoting to other infrastructure, and achieving persistent backdoor access.",
+      "impact": "An attacker can fully compromise the Kubernetes cluster \u2014 deploying malicious containers, exfiltrating secrets (including cloud credentials and TLS keys), pivoting to other infrastructure, and achieving persistent backdoor access.",
       "category": "Unauthenticated Access"
     },
     {
@@ -15542,7 +15542,7 @@
         "rabbitmqadmin"
       ],
       "description": "The RabbitMQ management UI is accessible with default credentials (guest/guest). The management API returned cluster overview data confirming full administrative access.",
-      "impact": "An attacker gains full administrative control of the message broker — able to read, modify, and delete message queues, create new users, access published messages containing potentially sensitive data, and disrupt message-dependent applications.",
+      "impact": "An attacker gains full administrative control of the message broker \u2014 able to read, modify, and delete message queues, create new users, access published messages containing potentially sensitive data, and disrupt message-dependent applications.",
       "category": "Authentication"
     },
     {
@@ -15843,7 +15843,7 @@
         "curl"
       ],
       "description": "The cloud instance metadata endpoint (169.254.169.254) is accessible from an internal web service, indicating potential SSRF vulnerability or misconfigured network controls.",
-      "impact": "An attacker can extract cloud IAM temporary credentials, enabling full compromise of the cloud environment — lateral movement to other cloud services, data exfiltration from S3/Blob/GCS, and privilege escalation.",
+      "impact": "An attacker can extract cloud IAM temporary credentials, enabling full compromise of the cloud environment \u2014 lateral movement to other cloud services, data exfiltration from S3/Blob/GCS, and privilege escalation.",
       "category": "Information Disclosure"
     },
     {
@@ -16072,7 +16072,7 @@
     },
     {
       "id": "SS3-205",
-      "title": "LDAP: Anonymous Enumeration — Users and Groups Discovered",
+      "title": "LDAP: Anonymous Enumeration \u2014 Users and Groups Discovered",
       "aliases": [
         "LDAP Anonymous Bind Enumeration",
         "LDAP User Enumeration"
@@ -16222,7 +16222,7 @@
         "metasploit"
       ],
       "description": "The host is vulnerable to CVE-2020-0796 (SMBGhost), a buffer overflow in SMBv3 compression handling in Windows 10 (1903/1909) and Server 2019. Detected via nmap smb-vuln-cve-2020-0796 NSE script.",
-      "impact": "An unauthenticated attacker can achieve remote code execution with SYSTEM privileges via a specially crafted SMBv3 compressed packet. This is a wormable vulnerability — no user interaction required.",
+      "impact": "An unauthenticated attacker can achieve remote code execution with SYSTEM privileges via a specially crafted SMBv3 compressed packet. This is a wormable vulnerability \u2014 no user interaction required.",
       "category": "SMB Vulnerability"
     },
     {
@@ -16252,7 +16252,7 @@
         57792
       ],
       "qualys_qids": [],
-      "owasp_web": "A07:2021 – Identification and Authentication Failures",
+      "owasp_web": "A07:2021 \u2013 Identification and Authentication Failures",
       "owasp_api": "",
       "nist_csf2": [
         "PR.AC-1",
@@ -16335,7 +16335,7 @@
       "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
       "nessus_plugin_ids": [],
       "qualys_qids": [],
-      "owasp_web": "A07:2021 – Identification and Authentication Failures",
+      "owasp_web": "A07:2021 \u2013 Identification and Authentication Failures",
       "owasp_api": "",
       "nist_csf2": [
         "PR.AC-7",
@@ -18040,8 +18040,8 @@
       "qualys_qids": [
         370039
       ],
-      "owasp_web": "A05:2021 – Security Misconfiguration",
-      "owasp_api": "API8:2023 – Security Misconfiguration",
+      "owasp_web": "A05:2021 \u2013 Security Misconfiguration",
+      "owasp_api": "API8:2023 \u2013 Security Misconfiguration",
       "nist_csf2": [
         "PR.AA-01"
       ],
@@ -18392,7 +18392,7 @@
         "nmap --script ssh-auth-methods",
         "ssh-audit"
       ],
-      "description": "The SSH server accepts only password-based authentication methods (password and/or keyboard-interactive) with no public key authentication available. This is a significant security weakness — the server cannot accept key-based authentication at all, making brute-force the only barrier to unauthorized access.",
+      "description": "The SSH server accepts only password-based authentication methods (password and/or keyboard-interactive) with no public key authentication available. This is a significant security weakness \u2014 the server cannot accept key-based authentication at all, making brute-force the only barrier to unauthorized access.",
       "impact": "Without public key authentication, the SSH server relies entirely on password strength for security. An attacker can mount online brute-force or credential-stuffing attacks with no cryptographic barrier. The absence of public key support also prevents deployment of certificate-based or hardware-token SSH authentication. This configuration violates CIS Benchmark and DISA STIG requirements for SSH hardening.",
       "category": "SSH Configuration"
     },
@@ -18865,7 +18865,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Domain Controller"
+        "Discovery: Server Role Identified \u2014 Domain Controller"
       ],
       "source_tools": [
         "scattershot3"
@@ -18916,7 +18916,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — DNS Server"
+        "Discovery: Server Role Identified \u2014 DNS Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -18967,7 +18967,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — DHCP Server"
+        "Discovery: Server Role Identified \u2014 DHCP Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19018,7 +19018,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Mail Server"
+        "Discovery: Server Role Identified \u2014 Mail Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19069,7 +19069,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Web Server"
+        "Discovery: Server Role Identified \u2014 Web Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19120,7 +19120,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Database Server"
+        "Discovery: Server Role Identified \u2014 Database Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19171,7 +19171,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — File Server"
+        "Discovery: Server Role Identified \u2014 File Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19222,7 +19222,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Print Server"
+        "Discovery: Server Role Identified \u2014 Print Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19267,7 +19267,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Proxy/Load Balancer"
+        "Discovery: Server Role Identified \u2014 Proxy/Load Balancer"
       ],
       "source_tools": [
         "scattershot3"
@@ -19318,7 +19318,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — VPN Gateway"
+        "Discovery: Server Role Identified \u2014 VPN Gateway"
       ],
       "source_tools": [
         "scattershot3"
@@ -19369,7 +19369,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — RADIUS Server"
+        "Discovery: Server Role Identified \u2014 RADIUS Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19420,7 +19420,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Monitoring Server"
+        "Discovery: Server Role Identified \u2014 Monitoring Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19471,7 +19471,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Virtualization Host"
+        "Discovery: Server Role Identified \u2014 Virtualization Host"
       ],
       "source_tools": [
         "scattershot3"
@@ -19522,7 +19522,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — CI/CD Server"
+        "Discovery: Server Role Identified \u2014 CI/CD Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19573,7 +19573,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Container Host"
+        "Discovery: Server Role Identified \u2014 Container Host"
       ],
       "source_tools": [
         "scattershot3"
@@ -19624,7 +19624,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Identified — Backup Server"
+        "Discovery: Server Role Identified \u2014 Backup Server"
       ],
       "source_tools": [
         "scattershot3"
@@ -19721,7 +19721,7 @@
     },
     {
       "aliases": [
-        "Discovery: Environment Tier Inferred — {environment}"
+        "Discovery: Environment Tier Inferred \u2014 {environment}"
       ],
       "source_tools": [
         "scattershot3"
@@ -19767,7 +19767,7 @@
     },
     {
       "aliases": [
-        "Discovery: Application Identified — {app_name}"
+        "Discovery: Application Identified \u2014 {app_name}"
       ],
       "source_tools": [
         "scattershot3"
@@ -19813,7 +19813,7 @@
     },
     {
       "aliases": [
-        "Discovery: Hardware Model Identified — {model}"
+        "Discovery: Hardware Model Identified \u2014 {model}"
       ],
       "source_tools": [
         "scattershot3"
@@ -19859,7 +19859,7 @@
     },
     {
       "aliases": [
-        "Discovery: Server Role Inferred — {role}"
+        "Discovery: Server Role Inferred \u2014 {role}"
       ],
       "source_tools": [
         "scattershot3"
@@ -19978,7 +19978,7 @@
     },
     {
       "id": "SS3-242",
-      "title": "Discovery: Live Host — No Services Exposed",
+      "title": "Discovery: Live Host \u2014 No Services Exposed",
       "aliases": [],
       "source_tools": [
         "scattershot3"
@@ -20033,13 +20033,13 @@
     },
     {
       "id": "SS3-243",
-      "title": "Discovery: Live Host — Filtered (Possible Segmentation)",
+      "title": "Discovery: Live Host \u2014 Filtered (Possible Segmentation)",
       "aliases": [],
       "source_tools": [
         "scattershot3"
       ],
       "risk": "INFO",
-      "description": "Host responded to discovery probes (confirmed alive) but 90% or more of scanned ports are filtered — probes received no response, indicating a firewall or ACL is actively dropping traffic to this host. When an entire subnet exhibits this behavior while adjacent subnets respond normally, it is strong evidence of network segmentation enforcement.",
+      "description": "Host responded to discovery probes (confirmed alive) but 90% or more of scanned ports are filtered \u2014 probes received no response, indicating a firewall or ACL is actively dropping traffic to this host. When an entire subnet exhibits this behavior while adjacent subnets respond normally, it is strong evidence of network segmentation enforcement.",
       "impact": "A host behind a fully-filtered firewall indicates active access control enforcement at the network layer. This is a positive security control when intentional (segmentation between VLANs, DMZ boundaries, production/test isolation). Compare against other scanned subnets to map segmentation boundaries. If segmentation is expected, this confirms the control is operating. If unexpected, it may indicate misconfigured ACLs blocking legitimate traffic or an undocumented security zone.",
       "cwe": [],
       "cve_examples": [],
@@ -20097,7 +20097,7 @@
     },
     {
       "id": "SS3-244",
-      "title": "SMB Signing Enforced — Verify Re-Authentication Bypass Patch (KB5124008)",
+      "title": "SMB Signing Enforced \u2014 Verify Re-Authentication Bypass Patch (KB5124008)",
       "aliases": [
         "SMB Signing Bypass via Re-Authentication",
         "SMB Session Re-Auth Identity Mismatch",
@@ -20109,7 +20109,7 @@
       ],
       "risk": "INFO",
       "description": "SMB signing is enforced on this host, which prevents traditional NTLM relay attacks. However, research published October 2026 (blackfield.ch) demonstrated that enforced signing can be bypassed via SMB session re-authentication: an attacker opens a signed session with their own credentials, then re-authenticates it with a relayed privileged identity. The server retains the original signing key (per MS-SMB2 spec) while granting the new identity's privileges. Microsoft silently patched this with a same-identity check in KB5124008 (September 2026).",
-      "impact": "If the target has not applied KB5124008, an attacker with low-privilege domain credentials and a network position for authentication coercion (LLMNR poisoning, PetitPotam, PrinterBug) can relay a privileged user's authentication to this host and gain that user's privileges — even though SMB signing is enforced. Domain Controllers are the highest-value target for this attack since DCSync or secretsdump becomes possible.",
+      "impact": "If the target has not applied KB5124008, an attacker with low-privilege domain credentials and a network position for authentication coercion (LLMNR poisoning, PetitPotam, PrinterBug) can relay a privileged user's authentication to this host and gain that user's privileges \u2014 even though SMB signing is enforced. Domain Controllers are the highest-value target for this attack since DCSync or secretsdump becomes possible.",
       "cwe": [
         "CWE-287",
         "CWE-384"
@@ -20179,7 +20179,7 @@
         "exploit/windows/smb/smb_relay"
       ],
       "kev": false,
-      "remediation_brief": "Install KB5124008 (September 2026 cumulative update) or later on all Windows hosts, prioritizing Domain Controllers. Validate the fix with the NetExec reauth_swap module or patchcheck.py from the reauthx toolkit (blackfield.ch). Continue enforcing SMB signing — the patch adds a same-identity check on re-authentication that closes this bypass.",
+      "remediation_brief": "Install KB5124008 (September 2026 cumulative update) or later on all Windows hosts, prioritizing Domain Controllers. Validate the fix with the NetExec reauth_swap module or patchcheck.py from the reauthx toolkit (blackfield.ch). Continue enforcing SMB signing \u2014 the patch adds a same-identity check on re-authentication that closes this bypass.",
       "remediation_component": "Network",
       "remediation_category": "Network Security",
       "remediation_effort": "Easy",
@@ -20658,7 +20658,7 @@
         "nmap",
         "curl"
       ],
-      "description": "An AI/ML service was identified running on a non-standard port — a port not typically associated with the detected AI platform. This may indicate a custom deployment or attempt to obscure the service.",
+      "description": "An AI/ML service was identified running on a non-standard port \u2014 a port not typically associated with the detected AI platform. This may indicate a custom deployment or attempt to obscure the service.",
       "impact": "AI services on non-standard ports may evade standard vulnerability scanning and security monitoring. Automated security tools often only scan well-known AI ports, leaving these services unassessed during routine audits.",
       "_x_severity": "INFO",
       "_x_category": "AI/ML Service Detection",
@@ -21148,7 +21148,7 @@
       ],
       "risk": "HIGH",
       "description": "The LDAP service does not use TLS encryption. Credentials (including plaintext passwords and NTLM hashes during LDAP simple bind) and all directory queries are transmitted in cleartext, allowing any attacker with network access to intercept authentication credentials, enumerate directory objects, and capture sensitive organizational data through passive network sniffing or active man-in-the-middle attacks.",
-      "impact": "An attacker positioned on the network segment can passively capture LDAP bind credentials (usernames and passwords) transmitted in cleartext. With captured domain credentials, the attacker can authenticate to Active Directory, enumerate all domain objects, escalate privileges through group membership abuse, and move laterally across the environment. On unencrypted LDAP, NTLM relay attacks become trivial — an attacker can relay captured NTLM authentication to other services including LDAP itself, potentially gaining Domain Admin access through delegation abuse or ACL modification.",
+      "impact": "An attacker positioned on the network segment can passively capture LDAP bind credentials (usernames and passwords) transmitted in cleartext. With captured domain credentials, the attacker can authenticate to Active Directory, enumerate all domain objects, escalate privileges through group membership abuse, and move laterally across the environment. On unencrypted LDAP, NTLM relay attacks become trivial \u2014 an attacker can relay captured NTLM authentication to other services including LDAP itself, potentially gaining Domain Admin access through delegation abuse or ACL modification.",
       "cwe": [
         "CWE-319",
         "CWE-523"
@@ -21222,6 +21222,345 @@
       "_x_category": "LDAP",
       "_x_owasp": "",
       "category": "LDAP"
+    },
+    {
+      "id": "SS3-247",
+      "title": "SSL/TLS Certificate Chain: {position} Certificate Weak Key",
+      "aliases": [],
+      "source_tools": [
+        "scattershot3"
+      ],
+      "risk": "MEDIUM",
+      "description": "A certificate in the TLS chain uses a public key below industry-minimum strength (RSA < 2048 bits or ECDSA < 256 bits). This applies to intermediate or root CA certificates; leaf certificate weak keys are reported separately as SS3-100.",
+      "impact": "An attacker with sufficient compute resources could factor the weak key and forge certificates for any domain signed by that CA, enabling man-in-the-middle attacks against all services that trust the chain.",
+      "cwe": [
+        "CWE-326"
+      ],
+      "cve_examples": [],
+      "cvss_v3_base": 5.9,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "nessus_plugin_ids": [],
+      "qualys_qids": [],
+      "owasp_web": "A02:2021 Cryptographic Failures",
+      "owasp_api": "",
+      "nist_csf2": [
+        "PR.DS-2"
+      ],
+      "nist_800_53": [
+        "SC-13",
+        "SC-12"
+      ],
+      "nist_800_171": [
+        "3.13.11"
+      ],
+      "pci_dss_4": [
+        "4.2.1"
+      ],
+      "iso_27001": [
+        "A.10.1.1"
+      ],
+      "iso_27002": [],
+      "soc2": [
+        "CC6.1"
+      ],
+      "hitrust": [],
+      "gdpr": [],
+      "mitre_attack": [],
+      "searchsploit_terms": [],
+      "metasploit_modules": [],
+      "kev": false,
+      "remediation_brief": "Replace the weak CA certificate with one using RSA 2048+ or ECDSA 256+ key. Contact the CA to reissue intermediate certificates with stronger keys.",
+      "remediation_component": "Network",
+      "remediation_category": "Cryptography",
+      "remediation_effort": "Moderate",
+      "validation_tools": [
+        "openssl",
+        "sslscan",
+        "testssl"
+      ],
+      "category": "Encryption & Cryptography"
+    },
+    {
+      "id": "SS3-248",
+      "title": "SSL/TLS Certificate Chain: {position} Certificate Expired",
+      "aliases": [],
+      "source_tools": [
+        "scattershot3"
+      ],
+      "risk": "HIGH",
+      "description": "A certificate in the TLS chain (intermediate or root CA) has expired. Even if the leaf certificate is valid, an expired intermediate breaks chain-of-trust validation for clients that perform full chain verification.",
+      "impact": "Clients performing full chain validation will reject the connection, causing service outages. Sophisticated attackers could exploit the broken trust chain to substitute their own certificates without detection.",
+      "cwe": [
+        "CWE-295",
+        "CWE-298"
+      ],
+      "cve_examples": [],
+      "cvss_v3_base": 7.4,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "nessus_plugin_ids": [
+        15901
+      ],
+      "qualys_qids": [],
+      "owasp_web": "A02:2021 Cryptographic Failures",
+      "owasp_api": "",
+      "nist_csf2": [
+        "PR.DS-2"
+      ],
+      "nist_800_53": [
+        "SC-12",
+        "SC-17"
+      ],
+      "nist_800_171": [
+        "3.13.11"
+      ],
+      "pci_dss_4": [
+        "4.2.1"
+      ],
+      "iso_27001": [
+        "A.10.1.1"
+      ],
+      "iso_27002": [],
+      "soc2": [
+        "CC6.1"
+      ],
+      "hitrust": [],
+      "gdpr": [],
+      "mitre_attack": [],
+      "searchsploit_terms": [],
+      "metasploit_modules": [],
+      "kev": false,
+      "remediation_brief": "Replace the expired intermediate or root CA certificate with a current one. Rebuild the certificate chain with valid certificates from the issuing CA.",
+      "remediation_component": "Network",
+      "remediation_category": "Cryptography",
+      "remediation_effort": "Moderate",
+      "validation_tools": [
+        "openssl",
+        "testssl"
+      ],
+      "category": "Encryption & Cryptography"
+    },
+    {
+      "id": "SS3-249",
+      "title": "SSL/TLS Certificate Chain: {position} Certificate Uses SHA-1 Signature",
+      "aliases": [],
+      "source_tools": [
+        "scattershot3"
+      ],
+      "risk": "MEDIUM",
+      "description": "A certificate in the TLS chain is signed with SHA-1, which is deprecated and vulnerable to collision attacks (SHAttered). Modern browsers and security standards reject SHA-1 signed certificates.",
+      "impact": "An attacker could perform a collision attack to forge a certificate with the same SHA-1 hash, enabling transparent man-in-the-middle attacks. All major browsers display warnings or block SHA-1 certificates.",
+      "cwe": [
+        "CWE-328"
+      ],
+      "cve_examples": [
+        "CVE-2005-4900"
+      ],
+      "cvss_v3_base": 5.9,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N",
+      "nessus_plugin_ids": [
+        85571
+      ],
+      "qualys_qids": [],
+      "owasp_web": "A02:2021 Cryptographic Failures",
+      "owasp_api": "",
+      "nist_csf2": [
+        "PR.DS-2"
+      ],
+      "nist_800_53": [
+        "SC-13"
+      ],
+      "nist_800_171": [
+        "3.13.11"
+      ],
+      "pci_dss_4": [
+        "4.2.1"
+      ],
+      "iso_27001": [
+        "A.10.1.1"
+      ],
+      "iso_27002": [],
+      "soc2": [
+        "CC6.1"
+      ],
+      "hitrust": [],
+      "gdpr": [],
+      "mitre_attack": [],
+      "searchsploit_terms": [],
+      "metasploit_modules": [],
+      "kev": false,
+      "remediation_brief": "Reissue certificates with SHA-256 or stronger signature algorithm. Contact the CA to replace any SHA-1 signed intermediate certificates.",
+      "remediation_component": "Network",
+      "remediation_category": "Cryptography",
+      "remediation_effort": "Moderate",
+      "validation_tools": [
+        "openssl",
+        "testssl"
+      ],
+      "category": "Encryption & Cryptography"
+    },
+    {
+      "id": "SS3-250",
+      "title": "SSL/TLS Certificate Chain: Self-Signed Intermediate Certificate",
+      "aliases": [],
+      "source_tools": [
+        "scattershot3"
+      ],
+      "risk": "HIGH",
+      "description": "An intermediate certificate in the chain is self-signed, which breaks chain-of-trust validation. This may indicate a misconfigured certificate chain or a rogue CA certificate.",
+      "impact": "Clients will be unable to verify the chain of trust, causing TLS validation failures. A self-signed intermediate may also indicate a man-in-the-middle interception device or a compromised CA.",
+      "cwe": [
+        "CWE-295",
+        "CWE-296"
+      ],
+      "cve_examples": [],
+      "cvss_v3_base": 7.4,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "nessus_plugin_ids": [],
+      "qualys_qids": [],
+      "owasp_web": "A07:2021 Identification and Authentication Failures",
+      "owasp_api": "",
+      "nist_csf2": [
+        "PR.DS-2"
+      ],
+      "nist_800_53": [
+        "SC-12",
+        "SC-17"
+      ],
+      "nist_800_171": [
+        "3.13.11"
+      ],
+      "pci_dss_4": [
+        "4.2.1"
+      ],
+      "iso_27001": [
+        "A.10.1.1"
+      ],
+      "iso_27002": [],
+      "soc2": [
+        "CC6.1"
+      ],
+      "hitrust": [],
+      "gdpr": [],
+      "mitre_attack": [
+        {
+          "technique": "T1557",
+          "tactic": "Credential Access",
+          "name": "Adversary-in-the-Middle"
+        }
+      ],
+      "searchsploit_terms": [],
+      "metasploit_modules": [],
+      "kev": false,
+      "remediation_brief": "Replace the self-signed intermediate with a properly CA-signed intermediate certificate. Rebuild the certificate chain from a trusted CA.",
+      "remediation_component": "Network",
+      "remediation_category": "Cryptography",
+      "remediation_effort": "Moderate",
+      "validation_tools": [
+        "openssl",
+        "testssl"
+      ],
+      "category": "Encryption & Cryptography"
+    },
+    {
+      "id": "SS3-251",
+      "title": "SSL/TLS Certificate Chain: Incomplete Certificate Chain",
+      "aliases": [
+        "SSL/TLS Certificate: Chain Incomplete"
+      ],
+      "source_tools": [
+        "scattershot3"
+      ],
+      "risk": "MEDIUM",
+      "description": "The server did not send a complete certificate chain. Clients that do not cache intermediate certificates will fail to validate the server's identity, causing connection failures or security warnings.",
+      "impact": "Users may see certificate warnings or connection failures. Mobile devices and strict TLS clients that don't cache intermediates will be unable to connect. This also weakens the overall trust model.",
+      "cwe": [
+        "CWE-295"
+      ],
+      "cve_examples": [],
+      "cvss_v3_base": 4.3,
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N",
+      "nessus_plugin_ids": [
+        35291
+      ],
+      "qualys_qids": [],
+      "owasp_web": "A07:2021 Identification and Authentication Failures",
+      "owasp_api": "",
+      "nist_csf2": [
+        "PR.DS-2"
+      ],
+      "nist_800_53": [
+        "SC-12",
+        "SC-17"
+      ],
+      "nist_800_171": [
+        "3.13.11"
+      ],
+      "pci_dss_4": [
+        "4.2.1"
+      ],
+      "iso_27001": [
+        "A.10.1.1"
+      ],
+      "iso_27002": [],
+      "soc2": [
+        "CC6.1"
+      ],
+      "hitrust": [],
+      "gdpr": [],
+      "mitre_attack": [],
+      "searchsploit_terms": [],
+      "metasploit_modules": [],
+      "kev": false,
+      "remediation_brief": "Configure the server to send the full certificate chain including all intermediate certificates. The root CA may be omitted as clients must already trust it.",
+      "remediation_component": "Network",
+      "remediation_category": "Configuration",
+      "remediation_effort": "Easy",
+      "validation_tools": [
+        "openssl",
+        "testssl",
+        "sslscan"
+      ],
+      "category": "Encryption & Cryptography"
+    },
+    {
+      "id": "SS3-252",
+      "title": "SSL/TLS Certificate Chain: Root CA Included in Chain",
+      "aliases": [],
+      "source_tools": [
+        "scattershot3"
+      ],
+      "risk": "INFO",
+      "description": "The server includes the root CA certificate in the TLS handshake. Since clients must already trust the root CA locally, sending it is unnecessary and adds overhead to the TLS handshake.",
+      "impact": "Minimal security impact. The unnecessary root CA adds bytes to every TLS handshake, increasing latency slightly. Per RFC 5246, the root CA SHOULD be omitted from the chain.",
+      "cwe": [],
+      "cve_examples": [],
+      "cvss_v3_base": null,
+      "cvss_vector": "",
+      "nessus_plugin_ids": [],
+      "qualys_qids": [],
+      "owasp_web": "",
+      "owasp_api": "",
+      "nist_csf2": [],
+      "nist_800_53": [],
+      "nist_800_171": [],
+      "pci_dss_4": [],
+      "iso_27001": [],
+      "iso_27002": [],
+      "soc2": [],
+      "hitrust": [],
+      "gdpr": [],
+      "mitre_attack": [],
+      "searchsploit_terms": [],
+      "metasploit_modules": [],
+      "kev": false,
+      "remediation_brief": "Remove the root CA certificate from the server's certificate chain. Only the leaf and intermediate certificates should be sent.",
+      "remediation_component": "Network",
+      "remediation_category": "Configuration",
+      "remediation_effort": "Easy",
+      "validation_tools": [
+        "openssl"
+      ],
+      "category": "Encryption & Cryptography"
     }
   ]
 }
