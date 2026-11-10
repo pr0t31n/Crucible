@@ -164,17 +164,37 @@ def api_intel_v2_software(project_id):
     if not project:
         return _err_404()
     db = _get_db(project)
-    if not db:
-        return _err_503()
     p = _paginate_params()
     search = _search_param()
+    # Try DB first
+    if db:
+        try:
+            result = db.query_software(search=search, **p)
+            if result.get("total", 0) > 0:
+                return jsonify(result)
+        except (AttributeError, Exception):
+            pass
+    # Fall back to file-based aggregation
     try:
-        result = db.query_software(search=search, **p)
-        return jsonify(result)
-    except AttributeError:
-        return jsonify(_empty_page(p["page"]))
+        from routes.intelligence import _aggregate_ss3_software
+        agg = _aggregate_ss3_software(project, project_id)
+        if agg:
+            if search:
+                sl = search.lower()
+                agg = [s for s in agg
+                       if sl in (s.get("software") or "").lower()
+                       or sl in (s.get("version") or "").lower()
+                       or sl in (s.get("ip") or "").lower()]
+            total = len(agg)
+            start = (p["page"] - 1) * p["per_page"]
+            page_items = agg[start:start + p["per_page"]]
+            return jsonify({
+                "items": page_items, "total": total,
+                "page": p["page"],
+                "pages": (total + p["per_page"] - 1) // p["per_page"]})
     except Exception as e:
-        return _err_500(e)
+        log.debug("software v2 file fallback: %s", e)
+    return jsonify(_empty_page(p["page"]))
 
 
 @intel_v2.route("/api/intel/v2/hostname-intel/<project_id>")

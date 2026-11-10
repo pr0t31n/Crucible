@@ -1794,6 +1794,10 @@ def api_intel_panel(panel, project_id):
             data = wifi_agg(td)
             if data is not None:
                 return jsonify({key: data, "available": True})
+        if panel == "net-software" and tool_key == "ss3":
+            agg = _aggregate_ss3_software(project, project_id)
+            if agg:
+                return jsonify({key: _maybe_filter(agg), "available": True})
         if file_data is not None:
             return jsonify({key: _maybe_filter(file_data), "available": True})
     # Fallback: people dorking from findings cache
