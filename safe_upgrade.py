@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -539,7 +539,7 @@ _SYSTEMIC_PATTERNS = [
     (re.compile(r"packages have been kept back", re.I),
      "held-back packages (need dist-upgrade or manual resolution)"),
     (re.compile(r"pkgProblemResolver.*generated breaks|caused by held packages|Breaks existing package", re.I),
-     "dependency resolution failure — held/broken packages block upgrade (try apt full-upgrade)"),
+     "dependency resolution failure — held/broken packages block upgrade"),
     (re.compile(r"dpkg was interrupted|dpkg --configure -a", re.I),
      "interrupted dpkg (needs dpkg --configure -a)"),
 ]
@@ -560,6 +560,226 @@ def _check_systemic(err: str) -> str | None:
     if not _check_dpkg_lock():
         return "dpkg lock held by another process"
     return None
+
+# ── Resolver escalation ─────────────────────────────────────────────────────
+_SIM_REMOVE_RE = re.compile(r'^Remv\s+(\S+)')
+_SIM_INSTALL_RE = re.compile(r'^Inst\s+(\S+)')
+_SIM_KEPT_RE = re.compile(r'kept back.*?:\s*(.*)', re.I)
+
+def _get_held_packages() -> list[str]:
+    """Return list of packages with apt hold status."""
+    rc, out, _ = _run(["apt-mark", "showhold"], timeout=15)
+    if rc != 0:
+        return []
+    return [line.strip() for line in out.splitlines() if line.strip()]
+
+def _parse_simulation(stdout: str, stderr: str) -> dict:
+    """Parse apt-get -s full-upgrade output into structured data."""
+    removals: list[str] = []
+    installs: list[str] = []
+    kept_back: list[str] = []
+    for line in stdout.splitlines():
+        m = _SIM_REMOVE_RE.match(line)
+        if m:
+            removals.append(m.group(1).split(":")[0])
+            continue
+        m = _SIM_INSTALL_RE.match(line)
+        if m:
+            installs.append(m.group(1).split(":")[0])
+    for line in (stderr + "\n" + stdout).splitlines():
+        m = _SIM_KEPT_RE.search(line)
+        if m:
+            for pkg in m.group(1).split():
+                name = pkg.strip().split(":")[0]
+                if name:
+                    kept_back.append(name)
+    kept_re2 = re.compile(r'following packages have been kept back', re.I)
+    in_kept_block = False
+    for line in stdout.splitlines():
+        if kept_re2.search(line):
+            in_kept_block = True
+            continue
+        if in_kept_block:
+            stripped = line.strip()
+            if not stripped:
+                in_kept_block = False
+                continue
+            for token in stripped.split():
+                name = token.strip().split(":")[0]
+                if name and name not in kept_back:
+                    kept_back.append(name)
+    return {
+        "removals": removals,
+        "installs": installs,
+        "kept_back": kept_back,
+    }
+
+def _escalate_resolver(ctx: dict) -> bool:
+    """Attempt safe escalation to fix the apt resolver.
+    Returns True if the resolver is now clean (systemic issue cleared).
+    NEVER runs full-upgrade. Works surgically on individual packages."""
+    protected = ctx.get("critical_pkgs", set())
+    active_methods = ctx.get("active_methods", [])
+
+    _log("*", "Escalating resolver repair…")
+
+    # ── Step 1: Check for held packages ──────────────────────────────────
+    held = _get_held_packages()
+    if held:
+        _log("~", f"Found {len(held)} held packages: {', '.join(held[:20])}")
+        _log("*", "Unholding all held packages (does not change installed versions)")
+        for pkg in held:
+            rc, _, _ = _run(["apt-mark", "unhold", pkg], timeout=10, env=_APT_ENV)
+            if rc == 0:
+                _log("+", f"  Unheld {pkg}")
+            else:
+                _log("-", f"  Failed to unhold {pkg}")
+
+        # Retry apt install -f after unholding
+        _log("*", "Retrying apt install -f after unholding…")
+        rc, _, err = _apt(["install", "-f", "-y"], timeout=300)
+        if rc == 0:
+            _log("+", "Resolver clean after unholding packages")
+            ctx.pop("_repair_systemic", None)
+            return True
+        _log("~", "Still broken after unholding")
+    else:
+        _log("", "  No held packages found")
+
+    # ── Step 2: Simulate full-upgrade to diagnose the knot ───────────────
+    _log("*", "Simulating full-upgrade to diagnose dependency knot (dry-run only)…")
+    rc, sim_out, sim_err = _apt(["-s", "full-upgrade"], timeout=120)
+
+    sim = _parse_simulation(sim_out, sim_err)
+    removals = sim["removals"]
+    installs = sim["installs"]
+    kept_back = sim["kept_back"]
+
+    if not removals and not installs and not kept_back:
+        if rc != 0:
+            _log("-", "Simulation failed with no actionable output")
+            if sim_err.strip():
+                for line in sim_err.strip().splitlines()[-5:]:
+                    _log("", f"  {_DIM}{line.strip()}{_R}")
+            return False
+        _log("~", "Simulation shows nothing to do — resolver may already be clean")
+        rc_test, _, err_test = _apt(["install", "-f", "-y"], timeout=300)
+        if rc_test == 0:
+            ctx.pop("_repair_systemic", None)
+            return True
+        return False
+
+    # Report what the simulation found
+    if removals:
+        _log("~", f"Simulation wants to REMOVE {len(removals)} packages:")
+        for pkg in removals[:30]:
+            is_crit = _is_protected(pkg, protected)
+            tag = f" {_RD}[CRITICAL]{_R}" if is_crit else ""
+            _log("", f"  {_DIM}{pkg}{_R}{tag}")
+        if len(removals) > 30:
+            _log("", f"  {_DIM}… and {len(removals) - 30} more{_R}")
+    if installs:
+        _log("", f"Simulation wants to install/upgrade {len(installs)} packages")
+    if kept_back:
+        _log("~", f"Simulation keeps back {len(kept_back)} packages: "
+             f"{', '.join(kept_back[:15])}")
+
+    # ── Step 3: Classify removals as safe vs critical ────────────────────
+    critical_removals = [p for p in removals if _is_protected(p, protected)]
+    safe_removals = [p for p in removals if not _is_protected(p, protected)]
+
+    if critical_removals:
+        _log("-", f"{len(critical_removals)} connectivity-critical packages would be removed — "
+             f"will NOT touch them:")
+        for pkg in critical_removals:
+            _log("", f"  {_RD}{pkg}{_R}")
+
+    # ── Step 4: Surgically process safe removal/transition pairs ─────────
+    if not safe_removals:
+        _log("~", "No safe removals to process — cannot resolve the knot automatically")
+        if critical_removals:
+            _log("-", "The dependency knot involves critical packages that cannot be "
+                 "safely removed remotely")
+            _log("-", "Manual intervention required — run interactively with console access")
+        return False
+
+    _log("*", f"Processing {len(safe_removals)} safe package transitions…")
+    resolved_count = 0
+    failed_transitions: list[str] = []
+
+    # Process in small batches — try installing the replacements which
+    # auto-removes the old versions as a side effect
+    batch_size = 5
+    for i in range(0, len(safe_removals), batch_size):
+        if _stopping:
+            break
+        batch = safe_removals[i:i + batch_size]
+        batch_label = f"Batch {i // batch_size + 1}"
+
+        # Connectivity check before each batch
+        if active_methods:
+            pre = _verify_all_conn(active_methods)
+            if not all(c["ok"] for c in pre):
+                _log("-", f"Connectivity degraded — stopping resolver escalation")
+                break
+
+        # Try removing the blocking packages to free the resolver
+        # apt install -y will handle the transition (remove old + install new)
+        _log("*", f"  {batch_label}: removing {len(batch)} blocking packages…")
+        for pkg in batch:
+            rc, _, err = _apt(["remove", "-y", pkg], timeout=120)
+            if rc == 0:
+                _log("+", f"    Removed {pkg}")
+                resolved_count += 1
+            else:
+                # Try dpkg force-remove as fallback
+                rc2, _, _ = _dpkg(["--purge", "--force-depends", pkg], timeout=60)
+                if rc2 == 0:
+                    _log("+", f"    Force-removed {pkg}")
+                    resolved_count += 1
+                else:
+                    _log("-", f"    Cannot remove {pkg}")
+                    failed_transitions.append(pkg)
+
+        # After each batch, test if the resolver is clean
+        rc_test, _, err_test = _apt(["install", "-f", "-y"], timeout=300)
+        if rc_test == 0:
+            _log("+", f"Resolver clean after removing {resolved_count} blocking packages")
+            ctx.pop("_repair_systemic", None)
+            # Connectivity check after resolution
+            if active_methods:
+                post = _verify_all_conn(active_methods)
+                post_str = "  ".join(
+                    f"{_G}✓{_R} {c['name']}" if c["ok"] else f"{_RD}✗{_R} {c['name']}"
+                    for c in post
+                )
+                _log("*", f"  Connectivity: {post_str}")
+            return True
+
+    # ── Step 5: Final check ──────────────────────────────────────────────
+    if resolved_count > 0:
+        _log("~", f"Removed {resolved_count} blocking packages but resolver still not clean")
+        # One more apt install -f
+        rc, _, err = _apt(["install", "-f", "-y"], timeout=300)
+        if rc == 0:
+            ctx.pop("_repair_systemic", None)
+            return True
+
+    if failed_transitions:
+        _log("-", f"{len(failed_transitions)} packages could not be removed:")
+        for pkg in failed_transitions:
+            _log("", f"  {_RD}{pkg}{_R}")
+
+    _log("-", "Resolver escalation could not fully resolve the dependency knot")
+    _log("-", "Manual intervention required with console access")
+    return False
+
+def _resolver_is_clean() -> bool:
+    """Quick test: can apt install -f succeed?"""
+    rc, _, _ = _apt(["install", "-f", "-y", "--dry-run"], timeout=60)
+    return rc == 0
+
+# ── end resolver escalation ─────────────────────────────────────────────────
 
 def _upgrade_chunk(pkgs: list[str], depth: int = 0,
                    chunk_label: str = "") -> tuple[list[str], list[str]]:
@@ -809,7 +1029,14 @@ def phase_repair(ctx: dict) -> None:
         if systemic:
             ctx["_repair_systemic"] = systemic
             _log("-", f"Systemic issue: {systemic}")
-            _log("~", "This will likely cause most package upgrades to fail")
+
+            # ── Escalate: try to fix the resolver ────────────────────────
+            resolved = _escalate_resolver(ctx)
+            if resolved:
+                _log("+", "Resolver repaired by escalation")
+            else:
+                _log("-", "Resolver escalation failed — systemic issue persists")
+                _log("~", "Upgrades will proceed but most will likely fail")
 
     if remaining:
         remaining = _get_broken_packages()
