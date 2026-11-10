@@ -159,31 +159,25 @@ def change_password():
                                csrf_token=csrf, force=force,
                                error="Passwords do not match.")
 
-    if len(new_password) < 8:
+    pw_err = _auth.is_weak_password(new_password)
+    if pw_err:
         csrf = _auth.generate_csrf()
         return render_template("change_password.html",
-                               csrf_token=csrf, force=force,
-                               error="Password must be at least 8 characters.")
+                               csrf_token=csrf, force=force, error=pw_err)
 
     if force:
         new_username = request.form.get("new_username", "").strip()
-        if not new_username or len(new_username) < 3:
+        un_err = _auth.is_weak_username(new_username)
+        if un_err:
             csrf = _auth.generate_csrf()
             return render_template("change_password.html",
-                                   csrf_token=csrf, force=force,
-                                   error="Username must be at least 3 characters.")
+                                   csrf_token=csrf, force=force, error=un_err)
 
-        if _auth.is_blocked_username(new_username):
+        pw_err2 = _auth.is_weak_password(new_password, new_username)
+        if pw_err2:
             csrf = _auth.generate_csrf()
             return render_template("change_password.html",
-                                   csrf_token=csrf, force=force,
-                                   error="That username is not allowed.")
-
-        if _auth.is_blocked_password(new_password):
-            csrf = _auth.generate_csrf()
-            return render_template("change_password.html",
-                                   csrf_token=csrf, force=force,
-                                   error="That password is too common.")
+                                   csrf_token=csrf, force=force, error=pw_err2)
 
         _auth.update_credentials(new_username, new_password)
         session["username"] = new_username
@@ -199,11 +193,11 @@ def change_password():
                                    csrf_token=csrf, force=force,
                                    error="Current password is incorrect.")
 
-        if _auth.is_blocked_password(new_password):
+        pw_err2 = _auth.is_weak_password(new_password, username)
+        if pw_err2:
             csrf = _auth.generate_csrf()
             return render_template("change_password.html",
-                                   csrf_token=csrf, force=force,
-                                   error="That password is too common.")
+                                   csrf_token=csrf, force=force, error=pw_err2)
 
         _auth.update_credentials(username, new_password)
         _log.info("Password changed user=%s ip=%s",
