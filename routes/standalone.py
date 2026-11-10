@@ -1445,6 +1445,105 @@ def api_standalone_tools():
 # ── Safe Upgrade ──────────────────────────────────────────────────────────
 
 _SAFE_UPGRADE_SCRIPT = Path(__file__).resolve().parent.parent / "safe_upgrade.py"
+_UPGRADE_STATE_DIR = Path("/opt/pr0t31n/.crucible")
+_UPGRADE_STATE_FILE = _UPGRADE_STATE_DIR / "upgrade_job.json"
+_UPGRADE_LOG_FILE = _UPGRADE_STATE_DIR / "upgrade_job.log"
+
+
+def _pid_alive(pid):
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
+def _save_upgrade_state(job):
+    try:
+        _UPGRADE_STATE_DIR.mkdir(parents=True, exist_ok=True)
+        _UPGRADE_STATE_FILE.write_text(json.dumps({
+            "id": job["id"], "pid": job["pid"], "status": job["status"],
+            "exit_code": job["exit_code"], "started": job["started"],
+            "flags": job.get("flags", []),
+        }), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _clear_upgrade_state():
+    try:
+        _UPGRADE_STATE_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _load_upgrade_state():
+    try:
+        if _UPGRADE_STATE_FILE.exists():
+            return json.loads(_UPGRADE_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _load_log_lines():
+    try:
+        if _UPGRADE_LOG_FILE.exists():
+            return _UPGRADE_LOG_FILE.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        pass
+    return []
+
+
+def _recover_orphan():
+    """Called at module load. If a previous job was running, check its PID."""
+    state = _load_upgrade_state()
+    if not state or state.get("status") != "running":
+        return
+    pid = state.get("pid")
+    job_id = state["id"]
+    lines = _load_log_lines()
+    if _pid_alive(pid):
+        job = {
+            "id": job_id, "status": "running", "lines": lines,
+            "exit_code": None, "pid": pid, "started": state.get("started", 0),
+            "flags": state.get("flags", []), "recovered": True,
+        }
+        _upgrade_jobs[job_id] = job
+        t = threading.Thread(target=_upgrade_tail_recovered, args=(job,), daemon=True)
+        t.start()
+    else:
+        job = {
+            "id": job_id, "status": "orphaned", "lines": lines,
+            "exit_code": None, "pid": pid, "started": state.get("started", 0),
+            "flags": state.get("flags", []),
+        }
+        _upgrade_jobs[job_id] = job
+        _save_upgrade_state(job)
+
+
+def _upgrade_tail_recovered(job):
+    """Tail the log file for a recovered (still-running) orphan process."""
+    pid = job["pid"]
+    last_size = len(job["lines"])
+    while _pid_alive(pid):
+        time.sleep(1)
+        try:
+            cur_lines = _load_log_lines()
+            if len(cur_lines) > last_size:
+                with _upgrade_lock:
+                    job["lines"] = cur_lines
+                last_size = len(cur_lines)
+        except Exception:
+            pass
+    cur_lines = _load_log_lines()
+    with _upgrade_lock:
+        job["lines"] = cur_lines
+    job["exit_code"] = 0
+    job["status"] = "complete"
+    _save_upgrade_state(job)
 
 
 def _upgrade_worker(job_id: str, flags: list):
@@ -1453,30 +1552,58 @@ def _upgrade_worker(job_id: str, flags: list):
     if os.geteuid() == 0:
         cmd = [sys.executable, "-u", str(_SAFE_UPGRADE_SCRIPT), "--no-color"] + flags
     try:
+        _UPGRADE_LOG_FILE.write_text("", encoding="utf-8")
+    except Exception:
+        pass
+    try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             bufsize=1, universal_newlines=True,
         )
         job["pid"] = proc.pid
+        _save_upgrade_state(job)
+        log_fd = None
+        try:
+            log_fd = open(_UPGRADE_LOG_FILE, "a", encoding="utf-8")
+        except Exception:
+            pass
         for line in proc.stdout:
+            stripped = line.rstrip("\n")
             with _upgrade_lock:
-                job["lines"].append(line.rstrip("\n"))
+                job["lines"].append(stripped)
+            if log_fd:
+                try:
+                    log_fd.write(stripped + "\n")
+                    log_fd.flush()
+                except Exception:
+                    pass
         proc.wait()
         job["exit_code"] = proc.returncode
+        if log_fd:
+            try:
+                log_fd.close()
+            except Exception:
+                pass
     except Exception as exc:
         with _upgrade_lock:
             job["lines"].append(f"[!] Internal error: {exc}")
         job["exit_code"] = -1
     finally:
         job["status"] = "complete"
+        _save_upgrade_state(job)
+
+
+_recover_orphan()
 
 
 @standalone_bp.route("/api/standalone/safe-upgrade", methods=["POST"])
 def api_safe_upgrade_start():
     with _upgrade_lock:
-        running = [j for j in _upgrade_jobs.values() if j["status"] == "running"]
+        running = [j for j in _upgrade_jobs.values()
+                   if j["status"] == "running"]
         if running:
-            return jsonify({"error": "An upgrade is already running"}), 409
+            return jsonify({"error": "An upgrade is already running",
+                            "job_id": running[0]["id"]}), 409
 
     data = request.get_json(silent=True) or {}
     flags = []
@@ -1512,9 +1639,26 @@ def api_safe_upgrade_start():
     with _upgrade_lock:
         _upgrade_jobs[job_id] = job
 
+    _save_upgrade_state(job)
+
     t = threading.Thread(target=_upgrade_worker, args=(job_id, flags), daemon=True)
     t.start()
     return jsonify({"ok": True, "job_id": job_id})
+
+
+@standalone_bp.route("/api/standalone/safe-upgrade/status")
+def api_safe_upgrade_status():
+    """Return active/orphaned job if one exists — used by frontend on modal open."""
+    with _upgrade_lock:
+        for job in _upgrade_jobs.values():
+            if job["status"] in ("running", "orphaned"):
+                return jsonify({
+                    "active": True, "job_id": job["id"],
+                    "status": job["status"], "pid": job["pid"],
+                    "started": job.get("started"),
+                    "line_count": len(job["lines"]),
+                })
+    return jsonify({"active": False})
 
 
 @standalone_bp.route("/api/standalone/safe-upgrade/log")
@@ -1523,7 +1667,7 @@ def api_safe_upgrade_log():
     offset = int(request.args.get("offset", 0))
     job = _upgrade_jobs.get(job_id)
     if not job:
-        return jsonify({"error": "Unknown job"}), 404
+        return jsonify({"error": "Unknown job", "gone": True}), 404
     with _upgrade_lock:
         new_lines = job["lines"][offset:]
     return jsonify({
@@ -1547,6 +1691,22 @@ def api_safe_upgrade_cancel():
         os.kill(job["pid"], 15)
     except ProcessLookupError:
         pass
+    return jsonify({"ok": True})
+
+
+@standalone_bp.route("/api/standalone/safe-upgrade/dismiss", methods=["POST"])
+def api_safe_upgrade_dismiss():
+    """Clear an orphaned or completed job so a new one can start."""
+    data = request.get_json(silent=True) or {}
+    job_id = data.get("job_id", "")
+    job = _upgrade_jobs.get(job_id)
+    if not job:
+        return jsonify({"ok": True})
+    if job["status"] == "running" and _pid_alive(job.get("pid")):
+        return jsonify({"error": "Job still running — cancel it first"}), 400
+    with _upgrade_lock:
+        _upgrade_jobs.pop(job_id, None)
+    _clear_upgrade_state()
     return jsonify({"ok": True})
 
 # ── Custom Script Quick Tool ─────────────────────────────────────────────
