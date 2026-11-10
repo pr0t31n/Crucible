@@ -95,6 +95,70 @@ def _empty_page(page=1):
     return {"items": [], "total": 0, "page": page, "pages": 0}
 
 
+import re as _re
+
+_SW_TITLE_RE = _re.compile(
+    r"^(?:Software (?:Detected|Version Detected)|OS Version Detected)"
+    r"(?:\s*[-:]\s*(.+))?$", _re.IGNORECASE)
+
+
+def _extract_software_from_findings(db, search=None):
+    """Build software list from 'Software Detected' findings in the DB."""
+    _titles = [
+        "Software Detected", "Software Version Detected",
+        "OS Version Detected",
+    ]
+    items = []
+    for title_prefix in _titles:
+        try:
+            result = db.query_findings(
+                search=title_prefix, page=1, per_page=500,
+                include_fp=False)
+        except Exception:
+            continue
+        for f in result.get("items", []):
+            ft = f.get("title", "")
+            if not ft.lower().startswith(title_prefix.lower().split()[0]):
+                continue
+            m = _SW_TITLE_RE.match(ft)
+            sw_name = m.group(1).strip() if m and m.group(1) else ft
+            ip = f.get("ip", "")
+            port = f.get("port", 0)
+            ver = ""
+            desc = f.get("description", "")
+            if desc:
+                for line in desc.splitlines():
+                    low = line.lower().strip()
+                    if low.startswith("version:"):
+                        ver = line.split(":", 1)[1].strip()
+                        break
+            items.append({
+                "software": sw_name,
+                "version": ver or f.get("service", ""),
+                "ip": ip, "port": port,
+                "hostname": f.get("hostname", ""),
+                "method": f.get("sources", "nmap"),
+            })
+    if not items:
+        return None
+    if search:
+        sl = search.lower()
+        items = [s for s in items
+                 if sl in (s.get("software") or "").lower()
+                 or sl in (s.get("version") or "").lower()
+                 or sl in (s.get("ip") or "").lower()]
+    seen = set()
+    deduped = []
+    for it in items:
+        key = (it["software"].lower(), it["version"], it["ip"], it["port"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(it)
+    deduped.sort(key=lambda s: (
+        s.get("software", "").lower(), s.get("ip", ""), int(s.get("port") or 0)))
+    return deduped if deduped else None
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Network Intelligence  (SS3)
 # ═══════════════════════════════════════════════════════════════════
@@ -194,6 +258,20 @@ def api_intel_v2_software(project_id):
                 "pages": (total + p["per_page"] - 1) // p["per_page"]})
     except Exception as e:
         log.debug("software v2 file fallback: %s", e)
+    # Fall back to extracting software from findings DB
+    if db:
+        try:
+            agg = _extract_software_from_findings(db, search)
+            if agg:
+                total = len(agg)
+                start = (p["page"] - 1) * p["per_page"]
+                page_items = agg[start:start + p["per_page"]]
+                return jsonify({
+                    "items": page_items, "total": total,
+                    "page": p["page"],
+                    "pages": (total + p["per_page"] - 1) // p["per_page"]})
+        except Exception as e:
+            log.debug("software v2 findings fallback: %s", e)
     return jsonify(_empty_page(p["page"]))
 
 
