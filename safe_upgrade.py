@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -805,6 +805,11 @@ def phase_repair(ctx: dict) -> None:
         if err.strip():
             for line in err.strip().splitlines()[-3:]:
                 _log("", f"  {_DIM}{line.strip()}{_R}")
+        systemic = _check_systemic(err)
+        if systemic:
+            ctx["_repair_systemic"] = systemic
+            _log("-", f"Systemic issue: {systemic}")
+            _log("~", "This will likely cause most package upgrades to fail")
 
     if remaining:
         remaining = _get_broken_packages()
@@ -828,8 +833,11 @@ def phase_repair(ctx: dict) -> None:
             _log("+", "Package state clean")
 
     n_broken = len(_get_broken_packages())
+    repair_issue = ctx.get("_repair_systemic")
     if n_broken:
         _log("", f"→ {n_broken} broken packages remain — refreshing package lists anyway")
+    elif repair_issue:
+        _log("", f"→ dpkg state is clean but apt resolver has issues — refreshing package lists")
     else:
         _log("", "→ Package state is clean — refreshing package lists")
 
@@ -877,6 +885,10 @@ def phase_normal(pkgs: list[dict], ctx: dict) -> None:
     names = [p["name"] for p in pkgs]
     n_chunks = math.ceil(len(names) / chunk_size)
     _phase_hdr(4, f"Normal ({len(names)} packages, {n_chunks} chunks)")
+    repair_issue = ctx.get("_repair_systemic")
+    if repair_issue:
+        _log("~", f"WARNING: Phase 1 detected a systemic issue: {repair_issue}")
+        _log("~", "Upgrades will likely fail — attempting first chunk as a test")
     total_ok = 0
     total_fail = 0
     for i in range(n_chunks):
@@ -923,6 +935,14 @@ def phase_sensitive(pkgs: list[dict], ctx: dict) -> None:
     if not pkgs:
         return
     _phase_hdr(5, f"Sensitive ({len(pkgs)} packages)")
+    repair_issue = ctx.get("_repair_systemic")
+    if repair_issue:
+        _log("-", f"WARNING: Phase 1 detected systemic issue: {repair_issue}")
+        _log("-", f"Skipping {len(pkgs)} sensitive packages — resolve the issue first")
+        for p in pkgs:
+            ctx["stats"]["skipped"] += 1
+            ctx["skipped_pkgs"].append(p["name"])
+        return
     for p in pkgs:
         if _stopping:
             _log("~", "Stopping — skipping remaining sensitive packages")
@@ -943,6 +963,14 @@ def phase_critical(pkgs: list[dict], ctx: dict) -> None:
     if not pkgs:
         return
     _phase_hdr(6, f"Critical ({len(pkgs)} packages)")
+    repair_issue = ctx.get("_repair_systemic")
+    if repair_issue:
+        _log("-", f"WARNING: Phase 1 detected systemic issue: {repair_issue}")
+        _log("-", f"Skipping {len(pkgs)} critical packages — resolve the issue first")
+        for p in pkgs:
+            ctx["stats"]["skipped"] += 1
+            ctx["skipped_pkgs"].append(p["name"])
+        return
     active = ctx["active_methods"]
     for p in pkgs:
         if _stopping:
