@@ -1598,13 +1598,6 @@ _recover_orphan()
 
 @standalone_bp.route("/api/standalone/safe-upgrade", methods=["POST"])
 def api_safe_upgrade_start():
-    with _upgrade_lock:
-        running = [j for j in _upgrade_jobs.values()
-                   if j["status"] == "running"]
-        if running:
-            return jsonify({"error": "An upgrade is already running",
-                            "job_id": running[0]["id"]}), 409
-
     data = request.get_json(silent=True) or {}
     flags = []
     if data.get("dry_run"):
@@ -1626,17 +1619,22 @@ def api_safe_upgrade_start():
     if not _SAFE_UPGRADE_SCRIPT.exists():
         return jsonify({"error": "safe_upgrade.py not found"}), 500
 
-    job_id = uuid.uuid4().hex[:12]
-    job = {
-        "id": job_id,
-        "status": "running",
-        "lines": [],
-        "exit_code": None,
-        "pid": None,
-        "started": time.time(),
-        "flags": flags,
-    }
     with _upgrade_lock:
+        running = [j for j in _upgrade_jobs.values()
+                   if j["status"] == "running"]
+        if running:
+            return jsonify({"error": "An upgrade is already running",
+                            "job_id": running[0]["id"]}), 409
+        job_id = uuid.uuid4().hex[:12]
+        job = {
+            "id": job_id,
+            "status": "running",
+            "lines": [],
+            "exit_code": None,
+            "pid": None,
+            "started": time.time(),
+            "flags": flags,
+        }
         _upgrade_jobs[job_id] = job
 
     _save_upgrade_state(job)

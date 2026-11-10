@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import math
 import os
@@ -25,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -39,23 +40,28 @@ def _init_color(enabled: bool) -> None:
         )
 
 # ── Logging ──────────────────────────────────────────────────────────────────
+def _ts() -> str:
+    return datetime.now(timezone.utc).strftime("%H:%M:%S")
+
 def _log(level: str, msg: str, indent: int = 0) -> None:
     pfx = "  " * indent
+    ts = f"{_DIM}{_ts()}{_R} "
     if level == "+":
-        print(f"{pfx}  {_G}[+]{_R} {msg}", flush=True)
+        print(f"{pfx}  {ts}{_G}[+]{_R} {msg}", flush=True)
     elif level == "-":
-        print(f"{pfx}  {_RD}[-]{_R} {msg}", flush=True)
+        print(f"{pfx}  {ts}{_RD}[-]{_R} {msg}", flush=True)
     elif level == "~":
-        print(f"{pfx}  {_Y}[~]{_R} {msg}", flush=True)
+        print(f"{pfx}  {ts}{_Y}[~]{_R} {msg}", flush=True)
     elif level == "*":
-        print(f"{pfx}  {_C}[*]{_R} {msg}", flush=True)
+        print(f"{pfx}  {ts}{_C}[*]{_R} {msg}", flush=True)
     else:
-        print(f"{pfx}  {msg}", flush=True)
+        print(f"{pfx}  {ts}{msg}", flush=True)
 
 def _phase_hdr(num: int | str, title: str) -> None:
     label = f"Phase {num}: {title}"
     bar = "─" * max(1, 50 - len(label))
-    print(f"\n{_BLD}── {label} {bar}{_R}", flush=True)
+    ts = _ts()
+    print(f"\n{_DIM}{ts}{_R} {_BLD}── {label} {bar}{_R}", flush=True)
 
 # ── Subprocess helpers ───────────────────────────────────────────────────────
 _APT_ENV: dict = {}
@@ -89,6 +95,24 @@ def _apt(args: list[str], timeout: int = 600) -> tuple[int, str, str]:
 
 def _dpkg(args: list[str], timeout: int = 300) -> tuple[int, str, str]:
     return _run(["dpkg"] + args, timeout=timeout, env=_APT_ENV)
+
+# ── dpkg lock check ─────────────────────────────────────────────────────────
+def _check_dpkg_lock() -> bool:
+    """Return True if dpkg/apt locks are available (no other apt running)."""
+    for lockfile in ("/var/lib/dpkg/lock-frontend", "/var/lib/dpkg/lock",
+                     "/var/lib/apt/lists/lock"):
+        try:
+            fd = os.open(lockfile, os.O_RDWR)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except (BlockingIOError, OSError):
+                os.close(fd)
+                return False
+            os.close(fd)
+        except (PermissionError, FileNotFoundError, OSError):
+            pass
+    return True
 
 # ── Connectivity detection ───────────────────────────────────────────────────
 def _svc_active(name: str) -> bool:
@@ -612,12 +636,16 @@ def phase_preflight(args: argparse.Namespace) -> dict:
     if os.geteuid() != 0:
         _log("-", "Must run as root (use sudo)")
         sys.exit(1)
+    if not _check_dpkg_lock():
+        _log("-", "Another apt/dpkg process is running — cannot proceed")
+        _log("", "Wait for it to finish or kill it, then retry.")
+        sys.exit(2)
     os_name = _detect_os()
     _log("", f"OS:          {_BLD}{os_name}{_R}")
     active_methods: list[dict] = []
     all_critical_pkgs: set[str] = set()
     any_encrypted = False
-    print(f"  Connectivity:", flush=True)
+    print(f"  {_DIM}{_ts()}{_R} Connectivity:", flush=True)
     for m in _CONN_METHODS:
         detected = m["detect"]()
         sym = f"{_G}✓{_R}" if detected else f"{_DIM}✗{_R}"
