@@ -1955,7 +1955,7 @@ function savePhishAnalyzerCsv() {
 
 /* ── Safe Upgrade modal ──────────────────────────────── */
 var _suJobId = null, _suPollTimer = null, _suOffset = 0, _suFullOutput = '';
-var _suPollFailCount = 0;
+var _suPollFailCount = 0, _suPolling = false, _suGeneration = 0;
 
 function _checkActiveUpgrade() {
   fetch('/api/standalone/safe-upgrade/status')
@@ -1965,6 +1965,8 @@ function _checkActiveUpgrade() {
       _suOffset = 0;
       _suFullOutput = '';
       _suPollFailCount = 0;
+      _suPolling = false;
+      _suGeneration++;
       document.getElementById('suOptionsPanel').style.display = 'none';
       document.getElementById('suOutputPanel').style.display = '';
       document.getElementById('suOutputContent').textContent = '';
@@ -1982,8 +1984,8 @@ function _checkActiveUpgrade() {
         document.getElementById('suSaveBtn').style.display = 'none';
         document.getElementById('suDismissBtn').style.display = 'none';
       }
-      if (_suPollTimer) clearInterval(_suPollTimer);
-      _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
+      if (_suPollTimer) clearTimeout(_suPollTimer);
+      _suPollTimer = setTimeout(_pollSafeUpgrade, 1000);
     } else {
       document.getElementById('suOutputPanel').style.display = 'none';
       document.getElementById('suOptionsPanel').style.display = '';
@@ -2037,6 +2039,8 @@ function startSafeUpgrade() {
   _suFullOutput = '';
   _suOffset = 0;
   _suPollFailCount = 0;
+  _suPolling = false;
+  _suGeneration++;
   var body = {
     dry_run: document.getElementById('suDryRun').checked,
     repair_only: document.getElementById('suRepairOnly').checked,
@@ -2052,8 +2056,8 @@ function startSafeUpgrade() {
       if (data.job_id) {
         _suJobId = data.job_id;
         _suPollFailCount = 0;
-        if (_suPollTimer) clearInterval(_suPollTimer);
-        _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
+        if (_suPollTimer) clearTimeout(_suPollTimer);
+        _suPollTimer = setTimeout(_pollSafeUpgrade, 1000);
         btn.textContent = 'Running…';
         _suSetBadge('Running (resumed)', false);
         return;
@@ -2066,7 +2070,7 @@ function startSafeUpgrade() {
     }
     _suJobId = data.job_id;
     _suPollFailCount = 0;
-    _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
+    _suPollTimer = setTimeout(_pollSafeUpgrade, 1000);
   }).catch(function(err){
     btn.disabled = false; btn.textContent = 'Retry';
     document.getElementById('suOutputContent').textContent = 'Network error: ' + err.message;
@@ -2074,13 +2078,17 @@ function startSafeUpgrade() {
   });
 }
 function _pollSafeUpgrade() {
-  if (!_suJobId) return;
+  if (!_suJobId || _suPolling) return;
+  _suPolling = true;
+  var gen = _suGeneration;
   fetch('/api/standalone/safe-upgrade/log?job_id=' + _suJobId + '&offset=' + _suOffset)
   .then(function(r){
+    if (gen !== _suGeneration) { _suPolling = false; return; }
     if (r.status === 404) {
+      _suPolling = false;
       _suPollFailCount++;
       if (_suPollFailCount >= 5) {
-        clearInterval(_suPollTimer); _suPollTimer = null;
+        clearTimeout(_suPollTimer); _suPollTimer = null;
         _suSetBadge('Connection lost', true);
         document.getElementById('suRunBtn').disabled = false;
         document.getElementById('suRunBtn').textContent = 'Retry';
@@ -2092,13 +2100,16 @@ function _pollSafeUpgrade() {
           '[!] Crucible restarted — lost connection to upgrade process.\n' +
           '    The upgrade may still be running in the background.\n' +
           '    Re-open this modal to check for a recovered session.';
+      } else {
+        _suPollTimer = setTimeout(_pollSafeUpgrade, 2000);
       }
       return;
     }
     _suPollFailCount = 0;
     return r.json();
   }).then(function(data){
-    if (!data) return;
+    _suPolling = false;
+    if (!data || gen !== _suGeneration) return;
     if (data.lines && data.lines.length) {
       var pre = document.getElementById('suOutputContent');
       var chunk = data.lines.join('\n');
@@ -2108,7 +2119,7 @@ function _pollSafeUpgrade() {
       pre.scrollTop = pre.scrollHeight;
     }
     if (data.status === 'complete') {
-      clearInterval(_suPollTimer); _suPollTimer = null;
+      clearTimeout(_suPollTimer); _suPollTimer = null;
       document.getElementById('suRunBtn').disabled = false;
       document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
       document.getElementById('suCancelBtn').style.display = 'none';
@@ -2119,7 +2130,7 @@ function _pollSafeUpgrade() {
       document.getElementById('suStatusBadge').style.background = ok ? 'var(--green-muted, rgba(34,197,94,.15))' : 'var(--red-muted, rgba(239,68,68,.15))';
       document.getElementById('suStatusBadge').style.color = ok ? 'var(--status-success)' : 'var(--status-error)';
     } else if (data.status === 'orphaned') {
-      clearInterval(_suPollTimer); _suPollTimer = null;
+      clearTimeout(_suPollTimer); _suPollTimer = null;
       _suSetBadge('Interrupted', true);
       document.getElementById('suRunBtn').disabled = true;
       document.getElementById('suCancelBtn').style.display = 'none';
@@ -2130,15 +2141,21 @@ function _pollSafeUpgrade() {
         '[!] Upgrade process was interrupted (Crucible restarted while running).\n' +
         '    The partial log above shows what completed before the interruption.\n' +
         '    Click "Dismiss" to clear this job and start a new upgrade.';
+    } else {
+      _suPollTimer = setTimeout(_pollSafeUpgrade, 1000);
     }
   }).catch(function(){
+    _suPolling = false;
+    if (gen !== _suGeneration) return;
     _suPollFailCount++;
     if (_suPollFailCount >= 5) {
-      clearInterval(_suPollTimer); _suPollTimer = null;
+      clearTimeout(_suPollTimer); _suPollTimer = null;
       _suSetBadge('Connection lost', true);
       document.getElementById('suRunBtn').disabled = false;
       document.getElementById('suRunBtn').textContent = 'Retry';
       document.getElementById('suCancelBtn').style.display = 'none';
+    } else {
+      _suPollTimer = setTimeout(_pollSafeUpgrade, 2000);
     }
   });
 }
