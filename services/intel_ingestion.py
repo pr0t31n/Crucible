@@ -443,6 +443,72 @@ def _ingest_server_roles(db, project_dir, tool_dirs):
 
 
 # ---------------------------------------------------------------------------
+# 7b. Network Software Inventory (SS3 — software + host_software tables)
+# ---------------------------------------------------------------------------
+
+def _ingest_network_software(db, project_dir, tool_dirs):
+    if not hasattr(db, "bulk_insert_network_software"):
+        return
+    rows = []
+    for tid, path in _find_json(tool_dirs,
+                                 "inventory/software.json",
+                                 "software_inventory.json"):
+        tk = _tool_key(tid)
+        if tk not in ("ss3", "scattershot3"):
+            continue
+        data = _safe_load(path)
+        if data is None:
+            continue
+        items = data if isinstance(data, list) else (
+            data.get("software") or data.get("technologies") or [])
+        for item in items:
+            if isinstance(item, dict):
+                rows.append(item)
+    for tid, path in _find_json(tool_dirs,
+                                 "correlated.json",
+                                 "inventory/hosts.json"):
+        tk = _tool_key(tid)
+        if tk not in ("ss3", "scattershot3"):
+            continue
+        data = _safe_load(path)
+        if not data:
+            continue
+        hosts = data.get("hosts", data) if isinstance(data, dict) else data
+        if isinstance(hosts, dict):
+            host_iter = [(k, v) for k, v in hosts.items()
+                         if k not in ("meta", "_") and isinstance(v, dict)]
+        elif isinstance(hosts, list):
+            host_iter = [(h.get("ip", ""), h) for h in hosts
+                         if isinstance(h, dict)]
+        else:
+            continue
+        for ip, h in host_iter:
+            ports = h.get("ports", {})
+            port_items = ports.values() if isinstance(ports, dict) else (
+                ports if isinstance(ports, list) else [])
+            for p in port_items:
+                if not isinstance(p, dict):
+                    continue
+                product = p.get("product", "")
+                if not product:
+                    continue
+                rows.append({
+                    "software": product,
+                    "version": p.get("version", ""),
+                    "ip": ip, "port": p.get("port", 0),
+                    "hostname": h.get("hostname", ""),
+                    "method": "nmap service detection",
+                    "os": p.get("os", ""),
+                })
+    if rows:
+        db.bulk_insert_network_software(rows)
+    try:
+        db._conn.commit()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # 8. OSINT Domains + WHOIS (OSift)
 # ---------------------------------------------------------------------------
 
@@ -1055,6 +1121,7 @@ _INGESTORS = [
     ("target_profiles", _ingest_target_profiles),
     ("hostname_intel",  _ingest_hostname_intel),
     ("server_roles",    _ingest_server_roles),
+    ("network_software", _ingest_network_software),
     ("osint_domains",   _ingest_osint_domains),
     ("osint_wayback",   _ingest_osint_wayback),
     ("osint_typosquats", _ingest_osint_typosquats),
