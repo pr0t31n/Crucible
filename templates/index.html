@@ -814,6 +814,7 @@
     <div class="modal-footer">
       <button type="button" class="btn btn-primary" id="suRunBtn" onclick="startSafeUpgrade()">Analyze</button>
       <button type="button" class="btn btn-ghost" id="suCancelBtn" style="display:none;" onclick="cancelSafeUpgrade()">Cancel</button>
+      <button type="button" class="btn btn-ghost" id="suDismissBtn" style="display:none;" onclick="dismissSafeUpgrade()">Dismiss</button>
       <button type="button" class="btn btn-ghost" id="suSaveBtn" style="display:none;" onclick="saveSafeUpgrade()">Save .txt</button>
       <button type="button" class="btn btn-ghost" onclick="closeSafeUpgradeModal()">Close</button>
     </div>
@@ -1954,14 +1955,70 @@ function savePhishAnalyzerCsv() {
 
 /* ── Safe Upgrade modal ──────────────────────────────── */
 var _suJobId = null, _suPollTimer = null, _suOffset = 0, _suFullOutput = '';
+var _suPollFailCount = 0;
+
+function _checkActiveUpgrade() {
+  fetch('/api/standalone/safe-upgrade/status')
+  .then(function(r){ return r.json(); }).then(function(data){
+    if (data.active) {
+      _suJobId = data.job_id;
+      _suOffset = 0;
+      _suFullOutput = '';
+      _suPollFailCount = 0;
+      document.getElementById('suOptionsPanel').style.display = 'none';
+      document.getElementById('suOutputPanel').style.display = '';
+      document.getElementById('suOutputContent').textContent = '';
+      document.getElementById('suRunBtn').disabled = true;
+      document.getElementById('suRunBtn').textContent = 'Running…';
+      if (data.status === 'orphaned') {
+        _suSetBadge('Interrupted', true);
+        document.getElementById('suCancelBtn').style.display = 'none';
+        document.getElementById('suSaveBtn').style.display = '';
+        document.getElementById('suDismissBtn').style.display = '';
+        document.getElementById('suRunBtn').disabled = true;
+      } else {
+        _suSetBadge('Running (recovered)', false);
+        document.getElementById('suCancelBtn').style.display = '';
+        document.getElementById('suSaveBtn').style.display = 'none';
+        document.getElementById('suDismissBtn').style.display = 'none';
+      }
+      if (_suPollTimer) clearInterval(_suPollTimer);
+      _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
+    } else {
+      document.getElementById('suOutputPanel').style.display = 'none';
+      document.getElementById('suOptionsPanel').style.display = '';
+      document.getElementById('suRunBtn').disabled = false;
+      document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
+      document.getElementById('suCancelBtn').style.display = 'none';
+      document.getElementById('suSaveBtn').style.display = 'none';
+      document.getElementById('suDismissBtn').style.display = 'none';
+    }
+  }).catch(function(){
+    document.getElementById('suOutputPanel').style.display = 'none';
+    document.getElementById('suOptionsPanel').style.display = '';
+    document.getElementById('suRunBtn').disabled = false;
+    document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
+    document.getElementById('suCancelBtn').style.display = 'none';
+    document.getElementById('suSaveBtn').style.display = 'none';
+    document.getElementById('suDismissBtn').style.display = 'none';
+  });
+}
+
+function _suSetBadge(text, isError) {
+  var b = document.getElementById('suStatusBadge');
+  b.textContent = text;
+  if (isError) {
+    b.style.background = 'var(--red-muted, rgba(239,68,68,.15))';
+    b.style.color = 'var(--status-error)';
+  } else {
+    b.style.background = 'var(--accent-muted)';
+    b.style.color = 'var(--accent-primary)';
+  }
+}
+
 function openSafeUpgradeModal() {
   document.getElementById('safeUpgradeModal').classList.add('open');
-  document.getElementById('suOutputPanel').style.display = 'none';
-  document.getElementById('suOptionsPanel').style.display = '';
-  document.getElementById('suRunBtn').disabled = false;
-  document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
-  document.getElementById('suCancelBtn').style.display = 'none';
-  document.getElementById('suSaveBtn').style.display = 'none';
+  _checkActiveUpgrade();
 }
 function closeSafeUpgradeModal() { document.getElementById('safeUpgradeModal').classList.remove('open'); }
 document.getElementById('suDryRun').addEventListener('change', function() {
@@ -1973,13 +2030,13 @@ function startSafeUpgrade() {
   btn.textContent = 'Starting…';
   document.getElementById('suCancelBtn').style.display = '';
   document.getElementById('suSaveBtn').style.display = 'none';
+  document.getElementById('suDismissBtn').style.display = 'none';
   document.getElementById('suOutputPanel').style.display = '';
   document.getElementById('suOutputContent').textContent = '';
-  document.getElementById('suStatusBadge').textContent = 'Running';
-  document.getElementById('suStatusBadge').style.background = 'var(--accent-muted)';
-  document.getElementById('suStatusBadge').style.color = 'var(--accent-primary)';
+  _suSetBadge('Running', false);
   _suFullOutput = '';
   _suOffset = 0;
+  _suPollFailCount = 0;
   var body = {
     dry_run: document.getElementById('suDryRun').checked,
     repair_only: document.getElementById('suRepairOnly').checked,
@@ -1992,15 +2049,23 @@ function startSafeUpgrade() {
   fetch('/api/standalone/safe-upgrade', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
   .then(function(r){ return r.json(); }).then(function(data){
     if (data.error) {
+      if (data.job_id) {
+        _suJobId = data.job_id;
+        _suPollFailCount = 0;
+        if (_suPollTimer) clearInterval(_suPollTimer);
+        _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
+        btn.textContent = 'Running…';
+        _suSetBadge('Running (resumed)', false);
+        return;
+      }
       btn.disabled = false; btn.textContent = 'Retry';
       document.getElementById('suOutputContent').textContent = 'Error: ' + data.error;
-      document.getElementById('suStatusBadge').textContent = 'Error';
-      document.getElementById('suStatusBadge').style.background = 'var(--red-muted, rgba(239,68,68,.15))';
-      document.getElementById('suStatusBadge').style.color = 'var(--status-error)';
+      _suSetBadge('Error', true);
       document.getElementById('suCancelBtn').style.display = 'none';
       return;
     }
     _suJobId = data.job_id;
+    _suPollFailCount = 0;
     _suPollTimer = setInterval(_pollSafeUpgrade, 1000);
   }).catch(function(err){
     btn.disabled = false; btn.textContent = 'Retry';
@@ -2011,7 +2076,29 @@ function startSafeUpgrade() {
 function _pollSafeUpgrade() {
   if (!_suJobId) return;
   fetch('/api/standalone/safe-upgrade/log?job_id=' + _suJobId + '&offset=' + _suOffset)
-  .then(function(r){ return r.json(); }).then(function(data){
+  .then(function(r){
+    if (r.status === 404) {
+      _suPollFailCount++;
+      if (_suPollFailCount >= 5) {
+        clearInterval(_suPollTimer); _suPollTimer = null;
+        _suSetBadge('Connection lost', true);
+        document.getElementById('suRunBtn').disabled = false;
+        document.getElementById('suRunBtn').textContent = 'Retry';
+        document.getElementById('suCancelBtn').style.display = 'none';
+        document.getElementById('suSaveBtn').style.display = _suFullOutput ? '' : 'none';
+        document.getElementById('suDismissBtn').style.display = 'none';
+        var pre = document.getElementById('suOutputContent');
+        pre.textContent = (_suFullOutput ? _suFullOutput + '\n\n' : '') +
+          '[!] Crucible restarted — lost connection to upgrade process.\n' +
+          '    The upgrade may still be running in the background.\n' +
+          '    Re-open this modal to check for a recovered session.';
+      }
+      return;
+    }
+    _suPollFailCount = 0;
+    return r.json();
+  }).then(function(data){
+    if (!data) return;
     if (data.lines && data.lines.length) {
       var pre = document.getElementById('suOutputContent');
       var chunk = data.lines.join('\n');
@@ -2021,23 +2108,49 @@ function _pollSafeUpgrade() {
       pre.scrollTop = pre.scrollHeight;
     }
     if (data.status === 'complete') {
-      clearInterval(_suPollTimer);
-      _suPollTimer = null;
+      clearInterval(_suPollTimer); _suPollTimer = null;
       document.getElementById('suRunBtn').disabled = false;
       document.getElementById('suRunBtn').textContent = document.getElementById('suDryRun').checked ? 'Analyze' : 'Upgrade';
       document.getElementById('suCancelBtn').style.display = 'none';
       document.getElementById('suSaveBtn').style.display = '';
+      document.getElementById('suDismissBtn').style.display = '';
       var ok = data.exit_code === 0;
       document.getElementById('suStatusBadge').textContent = ok ? 'Complete' : 'Finished (errors)';
       document.getElementById('suStatusBadge').style.background = ok ? 'var(--green-muted, rgba(34,197,94,.15))' : 'var(--red-muted, rgba(239,68,68,.15))';
       document.getElementById('suStatusBadge').style.color = ok ? 'var(--status-success)' : 'var(--status-error)';
+    } else if (data.status === 'orphaned') {
+      clearInterval(_suPollTimer); _suPollTimer = null;
+      _suSetBadge('Interrupted', true);
+      document.getElementById('suRunBtn').disabled = true;
+      document.getElementById('suCancelBtn').style.display = 'none';
+      document.getElementById('suSaveBtn').style.display = '';
+      document.getElementById('suDismissBtn').style.display = '';
+      var pre = document.getElementById('suOutputContent');
+      pre.textContent = (_suFullOutput ? _suFullOutput + '\n\n' : '') +
+        '[!] Upgrade process was interrupted (Crucible restarted while running).\n' +
+        '    The partial log above shows what completed before the interruption.\n' +
+        '    Click "Dismiss" to clear this job and start a new upgrade.';
     }
-  }).catch(function(){});
+  }).catch(function(){
+    _suPollFailCount++;
+    if (_suPollFailCount >= 5) {
+      clearInterval(_suPollTimer); _suPollTimer = null;
+      _suSetBadge('Connection lost', true);
+      document.getElementById('suRunBtn').disabled = false;
+      document.getElementById('suRunBtn').textContent = 'Retry';
+      document.getElementById('suCancelBtn').style.display = 'none';
+    }
+  });
 }
 function cancelSafeUpgrade() {
   if (!_suJobId) return;
   fetch('/api/standalone/safe-upgrade/cancel', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({job_id:_suJobId}) });
   document.getElementById('suStatusBadge').textContent = 'Cancelling…';
+}
+function dismissSafeUpgrade() {
+  if (!_suJobId) return;
+  fetch('/api/standalone/safe-upgrade/dismiss', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({job_id:_suJobId}) })
+  .then(function(){ _checkActiveUpgrade(); });
 }
 function saveSafeUpgrade() {
   if (_suFullOutput) _downloadBlob(_suFullOutput, 'safe_upgrade_' + _ts() + '.txt');
