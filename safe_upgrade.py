@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -514,6 +514,42 @@ _ACTIVE_METHODS: list[dict] = []   # populated by phase_preflight
 def _apt_install(pkgs: list[str]) -> tuple[int, str, str]:
     return _apt(["install", "-y"] + pkgs, timeout=600)
 
+_SYSTEMIC_PATTERNS = [
+    (re.compile(r"Unable to acquire the dpkg frontend lock|Could not get lock", re.I),
+     "dpkg lock held by another process"),
+    (re.compile(r"No space left on device", re.I),
+     "disk full"),
+    (re.compile(r"Hash Sum mismatch", re.I),
+     "repository hash mismatch (corrupt cache or mirror issue)"),
+    (re.compile(r"Unmet dependencies|dependency problems", re.I),
+     "unmet dependencies"),
+    (re.compile(r"Temporary failure resolving|Could not resolve", re.I),
+     "DNS resolution failure"),
+    (re.compile(r"Failed to fetch|Connection failed|Unable to connect", re.I),
+     "network connectivity issue"),
+    (re.compile(r"packages have been kept back", re.I),
+     "held-back packages (need dist-upgrade or manual resolution)"),
+    (re.compile(r"dpkg was interrupted|dpkg --configure -a", re.I),
+     "interrupted dpkg (needs dpkg --configure -a)"),
+]
+
+def _check_systemic(err: str) -> str | None:
+    """Check apt stderr for systemic failure patterns.
+    Returns a human-readable reason string, or None if no systemic issue."""
+    for pat, reason in _SYSTEMIC_PATTERNS:
+        if pat.search(err):
+            return reason
+    try:
+        st = os.statvfs("/var/cache/apt/archives")
+        free_mb = (st.f_bavail * st.f_frsize) // (1024 * 1024)
+        if free_mb < 100:
+            return f"low disk space on /var/cache/apt/archives ({free_mb} MB free)"
+    except OSError:
+        pass
+    if not _check_dpkg_lock():
+        return "dpkg lock held by another process"
+    return None
+
 def _upgrade_chunk(pkgs: list[str], depth: int = 0,
                    chunk_label: str = "") -> tuple[list[str], list[str]]:
     if not pkgs or _stopping:
@@ -523,9 +559,38 @@ def _upgrade_chunk(pkgs: list[str], depth: int = 0,
         return list(pkgs), []
     if depth == 0 and len(pkgs) > 1:
         _log("~", f"{chunk_label}chunk failed as a group — splitting to isolate failures")
+        systemic = _check_systemic(err)
+        if systemic:
+            _log("-", f"  Systemic issue detected: {systemic}")
+            _log("-", f"  Skipping binary-split retry — all {len(pkgs)} packages will fail for the same reason")
+            for p in pkgs:
+                _log("-", f"  SKIP {p} ({systemic})")
+            return [], list(pkgs)
+        err_lines = [l.strip() for l in (err or "").splitlines() if l.strip() and not l.startswith("WARNING")]
+        if err_lines:
+            _log("~", f"  apt error output:")
+            for line in err_lines[-5:]:
+                _log("", f"    {_DIM}{line}{_R}")
     _repair_quick()
     if len(pkgs) == 1:
-        _log("-", f"  {pkgs[0]} cannot be upgraded (depth {depth})")
+        err_reason = ""
+        if err:
+            systemic = _check_systemic(err)
+            if systemic:
+                err_reason = f" ({systemic})"
+            else:
+                for line in reversed((err or "").splitlines()):
+                    line = line.strip()
+                    if line and not line.startswith("WARNING") and not line.startswith("E:"):
+                        err_reason = f" ({line[:80]})"
+                        break
+                if not err_reason:
+                    for line in reversed((err or "").splitlines()):
+                        line = line.strip()
+                        if line.startswith("E:"):
+                            err_reason = f" ({line[:80]})"
+                            break
+        _log("-", f"  {pkgs[0]} cannot be upgraded{err_reason}")
         return [], list(pkgs)
     if depth > 8:
         _log("-", f"  Giving up on {len(pkgs)} packages after 8 split retries")
@@ -533,10 +598,17 @@ def _upgrade_chunk(pkgs: list[str], depth: int = 0,
     mid = len(pkgs) // 2
     lbl = f"{chunk_label}L{depth}/" if depth < 3 else ""
     rbll = f"{chunk_label}R{depth}/" if depth < 3 else ""
-    if depth < 2:
+    if depth < 3:
         _log("*", f"  Split depth {depth}: trying {mid} left + {len(pkgs)-mid} right")
     ok_l, fail_l = _upgrade_chunk(pkgs[:mid], depth + 1, lbl)
     ok_r, fail_r = _upgrade_chunk(pkgs[mid:], depth + 1, rbll)
+    total_ok = len(ok_l) + len(ok_r)
+    total_fail = len(fail_l) + len(fail_r)
+    if depth == 0 and total_ok == 0 and total_fail > 0:
+        _log("-", f"  All {total_fail} packages failed after binary-split — likely a systemic issue")
+        systemic = _check_systemic(err)
+        if systemic:
+            _log("-", f"  Root cause: {systemic}")
     return ok_l + ok_r, fail_l + fail_r
 
 def _upgrade_single(pkg: str) -> bool:
@@ -790,8 +862,28 @@ def phase_normal(pkgs: list[dict], ctx: dict) -> None:
         else:
             _log("+", f"Chunk {i+1}: {len(ok_pkgs)}/{len(chunk)} upgraded")
         total_ok += len(ok_pkgs)
+        if n_chunks > 1 and i < n_chunks - 1:
+            _log("", f"  {_DIM}Progress: {total_ok} upgraded, {total_fail} failed, "
+                 f"{n_chunks - i - 1} chunks remaining{_R}")
+        if i == 0 and len(ok_pkgs) == 0 and len(fail_pkgs) == len(chunk) and n_chunks > 1:
+            _log("~", f"First chunk entirely failed ({len(chunk)}/{len(chunk)}) — "
+                 f"checking system health before continuing")
+            rc_test, _, err_test = _apt(["install", "-y", "--dry-run", fail_pkgs[0]], timeout=60)
+            systemic = _check_systemic(err_test) if rc_test != 0 else None
+            if systemic:
+                _log("-", f"Systemic issue confirmed: {systemic}")
+                _log("-", f"Skipping remaining {n_chunks - 1} chunks — fix the issue and re-run")
+                for remaining_name in names[(i + 1) * chunk_size:]:
+                    ctx["failed_pkgs"].append(remaining_name)
+                total_fail += len(names) - (i + 1) * chunk_size
+                break
     ctx["stats"]["upgraded"] += total_ok
     ctx["stats"]["failed"] += total_fail
+    if total_ok == 0 and total_fail > 0:
+        _log("-", f"WARNING: 0/{len(names)} normal packages upgraded — "
+             f"all {total_fail} failed")
+        _log("~", "This usually indicates a systemic issue (unmet deps, "
+             "disk space, dpkg lock, network). Check the errors above.")
 
 def phase_sensitive(pkgs: list[dict], ctx: dict) -> None:
     if not pkgs:
@@ -993,7 +1085,9 @@ def main() -> None:
     else:
         _log("", f"→ {total} upgradable — all critical, proceeding with connectivity checks")
 
-    if not _stopping:
+    if not _stopping and normal:
+        _log("", f"  {_DIM}Normal packages are low-risk libraries, utilities, and tools that can be")
+        _log("", f"  upgraded in parallel batches without connectivity checks.{_R}")
         phase_normal(normal, ctx)
 
     if not _stopping and normal:
@@ -1006,6 +1100,9 @@ def main() -> None:
             _log("", f"→ Normal tier done ({s['upgraded']} upgraded, {s['failed']} failed)")
 
     if not _stopping and not args.skip_sensitive:
+        if sensitive:
+            _log("", f"  {_DIM}Sensitive packages touch system-core components (kernel, libc, systemd).")
+            _log("", f"  Upgrading one at a time with dependency resolution.{_R}")
         phase_sensitive(sensitive, ctx)
     elif args.skip_sensitive and sensitive:
         _log("~", f"Skipping {len(sensitive)} sensitive packages (--skip-sensitive)")
@@ -1015,6 +1112,9 @@ def main() -> None:
         _log("", f"→ Sensitive tier done — moving to {len(critical)} critical packages with connectivity checks")
 
     if not _stopping and not args.skip_critical:
+        if critical:
+            _log("", f"  {_DIM}Critical packages manage network connectivity (SSH, VPN, firewall).")
+            _log("", f"  Each upgrade is bracketed by connectivity checks — will stop if connection drops.{_R}")
         phase_critical(critical, ctx)
     elif args.skip_critical and critical:
         _log("~", f"Skipping {len(critical)} critical packages (--skip-critical)")
@@ -1035,6 +1135,7 @@ def main() -> None:
     if not _stopping:
         s = ctx["stats"]
         _log("", f"→ All upgrade tiers complete ({s['upgraded']} upgraded, {s['failed']} failed, {s['skipped']} skipped) — cleaning up")
+        _log("", f"  {_DIM}Removing orphaned packages and clearing the apt cache.{_R}")
         phase_cleanup(ctx)
 
     _print_summary(ctx, t0)
