@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -159,13 +159,6 @@ _CONN_METHODS = [
         "verify": lambda: _svc_active("zerotier-one"),
         "restart": ["zerotier-one"],
         "packages": {"zerotier-one"},
-    },
-    {
-        "name": "Mole",
-        "detect": lambda: _proc_running("moled"),
-        "verify": lambda: _proc_running("moled"),
-        "restart": ["moled"],
-        "packages": set(),
     },
 ]
 
@@ -521,20 +514,29 @@ _ACTIVE_METHODS: list[dict] = []   # populated by phase_preflight
 def _apt_install(pkgs: list[str]) -> tuple[int, str, str]:
     return _apt(["install", "-y"] + pkgs, timeout=600)
 
-def _upgrade_chunk(pkgs: list[str], depth: int = 0) -> tuple[list[str], list[str]]:
+def _upgrade_chunk(pkgs: list[str], depth: int = 0,
+                   chunk_label: str = "") -> tuple[list[str], list[str]]:
     if not pkgs or _stopping:
         return [], list(pkgs)
     rc, out, err = _apt_install(pkgs)
     if rc == 0:
         return list(pkgs), []
+    if depth == 0 and len(pkgs) > 1:
+        _log("~", f"{chunk_label}chunk failed as a group — splitting to isolate failures")
     _repair_quick()
     if len(pkgs) == 1:
+        _log("-", f"  {pkgs[0]} cannot be upgraded (depth {depth})")
         return [], list(pkgs)
     if depth > 8:
+        _log("-", f"  Giving up on {len(pkgs)} packages after 8 split retries")
         return [], list(pkgs)
     mid = len(pkgs) // 2
-    ok_l, fail_l = _upgrade_chunk(pkgs[:mid], depth + 1)
-    ok_r, fail_r = _upgrade_chunk(pkgs[mid:], depth + 1)
+    lbl = f"{chunk_label}L{depth}/" if depth < 3 else ""
+    rbll = f"{chunk_label}R{depth}/" if depth < 3 else ""
+    if depth < 2:
+        _log("*", f"  Split depth {depth}: trying {mid} left + {len(pkgs)-mid} right")
+    ok_l, fail_l = _upgrade_chunk(pkgs[:mid], depth + 1, lbl)
+    ok_r, fail_r = _upgrade_chunk(pkgs[mid:], depth + 1, rbll)
     return ok_l + ok_r, fail_l + fail_r
 
 def _upgrade_single(pkg: str) -> bool:
@@ -653,8 +655,7 @@ def phase_preflight(args: argparse.Namespace) -> dict:
         if detected:
             active_methods.append(m)
             all_critical_pkgs |= m["packages"]
-            if m["name"] != "Mole":
-                any_encrypted = True
+            any_encrypted = True
     if any_encrypted:
         all_critical_pkgs |= _TLS_CRITICAL_EXACT
         all_critical_pkgs |= _NET_CRITICAL
@@ -720,6 +721,12 @@ def phase_repair(ctx: dict) -> None:
         else:
             _log("+", "Package state clean")
 
+    n_broken = len(_get_broken_packages())
+    if n_broken:
+        _log("", f"→ {n_broken} broken packages remain — refreshing package lists anyway")
+    else:
+        _log("", "→ Package state is clean — refreshing package lists")
+
 def phase_update(ctx: dict) -> None:
     _phase_hdr(2, "Update")
     _log("*", "apt-get update")
@@ -730,6 +737,7 @@ def phase_update(ctx: dict) -> None:
         _log("~", "apt-get update had errors — continuing with current lists")
         for line in (err or "").strip().splitlines()[-3:]:
             _log("", f"  {_DIM}{line.strip()}{_R}")
+    _log("", "→ Package lists refreshed — scanning for upgradable packages")
 
 def phase_inventory(ctx: dict) -> tuple[list[dict], list[dict], list[dict]]:
     _phase_hdr(3, "Inventory")
@@ -976,8 +984,26 @@ def main() -> None:
     if total == 0:
         return
 
+    chunk_size = args.chunk_size
+    n_chunks = math.ceil(len(normal) / chunk_size) if normal else 0
+    if normal:
+        _log("", f"→ {total} upgradable — starting with {len(normal)} normal packages in {n_chunks} chunks")
+    elif sensitive:
+        _log("", f"→ {total} upgradable — no normal packages, starting with {len(sensitive)} sensitive")
+    else:
+        _log("", f"→ {total} upgradable — all critical, proceeding with connectivity checks")
+
     if not _stopping:
         phase_normal(normal, ctx)
+
+    if not _stopping and normal:
+        s = ctx["stats"]
+        if sensitive:
+            _log("", f"→ Normal tier done ({s['upgraded']} upgraded, {s['failed']} failed) — moving to {len(sensitive)} sensitive packages")
+        elif critical:
+            _log("", f"→ Normal tier done ({s['upgraded']} upgraded, {s['failed']} failed) — moving to {len(critical)} critical packages")
+        else:
+            _log("", f"→ Normal tier done ({s['upgraded']} upgraded, {s['failed']} failed)")
 
     if not _stopping and not args.skip_sensitive:
         phase_sensitive(sensitive, ctx)
@@ -985,17 +1011,30 @@ def main() -> None:
         _log("~", f"Skipping {len(sensitive)} sensitive packages (--skip-sensitive)")
         ctx["stats"]["skipped"] += len(sensitive)
 
+    if not _stopping and sensitive and critical:
+        _log("", f"→ Sensitive tier done — moving to {len(critical)} critical packages with connectivity checks")
+
     if not _stopping and not args.skip_critical:
         phase_critical(critical, ctx)
     elif args.skip_critical and critical:
         _log("~", f"Skipping {len(critical)} critical packages (--skip-critical)")
         ctx["stats"]["skipped"] += len(critical)
 
+    if not _stopping and critical and ctx["active_methods"]:
+        post = _verify_all_conn(ctx["active_methods"])
+        conn_str = "  ".join(
+            f"{_G}✓{_R} {c['name']}" if c["ok"] else f"{_RD}✗{_R} {c['name']}"
+            for c in post
+        )
+        _log("", f"→ Critical tier done — connectivity: {conn_str}")
+
     if _stopping:
         _log("*", "Interrupted — running final repair pass")
         _repair_quick()
 
     if not _stopping:
+        s = ctx["stats"]
+        _log("", f"→ All upgrade tiers complete ({s['upgraded']} upgraded, {s['failed']} failed, {s['skipped']} skipped) — cleaning up")
         phase_cleanup(ctx)
 
     _print_summary(ctx, t0)
