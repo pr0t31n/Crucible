@@ -77,6 +77,15 @@
       }
     });
     updateScopeSections();
+    updateSs3ScopeMode();
+  }
+
+  function updateSs3ScopeMode() {
+    var isMulti = scopeTypeEl.value === 'multi';
+    var single = document.getElementById('ss3SingleScope');
+    var multi  = document.getElementById('ss3MultiScope');
+    if (single) single.hidden = isMulti;
+    if (multi)  multi.hidden  = !isMulti;
   }
 
   scopeTypeEl.addEventListener('change', applyScopeFilter);
@@ -936,7 +945,12 @@
     var sg = document.getElementById('reviewScope'); sg.innerHTML = '';
     function _sec(id){ var e=document.getElementById(id); return e && !e.hidden; }
     if (_sec('scopeSs3Section')) {
-      addR(sg,'Network CIDRs',valOf('cidrs'));
+      if (scopeTypeEl.value === 'multi') {
+        addR(sg,'Internal CIDRs',valOf('cidrsInt'));
+        addR(sg,'External CIDRs',valOf('cidrsExt'));
+      } else {
+        addR(sg,'Network CIDRs',valOf('cidrs'));
+      }
       var _ss3mr = valOf('ss3DiscMinRate'); if (_ss3mr) addR(sg,'Discovery Min Rate',_ss3mr+' pps');
       var _ss3mp = valOf('ss3DiscMinParallelism'); if (_ss3mp) addR(sg,'Discovery Min Parallelism',_ss3mp);
       var _ss3tt = document.getElementById('ss3TimingTemplate').value; if (_ss3tt) addR(sg,'Timing Template','T'+_ss3tt+' — '+document.getElementById('ss3TimingTemplate').selectedOptions[0].text.split(' — ')[1]);
@@ -1466,7 +1480,11 @@
       consultant: {name:valOf('consultName'),title:valOf('consultTitle'),email:valOf('consultEmail')},
       client_poc: {name:valOf('pocName'),phone:valOf('pocPhone'),email:valOf('pocEmail')},
       scope_definition: {
-        network_cidrs: textToArray('cidrs'),
+        network_cidrs: scopeTypeEl.value === 'multi'
+          ? textToArray('cidrsInt').concat(textToArray('cidrsExt'))
+          : textToArray('cidrs'),
+        network_cidrs_int: scopeTypeEl.value === 'multi' ? textToArray('cidrsInt') : [],
+        network_cidrs_ext: scopeTypeEl.value === 'multi' ? textToArray('cidrsExt') : [],
         ss3_discovery_min_rate: parseInt(valOf('ss3DiscMinRate')) || 0,
         ss3_discovery_min_parallelism: parseInt(valOf('ss3DiscMinParallelism')) || 0,
         ss3_timing_template: document.getElementById('ss3TimingTemplate').value,

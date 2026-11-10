@@ -291,10 +291,24 @@
       <!-- ── Scattershot3 ──────────────────────────────────── -->
       <div class="form-section tool-scope-group" id="scopeSs3Section" hidden>
         <h3 class="form-section-title"><span class="tool-badge tool-ss">SS</span> Scattershot3</h3>
-        <div class="form-group">
+        <!-- Single scope: one textarea -->
+        <div class="form-group" id="ss3SingleScope">
           <label class="form-label" for="cidrs">Network CIDRs / IPs</label>
           <textarea id="cidrs" class="form-control" rows="4"
                     placeholder="One CIDR or IP per line&#10;e.g. 10.0.0.0/24&#10;     192.168.1.0/24">{% if project and project.scope_definition %}{{ project.scope_definition.network_cidrs|default([])|join('\n') }}{% endif %}</textarea>
+        </div>
+        <!-- Multi-scope: separate internal / external textareas -->
+        <div id="ss3MultiScope" hidden>
+          <div class="form-group">
+            <label class="form-label" for="cidrsInt">Internal CIDRs / IPs</label>
+            <textarea id="cidrsInt" class="form-control" rows="4"
+                      placeholder="Internal targets — one CIDR or IP per line&#10;e.g. 10.0.0.0/24&#10;     172.16.0.0/16&#10;     192.168.1.0/24">{% if project and project.scope_definition %}{{ project.scope_definition.network_cidrs_int|default([])|join('\n') }}{% endif %}</textarea>
+          </div>
+          <div class="form-group" style="margin-top:12px">
+            <label class="form-label" for="cidrsExt">External CIDRs / IPs</label>
+            <textarea id="cidrsExt" class="form-control" rows="4"
+                      placeholder="External targets — one CIDR or IP per line&#10;e.g. 203.0.113.0/24&#10;     198.51.100.50">{% if project and project.scope_definition %}{{ project.scope_definition.network_cidrs_ext|default([])|join('\n') }}{% endif %}</textarea>
+          </div>
         </div>
         <div class="form-grid" style="margin-top:16px">
           <div class="form-group">

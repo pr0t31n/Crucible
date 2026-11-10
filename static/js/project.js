@@ -6226,7 +6226,7 @@ function loadIntelPanel(panel, tool) {
         'traffic-convos': '/api/intel/traffic-convos/' + PID,
         'net-hosts': '/api/intel/net-hosts/' + PID,
         'net-services': '/api/intel/net-services/' + PID,
-        'net-software': '/api/intel/net-software/' + PID,
+        'net-software': '/api/intel/v2/software/' + PID,
         'net-ports': '/api/intel/net-ports/' + PID,
         'net-roles': '/api/intel/net-roles/' + PID,
         'net-hostname-env': '/api/intel/net-hostname-env/' + PID,

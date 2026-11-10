@@ -55,6 +55,7 @@ class FindingsEngine:
             findings = result.get("findings", [])
             if not findings:
                 return None
+            self._backfill_categories_from_titles(findings)
             with self._lock:
                 self._cache[project_id] = findings
             return list(findings)
@@ -238,6 +239,7 @@ class FindingsEngine:
             return None
         try:
             result = rdb.query_findings(**kwargs)
+            self._backfill_categories_from_titles(result.get("findings", []))
             summary = rdb.get_summary()
             result["summary"] = summary
             return result
@@ -438,6 +440,26 @@ class FindingsEngine:
             log.info("Enriched %d findings from catalogues", enriched)
 
     @staticmethod
+    def _backfill_categories_from_titles(findings):
+        """For findings still missing a category after catalogue enrichment,
+        extract the prefix before the first colon in the title.  Mirrors
+        FindingsDB.backfill_categories_from_titles() so the JSON/cache path
+        and the DB path produce identical categories."""
+        n = 0
+        for f in findings:
+            if f.get("category"):
+                continue
+            title = (f.get("title") or "").strip()
+            if ":" not in title:
+                continue
+            cat = title.split(":", 1)[0].strip()
+            if cat:
+                f["category"] = cat
+                n += 1
+        if n:
+            log.debug("Backfilled %d finding categories from title prefixes", n)
+
+    @staticmethod
     def _build_tool_scope_map(project):
         """Build {tool_id: scope_key} from project's scope_tools."""
         scope_tools = project.get("scope_tools") or {}
@@ -596,6 +618,7 @@ class FindingsEngine:
                 if tid in tsm:
                     f["scope"] = tsm[tid]
         self._enrich_from_catalogue(active)
+        self._backfill_categories_from_titles(active)
         self._apply_oos_flags(active, project)
         apply_risk_overrides(active, project)
         active = deduplicate(active)
@@ -747,6 +770,7 @@ class FindingsEngine:
                 pass
 
         self._enrich_from_catalogue([finding])
+        self._backfill_categories_from_titles([finding])
         if project:
             apply_risk_overrides([finding], project)
         if self._kev_enricher:
@@ -804,6 +828,7 @@ class FindingsEngine:
             except RuntimeError as exc:
                 log.debug("scope check outside app context: %s", exc)
         self._enrich_from_catalogue([finding])
+        self._backfill_categories_from_titles([finding])
         if project:
             apply_risk_overrides([finding], project)
         if self._kev_enricher:
@@ -932,6 +957,7 @@ class FindingsEngine:
                 db = self._get_db(project_id, project)
                 if db:
                     self._enrich_from_catalogue(findings)
+                    self._backfill_categories_from_titles(findings)
                     if project:
                         apply_risk_overrides(findings, project)
                     db.bulk_insert(findings)
