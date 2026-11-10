@@ -10653,8 +10653,8 @@ function showEngagementPanel() {
     var container = document.getElementById('seScopeChecks');
     container.innerHTML = '';
     var SCOPE_TOOLS_REVERSE = {
-        external:['ss3','osift','trawler','auger','isotope'],
-        internal:['ss3','trawler','auger','isotope'],
+        external:['ss3','osift'],
+        internal:['ss3'],
         webapp:['fracture'], api:['siphon'], osint:['osift'], database:['auger'],
         pcap:['trawler'], wifi:['aether'], bluetooth:['aether_b'],
         zigbee:['aether_z'], uwb:['aether_u'], firewall:['bastion'],

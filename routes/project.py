@@ -59,20 +59,26 @@ def _detect_active_scopes(project):
     scope_tools = project.get("scope_tools") or {}
 
     if scope_tools:
-        scopes = list(existing) if existing else []
-        for sk in scope_tools:
-            if sk not in scopes and scope_tools[sk]:
-                scopes.append(sk)
-        if not scopes:
-            eng_dir = project.get("engagement_dir", project.get("project_dir", ""))
-            if eng_dir:
-                ed = Path(eng_dir)
-                if (ed / "ext").is_dir() and "external" not in scopes:
-                    scopes.append("external")
-                if (ed / "int").is_dir() and "internal" not in scopes:
-                    scopes.append("internal")
-        if scopes:
-            project["active_scopes"] = scopes
+        if existing and existing != ["multi"]:
+            stale_keys = [sk for sk in list(scope_tools) if sk not in existing]
+            for sk in stale_keys:
+                scope_tools.pop(sk, None)
+            project["active_scopes"] = list(existing)
+        else:
+            scopes = []
+            for sk in scope_tools:
+                if scope_tools[sk]:
+                    scopes.append(sk)
+            if not scopes:
+                eng_dir = project.get("engagement_dir", project.get("project_dir", ""))
+                if eng_dir:
+                    ed = Path(eng_dir)
+                    if (ed / "ext").is_dir() and "external" not in scopes:
+                        scopes.append("external")
+                    if (ed / "int").is_dir() and "internal" not in scopes:
+                        scopes.append("internal")
+            if scopes:
+                project["active_scopes"] = scopes
         _repair_multi_layout(project)
         return
 
@@ -1119,6 +1125,26 @@ def api_update_scopes(project_id):
     for s in removed:
         scope_tools.pop(s, None)
 
+    remaining_scope_tool_set = set()
+    for stl in scope_tools.values():
+        remaining_scope_tool_set.update(stl)
+    for s in removed:
+        removed_only = set(scope_tool_map.get(s, [])) - remaining_scope_tool_set
+        for t in removed_only:
+            tool_dirs.pop(t, None)
+            if t in existing_tools:
+                existing_tools.remove(t)
+    for t in remaining_scope_tool_set:
+        if t in tool_dirs:
+            old_dir = tool_dirs[t]
+            for s in removed:
+                if ("/" + s + "/") in old_dir or old_dir.endswith("/" + s):
+                    for sk, std in scope_tool_dirs.items():
+                        if t in std:
+                            tool_dirs[t] = std[t]
+                            break
+                    break
+
     tool_settings = dict(project.get("tool_settings", {}))
     _scope_to_settings = {
         "quill": {
@@ -1170,6 +1196,8 @@ def api_update_scopes(project_id):
         "tools": existing_tools,
         "tool_dirs": tool_dirs,
         "tool_settings": tool_settings,
+        "original_scope_tools": {k: list(v) for k, v in scope_tools.items()},
+        "original_tools": list(existing_tools),
     }
     if len(desired) > 1:
         updates["scope"] = "multi"
