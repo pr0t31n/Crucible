@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -529,6 +529,8 @@ _SYSTEMIC_PATTERNS = [
      "network connectivity issue"),
     (re.compile(r"packages have been kept back", re.I),
      "held-back packages (need dist-upgrade or manual resolution)"),
+    (re.compile(r"pkgProblemResolver.*generated breaks|caused by held packages|Breaks existing package", re.I),
+     "dependency resolution failure — held/broken packages block upgrade (try apt full-upgrade)"),
     (re.compile(r"dpkg was interrupted|dpkg --configure -a", re.I),
      "interrupted dpkg (needs dpkg --configure -a)"),
 ]
