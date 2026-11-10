@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -614,6 +614,76 @@ def _parse_simulation(stdout: str, stderr: str) -> dict:
         "kept_back": kept_back,
     }
 
+_DEP_ERR_RE = re.compile(
+    r'Depends:\s+(\S+)\s+\(([^)]+)\)\s+but\s+(\S+)\s+is\s+to\s+be\s+installed', re.I)
+_DEP_NOTINST_RE = re.compile(
+    r'Depends:\s+(\S+).*but\s+it\s+is\s+not\s+going\s+to\s+be\s+installed', re.I)
+_BREAKS_RE = re.compile(
+    r'Breaks:\s+(\S+)\s+\(([^)]+)\)\s+but\s+(\S+)\s+is\s+to\s+be\s+installed', re.I)
+
+def _parse_dep_errors_from_apt(stderr: str) -> dict:
+    """Parse 'Depends: X but Y' patterns from apt stderr.
+    Returns {dep_name: reason_string}."""
+    deps: dict[str, str] = {}
+    for m in _DEP_ERR_RE.finditer(stderr):
+        dep, constraint, installed = m.group(1), m.group(2), m.group(3)
+        name = dep.split(":")[0]
+        deps[name] = f"needs {constraint}, have {installed}"
+    for m in _DEP_NOTINST_RE.finditer(stderr):
+        name = m.group(1).split(":")[0]
+        deps[name] = "not going to be installed"
+    for m in _BREAKS_RE.finditer(stderr):
+        name = m.group(1).split(":")[0]
+        deps[name] = f"breaks {m.group(2)}, have {m.group(3)}"
+    return deps
+
+def _probe_individual_installs(sample_pkgs: list[str],
+                                max_probes: int = 10) -> tuple[list[str], list[str], dict]:
+    """Probe individual packages with dry-run to see if they can be installed solo.
+    Returns (installable, not_installable, {pkg: dep_errors})."""
+    installable: list[str] = []
+    not_installable: list[str] = []
+    all_dep_errors: dict[str, dict] = {}
+    for pkg in sample_pkgs[:max_probes]:
+        rc, _, err = _apt(["-s", "install", pkg], timeout=30)
+        if rc == 0:
+            installable.append(pkg)
+        else:
+            not_installable.append(pkg)
+            dep_errs = _parse_dep_errors_from_apt(err)
+            if dep_errs:
+                all_dep_errors[pkg] = dep_errs
+    return installable, not_installable, all_dep_errors
+
+def _find_root_dep_blockers(dep_errors: dict, protected: set[str],
+                             max_depth: int = 4) -> list[str]:
+    """Walk dependency chains to find packages that might unblock the resolver.
+    Returns candidate packages to try installing first (deepest deps)."""
+    all_deps: set[str] = set()
+    for pkg_deps in dep_errors.values():
+        all_deps.update(pkg_deps.keys())
+    candidates: list[str] = []
+    visited: set[str] = set()
+    queue = list(all_deps)
+    for _ in range(max_depth):
+        next_queue: list[str] = []
+        for dep in queue:
+            if dep in visited:
+                continue
+            visited.add(dep)
+            rc, _, err = _apt(["-s", "install", dep], timeout=30)
+            if rc == 0:
+                candidates.append(dep)
+            else:
+                deeper = _parse_dep_errors_from_apt(err)
+                for d in deeper:
+                    if d not in visited:
+                        next_queue.append(d)
+        if not next_queue:
+            break
+        queue = next_queue
+    return candidates
+
 def _escalate_resolver(ctx: dict) -> bool:
     """Attempt safe escalation to fix the apt resolver.
     Returns True if the resolver is now clean (systemic issue cleared).
@@ -661,7 +731,85 @@ def _escalate_resolver(ctx: dict) -> bool:
             if sim_err.strip():
                 for line in sim_err.strip().splitlines()[-5:]:
                     _log("", f"  {_DIM}{line.strip()}{_R}")
+            # ── Fallback: probe individual packages ──────────────────────
+            _log("*", "Probing individual packages to diagnose…")
+            # Get a diverse sample from the upgradable list
+            rc_list, list_out, _ = _run(
+                ["apt", "list", "--upgradable"], timeout=60, env=_APT_ENV)
+            sample: list[str] = []
+            if rc_list == 0:
+                for line in list_out.splitlines():
+                    m = _UPG_RE.match(line) if line and "/" in line else None
+                    if m:
+                        name = m.group(1).split(":")[0]
+                        sample.append(name)
+                        if len(sample) >= 10:
+                            break
+            if not sample:
+                sample = ["bash", "curl", "coreutils", "grep", "sed",
+                          "findutils", "gzip", "tar", "diffutils", "file"]
+            installable, not_installable, dep_errors = _probe_individual_installs(sample)
+            n_ok = len(installable)
+            n_fail = len(not_installable)
+            _log("*", f"Probe results: {n_ok}/{n_ok + n_fail} packages can install individually")
+
+            if n_ok > 0:
+                # Batch conflict — individual installs work fine
+                _log("+", "Individual installs work — the resolver chokes on "
+                     "coordinated batch upgrades only")
+                _log("*", "Switching to individual upgrade mode")
+                ctx.pop("_repair_systemic", None)
+                ctx["_individual_mode"] = True
+                return True
+
+            # All probes failed — deeper diagnosis
+            if dep_errors:
+                _log("~", "Dependency errors found:")
+                all_blocking: set[str] = set()
+                for pkg, deps in dep_errors.items():
+                    for dep, reason in deps.items():
+                        all_blocking.add(dep)
+                        _log("", f"  {_DIM}{pkg} → {dep}: {reason}{_R}")
+
+                # Walk dep chains to find installable root deps
+                _log("*", f"Walking dependency chains from {len(all_blocking)} "
+                     f"blocking packages…")
+                candidates = _find_root_dep_blockers(
+                    dep_errors, protected, max_depth=4)
+                if candidates:
+                    _log("+", f"Found {len(candidates)} installable root dependencies")
+                    for cand in candidates:
+                        is_prot = _is_protected(cand, protected)
+                        if is_prot:
+                            _log("~", f"  {_Y}[P]{_R} {cand} — protected, skipping")
+                            continue
+                        _log("*", f"  Installing {cand}…")
+                        rc_inst, _, err_inst = _apt(["install", "-y", cand], timeout=120)
+                        if rc_inst == 0:
+                            _log("+", f"  {cand} installed")
+                        else:
+                            _log("-", f"  {cand} failed")
+                    # Re-test resolver
+                    rc_retest, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                    if rc_retest == 0:
+                        _log("+", "Resolver clean after installing root deps")
+                        ctx.pop("_repair_systemic", None)
+                        return True
+                    # Re-probe — maybe more packages work now
+                    _log("*", "Re-probing after root dep install…")
+                    inst2, _, _ = _probe_individual_installs(sample)
+                    if len(inst2) > n_ok:
+                        _log("+", f"Progress: {len(inst2)}/{len(sample)} "
+                             f"now installable (was {n_ok})")
+                        ctx.pop("_repair_systemic", None)
+                        ctx["_individual_mode"] = True
+                        return True
+                else:
+                    _log("-", "No installable root dependencies found")
+
+            _log("-", "Cannot resolve — individual packages also fail")
             return False
+
         _log("~", "Simulation shows nothing to do — resolver may already be clean")
         rc_test, _, err_test = _apt(["install", "-f", "-y"], timeout=300)
         if rc_test == 0:
@@ -793,10 +941,19 @@ def _upgrade_chunk(pkgs: list[str], depth: int = 0,
         systemic = _check_systemic(err)
         if systemic:
             _log("-", f"  Systemic issue detected: {systemic}")
-            _log("-", f"  Skipping binary-split retry — all {len(pkgs)} packages will fail for the same reason")
-            for p in pkgs:
-                _log("-", f"  SKIP {p} ({systemic})")
-            return [], list(pkgs)
+            # Probe ONE package individually before giving up on the whole chunk
+            test_pkg = pkgs[0]
+            rc_probe, _, _ = _apt_install([test_pkg])
+            if rc_probe == 0:
+                _log("+", f"  {test_pkg} installed individually — batch conflict, not per-package")
+                _log("*", f"  Falling through to binary split…")
+                # Don't skip — let the binary split try packages individually
+            else:
+                _log("-", f"  {test_pkg} also fails individually — truly systemic")
+                _log("-", f"  Skipping binary-split retry — all {len(pkgs)} packages will fail for the same reason")
+                for p in pkgs:
+                    _log("-", f"  SKIP {p} ({systemic})")
+                return [], list(pkgs)
         err_lines = [l.strip() for l in (err or "").splitlines() if l.strip() and not l.startswith("WARNING")]
         if err_lines:
             _log("~", f"  apt error output:")
@@ -1105,17 +1262,64 @@ def phase_inventory(ctx: dict) -> tuple[list[dict], list[dict], list[dict]]:
         _log("+", "System is up to date")
     return normal, sensitive, critical
 
-def phase_normal(pkgs: list[dict], ctx: dict) -> None:
-    if not pkgs:
-        return
+def _phase_normal_individual(names: list[str], ctx: dict) -> None:
+    """Install packages one at a time — used when batch installs fail but
+    individual installs work (resolver can't coordinate mass upgrades)."""
+    total = len(names)
+    _phase_hdr(4, f"Normal ({total} packages, individual mode)")
+    _log("~", "Batch installs trigger resolver conflicts — upgrading one at a time")
+    _log("", f"  {_DIM}This is slower but avoids the batch coordination problem.{_R}")
+    total_ok = 0
+    total_fail = 0
+    report_interval = max(25, total // 20)
+    for i, pkg in enumerate(names):
+        if _stopping:
+            _log("~", f"Stopping — {total - i} packages remaining")
+            ctx["stats"]["skipped"] += total - i
+            break
+        rc, _, err = _apt_install([pkg])
+        if rc == 0:
+            total_ok += 1
+        else:
+            total_fail += 1
+            ctx["failed_pkgs"].append(pkg)
+        done = i + 1
+        if done % report_interval == 0 or done == total:
+            pct = done * 100 // total
+            _log("*", f"  Progress: {total_ok} upgraded, {total_fail} failed "
+                 f"({done}/{total} — {pct}%)")
+        # Every 100 packages, check if resolver cleared and switch to chunks
+        if done == 100 and total_ok > 80 and total > 200:
+            _log("*", "  Resolver looks healthy — testing batch mode…")
+            test_batch = names[done:done + 10]
+            if test_batch:
+                rc_t, _, _ = _apt_install(test_batch)
+                if rc_t == 0:
+                    _log("+", "  Batch mode works now — switching back to chunks")
+                    ctx["stats"]["upgraded"] += total_ok + len(test_batch)
+                    ctx["stats"]["failed"] += total_fail
+                    remaining = names[done + len(test_batch):]
+                    if remaining:
+                        _phase_normal_chunked(remaining, ctx, chunk_start_offset=done + len(test_batch))
+                    return
+    ctx["stats"]["upgraded"] += total_ok
+    ctx["stats"]["failed"] += total_fail
+    if total_ok == 0 and total_fail > 0:
+        _log("-", f"WARNING: 0/{total} normal packages upgraded — all {total_fail} failed")
+        _log("~", "Even individual installs are failing — check the errors above.")
+    elif total_ok > 0:
+        _log("+", f"Individual mode: {total_ok}/{total} upgraded, {total_fail} failed")
+
+def _phase_normal_chunked(names: list[str], ctx: dict,
+                           chunk_start_offset: int = 0) -> None:
+    """Standard chunked upgrade — the original phase_normal logic."""
     chunk_size = ctx["args"].chunk_size
-    names = [p["name"] for p in pkgs]
     n_chunks = math.ceil(len(names) / chunk_size)
-    _phase_hdr(4, f"Normal ({len(names)} packages, {n_chunks} chunks)")
-    repair_issue = ctx.get("_repair_systemic")
-    if repair_issue:
-        _log("~", f"WARNING: Phase 1 detected a systemic issue: {repair_issue}")
-        _log("~", "Upgrades will likely fail — attempting first chunk as a test")
+    if chunk_start_offset == 0:
+        repair_issue = ctx.get("_repair_systemic")
+        if repair_issue:
+            _log("~", f"WARNING: Phase 1 detected a systemic issue: {repair_issue}")
+            _log("~", "Upgrades will likely fail — attempting first chunk as a test")
     total_ok = 0
     total_fail = 0
     for i in range(n_chunks):
@@ -1141,6 +1345,19 @@ def phase_normal(pkgs: list[dict], ctx: dict) -> None:
         if i == 0 and len(ok_pkgs) == 0 and len(fail_pkgs) == len(chunk) and n_chunks > 1:
             _log("~", f"First chunk entirely failed ({len(chunk)}/{len(chunk)}) — "
                  f"checking system health before continuing")
+            # Probe a single package before giving up
+            rc_single, _, err_single = _apt_install([fail_pkgs[0]])
+            if rc_single == 0:
+                _log("+", f"  {fail_pkgs[0]} installed individually — batch conflict only")
+                _log("*", "  Switching to individual mode for remaining packages")
+                ctx["stats"]["upgraded"] += 1
+                ctx["stats"]["failed"] += len(fail_pkgs) - 1
+                for fp in fail_pkgs[1:]:
+                    ctx["failed_pkgs"].append(fp)
+                remaining = names[(i + 1) * chunk_size:]
+                if remaining:
+                    _phase_normal_individual(remaining, ctx)
+                return
             rc_test, _, err_test = _apt(["install", "-y", "--dry-run", fail_pkgs[0]], timeout=60)
             systemic = _check_systemic(err_test) if rc_test != 0 else None
             if systemic:
@@ -1157,6 +1374,18 @@ def phase_normal(pkgs: list[dict], ctx: dict) -> None:
              f"all {total_fail} failed")
         _log("~", "This usually indicates a systemic issue (unmet deps, "
              "disk space, dpkg lock, network). Check the errors above.")
+
+def phase_normal(pkgs: list[dict], ctx: dict) -> None:
+    if not pkgs:
+        return
+    names = [p["name"] for p in pkgs]
+    if ctx.get("_individual_mode"):
+        _phase_normal_individual(names, ctx)
+        return
+    chunk_size = ctx["args"].chunk_size
+    n_chunks = math.ceil(len(names) / chunk_size)
+    _phase_hdr(4, f"Normal ({len(names)} packages, {n_chunks} chunks)")
+    _phase_normal_chunked(names, ctx)
 
 def phase_sensitive(pkgs: list[dict], ctx: dict) -> None:
     if not pkgs:
