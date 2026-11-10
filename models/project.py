@@ -330,18 +330,29 @@ def create_project(form_data):
             "isotope": "file", "dredge": "endpoint", "aether": "wifi",
             "aether_b": "bluetooth", "aether_z": "zigbee", "aether_u": "uwb",
         }
+        _NETWORK_DUAL_SCOPE = {"ss3", "trawler", "auger", "isotope"}
+        _has_int = bool(scope_def.get("network_cidrs_int"))
+        _has_ext = bool(scope_def.get("network_cidrs_ext"))
         resolved_scopes = []
         resolved_scope_tools = {}
         all_tool_ids = set(tools)
         for st_list in scope_tools.values():
             all_tool_ids.update(st_list)
         for tid in all_tool_ids:
-            ns = _TOOL_NATIVE_SCOPE.get(tid, "external")
-            if ns not in resolved_scopes:
-                resolved_scopes.append(ns)
-            resolved_scope_tools.setdefault(ns, [])
-            if tid not in resolved_scope_tools[ns]:
-                resolved_scope_tools[ns].append(tid)
+            if tid in _NETWORK_DUAL_SCOPE and (_has_int or _has_ext):
+                _tool_scopes = []
+                if _has_int:
+                    _tool_scopes.append("internal")
+                if _has_ext:
+                    _tool_scopes.append("external")
+            else:
+                _tool_scopes = [_TOOL_NATIVE_SCOPE.get(tid, "external")]
+            for ns in _tool_scopes:
+                if ns not in resolved_scopes:
+                    resolved_scopes.append(ns)
+                resolved_scope_tools.setdefault(ns, [])
+                if tid not in resolved_scope_tools[ns]:
+                    resolved_scope_tools[ns].append(tid)
         if not resolved_scopes:
             resolved_scopes = ["external"]
         active_scopes = sorted(resolved_scopes)

@@ -10702,8 +10702,20 @@ document.getElementById('settingsSubNav').addEventListener('click', function(e) 
 
 function _renderToolDetails(container, tid) {
     var toolDir = (PROJECT.tool_dirs || {})[tid] || '';
-    var scope = TOOL_NATIVE_SCOPES[tid] || '';
-    var scopeLabel = (SCOPE_DISPLAY_NAMES[scope] || scope || 'Unknown').replace(/^\w/, function(c){return c.toUpperCase();});
+    var scope = '';
+    var _st = PROJECT.scope_tools || {};
+    var _actualScopes = [];
+    for (var _sk in _st) {
+        if (_sk === 'multi') continue;
+        if ((_st[_sk] || []).indexOf(tid) !== -1) _actualScopes.push(_sk);
+    }
+    if (_actualScopes.length) {
+        scope = _actualScopes.map(function(s) { return SCOPE_DISPLAY_NAMES[s] || s; }).join(', ');
+    } else {
+        var _ns = TOOL_NATIVE_SCOPES[tid] || '';
+        scope = SCOPE_DISPLAY_NAMES[_ns] || _ns || 'Unknown';
+    }
+    var scopeLabel = scope.replace(/^\w/, function(c){return c.toUpperCase();});
     var engDir = PROJECT.engagement_dir || PROJECT.project_dir || '';
     var rows = [
         {label: 'Scope', value: scopeLabel},
