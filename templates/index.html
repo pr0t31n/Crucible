@@ -950,6 +950,83 @@
   </div>
 </div>
 
+<!-- ── Add Custom Script modal ───────────────────────── -->
+<div class="modal-overlay" id="addCustomScriptModal">
+  <div class="modal-box modal-wide" style="max-width:720px">
+    <div class="modal-header">
+      <h3 class="modal-title">Add Custom Script</h3>
+      <button type="button" class="modal-close" onclick="closeAddCustomScriptModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
+      <form id="acsForm" onsubmit="return saveCustomScript(event)">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label">Script Path <span class="required">*</span></label>
+          <input type="text" id="acsScriptPath" class="form-control" placeholder="/usr/local/bin/my-tool or /opt/scripts/scan.py" required>
+        </div>
+        <div style="margin-bottom:14px;">
+          <button type="button" class="btn btn-ghost" onclick="detectCustomFlags()" id="acsDetectBtn" style="font-size:0.8rem;">Detect Flags</button>
+          <span id="acsDetectStatus" style="font-size:0.78rem;color:var(--text-muted);margin-left:8px;"></span>
+        </div>
+        <div id="acsDetectedPanel" style="display:none;">
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="form-label">Tool Name <span class="required">*</span></label>
+            <input type="text" id="acsToolName" class="form-control" placeholder="My Custom Tool" required>
+          </div>
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="form-label">Description</label>
+            <input type="text" id="acsDescription" class="form-control" placeholder="One-line description of what it does">
+          </div>
+          <div style="display:flex;gap:16px;margin-bottom:14px;">
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">Version Flag</label>
+              <input type="text" id="acsVersionFlag" class="form-control" value="--version" style="font-size:0.82rem;">
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label class="form-label">Detected Version</label>
+              <input type="text" id="acsDetectedVersion" class="form-control" readonly style="font-size:0.82rem;background:var(--bg-subtle);">
+            </div>
+          </div>
+          <div style="margin-bottom:8px;">
+            <label class="form-label">Detected Flags</label>
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">Check the flags you want available when running this tool. Edit labels and types as needed.</div>
+          </div>
+          <div id="acsFlagsList" style="max-height:240px;overflow-y:auto;border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:8px;"></div>
+          <details style="margin-top:10px;">
+            <summary style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;">Raw --help output</summary>
+            <pre id="acsHelpText" style="font-size:0.72rem;max-height:180px;overflow-y:auto;background:var(--bg-subtle);padding:8px;border-radius:var(--radius-sm);margin-top:6px;white-space:pre-wrap;word-break:break-word;"></pre>
+          </details>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button type="submit" form="acsForm" class="btn btn-primary" id="acsSaveBtn" style="display:none;">Save Tool</button>
+      <button type="button" class="btn btn-ghost" onclick="closeAddCustomScriptModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Run Custom Tool modal (dynamic) ──────────────── -->
+<div class="modal-overlay" id="runCustomToolModal">
+  <div class="modal-box modal-wide" style="max-width:720px">
+    <div class="modal-header">
+      <h3 class="modal-title" id="rctTitle">Run Custom Tool</h3>
+      <button type="button" class="modal-close" onclick="closeRunCustomToolModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div id="rctFormContainer"></div>
+      <div id="rctResultsPanel" style="display:none;margin-top:16px;">
+        <pre id="rctResultsContent" style="font-size:0.76rem;line-height:1.45;max-height:55vh;overflow-y:auto;overflow-x:auto;background:var(--bg-subtle);padding:12px;border-radius:var(--radius-sm);white-space:pre-wrap;word-break:break-word;"></pre>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-primary" id="rctRunBtn" onclick="runCustomTool()">Run</button>
+      <button type="button" class="btn btn-ghost" id="rctSaveBtn" style="display:none;" onclick="saveCustomToolOutput()">Save .txt</button>
+      <button type="button" class="btn btn-danger-ghost" id="rctDeleteBtn" onclick="deleteCustomTool()" style="font-size:0.78rem;">Delete Tool</button>
+      <button type="button" class="btn btn-ghost" onclick="closeRunCustomToolModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -1970,6 +2047,8 @@ function saveSafeUpgrade() {
 function runQuickTool() {
   var val = document.getElementById('quickToolSelect').value;
   if (!val) return;
+  if (val === 'custom-script-add') { openAddCustomScriptModal(); return; }
+  if (val.startsWith('custom:')) { openRunCustomToolModal(val.slice(7)); document.getElementById('runCustomToolModal').classList.add('open'); return; }
   var h = {
     'authprobe': openAuthProbeModal,
     'dns-resolve': openDnsResolveModal,
@@ -2240,5 +2319,250 @@ function saveSystemInfo() {
 
 /* ── Shared HTML-escape helper ──────────────────────── */
 function _esc(s) { var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+/* ── Custom Script Quick Tool ─────────────────────── */
+var _customTools = [];
+var _currentCustomToolId = null;
+var _lastCustomToolOutput = null;
+
+function loadCustomTools() {
+  fetch('/api/standalone/custom-tools').then(function(r){return r.json();}).then(function(tools){
+    _customTools = tools || [];
+    _rebuildQuickToolDropdown();
+  }).catch(function(){});
+}
+
+function _rebuildQuickToolDropdown() {
+  var sel = document.getElementById('quickToolSelect');
+  var old = sel.querySelectorAll('.custom-tool-opt');
+  for (var i = 0; i < old.length; i++) old[i].remove();
+  var sep = sel.querySelector('.custom-tool-sep');
+  if (sep) sep.remove();
+
+  var sepOpt = document.createElement('option');
+  sepOpt.disabled = true;
+  sepOpt.textContent = '──────────────';
+  sepOpt.className = 'custom-tool-sep';
+  sel.appendChild(sepOpt);
+
+  _customTools.sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  _customTools.forEach(function(t){
+    var opt = document.createElement('option');
+    opt.value = 'custom:' + t.id;
+    opt.textContent = t.name;
+    opt.className = 'custom-tool-opt';
+    sel.appendChild(opt);
+  });
+
+  var addOption = document.createElement('option');
+  addOption.value = 'custom-script-add';
+  addOption.textContent = '+ Add Custom Script';
+  addOption.className = 'custom-tool-opt';
+  addOption.style.fontStyle = 'italic';
+  sel.appendChild(addOption);
+}
+
+function openAddCustomScriptModal() {
+  document.getElementById('acsScriptPath').value = '';
+  document.getElementById('acsDetectedPanel').style.display = 'none';
+  document.getElementById('acsSaveBtn').style.display = 'none';
+  document.getElementById('acsDetectStatus').textContent = '';
+  document.getElementById('acsFlagsList').innerHTML = '';
+  document.getElementById('acsToolName').value = '';
+  document.getElementById('acsDescription').value = '';
+  document.getElementById('acsVersionFlag').value = '--version';
+  document.getElementById('acsDetectedVersion').value = '';
+  document.getElementById('acsHelpText').textContent = '';
+  document.getElementById('addCustomScriptModal').classList.add('open');
+  document.getElementById('acsScriptPath').focus();
+}
+function closeAddCustomScriptModal() { document.getElementById('addCustomScriptModal').classList.remove('open'); }
+
+function detectCustomFlags() {
+  var path = document.getElementById('acsScriptPath').value.trim();
+  if (!path) return;
+  var btn = document.getElementById('acsDetectBtn');
+  var status = document.getElementById('acsDetectStatus');
+  btn.disabled = true; status.textContent = 'Detecting...';
+  fetch('/api/standalone/custom-tools/detect-flags', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({script_path: path}) })
+  .then(function(r){return r.json();}).then(function(data){
+    btn.disabled = false;
+    if (data.error) { status.textContent = data.error; return; }
+    status.textContent = 'Found ' + (data.flags||[]).length + ' flags';
+    document.getElementById('acsDetectedPanel').style.display = '';
+    document.getElementById('acsSaveBtn').style.display = '';
+    document.getElementById('acsHelpText').textContent = data.help_text || '(no help output)';
+    if (data.version) document.getElementById('acsDetectedVersion').value = data.version;
+    var baseName = path.split('/').pop().replace(/\.\w+$/, '').replace(/[_-]/g, ' ');
+    baseName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+    if (!document.getElementById('acsToolName').value) document.getElementById('acsToolName').value = baseName;
+    _renderFlagsList(data.flags || []);
+  }).catch(function(err){ btn.disabled=false; status.textContent='Error: '+err.message; });
+}
+
+function _renderFlagsList(flags) {
+  var container = document.getElementById('acsFlagsList');
+  if (!flags.length) { container.innerHTML = '<div style="font-size:0.78rem;color:var(--text-muted);padding:8px;">No flags detected. You can add them manually after saving.</div>'; container.dataset.flagCount = '0'; container.dataset.flags = '[]'; return; }
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;"><thead><tr style="border-bottom:1px solid var(--border-subtle);"><th style="width:30px;padding:3px;"></th><th style="text-align:left;padding:3px;">Flag</th><th style="text-align:left;padding:3px;">Label</th><th style="text-align:left;padding:3px;width:80px;">Type</th><th style="text-align:left;padding:3px;">Default</th><th style="text-align:left;padding:3px;">Req</th></tr></thead><tbody>';
+  flags.forEach(function(f, i){
+    var checked = f.type !== 'boolean' || f.required ? ' checked' : '';
+    html += '<tr style="border-bottom:1px solid var(--border-subtle);">';
+    html += '<td style="padding:3px;text-align:center;"><input type="checkbox" id="acsFlag_en_'+i+'"'+checked+'></td>';
+    html += '<td style="padding:3px;font-family:var(--font-mono);font-size:0.74rem;">'+_esc(f.flag)+'</td>';
+    html += '<td style="padding:3px;"><input type="text" id="acsFlag_label_'+i+'" value="'+_esc(f.label)+'" class="form-control" style="font-size:0.76rem;padding:2px 4px;"></td>';
+    html += '<td style="padding:3px;"><select id="acsFlag_type_'+i+'" class="form-control" style="font-size:0.76rem;padding:2px 4px;">';
+    html += '<option value="text"'+(f.type==='text'?' selected':'')+'>text</option>';
+    html += '<option value="boolean"'+(f.type==='boolean'?' selected':'')+'>bool</option>';
+    html += '<option value="number"'+(f.type==='number'?' selected':'')+'>number</option>';
+    html += '<option value="file"'+(f.type==='file'?' selected':'')+'>file</option>';
+    html += '</select></td>';
+    html += '<td style="padding:3px;"><input type="text" id="acsFlag_default_'+i+'" value="'+_esc(f.default||'')+'" class="form-control" style="font-size:0.76rem;padding:2px 4px;"></td>';
+    html += '<td style="padding:3px;text-align:center;"><input type="checkbox" id="acsFlag_req_'+i+'"'+(f.required?' checked':'')+'></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+  container.dataset.flagCount = flags.length;
+  container.dataset.flags = JSON.stringify(flags);
+}
+
+function saveCustomScript(e) {
+  e.preventDefault();
+  var name = document.getElementById('acsToolName').value.trim();
+  var scriptPath = document.getElementById('acsScriptPath').value.trim();
+  if (!name || !scriptPath) return false;
+  var rawFlags = [];
+  try { rawFlags = JSON.parse(document.getElementById('acsFlagsList').dataset.flags || '[]'); } catch(x){}
+  var count = parseInt(document.getElementById('acsFlagsList').dataset.flagCount || '0', 10);
+  var flags = [];
+  for (var i = 0; i < count; i++) {
+    var en = document.getElementById('acsFlag_en_'+i);
+    if (!en || !en.checked) continue;
+    var rf = rawFlags[i] || {};
+    flags.push({
+      flag: rf.flag,
+      label: (document.getElementById('acsFlag_label_'+i)||{}).value || rf.label,
+      type: (document.getElementById('acsFlag_type_'+i)||{}).value || rf.type,
+      required: !!(document.getElementById('acsFlag_req_'+i)||{}).checked,
+      default: (document.getElementById('acsFlag_default_'+i)||{}).value || '',
+      description: rf.description || ''
+    });
+  }
+  var payload = {
+    name: name, script_path: scriptPath,
+    description: document.getElementById('acsDescription').value.trim(),
+    version_flag: document.getElementById('acsVersionFlag').value.trim(),
+    detected_version: document.getElementById('acsDetectedVersion').value.trim(),
+    flags: flags
+  };
+  var btn = document.getElementById('acsSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  fetch('/api/standalone/custom-tools/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+  .then(function(r){return r.json();}).then(function(data){
+    btn.disabled = false; btn.textContent = 'Save Tool';
+    if (data.ok) { closeAddCustomScriptModal(); loadCustomTools(); }
+    else { document.getElementById('acsDetectStatus').textContent = data.error || 'Save failed'; }
+  }).catch(function(err){ btn.disabled=false; btn.textContent='Save Tool'; document.getElementById('acsDetectStatus').textContent='Error: '+err.message; });
+  return false;
+}
+
+function openRunCustomToolModal(toolId) {
+  var tool = _customTools.find(function(t){ return t.id === toolId; });
+  if (!tool) return;
+  _currentCustomToolId = toolId;
+  _lastCustomToolOutput = null;
+  document.getElementById('rctTitle').textContent = tool.name;
+  document.getElementById('rctResultsPanel').style.display = 'none';
+  document.getElementById('rctSaveBtn').style.display = 'none';
+  document.getElementById('rctRunBtn').disabled = false;
+  document.getElementById('rctRunBtn').textContent = 'Run';
+  var container = document.getElementById('rctFormContainer');
+  var html = '<form id="rctForm" onsubmit="return runCustomTool(event)">';
+  if (tool.description) html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;">'+_esc(tool.description)+'</div>';
+  html += '<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:10px;">Script: <code style="font-size:0.72rem;">'+_esc(tool.script_path)+'</code>';
+  if (tool.detected_version) html += ' &mdash; v'+_esc(tool.detected_version);
+  html += '</div>';
+  var flags = tool.flags || [];
+  if (flags.length) {
+    flags.forEach(function(f){
+      var fid = 'rctArg_' + f.flag.replace(/[^a-zA-Z0-9]/g,'_');
+      if (f.type === 'boolean') {
+        html += '<div class="form-check" style="margin-bottom:10px;"><input type="checkbox" id="'+fid+'" data-flag="'+_esc(f.flag)+'" data-type="boolean"';
+        if (f.default === 'true') html += ' checked';
+        html += '><label for="'+fid+'">'+_esc(f.label || f.flag)+'</label>';
+        if (f.description) html += '<div style="font-size:0.72rem;color:var(--text-muted);margin-left:22px;">'+_esc(f.description)+'</div>';
+        html += '</div>';
+      } else {
+        html += '<div class="form-group" style="margin-bottom:10px;"><label class="form-label">'+_esc(f.label || f.flag);
+        if (f.required) html += ' <span class="required">*</span>';
+        html += '</label><input type="'+(f.type==='number'?'number':'text')+'" id="'+fid+'" class="form-control" data-flag="'+_esc(f.flag)+'" data-type="'+_esc(f.type)+'"';
+        if (f.default) html += ' value="'+_esc(f.default)+'"';
+        if (f.required) html += ' required';
+        html += ' style="font-size:0.82rem;">';
+        if (f.description) html += '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">'+_esc(f.description)+'</div>';
+        html += '</div>';
+      }
+    });
+  } else {
+    html += '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;">No configured flags. The script will run with no arguments.</div>';
+  }
+  html += '</form>';
+  container.innerHTML = html;
+}
+function closeRunCustomToolModal() { document.getElementById('runCustomToolModal').classList.remove('open'); }
+
+function runCustomTool(e) {
+  if (e) e.preventDefault();
+  if (!_currentCustomToolId) return false;
+  var args = {};
+  var inputs = document.getElementById('rctFormContainer').querySelectorAll('[data-flag]');
+  for (var i = 0; i < inputs.length; i++) {
+    var inp = inputs[i];
+    var flag = inp.dataset.flag;
+    if (inp.dataset.type === 'boolean') { if (inp.checked) args[flag] = true; }
+    else { var val = inp.value.trim(); if (val) args[flag] = val; }
+  }
+  var btn = document.getElementById('rctRunBtn');
+  btn.disabled = true; btn.textContent = 'Running...';
+  document.getElementById('rctResultsPanel').style.display = 'none';
+  document.getElementById('rctSaveBtn').style.display = 'none';
+  fetch('/api/standalone/custom-tools/run', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tool_id: _currentCustomToolId, args: args}) })
+  .then(function(r){return r.json();}).then(function(data){
+    btn.disabled = false; btn.textContent = 'Run';
+    var panel = document.getElementById('rctResultsPanel');
+    var content = document.getElementById('rctResultsContent');
+    panel.style.display = 'block';
+    if (data.error) { content.textContent = 'Error: ' + data.error; }
+    else {
+      var output = data.output || '';
+      if (data.stderr) output += '\n\n=== STDERR ===\n' + data.stderr;
+      output += '\n\n[Exit code: ' + data.exit_code + ']';
+      content.textContent = output;
+      _lastCustomToolOutput = output;
+      document.getElementById('rctSaveBtn').style.display = '';
+    }
+  }).catch(function(err){ btn.disabled=false; btn.textContent='Run'; document.getElementById('rctResultsPanel').style.display='block'; document.getElementById('rctResultsContent').textContent='Error: '+err.message; });
+  return false;
+}
+
+function saveCustomToolOutput() {
+  if (_lastCustomToolOutput) {
+    var tool = _customTools.find(function(t){ return t.id === _currentCustomToolId; });
+    var name = tool ? tool.name.replace(/\s+/g,'_').toLowerCase() : 'custom_tool';
+    _downloadBlob(_lastCustomToolOutput, name + '_' + _ts() + '.txt');
+  }
+}
+
+function deleteCustomTool() {
+  if (!_currentCustomToolId) return;
+  var tool = _customTools.find(function(t){ return t.id === _currentCustomToolId; });
+  if (!confirm('Delete custom tool "' + (tool ? tool.name : _currentCustomToolId) + '"?')) return;
+  fetch('/api/standalone/custom-tools/' + _currentCustomToolId, { method:'DELETE' })
+  .then(function(r){return r.json();}).then(function(data){
+    if (data.ok) { closeRunCustomToolModal(); loadCustomTools(); }
+  }).catch(function(){});
+}
+
+loadCustomTools();
 </script>
 {% endblock %}
