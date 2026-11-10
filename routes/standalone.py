@@ -1432,7 +1432,14 @@ STANDALONE_TOOLS = [
 
 @standalone_bp.route("/api/standalone_tools")
 def api_standalone_tools():
-    return jsonify(STANDALONE_TOOLS)
+    custom = _load_custom_tools()
+    extra = [
+        {"id": "custom:" + t["id"], "name": t["name"],
+         "desc": t.get("description", ""), "icon": "terminal",
+         "url": None, "modal": True}
+        for t in custom
+    ]
+    return jsonify(STANDALONE_TOOLS + extra)
 
 
 # ── Safe Upgrade ──────────────────────────────────────────────────────────
@@ -1541,3 +1548,257 @@ def api_safe_upgrade_cancel():
     except ProcessLookupError:
         pass
     return jsonify({"ok": True})
+
+# ── Custom Script Quick Tool ─────────────────────────────────────────────
+
+_CUSTOM_TOOLS_DIR = Path("/opt/pr0t31n/.crucible")
+_CUSTOM_TOOLS_FILE = _CUSTOM_TOOLS_DIR / "custom_tools.json"
+_CUSTOM_TOOLS_LOCK = threading.Lock()
+
+_UNSAFE_CHARS = re.compile(r'[;&|$`\n\r]')
+
+_FLAG_RE = re.compile(
+    r'^\s+'
+    r'(?:(-[a-zA-Z]),?\s+)?'           # optional short flag: -f,
+    r'(--[a-zA-Z][\w-]*)'              # long flag: --flag-name
+    r'(?:[=\s]\s*([A-Z_][\w_]*))?'     # optional metavar: VALUE / FILE / PATH
+    r'\s{2,}(.*)',                       # description (2+ spaces then text)
+)
+
+_FLAG_BARE_RE = re.compile(
+    r'^\s+(--[a-zA-Z][\w-]*)'          # long flag only, no description captured
+    r'(?:[/|](--no-[a-zA-Z][\w-]*))?'  # optional --flag/--no-flag pair
+)
+
+
+def _load_custom_tools():
+    with _CUSTOM_TOOLS_LOCK:
+        if _CUSTOM_TOOLS_FILE.is_file():
+            try:
+                data = json.loads(_CUSTOM_TOOLS_FILE.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    return data
+            except (json.JSONDecodeError, OSError):
+                pass
+    return []
+
+
+def _save_custom_tools(tools):
+    with _CUSTOM_TOOLS_LOCK:
+        _CUSTOM_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+        _CUSTOM_TOOLS_FILE.write_text(
+            json.dumps(tools, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+
+def _detect_script_flags(help_text):
+    seen = set()
+    flags = []
+    for line in help_text.splitlines():
+        m = _FLAG_RE.match(line)
+        if m:
+            short, long, metavar, desc = m.groups()
+            if long in seen:
+                continue
+            seen.add(long)
+            label = long.lstrip("-").replace("-", " ").title()
+            ftype = "text" if metavar else "boolean"
+            flags.append({
+                "flag": long,
+                "short": short or "",
+                "label": label,
+                "type": ftype,
+                "required": False,
+                "default": "",
+                "description": desc.strip() if desc else "",
+            })
+            continue
+        m2 = _FLAG_BARE_RE.match(line)
+        if m2:
+            long = m2.group(1)
+            if long in seen:
+                continue
+            seen.add(long)
+            flags.append({
+                "flag": long,
+                "short": "",
+                "label": long.lstrip("-").replace("-", " ").title(),
+                "type": "boolean",
+                "required": False,
+                "default": "",
+                "description": "",
+            })
+    return flags
+
+
+def _detect_script_version(script_path):
+    for flag in ("--version", "-V", "-v"):
+        try:
+            proc = subprocess.run(
+                [script_path, flag],
+                capture_output=True, text=True, timeout=5,
+            )
+            out = (proc.stdout or proc.stderr or "").strip()
+            if out and len(out) < 200 and not out.startswith("usage"):
+                vm = re.search(r'(\d+\.\d+[\w.]*)', out)
+                if vm:
+                    return vm.group(1)
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+    return ""
+
+
+@standalone_bp.route("/api/standalone/custom-tools")
+def api_custom_tools_list():
+    return jsonify(_load_custom_tools())
+
+
+@standalone_bp.route("/api/standalone/custom-tools/detect-flags", methods=["POST"])
+def api_custom_tools_detect():
+    data = request.get_json(silent=True) or {}
+    script_path = data.get("script_path", "").strip()
+
+    if not script_path:
+        return jsonify({"error": "script_path is required"}), 400
+    if not os.path.isfile(script_path):
+        return jsonify({"error": f"File not found: {script_path}"}), 400
+
+    help_text = ""
+    for flag in ("--help", "-h"):
+        try:
+            proc = subprocess.run(
+                [script_path, flag],
+                capture_output=True, text=True, timeout=10,
+            )
+            out = proc.stdout or proc.stderr or ""
+            if out.strip():
+                help_text = out
+                break
+        except subprocess.TimeoutExpired:
+            continue
+        except OSError as exc:
+            return jsonify({"error": f"Cannot run script: {exc}"}), 400
+
+    if not help_text:
+        return jsonify({"ok": True, "flags": [], "help_text": "", "version": ""})
+
+    flags = _detect_script_flags(help_text)
+    version = _detect_script_version(script_path)
+
+    return jsonify({
+        "ok": True,
+        "flags": flags,
+        "help_text": help_text,
+        "version": version,
+    })
+
+
+@standalone_bp.route("/api/standalone/custom-tools/save", methods=["POST"])
+def api_custom_tools_save():
+    import datetime as _dt
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    script_path = (data.get("script_path") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Tool name is required"}), 400
+    if not script_path or not os.path.isfile(script_path):
+        return jsonify({"error": "Valid script_path is required"}), 400
+
+    tools = _load_custom_tools()
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+
+    tool_id = data.get("id", "").strip()
+    if tool_id:
+        found = False
+        for t in tools:
+            if t.get("id") == tool_id:
+                t["name"] = name
+                t["script_path"] = script_path
+                t["version_flag"] = data.get("version_flag", "--version")
+                t["detected_version"] = data.get("detected_version", "")
+                t["description"] = data.get("description", "")
+                t["flags"] = data.get("flags", [])
+                t["updated_at"] = now
+                found = True
+                entry = t
+                break
+        if not found:
+            return jsonify({"error": f"Tool not found: {tool_id}"}), 404
+    else:
+        entry = {
+            "id": uuid.uuid4().hex[:12],
+            "name": name,
+            "script_path": script_path,
+            "version_flag": data.get("version_flag", "--version"),
+            "detected_version": data.get("detected_version", ""),
+            "description": data.get("description", ""),
+            "flags": data.get("flags", []),
+            "created_at": now,
+            "updated_at": now,
+        }
+        tools.append(entry)
+
+    _save_custom_tools(tools)
+    return jsonify({"ok": True, "tool": entry})
+
+
+@standalone_bp.route("/api/standalone/custom-tools/<tool_id>", methods=["DELETE"])
+def api_custom_tools_delete(tool_id):
+    tools = _load_custom_tools()
+    before = len(tools)
+    tools = [t for t in tools if t.get("id") != tool_id]
+    if len(tools) == before:
+        return jsonify({"error": "Tool not found"}), 404
+    _save_custom_tools(tools)
+    return jsonify({"ok": True})
+
+
+@standalone_bp.route("/api/standalone/custom-tools/run", methods=["POST"])
+def api_custom_tools_run():
+    data = request.get_json(silent=True) or {}
+    tool_id = data.get("tool_id", "")
+    args_map = data.get("args", {})
+
+    tools = _load_custom_tools()
+    tool = None
+    for t in tools:
+        if t.get("id") == tool_id:
+            tool = t
+            break
+    if not tool:
+        return jsonify({"error": "Custom tool not found"}), 404
+
+    script_path = tool.get("script_path", "")
+    if not os.path.isfile(script_path):
+        return jsonify({"error": f"Script no longer exists: {script_path}"}), 400
+
+    cmd = [script_path]
+    for flag, value in args_map.items():
+        if not flag.startswith("-"):
+            continue
+        if isinstance(value, bool):
+            if value:
+                cmd.append(flag)
+        else:
+            val_str = str(value)
+            if _UNSAFE_CHARS.search(val_str):
+                return jsonify({"error": f"Unsafe characters in value for {flag}"}), 400
+            cmd.append(flag)
+            cmd.append(val_str)
+
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=300,
+        )
+        return jsonify({
+            "ok": True,
+            "output": proc.stdout or "",
+            "stderr": proc.stderr or "",
+            "exit_code": proc.returncode,
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Script timed out (300s)"}), 504
+    except OSError as exc:
+        return jsonify({"error": f"Failed to run script: {exc}"}), 500
