@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -341,19 +341,28 @@ def _download_install(pkg: str) -> bool:
             env=_APT_ENV, cwd=dl_dir,
         )
         if r.returncode != 0:
+            if r.stderr:
+                _log("~", f"    download failed: {r.stderr.strip().splitlines()[-1][:100]}")
             return False
-    except (subprocess.TimeoutExpired, Exception):
+    except subprocess.TimeoutExpired:
+        _log("~", "    download timed out (120s)")
+        return False
+    except Exception as e:
+        _log("~", f"    download error: {e}")
         return False
     import glob
     debs = sorted(glob.glob(f"{dl_dir}/{pkg}_*.deb"),
                   key=os.path.getmtime, reverse=True)
     if not debs:
+        _log("~", f"    no .deb found after download")
         return False
-    rc, _, _ = _dpkg(["-i", "--force-depends", debs[0]], timeout=120)
+    rc, _, err = _dpkg(["-i", "--force-depends", debs[0]], timeout=120)
     try:
         os.unlink(debs[0])
     except OSError:
         pass
+    if rc != 0 and err:
+        _log("~", f"    dpkg -i failed: {err.strip().splitlines()[-1][:100]}")
     return rc == 0
 
 def _is_protected(pkg: str, protected: set[str]) -> bool:
@@ -613,10 +622,29 @@ def _upgrade_chunk(pkgs: list[str], depth: int = 0,
             _log("-", f"  Root cause: {systemic}")
     return ok_l + ok_r, fail_l + fail_r
 
-def _upgrade_single(pkg: str) -> bool:
+def _extract_err_reason(err: str) -> str:
+    """Extract a human-readable failure reason from apt/dpkg stderr."""
+    if not err:
+        return "unknown error (no stderr)"
+    systemic = _check_systemic(err)
+    if systemic:
+        return systemic
+    for line in reversed(err.splitlines()):
+        line = line.strip()
+        if line.startswith("E:"):
+            return line[:120]
+    for line in reversed(err.splitlines()):
+        line = line.strip()
+        if line and not line.startswith("WARNING") and not line.startswith("N:"):
+            return line[:120]
+    return "unknown error"
+
+def _upgrade_single(pkg: str) -> tuple[bool, str]:
+    """Returns (success, failure_reason). failure_reason is '' on success."""
     rc, out, err = _apt_install([pkg])
     if rc == 0:
-        return True
+        return True, ""
+    last_err = err
     deps = _extract_deps_from_error(err)
     if deps:
         _log("*", f"  Resolving {len(deps)} deps for {pkg}…")
@@ -626,16 +654,20 @@ def _upgrade_single(pkg: str) -> bool:
     _repair_quick()
     rc, out, err = _apt_install([pkg])
     if rc == 0:
-        return True
+        return True, ""
+    if err:
+        last_err = err
     _resolve_deps(pkg, protected=_PROTECTED_PKGS)
     rc, out, err = _apt_install([pkg])
     if rc == 0:
-        return True
+        return True, ""
+    if err:
+        last_err = err
     _log("*", f"  Trying download + dpkg -i for {pkg}…")
     if _download_install(pkg):
         _dpkg(["--configure", pkg], timeout=60)
-        return True
-    return False
+        return True, ""
+    return False, _extract_err_reason(last_err)
 
 def _verify_all_conn(active_methods: list[dict]) -> list[dict]:
     results = []
@@ -898,11 +930,12 @@ def phase_sensitive(pkgs: list[dict], ctx: dict) -> None:
             ctx["skipped_pkgs"].append(p["name"])
             continue
         _log("*", f"Upgrading {p['name']} ({p['old_ver']} → {p['new_ver']})")
-        if _upgrade_single(p["name"]):
+        ok, reason = _upgrade_single(p["name"])
+        if ok:
             _log("+", f"{p['name']} upgraded")
             ctx["stats"]["upgraded"] += 1
         else:
-            _log("-", f"{p['name']} FAILED")
+            _log("-", f"{p['name']} FAILED — {reason}")
             ctx["stats"]["failed"] += 1
             ctx["failed_pkgs"].append(p["name"])
 
@@ -930,11 +963,13 @@ def phase_critical(pkgs: list[dict], ctx: dict) -> None:
             ctx["skipped_pkgs"].append(p["name"])
             continue
         _log("*", f"Upgrading {p['name']} ({p['old_ver']} → {p['new_ver']})")
-        if _upgrade_single(p["name"]):
+        ok, reason = _upgrade_single(p["name"])
+        if ok:
             _log("+", f"{p['name']} upgraded")
             ctx["stats"]["upgraded"] += 1
         else:
-            _log("-", f"{p['name']} FAILED — attempting recovery")
+            _log("-", f"{p['name']} FAILED — {reason}")
+            _log("~", f"  Attempting connectivity recovery…")
             ctx["stats"]["failed"] += 1
             ctx["failed_pkgs"].append(p["name"])
         time.sleep(2)
