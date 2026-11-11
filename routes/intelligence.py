@@ -2067,7 +2067,76 @@ def _scan_ss3_screenshots(project, scope_filter):
                     "tool": "ss3",
                 })
 
-        # Fallback: walk hosts/<ip>/web/<port>/screenshot.png (pre-1.52.0)
+        # Secondary: screenshots/ PNGs without sidecars (sidecar write failed)
+        if ss_dir.is_dir() and not has_sidecars:
+            for png in sorted(ss_dir.glob("*_screenshot*.png")):
+                stem = png.stem
+                parts = stem.split("_screenshot")
+                if not parts or not parts[0]:
+                    continue
+                segs = parts[0].split("_")
+                if len(segs) < 2 or not segs[-1].isdigit():
+                    continue
+                port = int(segs[-1])
+                ip = ".".join(segs[:-1])
+                if (ip, port) in seen_ip_port:
+                    continue
+                scheme = "https" if port == 443 else "http"
+                host_part = ip
+                if (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+                    url = f"{scheme}://{host_part}/"
+                else:
+                    url = f"{scheme}://{host_part}:{port}/"
+                try:
+                    rel = str(png.relative_to(scope_root))
+                except ValueError:
+                    rel = png.name
+                seen_ip_port.add((ip, port))
+                wm = {}
+                _corr = scope_root / "correlated.json"
+                if _corr.exists():
+                    try:
+                        _cd = json.loads(_corr.read_text())
+                        _hl = _cd if isinstance(_cd, list) else _cd.get("hosts", [])
+                        if isinstance(_hl, dict):
+                            _hl = list(_hl.values())
+                        for _h in _hl:
+                            if not isinstance(_h, dict) or _h.get("ip") != ip:
+                                continue
+                            _pp = _h.get("ports", {})
+                            if isinstance(_pp, dict):
+                                _pp = list(_pp.values())
+                            for _po in _pp:
+                                if isinstance(_po, dict) and _po.get("port") == port:
+                                    wm = _po.get("web") or {}
+                                    if not wm:
+                                        for _tr in _po.get("tool_results", []):
+                                            if _tr.get("tool") == "http-probe":
+                                                wm = _tr.get("data", {})
+                                                break
+                                    break
+                            break
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                _sc_title = wm.get("title", "")
+                _sc_server = wm.get("server", "")
+                _sc_status = wm.get("status_code")
+                results.append({
+                    "url": url,
+                    "ip": ip,
+                    "port": port,
+                    "scheme": scheme,
+                    "title": _sc_title,
+                    "server": _sc_server,
+                    "status_code": _sc_status,
+                    "description": _classify_web_page(_sc_title, _sc_server, _sc_status)
+                                   if _sc_title or _sc_server else "Web Page Captured",
+                    "scope": scope_label,
+                    "screenshot_path": rel,
+                    "tool": "ss3",
+                })
+
+        # Fallback: walk hosts/<ip>/web/<port>/ for screenshot PNGs (pre-1.52.0)
         if not has_hosts:
             continue
         web_meta = {}
@@ -2120,6 +2189,9 @@ def _scan_ss3_screenshots(project, scope_filter):
                     continue
                 sc_file = port_dir / "screenshot.png"
                 if not sc_file.exists():
+                    _sc_matches = sorted(port_dir.glob("*_screenshot*.png"))
+                    sc_file = _sc_matches[0] if _sc_matches else None
+                if not sc_file or not sc_file.exists():
                     continue
                 port = int(port_dir.name) if port_dir.name.isdigit() else 0
                 if (ip, port) in seen_ip_port:
@@ -2137,7 +2209,7 @@ def _scan_ss3_screenshots(project, scope_filter):
                     url = f"{scheme}://{host_part}/"
                 else:
                     url = f"{scheme}://{host_part}:{port}/"
-                rel = f"{rel_prefix}/hosts/{ip_dir.name}/web/{port_dir.name}/screenshot.png"
+                rel = f"{rel_prefix}/hosts/{ip_dir.name}/web/{port_dir.name}/{sc_file.name}"
                 results.append({
                     "url": url,
                     "ip": ip,
