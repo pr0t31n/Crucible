@@ -7044,6 +7044,17 @@ function _countByFn(findings, fn) {
     return Object.keys(map).map(function(k) { return {label: k, count: map[k]}; }).sort(function(a,b) { return b.count - a.count; });
 }
 
+function _ovDeriveStats(findings) {
+    var ips = {}, ports = {}, svcs = {};
+    findings.forEach(function(f) {
+        if (f.ip) ips[f.ip] = true;
+        if (f.port && f.port !== 0) ports[f.port] = true;
+        var s = (f.service || '').toLowerCase();
+        if (s && s !== '—' && s !== 'unknown') svcs[s] = true;
+    });
+    return {ips: Object.keys(ips).length, ports: Object.keys(ports).length, svcs: Object.keys(svcs).length};
+}
+
 function _renderExternalOverview(findings, intel, summary, scopeKey, tData) {
     var h = '<div style="margin-bottom:20px"><h3 style="margin:0 0 4px 0;font-size:1.1rem;color:var(--clr-high)">External Attack Surface Overview</h3>' +
         '<div style="color:var(--text-secondary);font-size:0.85rem">High-level posture analysis for the external scope</div></div>';
@@ -7062,6 +7073,10 @@ function _renderExternalOverview(findings, intel, summary, scopeKey, tData) {
             if (svc && svc !== '—') uniqueServices[svc] = true;
         });
     });
+    var fStats = _ovDeriveStats(findings);
+    liveIPs = Math.max(liveIPs, fStats.ips);
+    totalPorts = Math.max(totalPorts, fStats.ports);
+    var svcCount = Math.max(Object.keys(uniqueServices).length, fStats.svcs);
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">';
     h += _ovCard('Total Findings', findings.length, '', 'var(--clr-accent)');
     var crit = findings.filter(function(f) { return (f.risk||'').toLowerCase() === 'critical'; }).length;
@@ -7069,7 +7084,7 @@ function _renderExternalOverview(findings, intel, summary, scopeKey, tData) {
     h += _ovCard('Critical + High', crit + high, crit + ' critical / ' + high + ' high', (crit > 0 ? 'var(--clr-critical)' : high > 0 ? 'var(--clr-high)' : 'var(--clr-accent)'));
     h += _ovCard('Live IPs', liveIPs, 'hosts alive', 'var(--clr-hosts)');
     h += _ovCard('Open Ports', totalPorts, 'exposed ports', 'var(--clr-ports)');
-    h += _ovCard('Services', Object.keys(uniqueServices).length, 'distinct types', 'var(--clr-services)');
+    h += _ovCard('Services', svcCount, 'distinct types', 'var(--clr-services)');
     var sslFindings = findings.filter(function(f) { return (f.title||'').toLowerCase().indexOf('ssl') !== -1 || (f.title||'').toLowerCase().indexOf('tls') !== -1 || (f.title||'').toLowerCase().indexOf('certificate') !== -1; });
     h += _ovCard('SSL/TLS Issues', sslFindings.length, 'certificate & protocol', 'var(--clr-medium)');
     h += '</div>';
@@ -7106,6 +7121,10 @@ function _renderInternalOverview(findings, intel, summary, scopeKey, tData) {
             if (svc && svc !== '—') uniqueServices[svc] = true;
         });
     });
+    var fStats = _ovDeriveStats(findings);
+    liveIPs = Math.max(liveIPs, fStats.ips);
+    totalPorts = Math.max(totalPorts, fStats.ports);
+    var svcCount = Math.max(Object.keys(uniqueServices).length, fStats.svcs);
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px">';
     h += _ovCard('Total Findings', findings.length, '', 'var(--clr-accent)');
     var crit = findings.filter(function(f) { return (f.risk||'').toLowerCase() === 'critical'; }).length;
@@ -7113,7 +7132,7 @@ function _renderInternalOverview(findings, intel, summary, scopeKey, tData) {
     h += _ovCard('Critical + High', crit + high, crit + ' critical / ' + high + ' high', (crit > 0 ? 'var(--clr-critical)' : high > 0 ? 'var(--clr-high)' : 'var(--clr-accent)'));
     h += _ovCard('Live IPs', liveIPs, 'hosts alive', 'var(--clr-hosts)');
     h += _ovCard('Open Ports', totalPorts, 'exposed ports', 'var(--clr-ports)');
-    h += _ovCard('Services', Object.keys(uniqueServices).length, 'distinct types', 'var(--clr-services)');
+    h += _ovCard('Services', svcCount, 'distinct types', 'var(--clr-services)');
     var smbFindings = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('smb') !== -1 || (f.service||'').toLowerCase() === 'smb'; });
     h += _ovCard('SMB Issues', smbFindings.length, 'file sharing', 'var(--clr-high)');
     var rdpFindings = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('rdp') !== -1 || f.port === 3389; });
