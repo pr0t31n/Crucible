@@ -33,7 +33,38 @@ def _sw(db, row):
 
 def _hostname_intel(db, row):
     r = _clean(row)
-    db.add_hostname_intel(**r)
+    ip = r.get("ip", "")
+    if ip:
+        db.ensure_host(ip, is_alive=1 if r.get("alive", True) else 0)
+    r.pop("alive", None)
+    r.pop("scope", None)
+    if r.get("hostname"):
+        safe = {k: v for k, v in r.items()
+                if k in ("hostname", "ip", "environment_tag",
+                         "application_tag", "hardware_tag",
+                         "role_tag", "confidence")}
+        db.add_hostname_intel(**safe)
+
+
+def _port_intel(db, row):
+    r = _clean(row)
+    ip = r.get("ip", "")
+    if not ip:
+        return
+    host_id = db.ensure_host(ip)
+    port_num = int(r.get("port", 0))
+    if not port_num:
+        return
+    proto = r.get("proto", r.get("protocol", "tcp"))
+    state = r.get("state", "open")
+    port_id = db.ensure_port(host_id, port_num, proto, state)
+    name = r.get("name", "")
+    product = r.get("product", "")
+    version = r.get("version", "")
+    if port_id and (name or product or version):
+        db.set_service(port_id, name=name, product=product,
+                       version=version,
+                       extra_info=r.get("extrainfo", ""))
 
 def _server_role(db, row):
     r = _clean(row)
@@ -473,6 +504,7 @@ _DISPATCH = {
     "email":             (_osint_email,         None),
     "endpoint":          (_endpoint_inventory,  "bulk_insert_endpoint_inventory"),
     "host":              (_hostname_intel,       None),
+    "port":              (_port_intel,          None),
     "output_file":       (_output_file,         None),
     "console_chunk":     (_console_chunk,       None),
     "network_posture":   (_network_posture,    "bulk_insert_network_posture"),
