@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -94,15 +94,27 @@ def _apt(args: list[str], timeout: int = 600) -> tuple[int, str, str]:
     return _run(cmd, timeout=timeout, env=_APT_ENV)
 
 def _dpkg(args: list[str], timeout: int = 300) -> tuple[int, str, str]:
-    return _run(["dpkg"] + args, timeout=timeout, env=_APT_ENV)
+    env = dict(_APT_ENV) if _APT_ENV else dict(os.environ)
+    if _BOOTSTRAP_LD_PATH:
+        env["LD_LIBRARY_PATH"] = _BOOTSTRAP_LD_PATH
+    dpkg_bin = os.environ.get("_SAFE_UPGRADE_DPKG_BIN", "dpkg")
+    return _run([dpkg_bin] + args, timeout=timeout, env=env)
 
-# ── dpkg health check + bootstrap ───────────────────────────────────────────
+# ── dpkg health check + LD_LIBRARY_PATH bootstrap ──────────────────────────
+# SAFETY RULE: NEVER overwrite system shared libraries (/lib/, /usr/lib/).
+# Instead, extract needed libs to /tmp/ and use LD_LIBRARY_PATH to make
+# only dpkg find them. This preserves SSH, VPN, and all other running services.
 _GLIBC_RE = re.compile(r"version `(GLIBC_[\d.]+)' not found", re.I)
+_BOOTSTRAP_LD_PATH: str = ""  # set by _bootstrap_dpkg if active
 
 def _check_dpkg_health() -> dict:
     """Test if dpkg itself can execute. Returns {"ok": True} or
     {"ok": False, "error": str, "glibc_missing": str|None}."""
-    rc, out, err = _run(["dpkg", "--version"], timeout=10)
+    env = dict(_APT_ENV) if _APT_ENV else dict(os.environ)
+    if _BOOTSTRAP_LD_PATH:
+        env["LD_LIBRARY_PATH"] = _BOOTSTRAP_LD_PATH
+    dpkg_bin = os.environ.get("_SAFE_UPGRADE_DPKG_BIN", "dpkg")
+    rc, out, err = _run([dpkg_bin, "--version"], timeout=10, env=env)
     if rc == 0:
         return {"ok": True}
     combined = (err or "") + (out or "")
@@ -110,196 +122,156 @@ def _check_dpkg_health() -> dict:
     glibc = m.group(1) if m else None
     return {"ok": False, "error": combined.strip()[:200], "glibc_missing": glibc}
 
-def _bootstrap_dpkg() -> bool:
-    """When dpkg can't run due to missing GLIBC, manually extract libc6 using
-    ar+tar (which are typically statically linked or use older glibc) to restore
-    the missing library version, then dpkg can operate again."""
-    _log("*", "dpkg bootstrap: attempting manual libc6 recovery…")
-
-    for tool in ("ar", "tar"):
-        if not shutil.which(tool):
-            _log("-", f"  {tool} not found — cannot bootstrap")
-            return False
-
-    dl_dir = "/tmp/_safe_upgrade_bootstrap"
+def _extract_deb_to(pkg_name: str, dest_dir: str, dl_dir: str) -> bool:
+    """Download a .deb and extract its data payload to dest_dir.
+    Uses ar+tar only — no dpkg needed. Returns True on success."""
+    os.makedirs(dest_dir, exist_ok=True)
     os.makedirs(dl_dir, exist_ok=True)
 
-    # Step 1: Download libc6 .deb
-    _log("*", "  Downloading libc6 package…")
+    # Download
     deb_path = None
     try:
         r = subprocess.run(
-            ["apt-get", "download", "libc6"],
+            ["apt-get", "download", pkg_name],
             capture_output=True, text=True, timeout=120,
             env={**(_APT_ENV or os.environ),
                  "DEBIAN_FRONTEND": "noninteractive"},
             cwd=dl_dir)
         if r.returncode == 0:
             import glob
-            debs = sorted(glob.glob(f"{dl_dir}/libc6_*.deb"),
+            debs = sorted(glob.glob(f"{dl_dir}/{pkg_name}_*.deb"),
                           key=os.path.getmtime, reverse=True)
             if debs:
                 deb_path = debs[0]
     except (subprocess.TimeoutExpired, Exception) as e:
-        _log("~", f"  apt-get download: {e}")
+        _log("~", f"  apt-get download {pkg_name}: {e}")
 
     if not deb_path:
-        # Fallback: get the URI and download with urllib
-        _log("~", "  apt-get download failed, trying urllib fallback…")
+        _log("~", f"  apt-get download failed for {pkg_name}, trying urllib…")
         import urllib.request
         rc3, urls_out, _ = _run(
-            ["apt-get", "download", "--print-uris", "libc6"],
+            ["apt-get", "download", "--print-uris", pkg_name],
             timeout=30, env=_APT_ENV)
         if rc3 == 0 and "'" in urls_out:
             url = urls_out.split("'")[1]
-            fname = url.rsplit("/", 1)[-1] if "/" in url else "libc6.deb"
+            fname = url.rsplit("/", 1)[-1] if "/" in url else f"{pkg_name}.deb"
             deb_path = os.path.join(dl_dir, fname)
             try:
-                _log("*", f"  Downloading via urllib: {url[:80]}…")
                 urllib.request.urlretrieve(url, deb_path)
             except Exception as e:
-                _log("-", f"  urllib download failed: {e}")
+                _log("-", f"  urllib failed: {e}")
                 return False
         else:
-            _log("-", "  Cannot obtain libc6 package — bootstrap failed")
             return False
 
-    # Step 2: Extract the .deb manually using ar + tar (no dpkg needed)
-    _log("*", "  Extracting libc6 with ar + tar (bypassing dpkg)…")
-    extract_dir = os.path.join(dl_dir, "libc6_extract")
-    os.makedirs(extract_dir, exist_ok=True)
-
+    # Extract with ar + tar
     try:
         r = subprocess.run(["ar", "x", deb_path],
                            capture_output=True, text=True, timeout=30,
                            cwd=dl_dir)
         if r.returncode != 0:
-            _log("-", f"  ar extract failed: {(r.stderr or '')[:100]}")
             return False
-    except Exception as e:
-        _log("-", f"  ar extract error: {e}")
+    except Exception:
         return False
 
-    # The data archive is data.tar.* (xz, gz, zst)
-    data_tar = None
     for ext in ("data.tar.xz", "data.tar.gz", "data.tar.zst", "data.tar.bz2"):
         candidate = os.path.join(dl_dir, ext)
         if os.path.exists(candidate):
-            data_tar = candidate
-            break
+            rc, _, _ = _run(["tar", "xf", candidate, "-C", dest_dir], timeout=60)
+            # Clean up data.tar to avoid collision on next extract
+            try:
+                os.unlink(candidate)
+            except OSError:
+                pass
+            return rc == 0
+    return False
 
-    if not data_tar:
-        _log("-", "  No data.tar.* found in .deb")
-        return False
-
-    rc, _, err = _run(["tar", "xf", data_tar, "-C", extract_dir], timeout=60)
-    if rc != 0:
-        _log("-", f"  tar extract failed: {err[:100]}")
-        return False
-
-    # Step 3: Copy the extracted libc files into the system lib directory
-    # Find where the .so files are
-    lib_dirs = []
-    for root, dirs, files in os.walk(extract_dir):
-        for f in files:
-            if "libc.so" in f or "libc-" in f:
-                lib_dirs.append(root)
+def _find_lib_dirs(root: str) -> list[str]:
+    """Find directories containing shared libraries under root."""
+    dirs = []
+    for dirpath, _, filenames in os.walk(root):
+        for f in filenames:
+            if f.endswith(".so") or ".so." in f:
+                dirs.append(dirpath)
                 break
+    return dirs
 
+def _bootstrap_dpkg() -> bool:
+    """When dpkg can't run due to missing GLIBC, extract libc6 (and
+    optionally dpkg) to an ISOLATED directory under /tmp/ and set
+    LD_LIBRARY_PATH so only dpkg calls use the new libs.
+
+    SAFETY: This function NEVER modifies system files. It NEVER copies
+    libraries into /lib/, /usr/lib/, or any system directory. It NEVER
+    runs ldconfig. All extracted files stay under /tmp/_safe_upgrade_bootstrap/.
+    Running services (SSH, VPN, ZeroTier) are completely unaffected."""
+    global _BOOTSTRAP_LD_PATH
+    _log("*", "dpkg bootstrap: extracting libs to /tmp/ (LD_LIBRARY_PATH isolation)…")
+
+    for tool in ("ar", "tar"):
+        if not shutil.which(tool):
+            _log("-", f"  {tool} not found — cannot bootstrap")
+            return False
+
+    base = "/tmp/_safe_upgrade_bootstrap"
+    dl_dir = os.path.join(base, "debs")
+    lib_root = os.path.join(base, "root")
+    os.makedirs(dl_dir, exist_ok=True)
+
+    # Step 1: Extract libc6 into isolated directory
+    _log("*", "  Downloading + extracting libc6…")
+    if not _extract_deb_to("libc6", lib_root, dl_dir):
+        _log("-", "  Failed to obtain libc6 — bootstrap failed")
+        return False
+
+    # Build LD_LIBRARY_PATH from extracted lib dirs
+    lib_dirs = _find_lib_dirs(lib_root)
     if not lib_dirs:
-        _log("-", "  No libc.so found in extracted package")
+        _log("-", "  No shared libraries found in extracted libc6")
         return False
 
-    copied = 0
-    for src_dir in lib_dirs:
-        # Determine the target directory by stripping the extract prefix
-        rel = os.path.relpath(src_dir, extract_dir)
-        target_dir = os.path.join("/", rel)
-        os.makedirs(target_dir, exist_ok=True)
-        for f in os.listdir(src_dir):
-            src = os.path.join(src_dir, f)
-            dst = os.path.join(target_dir, f)
-            if os.path.isfile(src):
-                try:
-                    shutil.copy2(src, dst)
-                    copied += 1
-                except Exception as e:
-                    _log("~", f"  Failed to copy {f}: {e}")
+    ld_path = ":".join(lib_dirs)
+    _log("*", f"  Extracted libs to: {ld_path[:120]}")
 
-    if copied == 0:
-        _log("-", "  No files copied — bootstrap failed")
-        return False
-
-    _log("+", f"  Copied {copied} libc files into system")
-
-    # Step 4: Run ldconfig to refresh the linker cache
-    _run(["ldconfig"], timeout=30)
-
-    # Step 5: Verify dpkg works now
-    health = _check_dpkg_health()
-    if health["ok"]:
-        _log("+", "dpkg bootstrap successful — dpkg is functional again")
-        # Now run dpkg --configure -a to clean up any pending configs
-        _dpkg(["--configure", "-a"], timeout=300)
+    # Step 2: Test if dpkg works with LD_LIBRARY_PATH
+    test_env = dict(_APT_ENV) if _APT_ENV else dict(os.environ)
+    test_env["LD_LIBRARY_PATH"] = ld_path
+    rc, _, _ = _run(["dpkg", "--version"], timeout=10, env=test_env)
+    if rc == 0:
+        _BOOTSTRAP_LD_PATH = ld_path
+        _log("+", "dpkg works with LD_LIBRARY_PATH — bootstrap active")
+        _log("+", "  System libraries UNTOUCHED — SSH/VPN/ZeroTier safe")
         return True
 
-    # libc6 restored but dpkg binary itself may also need the new libc
-    # Try downloading and extracting dpkg too
-    _log("~", "  libc6 restored but dpkg still broken — bootstrapping dpkg binary…")
-    deb_path2 = None
-    try:
-        r2 = subprocess.run(
-            ["apt-get", "download", "dpkg"],
-            capture_output=True, text=True, timeout=120,
-            env={**(_APT_ENV or os.environ),
-                 "DEBIAN_FRONTEND": "noninteractive"},
-            cwd=dl_dir)
-        if r2.returncode == 0:
-            import glob as _gl2
-            debs2 = sorted(_gl2.glob(f"{dl_dir}/dpkg_*.deb"),
-                           key=os.path.getmtime, reverse=True)
-            if debs2:
-                deb_path2 = debs2[0]
-    except Exception:
-        pass
+    # Step 3: libc6 alone wasn't enough — also extract dpkg itself
+    _log("~", "  libc6 alone not enough — also extracting dpkg…")
+    if _extract_deb_to("dpkg", lib_root, dl_dir):
+        lib_dirs = _find_lib_dirs(lib_root)
+        ld_path = ":".join(lib_dirs)
 
-    if deb_path2:
-        extract_dir2 = os.path.join(dl_dir, "dpkg_extract")
-        os.makedirs(extract_dir2, exist_ok=True)
-        try:
-            subprocess.run(["ar", "x", deb_path2],
-                           capture_output=True, timeout=30, cwd=dl_dir)
-            for ext in ("data.tar.xz", "data.tar.gz", "data.tar.zst"):
-                c2 = os.path.join(dl_dir, ext)
-                if os.path.exists(c2):
-                    subprocess.run(["tar", "xf", c2, "-C", extract_dir2],
-                                   capture_output=True, timeout=60)
+        # Also check for extracted dpkg binary
+        dpkg_bin = None
+        for dirpath, _, filenames in os.walk(lib_root):
+            if "dpkg" in filenames:
+                candidate = os.path.join(dirpath, "dpkg")
+                if os.access(candidate, os.X_OK):
+                    dpkg_bin = candidate
                     break
-            # Copy dpkg binaries
-            for root, dirs, files in os.walk(extract_dir2):
-                for f in files:
-                    if f in ("dpkg", "dpkg-deb", "dpkg-query",
-                             "dpkg-trigger", "dpkg-statoverride"):
-                        src = os.path.join(root, f)
-                        rel = os.path.relpath(root, extract_dir2)
-                        dst = os.path.join("/", rel, f)
-                        try:
-                            shutil.copy2(src, dst)
-                            os.chmod(dst, 0o755)
-                        except Exception:
-                            pass
-            _run(["ldconfig"], timeout=30)
-        except Exception:
-            pass
 
-    health2 = _check_dpkg_health()
-    if health2["ok"]:
-        _log("+", "dpkg bootstrap successful (libc6 + dpkg extracted)")
-        _dpkg(["--configure", "-a"], timeout=300)
-        return True
-    else:
-        _log("-", f"  dpkg still broken after bootstrap: {health2['error'][:100]}")
-        return False
+        test_env["LD_LIBRARY_PATH"] = ld_path
+        test_cmd = dpkg_bin if dpkg_bin else "dpkg"
+        rc2, _, _ = _run([test_cmd, "--version"], timeout=10, env=test_env)
+        if rc2 == 0:
+            _BOOTSTRAP_LD_PATH = ld_path
+            if dpkg_bin:
+                os.environ["_SAFE_UPGRADE_DPKG_BIN"] = dpkg_bin
+            _log("+", "dpkg works with extracted libc6 + dpkg — bootstrap active")
+            _log("+", "  System libraries UNTOUCHED — SSH/VPN/ZeroTier safe")
+            return True
+
+    _log("-", "  Bootstrap failed — dpkg still cannot execute")
+    _log("~", "  Falling back to apt-only repair")
+    return False
 
 # ── dpkg lock check ─────────────────────────────────────────────────────────
 def _check_dpkg_lock() -> bool:
