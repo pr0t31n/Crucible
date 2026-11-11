@@ -233,6 +233,25 @@ def api_intel_v2_screenshots(project_id):
         return _err_500(e)
 
 
+@intel_v2.route("/api/intel/v2/network-posture/<project_id>")
+def api_intel_v2_network_posture(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_network_posture(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  WebApp Intelligence  (Fracture)
 # ═══════════════════════════════════════════════════════════════════
@@ -326,6 +345,67 @@ def api_intel_v2_target_profiles(project_id):
     try:
         result = db.query_target_profiles(tool=tool, **p)
         return jsonify(result)
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/cookies/<project_id>")
+def api_intel_v2_cookies(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_cookies(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/webapp-intel/<project_id>")
+def api_intel_v2_webapp_intel(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_webapp_intel(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  API Intelligence  (Siphon)
+# ═══════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/api-inventory/<project_id>")
+def api_intel_v2_api_inventory(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_api_inventory(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
 
@@ -585,6 +665,25 @@ def api_intel_v2_firewall_compliance(project_id):
         result = db.query_firewall_compliance(
             status=status, framework=framework, search=search, **p)
         return jsonify(result)
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/firewall-config/<project_id>")
+def api_intel_v2_firewall_config(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_firewall_config(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
 
@@ -872,6 +971,82 @@ def api_intel_v2_endpoint_browsers(project_id):
         return _err_500(e)
 
 
+@intel_v2.route("/api/intel/v2/endpoint-overview/<project_id>")
+def api_intel_v2_endpoint_overview(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_endpoint_overview(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/endpoint-network/<project_id>")
+def api_intel_v2_endpoint_network(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_endpoint_network(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/endpoint-disk/<project_id>")
+def api_intel_v2_endpoint_disk(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_endpoint_disk(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/endpoint-hardware/<project_id>")
+def api_intel_v2_endpoint_hardware(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_endpoint_hardware(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Mobile  (Quill)
 # ═══════════════════════════════════════════════════════════════════
@@ -953,6 +1128,82 @@ def api_intel_v2_mobile_traffic(project_id):
         return _err_500(e)
 
 
+@intel_v2.route("/api/intel/v2/mobile-hardening/<project_id>")
+def api_intel_v2_mobile_hardening(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_mobile_hardening(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/mobile-domains/<project_id>")
+def api_intel_v2_mobile_domains(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_mobile_domains(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/mobile-emails/<project_id>")
+def api_intel_v2_mobile_emails(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_mobile_emails(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/mitm-cert/<project_id>")
+def api_intel_v2_mitm_cert(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_mobile_mitm_certs(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Isotope  (file analysis)
 # ═══════════════════════════════════════════════════════════════════
@@ -1029,6 +1280,101 @@ def api_intel_v2_isotope_properties(project_id):
         result = db.query_isotope_properties(
             category=category, search=search, **p)
         return jsonify(result)
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/isotope-entropy/<project_id>")
+def api_intel_v2_isotope_entropy(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_isotope_entropy(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/isotope-contents/<project_id>")
+def api_intel_v2_isotope_contents(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_isotope_contents(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/isotope-code/<project_id>")
+def api_intel_v2_isotope_code(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_isotope_code(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/isotope-metadata/<project_id>")
+def api_intel_v2_isotope_metadata(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_isotope_metadata(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/isotope-binary/<project_id>")
+def api_intel_v2_isotope_binary(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        result = db.query_isotope_binary(search=search, **p)
+        return jsonify(result)
+    except AttributeError:
+        return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
 
@@ -1244,6 +1590,29 @@ def api_intel_v2_summary(project_id):
             "isotope_secrets": _safe_table_count(db, "isotope_secrets"),
             "isotope_iocs": _safe_table_count(db, "isotope_iocs"),
             "isotope_properties": _safe_table_count(db, "isotope_properties"),
+            "isotope_entropy": _safe_table_count(db, "isotope_entropy"),
+            "isotope_contents": _safe_table_count(db, "isotope_contents"),
+            "isotope_code": _safe_table_count(db, "isotope_code"),
+            "isotope_metadata": _safe_table_count(db, "isotope_metadata"),
+            "isotope_binary": _safe_table_count(db, "isotope_binary"),
+            # Network posture (SS3)
+            "network_posture": _safe_table_count(db, "network_posture"),
+            # WebApp / API
+            "cookies": _safe_table_count(db, "cookies"),
+            "webapp_intel": _safe_table_count(db, "webapp_intel"),
+            "api_inventory": _safe_table_count(db, "api_inventory"),
+            # Firewall config (Bastion)
+            "firewall_config": _safe_table_count(db, "firewall_config"),
+            # Mobile extras (Quill)
+            "mobile_hardening": _safe_table_count(db, "mobile_hardening"),
+            "mobile_domains": _safe_table_count(db, "mobile_domains"),
+            "mobile_emails": _safe_table_count(db, "mobile_emails"),
+            "mobile_mitm_certs": _safe_table_count(db, "mobile_mitm_certs"),
+            # Endpoint extras (Dredge)
+            "endpoint_overview": _safe_table_count(db, "endpoint_overview"),
+            "endpoint_network": _safe_table_count(db, "endpoint_network"),
+            "endpoint_disk": _safe_table_count(db, "endpoint_disk"),
+            "endpoint_hardware": _safe_table_count(db, "endpoint_hardware"),
             # Cross-cutting
             "action_items": _safe_table_count(db, "action_items"),
             "output_files": _safe_count(db, "count_output_files"),
@@ -1252,5 +1621,35 @@ def api_intel_v2_summary(project_id):
             "console_chunks": _safe_count(db, "count_console_chunks"),
         }
         return jsonify(counts)
+    except Exception as e:
+        return _err_500(e)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Re-ingestion  (manual trigger for migrating JSON → DB)
+# ═══════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/reingest/<project_id>", methods=["POST"])
+def api_intel_v2_reingest(project_id):
+    """Trigger full re-ingestion of tool JSON files into FindingsDB.
+
+    Use this to populate the DB for engagements that ran before the
+    DB-first pipeline was deployed, or after clearing/recreating the DB.
+    """
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return _err_503()
+    try:
+        from services.intel_ingestion import ingest_all
+        ingest_all(
+            db,
+            project.get("project_dir", "") or project.get("engagement_dir", ""),
+            tool_dirs=project.get("tool_dirs"),
+            scope_tool_dirs=project.get("scope_tool_dirs"),
+        )
+        return jsonify({"ok": True, "message": "Re-ingestion complete"})
     except Exception as e:
         return _err_500(e)
