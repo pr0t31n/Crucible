@@ -21,6 +21,7 @@ _PREFIXES: list[tuple[str, str, str]] = sorted(
         ("__CRUCIBLE_STATUS__:",      "status",      "crucible"),
         ("__CRUCIBLE_LOG__:",         "log",         "crucible"),
         ("__CRUCIBLE_ERR__:",         "error",       "crucible"),
+        ("__CRUCIBLE_INTEL__:",       "intel",       "crucible"),
     ],
     key=lambda t: -len(t[0]),
 )
@@ -48,7 +49,8 @@ class TokenParser:
         carries a recognised token, or ``(None, None, None)`` otherwise.
 
         *token_type*:     "log" | "error" | "prompt" | "status" |
-                          "action_item" | "target" | "port" | "finding"
+                          "action_item" | "target" | "port" | "finding" |
+                          "intel"
         *prefix_family*:  "crucible"
         *payload*:        raw string after the prefix (stripped of leading
                           whitespace).
