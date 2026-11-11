@@ -4017,16 +4017,18 @@ function _loadIntelTargets(body, empty) {
     if (_activeScope === SCOPE_DISPLAY_NAMES['external']) scopeFilter = 'external';
     else if (_activeScope === SCOPE_DISPLAY_NAMES['internal']) scopeFilter = 'internal';
 
-    fetch('/api/targets/' + PID, {credentials: 'same-origin'})
+    fetch('/api/intel/v2/hosts/' + PID + '?per_page=100000', {credentials: 'same-origin'})
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var t = data.targets || {};
+            var hosts = data.items || [];
             if (targetType === 'osint') {
-                _renderOsintIntel(body, empty, t.osint || []);
+                _renderOsintIntel(body, empty, hosts.filter(function(h) { return (h.scope || '').toLowerCase() === 'osint'; }));
             } else {
-                var hosts = t.network || [];
                 if (scopeFilter) {
-                    hosts = hosts.filter(function(h) { return h.scope === scopeFilter; });
+                    hosts = hosts.filter(function(h) {
+                        var s = (h.scope || '').toLowerCase();
+                        return s === scopeFilter || (scopeFilter === 'external' && s === 'ext') || (scopeFilter === 'internal' && s === 'int');
+                    });
                 }
                 _renderHostsIntel(body, empty, hosts);
             }
@@ -6201,6 +6203,14 @@ function loadIntelPanel(panel, tool) {
         return;
     }
 
+    if (panel === 'overview') {
+        body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
+        body.hidden = false;
+        empty.style.display = 'none';
+        _loadScopeOverview(body, empty);
+        return;
+    }
+
     var urlMap = {
         'structure': '/api/intel/v2/structure-urls/' + PID,
         'access': '/api/intel/v2/access-matrix/' + PID,
@@ -6273,11 +6283,6 @@ function loadIntelPanel(panel, tool) {
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
     body.hidden = false;
     empty.style.display = 'none';
-
-    if (panel === 'overview') {
-        _loadScopeOverview(body, empty);
-        return;
-    }
 
     fetch(url, {credentials: 'same-origin'})
         .then(function(r) { return r.json(); })
@@ -6946,13 +6951,13 @@ function _loadScopeOverview(body, empty) {
     empty.style.display = 'none';
     Promise.all([
         fetch('/api/findings/v2/' + PID + '?per_page=100000', {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
-        fetch('/api/intel/' + PID, {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
-        fetch('/api/targets/' + PID, {credentials: 'same-origin'}).then(function(r) { return r.json(); })
+        fetch('/api/intel/v2/hosts/' + PID + '?per_page=100000', {credentials: 'same-origin'}).then(function(r) { return r.json(); })
     ]).then(function(results) {
         var fData = results[0] || {};
-        var iData = results[1] || {};
-        var tData = results[2] || {};
-        var allFindings = fData.findings || [];
+        var hostsData = results[1] || {};
+        var iData = {};
+        var tData = {targets: {network: hostsData.items || []}};
+        var allFindings = fData.items || [];
         var _scopeTools = _scopeToolsMap[_activeScope] || [];
         var scopeFindings = allFindings.filter(function(f) {
             var fs = (f.scope || '').toLowerCase();
