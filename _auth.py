@@ -282,7 +282,7 @@ def make_ssl_context() -> ssl.SSLContext:
         subprocess.run(
             [
                 "openssl", "req", "-x509", "-newkey", "rsa:4096",
-                "-nodes", "-days", "3650",
+                "-nodes", "-days", "397",
                 "-keyout", str(key), "-out", str(cert),
                 "-subj", "/C=US/ST=Local/L=Local/O=pr0t31n/CN=localhost",
                 "-addext", f"subjectAltName={san}",
