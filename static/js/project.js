@@ -6234,9 +6234,9 @@ function loadIntelPanel(panel, tool) {
         'traffic-overview': '/api/intel/v2/traffic-summary/' + PID,
         'traffic-convos': '/api/intel/v2/traffic-conversations/' + PID,
         'net-hosts': '/api/intel/v2/hosts/' + PID,
-        'net-services': '/api/intel/v2/services/' + PID,
+        'net-services': '/api/intel/v2/services/' + PID + '?per_page=500',
         'net-software': '/api/intel/v2/software/' + PID,
-        'net-ports': '/api/intel/v2/ports/' + PID,
+        'net-ports': '/api/intel/v2/ports/' + PID + '?per_page=500',
         'net-roles': '/api/intel/v2/server-roles/' + PID,
         'net-hostname-env': '/api/intel/v2/hostname-intel/' + PID + '?environment_tag=environment',
         'net-hostname-apps': '/api/intel/v2/hostname-intel/' + PID + '?environment_tag=application',
@@ -6485,77 +6485,91 @@ function _renderNetHosts(data) {
         _intelTable(['IP', 'Hostname', 'Risk', 'Ports', '#Ports', 'Tools', 'OS', 'First Seen'], rows);
 }
 
+function _flattenIntelRecords(data) {
+    var payload = data;
+    var records = [];
+    if (Array.isArray(payload)) {
+        payload.forEach(function(item) {
+            if (!item || typeof item !== 'object') return;
+            if (item.port !== undefined && item.ip) {
+                records.push({ ip: item.ip, port: parseInt(item.port) || 0, protocol: item.protocol || 'tcp', state: (item.state || 'open').toLowerCase(), service: item.service || item.name || '' });
+            } else if (item.ports && item.ip) {
+                var portArr = Array.isArray(item.ports) ? item.ports : Object.keys(item.ports).map(function(p) { var pd = item.ports[p]; pd.port = parseInt(p); return pd; });
+                portArr.forEach(function(p) {
+                    records.push({ ip: item.ip, port: parseInt(p.port) || 0, protocol: p.protocol || 'tcp', state: (p.state || 'open').toLowerCase(), service: p.service || p.name || '' });
+                });
+            }
+        });
+    } else if (typeof payload === 'object' && payload.hosts) {
+        var hosts = payload.hosts;
+        var hostList = Array.isArray(hosts) ? hosts : Object.keys(hosts).map(function(ip) { var h = hosts[ip]; h.ip = ip; return h; });
+        hostList.forEach(function(h) {
+            if (!h.ports) return;
+            var portArr = Array.isArray(h.ports) ? h.ports : Object.keys(h.ports).map(function(p) { var pd = h.ports[p]; pd.port = parseInt(p); return pd; });
+            portArr.forEach(function(p) {
+                records.push({ ip: h.ip, port: parseInt(p.port) || 0, protocol: p.protocol || 'tcp', state: (p.state || 'open').toLowerCase(), service: p.service || p.name || '' });
+            });
+        });
+    } else if (typeof payload === 'object') {
+        Object.keys(payload).forEach(function(svc) {
+            var entries = payload[svc];
+            if (!Array.isArray(entries)) return;
+            entries.forEach(function(e) {
+                records.push({ ip: e.ip || '', port: parseInt(e.port) || 0, protocol: e.protocol || 'tcp', state: (e.state || 'open').toLowerCase(), service: svc });
+            });
+        });
+    }
+    return records;
+}
+
 function _renderNetServices(data) {
     var payload = data.net_services || data;
     if (!payload) return _renderIntelGeneric(data);
 
-    var svcMap = null;
+    var records = _flattenIntelRecords(payload);
+    if (!records.length) return _renderIntelGeneric(data);
 
-    if (Array.isArray(payload)) {
-        /* Plain array of host objects (e.g. targets.json) */
-        svcMap = {};
-        payload.filter(function(h) { return h && typeof h === 'object' && h.ip; }).forEach(function(h) {
-            var ports = h.ports;
-            if (!ports) return;
-            var portArr = Array.isArray(ports) ? ports : Object.keys(ports).map(function(p) { var pd = ports[p]; pd.port = parseInt(p); return pd; });
-            portArr.filter(_isConfirmedPort).forEach(function(p) {
-                var svc = _resolveService(p.service || p.name || '', p.port);
-                if (!svc) svc = 'unknown';
-                svcMap[svc] = svcMap[svc] || [];
-                svcMap[svc].push({ ip: h.ip, port: p.port, protocol: p.protocol || 'tcp', product: p.product || p.software || '', version: p.version || '' });
-            });
-        });
-    } else if (typeof payload === 'object' && payload.hosts) {
-        /* Build service matrix from hosts */
-        svcMap = {};
-        var hosts = payload.hosts;
-        var hostList = Array.isArray(hosts) ? hosts : Object.keys(hosts).map(function(ip) { var h = hosts[ip]; h.ip = ip; return h; });
-        hostList.forEach(function(h) {
-            var ports = h.ports;
-            if (!ports) return;
-            var portArr = Array.isArray(ports) ? ports : Object.keys(ports).map(function(p) { var pd = ports[p]; pd.port = parseInt(p); return pd; });
-            portArr.filter(_isConfirmedPort).forEach(function(p) {
-                var svc = _resolveService(p.service || p.name || '', p.port);
-                if (!svc) svc = 'unknown';
-                svcMap[svc] = svcMap[svc] || [];
-                svcMap[svc].push({ ip: h.ip, port: p.port, protocol: p.protocol || 'tcp', product: p.product || p.software || '', version: p.version || '' });
-            });
-        });
-    } else if (typeof payload === 'object' && !Array.isArray(payload)) {
-        /* Flat service map: {svcName: [{ip, port, protocol}, ...], ...} */
-        svcMap = {};
-        Object.keys(payload).forEach(function(svc) {
-            var entries = payload[svc];
-            if (!Array.isArray(entries) || !entries.length) return;
-            var confirmed = entries.filter(_isConfirmedPort);
-            if (!confirmed.length) return;
-            var resolvedSvc = svc;
-            if (confirmed[0] && (!svc || svc === 'unknown')) {
-                resolvedSvc = _resolveService(svc, confirmed[0].port) || svc;
-            }
-            svcMap[resolvedSvc] = (svcMap[resolvedSvc] || []).concat(confirmed.map(function(e) {
-                return { ip: e.ip || '', port: e.port || 0, protocol: e.protocol || 'tcp', product: e.product || e.software || '', version: e.version || '' };
-            }));
-        });
-    }
+    records.forEach(function(r) { r.service = _resolveService(r.service, r.port) || 'unknown'; });
 
-    if (svcMap && Object.keys(svcMap).length) {
+    var openRecs = records.filter(function(r) { return r.state === 'open'; });
+    var filtRecs = records.filter(function(r) { return r.state !== 'open'; });
+
+    function buildSvcTable(recs, label) {
+        if (!recs.length) return '';
+        var svcMap = {};
+        recs.forEach(function(r) {
+            svcMap[r.service] = svcMap[r.service] || [];
+            svcMap[r.service].push(r);
+        });
         var rows = [];
         Object.keys(svcMap).sort().forEach(function(svc) {
-            svcMap[svc].forEach(function(e, i) {
-                rows.push([
-                    i === 0 ? '<strong>' + esc(svc) + ' (' + svcMap[svc].length + ')</strong>' : '',
-                    esc(e.ip),
-                    esc(String(e.port)),
-                    esc(e.protocol),
-                    esc(e.product + (e.version ? ' ' + e.version : ''))
-                ]);
+            var entries = svcMap[svc];
+            var portSet = {};
+            entries.forEach(function(e) { portSet[e.port] = true; });
+            var ports = Object.keys(portSet).map(Number).sort(function(a,b){return a-b;}).join(', ');
+            var ipMap = {};
+            entries.forEach(function(e) {
+                ipMap[e.ip] = ipMap[e.ip] || {};
+                ipMap[e.ip][e.port] = true;
             });
+            var ipParts = [];
+            Object.keys(ipMap).sort().forEach(function(ip) {
+                var ipPorts = Object.keys(ipMap[ip]).map(Number).sort(function(a,b){return a-b;}).join(', ');
+                ipParts.push(esc(ip) + ' <span style="color:var(--text-muted)">(' + esc(ipPorts) + ')</span>');
+            });
+            rows.push([
+                '<strong>' + esc(svc) + '</strong>',
+                esc(ports),
+                ipParts.join('<br>')
+            ]);
         });
-        return '<div style="margin-bottom:8px;font-weight:600">Service Matrix (' + Object.keys(svcMap).length + ' services)</div>' +
-            _intelTable(['Service', 'IP', 'Port', 'Protocol', 'Product'], rows);
+        return '<div style="margin-bottom:8px;font-weight:600">' + esc(label) + ' (' + Object.keys(svcMap).length + ' services)</div>' +
+            _intelTable(['Service', 'Ports', 'IP'], rows);
     }
-    return _renderIntelGeneric(data);
+
+    var html = buildSvcTable(openRecs, 'Service Matrix — Open');
+    if (filtRecs.length) html += '<div style="margin-top:16px"></div>' + buildSvcTable(filtRecs, 'Service Matrix — Filtered');
+    return html || _renderIntelGeneric(data);
 }
 
 function _renderNetSoftware(data) {
@@ -6631,45 +6645,46 @@ function _renderNetRoles(data) {
 function _renderNetPorts(data) {
     var payload = data.net_ports || data;
     if (!payload) return _renderIntelGeneric(data);
-    var hostList = null;
-    if (typeof payload === 'object' && payload.hosts) {
-        var hosts = payload.hosts;
-        hostList = Array.isArray(hosts) ? hosts : Object.keys(hosts).map(function(ip) { var h = hosts[ip]; h.ip = ip; return h; });
-    } else if (Array.isArray(payload)) {
-        hostList = payload.filter(function(h) { return h && typeof h === 'object' && h.ip; });
-    }
-    if (hostList && hostList.length) {
+
+    var records = _flattenIntelRecords(payload);
+    if (!records.length) return _renderIntelGeneric(data);
+
+    records.forEach(function(r) { r.service = _resolveService(r.service, r.port) || ''; });
+
+    var openRecs = records.filter(function(r) { return r.state === 'open'; });
+    var filtRecs = records.filter(function(r) { return r.state !== 'open'; });
+
+    function buildPortTable(recs, label) {
+        if (!recs.length) return '';
         var portMap = {};
-        hostList.forEach(function(h) {
-            var ports = h.ports;
-            if (!ports) return;
-            var portArr = Array.isArray(ports) ? ports : Object.keys(ports).map(function(p) { var pd = ports[p]; pd.port = parseInt(p); return pd; });
-            var confirmed = portArr.filter(_isConfirmedPort);
-            if (!confirmed.length) return;
-            confirmed.forEach(function(p) {
-                var pk = p.port + '/' + (p.protocol || 'tcp');
-                var svc = _resolveService(p.service || '', p.port);
-                portMap[pk] = portMap[pk] || { port: p.port, protocol: p.protocol || 'tcp', service: svc, hosts: [] };
-                if (!portMap[pk].service && svc) portMap[pk].service = svc;
-                portMap[pk].hosts.push(h.ip);
-            });
+        recs.forEach(function(r) {
+            var pk = r.port + '/' + r.protocol;
+            portMap[pk] = portMap[pk] || { port: r.port, protocol: r.protocol, entries: [] };
+            portMap[pk].entries.push(r);
         });
         var sorted = Object.values(portMap).sort(function(a, b) { return a.port - b.port; });
-        if (sorted.length) {
-            var rows = sorted.map(function(p) {
-                return [
-                    '<strong>' + esc(String(p.port)) + '</strong>',
-                    esc(p.protocol),
-                    esc(p.service),
-                    esc(String(p.hosts.length)),
-                    p.hosts.map(function(ip) { return esc(ip); }).join('<br>')
-                ];
+        var rows = [];
+        sorted.forEach(function(p) {
+            var seen = {};
+            var first = true;
+            p.entries.forEach(function(e) {
+                if (seen[e.ip]) return;
+                seen[e.ip] = true;
+                rows.push([
+                    first ? '<strong>' + esc(String(p.port) + '/' + p.protocol) + '</strong>' : '',
+                    '<span style="font-family:var(--font-mono)">' + esc(e.ip) + '</span>',
+                    esc(e.service)
+                ]);
+                first = false;
             });
-            return '<div style="margin-bottom:8px;font-weight:600">Port Matrix (' + sorted.length + ' ports)</div>' +
-                _intelTable(['Port', 'Protocol', 'Service', '# Hosts', 'Host IPs'], rows);
-        }
+        });
+        return '<div style="margin-bottom:8px;font-weight:600">' + esc(label) + ' (' + sorted.length + ' ports)</div>' +
+            _intelTable(['Port', 'IP', 'Service'], rows);
     }
-    return _renderIntelGeneric(data);
+
+    var html = buildPortTable(openRecs, 'Port Heatmap — Open');
+    if (filtRecs.length) html += '<div style="margin-top:16px"></div>' + buildPortTable(filtRecs, 'Port Heatmap — Filtered');
+    return html || _renderIntelGeneric(data);
 }
 
 function _renderOsintDomains(data) {
