@@ -34,8 +34,10 @@ def _sw(db, row):
 def _hostname_intel(db, row):
     r = _clean(row)
     ip = r.get("ip", "")
+    scope_id = r.pop("_scope_id", None)
     if ip:
-        db.ensure_host(ip, is_alive=1 if r.get("alive", True) else 0)
+        db.ensure_host(ip, is_alive=1 if r.get("alive", True) else 0,
+                       scope_id=scope_id)
     r.pop("alive", None)
     r.pop("scope", None)
     if r.get("hostname"):
@@ -51,7 +53,8 @@ def _port_intel(db, row):
     ip = r.get("ip", "")
     if not ip:
         return
-    host_id = db.ensure_host(ip)
+    scope_id = r.pop("_scope_id", None)
+    host_id = db.ensure_host(ip, scope_id=scope_id)
     port_num = int(r.get("port", 0))
     if not port_num:
         return
@@ -79,12 +82,14 @@ def _certificate(db, row):
     port = row.get("port")
     if not ip or port is None:
         return
-    host_id = db.ensure_host(ip)
+    scope_id = row.get("_scope_id")
+    host_id = db.ensure_host(ip, scope_id=scope_id)
     port_id = db.ensure_port(host_id, int(port))
     r = _clean(row)
     r.pop("ip", None)
     r.pop("port", None)
     r.pop("hostname", None)
+    r.pop("_scope_id", None)
     db.add_certificate(port_id, **r)
 
 def _screenshot(db, row):
@@ -526,6 +531,20 @@ _DISPATCH = {
     "usb_device":        (_wireless_network,    None),
 }
 
+_HOST_INTEL_SUBTYPES = frozenset({
+    "hostname_intel", "host", "port", "certificate",
+})
+
+
+def _resolve_project_scope_id(db, project):
+    scopes = project.get("active_scopes") or []
+    if not scopes:
+        s = project.get("scope", "external")
+        scopes = [] if s == "multi" else [s]
+    if len(scopes) == 1:
+        return db.get_scope_id(scopes[0])
+    return None
+
 
 def handle_intel(findings_engine, socketio, project_id: str,
                  tool_id: str, data: dict) -> None:
@@ -563,6 +582,10 @@ def handle_intel(findings_engine, socketio, project_id: str,
         log.debug("handle_intel: no DB for project %s", project_id[:8])
         return
 
+    scope_id = None
+    if intel_type in _HOST_INTEL_SUBTYPES:
+        scope_id = _resolve_project_scope_id(db, project)
+
     try:
         if is_bulk and isinstance(payload, list):
             if bulk_method and hasattr(db, bulk_method):
@@ -571,8 +594,12 @@ def handle_intel(findings_engine, socketio, project_id: str,
             else:
                 for row in payload:
                     if isinstance(row, dict):
+                        if scope_id is not None:
+                            row["_scope_id"] = scope_id
                         handler_fn(db, row)
         elif isinstance(payload, dict):
+            if scope_id is not None:
+                payload["_scope_id"] = scope_id
             handler_fn(db, payload)
         elif isinstance(payload, list):
             if bulk_method and hasattr(db, bulk_method):
@@ -581,6 +608,8 @@ def handle_intel(findings_engine, socketio, project_id: str,
             else:
                 for row in payload:
                     if isinstance(row, dict):
+                        if scope_id is not None:
+                            row["_scope_id"] = scope_id
                         handler_fn(db, row)
 
         try:

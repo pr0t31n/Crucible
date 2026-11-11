@@ -6580,6 +6580,13 @@ function _renderNetSoftware(data) {
         items = Object.values(payload).filter(function(v) { return Array.isArray(v); })[0] || [];
     }
     if (!items.length) return '<div class="empty-state"><div class="empty-state-text">No software inventory data available. Software detection runs during network scans (SS3).</div></div>';
+    var _swSeen = {};
+    items = items.filter(function(s) {
+        var key = ((s.software || s.name || '') + '|' + (s.version || '') + '|' + (s.ip || '') + '|' + (s.port || '')).toLowerCase();
+        if (_swSeen[key]) return false;
+        _swSeen[key] = true;
+        return true;
+    });
     var rows = items.map(function(s) {
         var osVal = _cleanOS(s.os);
         return [
@@ -7079,13 +7086,13 @@ function _renderExternalOverview(findings, intel, summary, scopeKey, tData) {
     netHosts.forEach(function(host) {
         if (!host.ip) return;
         var hs = (host.scope || '').toLowerCase();
-        if (hs !== 'external' && hs !== 'ext') return;
+        if (hs && hs !== 'external' && hs !== 'ext') return;
         liveIPs++;
         var ports = (host.ports || []).filter(_isConfirmedPort);
         totalPorts += ports.length;
         ports.forEach(function(p) {
             var svc = (typeof p === 'object') ? (p.service || p.name || '') : '';
-            if (svc && svc !== '—') uniqueServices[svc] = true;
+            if (svc && svc !== '—') uniqueServices[svc.toLowerCase()] = svc;
         });
     });
     var fStats = _ovDeriveStats(findings);
@@ -7127,13 +7134,13 @@ function _renderInternalOverview(findings, intel, summary, scopeKey, tData) {
     netHosts.forEach(function(host) {
         if (!host.ip) return;
         var hs = (host.scope || '').toLowerCase();
-        if (hs !== 'internal' && hs !== 'int') return;
+        if (hs && hs !== 'internal' && hs !== 'int') return;
         liveIPs++;
         var ports = (host.ports || []).filter(_isConfirmedPort);
         totalPorts += ports.length;
         ports.forEach(function(p) {
             var svc = (typeof p === 'object') ? (p.service || p.name || '') : '';
-            if (svc && svc !== '—') uniqueServices[svc] = true;
+            if (svc && svc !== '—') uniqueServices[svc.toLowerCase()] = svc;
         });
     });
     var fStats = _ovDeriveStats(findings);
