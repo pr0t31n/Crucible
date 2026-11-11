@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.8.0"
+VERSION = "1.10.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -638,7 +638,7 @@ def _parse_dep_errors_from_apt(stderr: str) -> dict:
     return deps
 
 def _probe_individual_installs(sample_pkgs: list[str],
-                                max_probes: int = 10) -> tuple[list[str], list[str], dict]:
+                                max_probes: int = 30) -> tuple[list[str], list[str], dict]:
     """Probe individual packages with dry-run to see if they can be installed solo.
     Returns (installable, not_installable, {pkg: dep_errors})."""
     installable: list[str] = []
@@ -684,6 +684,479 @@ def _find_root_dep_blockers(dep_errors: dict, protected: set[str],
         queue = next_queue
     return candidates
 
+# ── Deep dependency chain walk ("rabbit trail") ────────────────────────────
+# Comprehensive per-package diagnosis using dpkg -s, apt-cache policy,
+# apt-cache unmet, and recursive chain walking to find fixable leaves.
+
+def _get_dpkg_status(pkg: str) -> dict:
+    """Detailed dpkg status: state, version, depends, status_line."""
+    rc, out, _ = _run(["dpkg", "-s", pkg], timeout=30)
+    info = {"state": "unknown", "version": "", "depends": [],
+            "status_line": "", "installed": False}
+    if rc != 0:
+        info["state"] = "not-installed"
+        return info
+    for line in out.splitlines():
+        if line.startswith("Status:"):
+            info["status_line"] = line.split(":", 1)[1].strip()
+            parts = info["status_line"].split()
+            if len(parts) >= 2:
+                info["state"] = parts[1]
+            info["installed"] = ("installed" in info["status_line"]
+                                 or "unpacked" in info["status_line"])
+        elif line.startswith("Version:"):
+            info["version"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Depends:") or line.startswith("Pre-Depends:"):
+            dep_str = line.split(":", 1)[1].strip()
+            for dep_group in dep_str.split(","):
+                dep_group = dep_group.strip()
+                if not dep_group:
+                    continue
+                primary = dep_group.split("|")[0].strip()
+                name = primary.split()[0].split(":")[0] if primary else ""
+                if name and not name.startswith("<"):
+                    info["depends"].append(name)
+    return info
+
+
+# ── Rabbit trail: system-wide unmet dep scan + leaf-first chain walk ────────
+def _try_python3_apt() -> tuple:
+    """Try to import python3-apt for fast in-process dep walking.
+    Returns (apt_pkg_module, apt_module) or (None, None)."""
+    try:
+        import apt_pkg
+        try:
+            if not apt_pkg.init_done():
+                apt_pkg.init()
+                apt_pkg.init_config()
+                apt_pkg.init_system()
+        except AttributeError:
+            apt_pkg.init()
+            apt_pkg.init_config()
+            apt_pkg.init_system()
+        import apt
+        return apt_pkg, apt
+    except (ImportError, SystemError, Exception):
+        return None, None
+
+def _apt_cache_broken_map() -> dict[str, list[str]]:
+    """Use python3-apt to find broken packages and their unsatisfied deps.
+    Returns {pkg_name: [names of deps that are broken/missing]}.
+    Falls back gracefully if python3-apt is not available."""
+    _, apt_mod = _try_python3_apt()
+    if apt_mod is None:
+        return {}
+    try:
+        cache = apt_mod.Cache()
+        broken_map: dict[str, list[str]] = {}
+        for pkg in cache:
+            if not pkg.is_inst_broken:
+                continue
+            broken_deps: list[str] = []
+            ver = pkg.installed or pkg.candidate
+            if ver is None:
+                broken_map[pkg.name] = []
+                continue
+            for dep_group in ver.dependencies:
+                satisfied = False
+                for dep in dep_group:
+                    if dep.name in cache:
+                        dep_pkg = cache[dep.name]
+                        if dep_pkg.is_installed and not dep_pkg.is_inst_broken:
+                            satisfied = True
+                            break
+                if not satisfied and dep_group:
+                    broken_deps.append(dep_group[0].name)
+            broken_map[pkg.name] = broken_deps
+        return broken_map
+    except Exception:
+        return {}
+
+_UNMET_PKG_RE = re.compile(
+    r'Package\s+(\S+)\s+version\s+\S+\s+has an unmet dep', re.I)
+
+def _get_system_unmet() -> dict[str, list[str]]:
+    """apt-cache unmet: all packages with unmet deps, system-wide."""
+    rc, out, _ = _run(["apt-cache", "unmet"], timeout=60, env=_APT_ENV)
+    if rc != 0:
+        return {}
+    unmet: dict[str, list[str]] = {}
+    current_pkg = ""
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = _UNMET_PKG_RE.match(line)
+        if m:
+            current_pkg = m.group(1).split(":")[0]
+            if current_pkg not in unmet:
+                unmet[current_pkg] = []
+            continue
+        if current_pkg and (line.startswith("Depends:") or
+                            line.startswith("Pre-Depends:") or
+                            line.startswith("Breaks:") or
+                            line.startswith("Conflicts:")):
+            unmet[current_pkg].append(line)
+    return unmet
+
+def _get_pkg_policy(pkg: str) -> dict:
+    """apt-cache policy: installed version, candidate, priority."""
+    rc, out, _ = _run(["apt-cache", "policy", pkg], timeout=10, env=_APT_ENV)
+    info: dict = {"installed": "", "candidate": "", "priority": 500}
+    if rc != 0:
+        return info
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("Installed:"):
+            info["installed"] = line.split(":", 1)[1].strip()
+        elif line.startswith("Candidate:"):
+            info["candidate"] = line.split(":", 1)[1].strip()
+        elif "***" in line:
+            for p in line.split():
+                try:
+                    info["priority"] = int(p)
+                    break
+                except ValueError:
+                    continue
+    return info
+
+def _fix_leaf_pkg(pkg: str, protected: set[str]) -> bool:
+    """Targeted fix for a leaf package based on its dpkg state.
+    A leaf is a broken package whose own deps are satisfied."""
+    if _is_protected(pkg, protected):
+        _log("~", f"    {_Y}[P]{_R} {pkg} — protected, configure-only")
+        rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+        return rc == 0
+
+    status = _get_dpkg_status(pkg)
+    sline = status["status_line"].lower()
+
+    # Reinstreq: stuck waiting for reinstall — force-remove then reinstall
+    if "reinstreq" in sline:
+        _log("*", f"    {pkg}: reinstreq — force-purge + reinstall")
+        _dpkg(["--purge", "--force-remove-reinstreq", pkg], timeout=60)
+        rc, _, _ = _apt(["install", "-y", pkg], timeout=300)
+        return rc == 0
+
+    # Half-configured or unpacked: dpkg --configure
+    if "half-configured" in sline or ("unpacked" in sline and "not-installed" not in sline):
+        _log("*", f"    {pkg}: {status['state']} — configure")
+        rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+        if rc == 0:
+            return True
+        rc, _, _ = _dpkg(["--force-depends", "--configure", pkg], timeout=120)
+        return rc == 0
+
+    # Half-installed: needs reinstall
+    if "half-installed" in sline:
+        _log("*", f"    {pkg}: half-installed — reinstall")
+        rc, _, _ = _apt(["install", "--reinstall", "-y", pkg], timeout=300)
+        if rc == 0:
+            return True
+        return _download_install(pkg)
+
+    # Try configure first (cheapest)
+    rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+    if rc == 0:
+        return True
+
+    # Try apt install to pull in correct version
+    rc, _, _ = _apt(["install", "-y", pkg], timeout=120)
+    if rc == 0:
+        return True
+
+    # Version mismatch: try installing specific candidate
+    policy = _get_pkg_policy(pkg)
+    if (policy["candidate"] and policy["candidate"] != "(none)" and
+            policy["candidate"] != policy["installed"]):
+        _log("*", f"    {pkg}: ver mismatch — installed={policy['installed']} "
+             f"candidate={policy['candidate']}")
+        rc, _, _ = _apt(["install", "-y", f"{pkg}={policy['candidate']}"],
+                        timeout=120)
+        if rc == 0:
+            return True
+
+    # Download + dpkg -i
+    if _download_install(pkg):
+        return True
+
+    # Force-configure as last non-destructive step
+    if _force_configure_pkg(pkg):
+        return True
+
+    return False
+
+def _walk_dep_chain(start_pkgs: list[str], protected: set[str],
+                    max_rounds: int = 8) -> tuple[int, list[str]]:
+    """The 'rabbit trail': walk dependency chains bottom-up.
+    1. apt-cache unmet + python3-apt → all packages with unmet deps
+    2. Build graph: which broken pkgs depend on other broken pkgs
+    3. Find leaves: broken packages whose own deps are NOT broken
+    4. Fix leaves first using _fix_leaf_pkg (dpkg-state-aware)
+    5. Re-scan and repeat until stable
+    Returns (fixed_count, remaining_broken_names)."""
+    total_fixed = 0
+    tried_failed: set[str] = set()
+    all_fixed: list[str] = []
+
+    for round_num in range(1, max_rounds + 1):
+        if _stopping:
+            break
+        unmet = _get_system_unmet()
+
+        # Supplement with python3-apt on the first round only — catches
+        # resolver-level breaks that apt-cache unmet misses. Expensive
+        # (creates a full apt.Cache()), so don't repeat after round 1.
+        if round_num == 1:
+            p3a_map = _apt_cache_broken_map()
+            if p3a_map:
+                for pkg in p3a_map:
+                    if pkg not in unmet:
+                        unmet[pkg] = [f"Depends: {d}" for d in p3a_map[pkg]]
+                _log("*", f"  python3-apt: {len(p3a_map)} broken in cache")
+
+        if not unmet:
+            _log("+", f"  Round {round_num}: no unmet deps remain")
+            break
+
+        _log("*", f"  Round {round_num}: {len(unmet)} packages with unmet deps")
+
+        broken_set = set(unmet.keys())
+
+        # Build graph: for each broken pkg, which of its unmet deps are also broken
+        dep_on_broken: dict[str, set[str]] = {}
+        for pkg in broken_set:
+            broken_deps: set[str] = set()
+            for dep_line in unmet.get(pkg, []):
+                for token in dep_line.split():
+                    name = token.split(":")[0].strip("(),")
+                    if name in broken_set and name != pkg:
+                        broken_deps.add(name)
+                        break
+            dep_on_broken[pkg] = broken_deps
+
+        # Find leaves: broken packages whose deps are NOT themselves broken
+        # Skip packages we already tried and failed on
+        leaves: list[str] = []
+        for pkg in sorted(broken_set):
+            if pkg in tried_failed:
+                continue
+            if not dep_on_broken.get(pkg):
+                leaves.append(pkg)
+
+        if not leaves:
+            # All remaining leaves were already tried — check if there are
+            # untried non-leaf packages we can break a cycle on
+            untried = sorted(broken_set - tried_failed)
+            if untried:
+                by_count = sorted(
+                    ((p, dep_on_broken.get(p, set())) for p in untried),
+                    key=lambda x: len(x[1]))
+                if by_count:
+                    leaves = [by_count[0][0]]
+                    _log("~", f"  Dependency cycle — breaking at {leaves[0]} "
+                         f"({len(by_count[0][1])} broken deps)")
+            else:
+                _log("~", f"  Round {round_num}: all broken packages already "
+                     f"tried — stopping")
+                break
+
+        _log("*", f"  Leaves to fix: {len(leaves)}"
+             f" ({len(tried_failed)} previously failed, skipped)")
+        fixed_this_round = 0
+
+        for pkg in leaves:
+            if _stopping:
+                break
+            if _fix_leaf_pkg(pkg, protected):
+                _log("+", f"    {pkg} fixed")
+                fixed_this_round += 1
+                all_fixed.append(pkg)
+            else:
+                _log("-", f"    {pkg} — could not fix")
+                tried_failed.add(pkg)
+
+        total_fixed += fixed_this_round
+
+        if fixed_this_round == 0:
+            _log("~", f"  Round {round_num}: no progress — stopping")
+            break
+
+        _log("+", f"  Round {round_num}: fixed {fixed_this_round} leaf packages")
+
+        # Save progress checkpoint
+        _save_checkpoint("rabbit_trail", all_fixed, sorted(tried_failed), {})
+
+        # Let apt settle after fixing leaves
+        _apt(["install", "-f", "-y"], timeout=300)
+
+    remaining = _get_system_unmet()
+    return total_fixed, sorted(remaining.keys())
+
+# ── Additional resolver diagnostics ──────────────────────────────────────
+_DEBUG_BROKEN_RE = re.compile(r'Broken\s+(\S+)\s+(Depends|PreDepends|Breaks|Conflicts)\s+on\s+(\S+)')
+_DEBUG_CONSIDERING_RE = re.compile(r'Considering\s+(\S+)\s+\d+\s+as a solution')
+_DEBUG_REMOVING_RE = re.compile(r'Removing\s+(\S+)\s+rather than')
+
+def _check_pin_blocks() -> list[dict]:
+    """Check for packages blocked by apt pin priorities."""
+    blocked: list[dict] = []
+    rc, out, _ = _run(["apt", "list", "--upgradable"], timeout=60, env=_APT_ENV)
+    if rc != 0:
+        return blocked
+    sample: list[str] = []
+    for line in out.splitlines():
+        m = _UPG_RE.match(line) if line and "/" in line else None
+        if m:
+            sample.append(m.group(1).split(":")[0])
+            if len(sample) >= 50:
+                break
+    for pkg in sample:
+        policy = _get_pkg_policy(pkg)
+        if not policy.get("candidate") or policy["candidate"] == "(none)":
+            continue
+        prio = policy.get("priority", 500)
+        if prio < 0:
+            blocked.append({"pkg": pkg, "priority": prio,
+                            "installed": policy["installed"],
+                            "candidate": policy["candidate"]})
+        elif policy["installed"] == policy["candidate"] and policy["installed"] != "(none)":
+            blocked.append({"pkg": pkg, "priority": prio,
+                            "installed": policy["installed"],
+                            "candidate": policy["candidate"],
+                            "note": "candidate==installed despite upgradable listing"})
+    return blocked
+
+def _try_debug_resolver() -> dict:
+    """Run apt-get with Debug::pkgProblemResolver to get conflict details.
+    Returns {broken_pkgs: set, conflict_pairs: [(pkg, dep)], solutions: [pkg]}."""
+    rc, out, err = _run(
+        ["apt-get", "-o", "Debug::pkgProblemResolver=yes",
+         "-s", "full-upgrade"],
+        timeout=180, env=_APT_ENV)
+    combined = out + "\n" + err
+    broken_pkgs: set[str] = set()
+    conflict_pairs: list[tuple[str, str]] = []
+    solutions: list[str] = []
+    removals: list[str] = []
+    for line in combined.splitlines():
+        m = _DEBUG_BROKEN_RE.search(line)
+        if m:
+            pkg = m.group(1).split(":")[0]
+            dep = m.group(3).split(":")[0]
+            broken_pkgs.add(pkg)
+            conflict_pairs.append((pkg, dep))
+            continue
+        m = _DEBUG_CONSIDERING_RE.search(line)
+        if m:
+            solutions.append(m.group(1).split(":")[0])
+            continue
+        m = _DEBUG_REMOVING_RE.search(line)
+        if m:
+            removals.append(m.group(1).split(":")[0])
+    return {
+        "broken_pkgs": broken_pkgs,
+        "conflict_pairs": conflict_pairs,
+        "solutions": solutions,
+        "removals": removals,
+    }
+
+def _try_aptitude_fallback(protected: set[str]) -> bool:
+    """Try aptitude's more capable SAT-solver resolver.
+    Simulates first, checks for protected removals, then executes if safe.
+    Returns True if aptitude resolved the situation."""
+    if not shutil.which("aptitude"):
+        return False
+    _log("*", "aptitude available — trying its resolver")
+
+    rc, out, err = _run(
+        ["aptitude", "-s", "safe-upgrade", "-y"],
+        timeout=180, env=_APT_ENV)
+    if rc == 0 and "No packages will be installed" not in out:
+        removals: list[str] = []
+        in_remove_section = False
+        for line in out.splitlines():
+            stripped = line.strip()
+            if "REMOVED" in stripped.upper() and ":" in stripped:
+                in_remove_section = True
+                continue
+            if in_remove_section:
+                if not stripped or (":" in stripped and
+                                   any(kw in stripped.upper()
+                                       for kw in ("INSTALL", "UPGRADE", "KEPT"))):
+                    in_remove_section = False
+                    continue
+                for token in stripped.split():
+                    name = token.split(":")[0].rstrip("{}")
+                    if name and name[0].isalpha():
+                        removals.append(name)
+
+        crit_removals = [p for p in removals if _is_protected(p, protected)]
+        if crit_removals:
+            _log("~", f"aptitude would remove protected packages: "
+                 f"{', '.join(crit_removals[:10])}")
+            _log("~", "Declining aptitude solution")
+            return False
+
+        _log("+", f"aptitude simulation passed (would remove {len(removals)} "
+             f"non-critical packages) — executing")
+        rc_real, out_real, err_real = _run(
+            ["aptitude", "safe-upgrade", "-y"],
+            timeout=600, env=_APT_ENV)
+        if rc_real == 0:
+            _log("+", "aptitude safe-upgrade succeeded")
+            return True
+        _log("-", f"aptitude execution failed (exit {rc_real})")
+        if err_real.strip():
+            for line in err_real.strip().splitlines()[-3:]:
+                _log("", f"  {_DIM}{line.strip()}{_R}")
+        return False
+
+    # Simulation didn't find a solution — run why-not diagnostics
+    rc_list, list_out, _ = _run(
+        ["apt", "list", "--upgradable"], timeout=60, env=_APT_ENV)
+    if rc_list == 0:
+        for line in list_out.splitlines()[:5]:
+            m = _UPG_RE.match(line) if line and "/" in line else None
+            if m:
+                pkg = m.group(1).split(":")[0]
+                rc_why, why_out, _ = _run(
+                    ["aptitude", "why-not", pkg], timeout=30, env=_APT_ENV)
+                if rc_why == 0 and why_out.strip():
+                    _log("*", f"  aptitude why-not {pkg}:")
+                    for wline in why_out.strip().splitlines()[:5]:
+                        _log("", f"    {_DIM}{wline.strip()}{_R}")
+    return False
+
+def _try_transition_installs(conflict_pairs: list[tuple[str, str]],
+                              protected: set[str]) -> int:
+    """Use apt-get install suffix syntax (pkg1- pkg2+) for library transitions.
+    Returns count of successful transitions."""
+    if not conflict_pairs:
+        return 0
+    fixed = 0
+    seen: set[tuple[str, str]] = set()
+    for old_pkg, new_dep in conflict_pairs:
+        pair = (old_pkg, new_dep) if old_pkg < new_dep else (new_dep, old_pkg)
+        if pair in seen:
+            continue
+        seen.add(pair)
+        if _is_protected(old_pkg, protected) or _is_protected(new_dep, protected):
+            continue
+        # Check if this looks like a library transition (old- → new+)
+        rc, _, err = _apt(["-s", "install", f"{old_pkg}-", f"{new_dep}+"], timeout=60)
+        if rc == 0:
+            _log("*", f"  Transition: {old_pkg}→{new_dep}")
+            rc2, _, _ = _apt(["install", "-y", f"{old_pkg}-", f"{new_dep}+"], timeout=120)
+            if rc2 == 0:
+                _log("+", f"  {old_pkg}→{new_dep} transitioned")
+                fixed += 1
+            else:
+                _log("-", f"  {old_pkg}→{new_dep} transition failed")
+        if fixed >= 20:
+            break
+    return fixed
+
 def _escalate_resolver(ctx: dict) -> bool:
     """Attempt safe escalation to fix the apt resolver.
     Returns True if the resolver is now clean (systemic issue cleared).
@@ -718,7 +1191,7 @@ def _escalate_resolver(ctx: dict) -> bool:
 
     # ── Step 2: Simulate full-upgrade to diagnose the knot ───────────────
     _log("*", "Simulating full-upgrade to diagnose dependency knot (dry-run only)…")
-    rc, sim_out, sim_err = _apt(["-s", "full-upgrade"], timeout=120)
+    rc, sim_out, sim_err = _apt(["-s", "full-upgrade"], timeout=180)
 
     sim = _parse_simulation(sim_out, sim_err)
     removals = sim["removals"]
@@ -731,9 +1204,142 @@ def _escalate_resolver(ctx: dict) -> bool:
             if sim_err.strip():
                 for line in sim_err.strip().splitlines()[-5:]:
                     _log("", f"  {_DIM}{line.strip()}{_R}")
-            # ── Fallback: probe individual packages ──────────────────────
+            # ── Step 2a: Rabbit trail — bottom-up dep chain walk ───────
+            _log("*", "Running rabbit trail diagnostic (apt-cache unmet)…")
+            unmet = _get_system_unmet()
+            if unmet:
+                _log("~", f"  {len(unmet)} packages with unmet deps — "
+                     f"walking chains bottom-up")
+                trail_fixed, trail_remaining = _walk_dep_chain(
+                    list(unmet.keys()), protected, max_rounds=6)
+                if trail_fixed > 0:
+                    _log("+", f"Rabbit trail fixed {trail_fixed} packages")
+                    rc_rt, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                    if rc_rt == 0:
+                        _log("+", "Resolver clean after rabbit trail repair")
+                        ctx.pop("_repair_systemic", None)
+                        return True
+                    if not trail_remaining:
+                        _log("+", "All unmet deps resolved — testing upgrade")
+                        ctx.pop("_repair_systemic", None)
+                        return True
+                    _log("~", f"  {len(trail_remaining)} packages still have "
+                         f"unmet deps after rabbit trail")
+                else:
+                    _log("~", "  Rabbit trail made no progress")
+            else:
+                _log("", "  apt-cache unmet reports nothing — deps look clean to apt")
+
+            # ── Step 2b: Debug resolver for conflict details ─────────
+            _log("*", "Running debug resolver to identify specific conflicts…")
+            debug = _try_debug_resolver()
+            if debug["broken_pkgs"]:
+                _log("~", f"  Resolver sees {len(debug['broken_pkgs'])} broken packages")
+                for bp in sorted(debug["broken_pkgs"])[:15]:
+                    _log("", f"    {_DIM}{bp}{_R}")
+
+                # If step 2a had nothing (apt-cache unmet was empty) but the
+                # debug resolver found broken packages, feed those as seeds
+                # back into the rabbit trail chain walker.
+                if not unmet and debug["broken_pkgs"]:
+                    _log("*", "  apt-cache unmet was empty but debug resolver "
+                         "found broken packages — re-running rabbit trail "
+                         "with debug seeds…")
+                    trail_fixed2, trail_remaining2 = _walk_dep_chain(
+                        sorted(debug["broken_pkgs"]), protected, max_rounds=6)
+                    if trail_fixed2 > 0:
+                        _log("+", f"  Debug-seeded rabbit trail fixed "
+                             f"{trail_fixed2} packages")
+                        rc_rt2, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                        if rc_rt2 == 0:
+                            _log("+", "Resolver clean after debug-seeded repair")
+                            ctx.pop("_repair_systemic", None)
+                            return True
+
+                if debug["conflict_pairs"]:
+                    _log("*", f"  {len(debug['conflict_pairs'])} conflict pairs found — "
+                         f"trying library transition syntax")
+                    t_fixed = _try_transition_installs(
+                        debug["conflict_pairs"], protected)
+                    if t_fixed > 0:
+                        _log("+", f"  {t_fixed} library transitions resolved")
+                        rc_t, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                        if rc_t == 0:
+                            _log("+", "Resolver clean after library transitions")
+                            ctx.pop("_repair_systemic", None)
+                            return True
+
+            # ── Step 2c: Check for pin blocks ────────────────────────
+            _log("*", "Checking for apt pin blocks…")
+            pin_blocks = _check_pin_blocks()
+            if pin_blocks:
+                neg_pins = [pb for pb in pin_blocks if pb.get("priority", 500) < 0]
+                _log("~", f"  {len(pin_blocks)} packages appear pin-blocked"
+                     f" ({len(neg_pins)} with negative priority):")
+                for pb in pin_blocks[:10]:
+                    note = pb.get("note", f"priority={pb['priority']}")
+                    _log("", f"    {_DIM}{pb['pkg']}: {note}{_R}")
+                # Attempt to install negatively-pinned packages at candidate version
+                if neg_pins:
+                    _log("*", "  Trying to override negative pins with explicit version…")
+                    pin_fixed = 0
+                    for pb in neg_pins[:20]:
+                        pkg = pb["pkg"]
+                        cand = pb.get("candidate", "")
+                        if not cand or cand == "(none)":
+                            continue
+                        if _is_protected(pkg, protected):
+                            continue
+                        rc_pin, _, _ = _apt(
+                            ["install", "-y", f"{pkg}={cand}"], timeout=120)
+                        if rc_pin == 0:
+                            pin_fixed += 1
+                            _log("+", f"    {pkg} installed at {cand}")
+                    if pin_fixed > 0:
+                        _log("+", f"  Overrode {pin_fixed} negative pins")
+                        rc_pf, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                        if rc_pf == 0:
+                            _log("+", "Resolver clean after pin overrides")
+                            ctx.pop("_repair_systemic", None)
+                            return True
+
+            # ── Step 2c½: Sources.list sanity check ─────────────────
+            _log("*", "Checking sources.list sanity…")
+            src_warnings = _check_sources_sanity()
+            if src_warnings:
+                for w in src_warnings:
+                    _log("-", f"  {_RD}{w}{_R}")
+                _log("~", "  Sources.list problems can cause resolver breakage — "
+                     "review /etc/apt/sources.list and sources.list.d/")
+            else:
+                _log("+", "  Sources.list looks clean")
+
+            # ── Step 2c¾: Version conflict detection ─────────────────
+            _log("*", "Checking for version conflicts…")
+            v_conflicts = _find_version_conflicts(sample if sample else [])
+            if v_conflicts:
+                _log("~", f"  {len(v_conflicts)} version conflicts detected:")
+                vf_fixed = 0
+                for vc in v_conflicts[:15]:
+                    _log("", f"    {_DIM}{vc['pkg']} {vc['installed']} "
+                         f"(needed by {vc['needed_by']}) → "
+                         f"candidate {vc['candidate']}{_R}")
+                    if not _is_protected(vc["pkg"], protected):
+                        rc_vc, _, _ = _apt(
+                            ["install", "-y", f"{vc['pkg']}={vc['candidate']}"],
+                            timeout=120)
+                        if rc_vc == 0:
+                            vf_fixed += 1
+                            _log("+", f"    {vc['pkg']} upgraded to {vc['candidate']}")
+                if vf_fixed > 0:
+                    rc_vf, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                    if rc_vf == 0:
+                        _log("+", "Resolver clean after version conflict fixes")
+                        ctx.pop("_repair_systemic", None)
+                        return True
+
+            # ── Step 2d: Probe individual packages ───────────────────
             _log("*", "Probing individual packages to diagnose…")
-            # Get a diverse sample from the upgradable list
             rc_list, list_out, _ = _run(
                 ["apt", "list", "--upgradable"], timeout=60, env=_APT_ENV)
             sample: list[str] = []
@@ -743,7 +1349,7 @@ def _escalate_resolver(ctx: dict) -> bool:
                     if m:
                         name = m.group(1).split(":")[0]
                         sample.append(name)
-                        if len(sample) >= 10:
+                        if len(sample) >= 30:
                             break
             if not sample:
                 sample = ["bash", "curl", "coreutils", "grep", "sed",
@@ -754,7 +1360,6 @@ def _escalate_resolver(ctx: dict) -> bool:
             _log("*", f"Probe results: {n_ok}/{n_ok + n_fail} packages can install individually")
 
             if n_ok > 0:
-                # Batch conflict — individual installs work fine
                 _log("+", "Individual installs work — the resolver chokes on "
                      "coordinated batch upgrades only")
                 _log("*", "Switching to individual upgrade mode")
@@ -762,7 +1367,7 @@ def _escalate_resolver(ctx: dict) -> bool:
                 ctx["_individual_mode"] = True
                 return True
 
-            # All probes failed — deeper diagnosis
+            # All probes failed — deeper diagnosis with chain walking
             if dep_errors:
                 _log("~", "Dependency errors found:")
                 all_blocking: set[str] = set()
@@ -771,43 +1376,49 @@ def _escalate_resolver(ctx: dict) -> bool:
                         all_blocking.add(dep)
                         _log("", f"  {_DIM}{pkg} → {dep}: {reason}{_R}")
 
-                # Walk dep chains to find installable root deps
                 _log("*", f"Walking dependency chains from {len(all_blocking)} "
                      f"blocking packages…")
                 candidates = _find_root_dep_blockers(
                     dep_errors, protected, max_depth=4)
                 if candidates:
                     _log("+", f"Found {len(candidates)} installable root dependencies")
+                    any_installed = False
                     for cand in candidates:
-                        is_prot = _is_protected(cand, protected)
-                        if is_prot:
+                        if _is_protected(cand, protected):
                             _log("~", f"  {_Y}[P]{_R} {cand} — protected, skipping")
                             continue
                         _log("*", f"  Installing {cand}…")
-                        rc_inst, _, err_inst = _apt(["install", "-y", cand], timeout=120)
+                        rc_inst, _, _ = _apt(["install", "-y", cand], timeout=120)
                         if rc_inst == 0:
                             _log("+", f"  {cand} installed")
+                            any_installed = True
                         else:
                             _log("-", f"  {cand} failed")
-                    # Re-test resolver
-                    rc_retest, _, _ = _apt(["install", "-f", "-y"], timeout=300)
-                    if rc_retest == 0:
-                        _log("+", "Resolver clean after installing root deps")
-                        ctx.pop("_repair_systemic", None)
-                        return True
-                    # Re-probe — maybe more packages work now
-                    _log("*", "Re-probing after root dep install…")
-                    inst2, _, _ = _probe_individual_installs(sample)
-                    if len(inst2) > n_ok:
-                        _log("+", f"Progress: {len(inst2)}/{len(sample)} "
-                             f"now installable (was {n_ok})")
-                        ctx.pop("_repair_systemic", None)
-                        ctx["_individual_mode"] = True
-                        return True
+                    if any_installed:
+                        rc_retest, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                        if rc_retest == 0:
+                            _log("+", "Resolver clean after installing root deps")
+                            ctx.pop("_repair_systemic", None)
+                            return True
+                        inst2, _, _ = _probe_individual_installs(sample)
+                        if len(inst2) > n_ok:
+                            _log("+", f"Progress: {len(inst2)}/{len(sample)} "
+                                 f"now installable (was {n_ok})")
+                            ctx.pop("_repair_systemic", None)
+                            ctx["_individual_mode"] = True
+                            return True
                 else:
                     _log("-", "No installable root dependencies found")
 
-            _log("-", "Cannot resolve — individual packages also fail")
+            # ── Step 2e: aptitude fallback ────────────────────────────
+            if _try_aptitude_fallback(protected):
+                _log("+", "aptitude found a viable solution — re-testing")
+                rc_apt, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+                if rc_apt == 0:
+                    ctx.pop("_repair_systemic", None)
+                    return True
+
+            _log("-", "Cannot resolve — all escalation paths exhausted")
             return False
 
         _log("~", "Simulation shows nothing to do — resolver may already be clean")
@@ -851,12 +1462,13 @@ def _escalate_resolver(ctx: dict) -> bool:
             _log("-", "Manual intervention required — run interactively with console access")
         return False
 
-    _log("*", f"Processing {len(safe_removals)} safe package transitions…")
+    # Filter installs to safe ones (the simulation's replacement packages)
+    safe_installs = [p for p in installs if not _is_protected(p, protected)]
+    _log("*", f"Processing {len(safe_removals)} safe removals"
+         f" + {len(safe_installs)} replacement installs…")
     resolved_count = 0
     failed_transitions: list[str] = []
 
-    # Process in small batches — try installing the replacements which
-    # auto-removes the old versions as a side effect
     batch_size = 5
     for i in range(0, len(safe_removals), batch_size):
         if _stopping:
@@ -864,15 +1476,12 @@ def _escalate_resolver(ctx: dict) -> bool:
         batch = safe_removals[i:i + batch_size]
         batch_label = f"Batch {i // batch_size + 1}"
 
-        # Connectivity check before each batch
         if active_methods:
             pre = _verify_all_conn(active_methods)
             if not all(c["ok"] for c in pre):
                 _log("-", f"Connectivity degraded — stopping resolver escalation")
                 break
 
-        # Try removing the blocking packages to free the resolver
-        # apt install -y will handle the transition (remove old + install new)
         _log("*", f"  {batch_label}: removing {len(batch)} blocking packages…")
         for pkg in batch:
             rc, _, err = _apt(["remove", "-y", pkg], timeout=120)
@@ -880,7 +1489,6 @@ def _escalate_resolver(ctx: dict) -> bool:
                 _log("+", f"    Removed {pkg}")
                 resolved_count += 1
             else:
-                # Try dpkg force-remove as fallback
                 rc2, _, _ = _dpkg(["--purge", "--force-depends", pkg], timeout=60)
                 if rc2 == 0:
                     _log("+", f"    Force-removed {pkg}")
@@ -889,12 +1497,11 @@ def _escalate_resolver(ctx: dict) -> bool:
                     _log("-", f"    Cannot remove {pkg}")
                     failed_transitions.append(pkg)
 
-        # After each batch, test if the resolver is clean
+        # After removal batch, try installing replacement packages
         rc_test, _, err_test = _apt(["install", "-f", "-y"], timeout=300)
         if rc_test == 0:
             _log("+", f"Resolver clean after removing {resolved_count} blocking packages")
             ctx.pop("_repair_systemic", None)
-            # Connectivity check after resolution
             if active_methods:
                 post = _verify_all_conn(active_methods)
                 post_str = "  ".join(
@@ -904,10 +1511,29 @@ def _escalate_resolver(ctx: dict) -> bool:
                 _log("*", f"  Connectivity: {post_str}")
             return True
 
-    # ── Step 5: Final check ──────────────────────────────────────────────
+    # ── Step 5: Install replacement packages the simulation identified ───
+    if resolved_count > 0 and safe_installs:
+        _log("*", f"Installing {len(safe_installs)} replacement packages…")
+        install_batch_size = 10
+        for i in range(0, len(safe_installs), install_batch_size):
+            if _stopping:
+                break
+            ibatch = safe_installs[i:i + install_batch_size]
+            rc_ib, _, _ = _apt(["install", "-y"] + ibatch, timeout=300)
+            if rc_ib == 0:
+                _log("+", f"  Installed {len(ibatch)} replacements")
+            else:
+                for rpkg in ibatch:
+                    _apt(["install", "-y", rpkg], timeout=120)
+        rc_final, _, _ = _apt(["install", "-f", "-y"], timeout=300)
+        if rc_final == 0:
+            _log("+", "Resolver clean after installing replacements")
+            ctx.pop("_repair_systemic", None)
+            return True
+
+    # ── Step 6: Final check ──────────────────────────────────────────────
     if resolved_count > 0:
         _log("~", f"Removed {resolved_count} blocking packages but resolver still not clean")
-        # One more apt install -f
         rc, _, err = _apt(["install", "-f", "-y"], timeout=300)
         if rc == 0:
             ctx.pop("_repair_systemic", None)
@@ -926,6 +1552,205 @@ def _resolver_is_clean() -> bool:
     """Quick test: can apt install -f succeed?"""
     rc, _, _ = _apt(["install", "-f", "-y", "--dry-run"], timeout=60)
     return rc == 0
+
+# ── dpkg --audit: find packages stuck mid-script ────────────────────────────
+_AUDIT_PKG_RE = re.compile(r'^\s*(\S+)\s', re.M)
+
+def _dpkg_audit() -> list[dict]:
+    """Run dpkg --audit to find packages in inconsistent states.
+    Catches packages stuck mid-postinst/mid-prerm that apt-cache unmet misses."""
+    rc, out, _ = _run(["dpkg", "--audit"], timeout=60, env=_APT_ENV)
+    if rc != 0 and not out.strip():
+        return []
+    entries: list[dict] = []
+    current_section = ""
+    for line in out.splitlines():
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        if line_stripped.startswith("The following") or line_stripped.startswith("Packages"):
+            current_section = line_stripped
+            continue
+        if line and not line[0].isspace():
+            continue
+        m = _AUDIT_PKG_RE.match(line)
+        if m:
+            pkg = m.group(1).split(":")[0]
+            entries.append({"pkg": pkg, "section": current_section})
+    return entries
+
+def _fix_audit_packages(entries: list[dict], protected: set[str]) -> int:
+    """Fix packages found by dpkg --audit. Returns count fixed."""
+    fixed = 0
+    for entry in entries:
+        pkg = entry["pkg"]
+        if _is_protected(pkg, protected):
+            _log("~", f"  {_Y}[P]{_R} {pkg} — protected, configure-only")
+            rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+            if rc == 0:
+                fixed += 1
+            continue
+        status = _get_dpkg_status(pkg)
+        sline = status["status_line"].lower()
+        if "half-configured" in sline or "unpacked" in sline:
+            rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+            if rc == 0:
+                _log("+", f"  {pkg} configured")
+                fixed += 1
+                continue
+            rc, _, _ = _dpkg(["--force-depends", "--configure", pkg], timeout=120)
+            if rc == 0:
+                _log("+", f"  {pkg} force-configured")
+                fixed += 1
+                continue
+        if "half-installed" in sline or "reinstreq" in sline:
+            if "reinstreq" in sline:
+                _dpkg(["--purge", "--force-remove-reinstreq", pkg], timeout=60)
+            rc, _, _ = _apt(["install", "--reinstall", "-y", pkg], timeout=300)
+            if rc == 0:
+                _log("+", f"  {pkg} reinstalled")
+                fixed += 1
+                continue
+        _log("-", f"  {pkg} — could not fix ({status['state']})")
+    return fixed
+
+# ── Sources.list sanity check ───────────────────────────────────────────────
+def _check_sources_sanity() -> list[str]:
+    """Check for common sources.list problems that cause resolver breakage."""
+    warnings: list[str] = []
+    sources_files: list[Path] = []
+    for p in [Path("/etc/apt/sources.list")]:
+        if p.exists():
+            sources_files.append(p)
+    sources_d = Path("/etc/apt/sources.list.d")
+    if sources_d.is_dir():
+        sources_files.extend(sorted(sources_d.glob("*.list")))
+        sources_files.extend(sorted(sources_d.glob("*.sources")))
+
+    suites_seen: set[str] = set()
+    origins_seen: set[str] = set()
+    for sf in sources_files:
+        try:
+            text = sf.read_text()
+        except Exception:
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] in ("deb", "deb-src"):
+                url = parts[1]
+                suite = parts[2]
+                suites_seen.add(suite)
+                if "debian.org" in url:
+                    origins_seen.add("debian")
+                elif "ubuntu.com" in url:
+                    origins_seen.add("ubuntu")
+                elif "kali.org" in url:
+                    origins_seen.add("kali")
+
+    if len(origins_seen) > 1:
+        warnings.append(f"Mixed distro sources detected: {', '.join(sorted(origins_seen))}")
+    mixed_releases = set()
+    release_keywords = {"stable", "testing", "unstable", "sid", "experimental",
+                        "bookworm", "bullseye", "buster", "trixie",
+                        "jammy", "noble", "focal", "kinetic",
+                        "kali-rolling", "kali-last-snapshot"}
+    for s in suites_seen:
+        base = s.split("-")[0] if "-" in s else s
+        if base in release_keywords:
+            mixed_releases.add(base)
+    if len(mixed_releases) > 1:
+        warnings.append(f"Mixed release suites: {', '.join(sorted(mixed_releases))}")
+
+    rc, out, _ = _run(["apt-key", "list", "--keyring",
+                        "/etc/apt/trusted.gpg"], timeout=15, env=_APT_ENV)
+    if rc == 0 and "expired" in out.lower():
+        warnings.append("Expired GPG keys in apt keyring")
+    return warnings
+
+# ── Progress checkpoint for resumption ──────────────────────────────────────
+_CHECKPOINT_PATH = "/tmp/safe_upgrade_checkpoint.json"
+
+def _save_checkpoint(phase: str, fixed_pkgs: list[str],
+                     failed_pkgs: list[str], ctx_flags: dict) -> None:
+    """Save progress so a restarted run can skip already-fixed packages."""
+    data = {
+        "version": VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "phase": phase,
+        "fixed_packages": sorted(set(fixed_pkgs)),
+        "failed_packages": sorted(set(failed_pkgs)),
+        "flags": ctx_flags,
+    }
+    try:
+        with open(_CHECKPOINT_PATH, "w") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
+def _load_checkpoint() -> dict | None:
+    """Load a previous checkpoint if it exists and is recent (< 6 hours)."""
+    try:
+        with open(_CHECKPOINT_PATH) as f:
+            data = json.load(f)
+        ts = datetime.fromisoformat(data["timestamp"])
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+        if age > 6 * 3600:
+            return None
+        return data
+    except (OSError, json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+def _clear_checkpoint() -> None:
+    try:
+        os.remove(_CHECKPOINT_PATH)
+    except OSError:
+        pass
+
+# ── Version conflict detection ──────────────────────────────────────────────
+def _find_version_conflicts(sample_pkgs: list[str]) -> list[dict]:
+    """Check if installed versions satisfy their reverse-deps' constraints.
+    Uses dpkg --compare-versions to detect version mismatches."""
+    conflicts: list[dict] = []
+    for pkg in sample_pkgs[:30]:
+        if _stopping:
+            break
+        rc, out, _ = _run(["apt-cache", "rdepends", "--installed", pkg],
+                          timeout=15, env=_APT_ENV)
+        if rc != 0:
+            continue
+        status = _get_dpkg_status(pkg)
+        installed_ver = status.get("version", "")
+        if not installed_ver:
+            continue
+        for line in out.splitlines():
+            line = line.strip()
+            if not line or line.startswith(pkg) or line == "Reverse Depends:":
+                continue
+            rdep = line.split(":")[0].strip()
+            if not rdep or rdep.startswith("|"):
+                continue
+            rdep_status = _get_dpkg_status(rdep)
+            if not rdep_status["installed"]:
+                continue
+            for dep_name in rdep_status["depends"]:
+                if dep_name == pkg:
+                    break
+            else:
+                continue
+            policy = _get_pkg_policy(pkg)
+            if (policy["candidate"] and policy["candidate"] != "(none)" and
+                    policy["candidate"] != installed_ver):
+                conflicts.append({
+                    "pkg": pkg,
+                    "installed": installed_ver,
+                    "needed_by": rdep,
+                    "candidate": policy["candidate"],
+                })
+                break
+    return conflicts
 
 # ── end resolver escalation ─────────────────────────────────────────────────
 
@@ -1149,6 +1974,16 @@ def phase_preflight(args: argparse.Namespace) -> dict:
     _ACTIVE_METHODS = list(active_methods)
     snap = _snapshot()
     _log("", f"Snapshot:    {_DIM}{snap}{_R}")
+
+    checkpoint = _load_checkpoint()
+    if checkpoint:
+        n_prev_fixed = len(checkpoint.get("fixed_packages", []))
+        n_prev_failed = len(checkpoint.get("failed_packages", []))
+        _log("~", f"Resume checkpoint found: {n_prev_fixed} previously fixed, "
+             f"{n_prev_failed} previously failed (phase: {checkpoint.get('phase', '?')})")
+    else:
+        checkpoint = None
+
     return {
         "active_methods": active_methods,
         "critical_pkgs": all_critical_pkgs,
@@ -1157,6 +1992,7 @@ def phase_preflight(args: argparse.Namespace) -> dict:
         "stats": {"upgraded": 0, "failed": 0, "skipped": 0},
         "failed_pkgs": [],
         "skipped_pkgs": [],
+        "_checkpoint": checkpoint,
     }
 
 def phase_repair(ctx: dict) -> None:
@@ -1172,6 +2008,18 @@ def phase_repair(ctx: dict) -> None:
 
     _log("*", "Multi-pass dpkg --configure")
     remaining = _configure_with_progress(broken, max_passes=8) if broken else {}
+
+    # dpkg --audit: find packages stuck mid-postinst/mid-prerm
+    _log("*", "dpkg --audit")
+    audit_entries = _dpkg_audit()
+    if audit_entries:
+        _log("~", f"{len(audit_entries)} packages in inconsistent state (dpkg audit)")
+        audit_fixed = _fix_audit_packages(
+            audit_entries, ctx.get("critical_pkgs", set()))
+        if audit_fixed:
+            _log("+", f"Fixed {audit_fixed}/{len(audit_entries)} audit entries")
+    else:
+        _log("+", "dpkg audit clean")
 
     _log("*", "apt-get install -f")
     rc, _, err = _apt(["install", "-f", "-y"], timeout=300)
@@ -1658,6 +2506,7 @@ def main() -> None:
         _log("", f"→ All upgrade tiers complete ({s['upgraded']} upgraded, {s['failed']} failed, {s['skipped']} skipped) — cleaning up")
         _log("", f"  {_DIM}Removing orphaned packages and clearing the apt cache.{_R}")
         phase_cleanup(ctx)
+        _clear_checkpoint()
 
     _print_summary(ctx, t0)
 
