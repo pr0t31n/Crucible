@@ -2686,6 +2686,25 @@ class ProcessManager:
         self._emit_console(project_id, tool_id,
                            f"[TARGET] {ip}", "stdout")
         self._live_record_target(project_id, tool_id, data)
+        if self._findings_engine:
+            try:
+                project = self._resolve_project(project_id)
+                if project:
+                    db = self._findings_engine._get_db(project_id, project)
+                    if db:
+                        host_id = db.ensure_host(
+                            ip,
+                            mac=data.get("mac"),
+                            os_name=data.get("os", data.get("os_name")),
+                            is_alive=1 if data.get("alive", True) else 0,
+                            discovery_method=tool_id,
+                        )
+                        hostname = data.get("hostname", "")
+                        if hostname and host_id:
+                            db.link_hostname(host_id, hostname,
+                                             source=tool_id)
+            except Exception as exc:
+                log.warning("_handle_target DB: %s", exc)
         if self._action_engine:
             try:
                 proj_dir = self._resolve_project_dir(project_id)
@@ -2715,6 +2734,35 @@ class ProcessManager:
         self._emit_console(project_id, tool_id,
                            f"[PORT] {ip}:{port}", "stdout")
         self._live_record_port(project_id, tool_id, data)
+        if self._findings_engine:
+            try:
+                project = self._resolve_project(project_id)
+                if project:
+                    db = self._findings_engine._get_db(project_id, project)
+                    if db:
+                        host_id = db.ensure_host(ip,
+                                                 discovery_method=tool_id)
+                        port_num = int(data.get("port", 0))
+                        if host_id and port_num:
+                            proto = data.get("proto",
+                                             data.get("protocol", "tcp"))
+                            state = data.get("state", "open")
+                            port_id = db.ensure_port(host_id, port_num,
+                                                     proto, state)
+                            svc_name = data.get("name", "")
+                            product = data.get("product", "")
+                            version = data.get("version", "")
+                            if port_id and (svc_name or product or version):
+                                db.set_service(
+                                    port_id,
+                                    name=svc_name,
+                                    product=product,
+                                    version=version,
+                                    extra_info=data.get("extrainfo", ""),
+                                    discovery_tool=tool_id,
+                                )
+            except Exception as exc:
+                log.warning("_handle_port DB: %s", exc)
         if self._action_engine:
             try:
                 proj_dir = self._resolve_project_dir(project_id)
