@@ -2761,6 +2761,15 @@ class ProcessManager:
                                     extra_info=data.get("extrainfo", ""),
                                     discovery_tool=tool_id,
                                 )
+                            if product and hasattr(db, "bulk_insert_network_software"):
+                                db.bulk_insert_network_software([{
+                                    "software": product,
+                                    "version": version,
+                                    "ip": ip,
+                                    "port": port_num,
+                                    "hostname": data.get("hostname", ""),
+                                    "method": "nmap service detection",
+                                }])
             except Exception as exc:
                 log.warning("_handle_port DB: %s", exc)
         if self._action_engine:
@@ -2809,6 +2818,7 @@ class ProcessManager:
             cc = self._findings_engine.cached_count(project_id)
             if cc is not None:
                 data["findings_total"] = cc
+            self._extract_software_from_finding(project_id, data)
         try:
             self.socketio.emit("tool_finding", data,
                                room=_room(project_id))
@@ -2826,6 +2836,46 @@ class ProcessManager:
                 log.warning("ActionEngine finding error: %s", exc)
 
     # ── stderr reader ────────────────────────────────────────────────────
+
+    _SW_PREFIXES = ("Software Detected: ", "Software Version Detected: ")
+
+    def _extract_software_from_finding(self, project_id, data):
+        title = data.get("title", "")
+        for pfx in self._SW_PREFIXES:
+            if title.startswith(pfx):
+                sw_name = title[len(pfx):].strip()
+                break
+        else:
+            return
+        if not sw_name:
+            return
+        ip = (data.get("ip") or "").strip()
+        try:
+            port_num = int(data.get("port", 0))
+        except (TypeError, ValueError):
+            port_num = 0
+        version = ""
+        if title.startswith("Software Version Detected: "):
+            parts = sw_name.rsplit(" ", 1)
+            if len(parts) == 2 and any(c.isdigit() for c in parts[1]):
+                sw_name, version = parts[0], parts[1]
+        try:
+            project = self._resolve_project(project_id)
+            if not project:
+                return
+            db = self._findings_engine._get_db(project_id, project)
+            if db and hasattr(db, "bulk_insert_network_software"):
+                method = (data.get("tool") or "").strip() or "finding"
+                db.bulk_insert_network_software([{
+                    "software": sw_name,
+                    "version": version,
+                    "ip": ip,
+                    "port": port_num,
+                    "hostname": data.get("hostname", ""),
+                    "method": method,
+                }])
+        except Exception as exc:
+            log.debug("_extract_software_from_finding: %s", exc)
 
     def _handle_intel(self, project_id: str, tool_id: str,
                        data: dict) -> None:
@@ -3245,29 +3295,8 @@ class ProcessManager:
                                                             tool_id=base_tool)
                 except Exception:
                     pass
-                # Phase 8: Ingest completed tool's intelligence data
-                try:
-                    from services.intel_ingestion import ingest_single as _ingest_single
-                    from services.findings_engine import FindingsEngine
-                    _fe = FindingsEngine.instance() if hasattr(FindingsEngine, 'instance') else None
-                    if _fe:
-                        _db = _fe._get_db(project_id, _proj)
-                        if _db:
-                            _td = _proj.get("tool_dirs", {})
-                            _std = _proj.get("scope_tool_dirs", {})
-                            _all_dirs = {}
-                            if _td:
-                                _all_dirs.update(_td)
-                            if _std:
-                                for _sc, _tools in _std.items():
-                                    for _tid, _tp in _tools.items():
-                                        _all_dirs[f"{_sc}_{_tid}"] = _tp
-                            _tool_dir = _all_dirs.get(tool_id, "")
-                            if _tool_dir:
-                                _ingest_single(_db, _proj.get("project_dir", ""),
-                                               tool_id, _tool_dir)
-                except Exception:
-                    pass
+                # Phase 8: removed — JSON ingestion killed.
+                # All intel flows through tokens → DB in real time.
                 try:
                     self._findings_engine.validate_tool_findings(
                         project_id, _proj, base_tool)
