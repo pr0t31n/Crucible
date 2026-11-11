@@ -634,16 +634,9 @@ class FindingsEngine:
             target=self._persist_findings_json,
             args=(project, list(active)),
             name="findings-json-persist", daemon=True).start()
-        # Phase 8: Ingest intelligence data into DB tables
-        try:
-            from services.intel_ingestion import ingest_all as _ingest_intel
-            db = self._get_db(project_id, project)
-            if db:
-                _ingest_intel(db, project.get("project_dir", ""),
-                              tool_dirs=project.get("tool_dirs"),
-                              scope_tool_dirs=project.get("scope_tool_dirs"))
-        except Exception:
-            pass
+        # Phase 8: Intelligence data — ingested in real-time via
+        # __CRUCIBLE_INTEL__ tokens (DB-first architecture). Legacy JSON
+        # ingestion disabled.
         log.info("Refreshed findings for project %s: %d active, %d FP",
                  project_id, len(active), len(fps))
         return list(active)

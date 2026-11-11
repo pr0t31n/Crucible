@@ -27,6 +27,7 @@ from flask_socketio import SocketIO
 from services.token_parser import TokenParser
 from services.utils import now_iso as _now_iso, now_ts as _now_ts, project_room as _room
 from services.audit_logger import audit as _audit
+from services.intel_handler import handle_intel as _dispatch_intel
 from config import (MAX_CONSOLE_LINES, PYTHON3, TOOLS, TOOL_ENV,
                     TOOL_SETTINGS_PREFIX, AETHER_TOOLS)
 
@@ -2157,6 +2158,8 @@ class ProcessManager:
             self._handle_port(project_id, tool_id, data)
         elif token_type == "finding":
             self._handle_finding(project_id, tool_id, data)
+        elif token_type == "intel":
+            self._handle_intel(project_id, tool_id, data)
         else:
             # Unknown token type — pass through as console line.
             self._emit_console(project_id, tool_id, line, "stdout")
@@ -2775,6 +2778,15 @@ class ProcessManager:
                 log.warning("ActionEngine finding error: %s", exc)
 
     # ── stderr reader ────────────────────────────────────────────────────
+
+    def _handle_intel(self, project_id: str, tool_id: str,
+                       data: dict) -> None:
+        """Route a __CRUCIBLE_INTEL__ payload via centralized intel_handler."""
+        try:
+            _dispatch_intel(self._findings_engine, self.socketio,
+                            project_id, tool_id, data)
+        except Exception as exc:
+            log.warning("_handle_intel: %s", exc)
 
     def _stderr_reader(self, project_id: str, tool_id: str,
                        pipe, proc: subprocess.Popen) -> None:
