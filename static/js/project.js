@@ -6557,7 +6557,7 @@ function _renderNetSoftware(data) {
     if (!items.length && typeof payload === 'object') {
         items = Object.values(payload).filter(function(v) { return Array.isArray(v); })[0] || [];
     }
-    if (!items.length) return _renderIntelGeneric(data);
+    if (!items.length) return '<div class="empty-state"><div class="empty-state-text">No software inventory data available. Software detection runs during network scans (SS3).</div></div>';
     var rows = items.map(function(s) {
         var osVal = _cleanOS(s.os);
         return [

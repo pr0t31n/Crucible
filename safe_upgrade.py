@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 
 # ── ANSI ─────────────────────────────────────────────────────────────────────
 _R = _G = _RD = _Y = _C = _DIM = _BLD = ""
@@ -95,6 +95,211 @@ def _apt(args: list[str], timeout: int = 600) -> tuple[int, str, str]:
 
 def _dpkg(args: list[str], timeout: int = 300) -> tuple[int, str, str]:
     return _run(["dpkg"] + args, timeout=timeout, env=_APT_ENV)
+
+# ── dpkg health check + bootstrap ───────────────────────────────────────────
+_GLIBC_RE = re.compile(r"version `(GLIBC_[\d.]+)' not found", re.I)
+
+def _check_dpkg_health() -> dict:
+    """Test if dpkg itself can execute. Returns {"ok": True} or
+    {"ok": False, "error": str, "glibc_missing": str|None}."""
+    rc, out, err = _run(["dpkg", "--version"], timeout=10)
+    if rc == 0:
+        return {"ok": True}
+    combined = (err or "") + (out or "")
+    m = _GLIBC_RE.search(combined)
+    glibc = m.group(1) if m else None
+    return {"ok": False, "error": combined.strip()[:200], "glibc_missing": glibc}
+
+def _bootstrap_dpkg() -> bool:
+    """When dpkg can't run due to missing GLIBC, manually extract libc6 using
+    ar+tar (which are typically statically linked or use older glibc) to restore
+    the missing library version, then dpkg can operate again."""
+    _log("*", "dpkg bootstrap: attempting manual libc6 recovery…")
+
+    for tool in ("ar", "tar"):
+        if not shutil.which(tool):
+            _log("-", f"  {tool} not found — cannot bootstrap")
+            return False
+
+    dl_dir = "/tmp/_safe_upgrade_bootstrap"
+    os.makedirs(dl_dir, exist_ok=True)
+
+    # Step 1: Download libc6 .deb
+    _log("*", "  Downloading libc6 package…")
+    deb_path = None
+    try:
+        r = subprocess.run(
+            ["apt-get", "download", "libc6"],
+            capture_output=True, text=True, timeout=120,
+            env={**(_APT_ENV or os.environ),
+                 "DEBIAN_FRONTEND": "noninteractive"},
+            cwd=dl_dir)
+        if r.returncode == 0:
+            import glob
+            debs = sorted(glob.glob(f"{dl_dir}/libc6_*.deb"),
+                          key=os.path.getmtime, reverse=True)
+            if debs:
+                deb_path = debs[0]
+    except (subprocess.TimeoutExpired, Exception) as e:
+        _log("~", f"  apt-get download: {e}")
+
+    if not deb_path:
+        # Fallback: get the URI and download with urllib
+        _log("~", "  apt-get download failed, trying urllib fallback…")
+        import urllib.request
+        rc3, urls_out, _ = _run(
+            ["apt-get", "download", "--print-uris", "libc6"],
+            timeout=30, env=_APT_ENV)
+        if rc3 == 0 and "'" in urls_out:
+            url = urls_out.split("'")[1]
+            fname = url.rsplit("/", 1)[-1] if "/" in url else "libc6.deb"
+            deb_path = os.path.join(dl_dir, fname)
+            try:
+                _log("*", f"  Downloading via urllib: {url[:80]}…")
+                urllib.request.urlretrieve(url, deb_path)
+            except Exception as e:
+                _log("-", f"  urllib download failed: {e}")
+                return False
+        else:
+            _log("-", "  Cannot obtain libc6 package — bootstrap failed")
+            return False
+
+    # Step 2: Extract the .deb manually using ar + tar (no dpkg needed)
+    _log("*", "  Extracting libc6 with ar + tar (bypassing dpkg)…")
+    extract_dir = os.path.join(dl_dir, "libc6_extract")
+    os.makedirs(extract_dir, exist_ok=True)
+
+    try:
+        r = subprocess.run(["ar", "x", deb_path],
+                           capture_output=True, text=True, timeout=30,
+                           cwd=dl_dir)
+        if r.returncode != 0:
+            _log("-", f"  ar extract failed: {(r.stderr or '')[:100]}")
+            return False
+    except Exception as e:
+        _log("-", f"  ar extract error: {e}")
+        return False
+
+    # The data archive is data.tar.* (xz, gz, zst)
+    data_tar = None
+    for ext in ("data.tar.xz", "data.tar.gz", "data.tar.zst", "data.tar.bz2"):
+        candidate = os.path.join(dl_dir, ext)
+        if os.path.exists(candidate):
+            data_tar = candidate
+            break
+
+    if not data_tar:
+        _log("-", "  No data.tar.* found in .deb")
+        return False
+
+    rc, _, err = _run(["tar", "xf", data_tar, "-C", extract_dir], timeout=60)
+    if rc != 0:
+        _log("-", f"  tar extract failed: {err[:100]}")
+        return False
+
+    # Step 3: Copy the extracted libc files into the system lib directory
+    # Find where the .so files are
+    lib_dirs = []
+    for root, dirs, files in os.walk(extract_dir):
+        for f in files:
+            if "libc.so" in f or "libc-" in f:
+                lib_dirs.append(root)
+                break
+
+    if not lib_dirs:
+        _log("-", "  No libc.so found in extracted package")
+        return False
+
+    copied = 0
+    for src_dir in lib_dirs:
+        # Determine the target directory by stripping the extract prefix
+        rel = os.path.relpath(src_dir, extract_dir)
+        target_dir = os.path.join("/", rel)
+        os.makedirs(target_dir, exist_ok=True)
+        for f in os.listdir(src_dir):
+            src = os.path.join(src_dir, f)
+            dst = os.path.join(target_dir, f)
+            if os.path.isfile(src):
+                try:
+                    shutil.copy2(src, dst)
+                    copied += 1
+                except Exception as e:
+                    _log("~", f"  Failed to copy {f}: {e}")
+
+    if copied == 0:
+        _log("-", "  No files copied — bootstrap failed")
+        return False
+
+    _log("+", f"  Copied {copied} libc files into system")
+
+    # Step 4: Run ldconfig to refresh the linker cache
+    _run(["ldconfig"], timeout=30)
+
+    # Step 5: Verify dpkg works now
+    health = _check_dpkg_health()
+    if health["ok"]:
+        _log("+", "dpkg bootstrap successful — dpkg is functional again")
+        # Now run dpkg --configure -a to clean up any pending configs
+        _dpkg(["--configure", "-a"], timeout=300)
+        return True
+
+    # libc6 restored but dpkg binary itself may also need the new libc
+    # Try downloading and extracting dpkg too
+    _log("~", "  libc6 restored but dpkg still broken — bootstrapping dpkg binary…")
+    deb_path2 = None
+    try:
+        r2 = subprocess.run(
+            ["apt-get", "download", "dpkg"],
+            capture_output=True, text=True, timeout=120,
+            env={**(_APT_ENV or os.environ),
+                 "DEBIAN_FRONTEND": "noninteractive"},
+            cwd=dl_dir)
+        if r2.returncode == 0:
+            import glob as _gl2
+            debs2 = sorted(_gl2.glob(f"{dl_dir}/dpkg_*.deb"),
+                           key=os.path.getmtime, reverse=True)
+            if debs2:
+                deb_path2 = debs2[0]
+    except Exception:
+        pass
+
+    if deb_path2:
+        extract_dir2 = os.path.join(dl_dir, "dpkg_extract")
+        os.makedirs(extract_dir2, exist_ok=True)
+        try:
+            subprocess.run(["ar", "x", deb_path2],
+                           capture_output=True, timeout=30, cwd=dl_dir)
+            for ext in ("data.tar.xz", "data.tar.gz", "data.tar.zst"):
+                c2 = os.path.join(dl_dir, ext)
+                if os.path.exists(c2):
+                    subprocess.run(["tar", "xf", c2, "-C", extract_dir2],
+                                   capture_output=True, timeout=60)
+                    break
+            # Copy dpkg binaries
+            for root, dirs, files in os.walk(extract_dir2):
+                for f in files:
+                    if f in ("dpkg", "dpkg-deb", "dpkg-query",
+                             "dpkg-trigger", "dpkg-statoverride"):
+                        src = os.path.join(root, f)
+                        rel = os.path.relpath(root, extract_dir2)
+                        dst = os.path.join("/", rel, f)
+                        try:
+                            shutil.copy2(src, dst)
+                            os.chmod(dst, 0o755)
+                        except Exception:
+                            pass
+            _run(["ldconfig"], timeout=30)
+        except Exception:
+            pass
+
+    health2 = _check_dpkg_health()
+    if health2["ok"]:
+        _log("+", "dpkg bootstrap successful (libc6 + dpkg extracted)")
+        _dpkg(["--configure", "-a"], timeout=300)
+        return True
+    else:
+        _log("-", f"  dpkg still broken after bootstrap: {health2['error'][:100]}")
+        return False
 
 # ── dpkg lock check ─────────────────────────────────────────────────────────
 def _check_dpkg_lock() -> bool:
@@ -332,6 +537,10 @@ def _purge_reinstall(pkg: str, protected: set[str] | None = None) -> bool:
 
 def _download_install(pkg: str) -> bool:
     """Download .deb via apt and install via dpkg directly."""
+    # Skip if dpkg itself is broken (e.g., GLIBC missing)
+    if os.environ.get("_SAFE_UPGRADE_NO_DPKG"):
+        return False
+
     dl_dir = "/tmp/_safe_upgrade_debs"
     os.makedirs(dl_dir, exist_ok=True)
     try:
@@ -363,6 +572,7 @@ def _download_install(pkg: str) -> bool:
         pass
     if rc != 0 and err:
         _log("~", f"    dpkg -i failed: {err.strip().splitlines()[-1][:100]}")
+        _set_error_signature(err)
     return rc == 0
 
 def _is_protected(pkg: str, protected: set[str]) -> bool:
@@ -823,9 +1033,15 @@ def _get_pkg_policy(pkg: str) -> dict:
 def _fix_leaf_pkg(pkg: str, protected: set[str]) -> bool:
     """Targeted fix for a leaf package based on its dpkg state.
     A leaf is a broken package whose own deps are satisfied."""
+    no_dpkg = os.environ.get("_SAFE_UPGRADE_NO_DPKG")
+
     if _is_protected(pkg, protected):
         _log("~", f"    {_Y}[P]{_R} {pkg} — protected, configure-only")
-        rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+        if no_dpkg:
+            return False
+        rc, _, err = _dpkg(["--configure", pkg], timeout=60)
+        if rc != 0 and err:
+            _set_error_signature(err)
         return rc == 0
 
     status = _get_dpkg_status(pkg)
@@ -834,34 +1050,49 @@ def _fix_leaf_pkg(pkg: str, protected: set[str]) -> bool:
     # Reinstreq: stuck waiting for reinstall — force-remove then reinstall
     if "reinstreq" in sline:
         _log("*", f"    {pkg}: reinstreq — force-purge + reinstall")
-        _dpkg(["--purge", "--force-remove-reinstreq", pkg], timeout=60)
-        rc, _, _ = _apt(["install", "-y", pkg], timeout=300)
+        if not no_dpkg:
+            _dpkg(["--purge", "--force-remove-reinstreq", pkg], timeout=60)
+        rc, _, err = _apt(["install", "-y", pkg], timeout=300)
+        if rc != 0 and err:
+            _set_error_signature(err)
         return rc == 0
 
     # Half-configured or unpacked: dpkg --configure
     if "half-configured" in sline or ("unpacked" in sline and "not-installed" not in sline):
         _log("*", f"    {pkg}: {status['state']} — configure")
-        rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
+        if no_dpkg:
+            rc, _, err = _apt(["install", "-y", pkg], timeout=120)
+            if rc != 0 and err:
+                _set_error_signature(err)
+            return rc == 0
+        rc, _, err = _dpkg(["--configure", pkg], timeout=60)
         if rc == 0:
             return True
-        rc, _, _ = _dpkg(["--force-depends", "--configure", pkg], timeout=120)
+        rc, _, err = _dpkg(["--force-depends", "--configure", pkg], timeout=120)
+        if rc != 0 and err:
+            _set_error_signature(err)
         return rc == 0
 
     # Half-installed: needs reinstall
     if "half-installed" in sline:
         _log("*", f"    {pkg}: half-installed — reinstall")
-        rc, _, _ = _apt(["install", "--reinstall", "-y", pkg], timeout=300)
+        rc, _, err = _apt(["install", "--reinstall", "-y", pkg], timeout=300)
         if rc == 0:
             return True
+        if err:
+            _set_error_signature(err)
         return _download_install(pkg)
 
-    # Try configure first (cheapest)
-    rc, _, _ = _dpkg(["--configure", pkg], timeout=60)
-    if rc == 0:
-        return True
+    # Try configure first (cheapest) — skip if dpkg broken
+    if not no_dpkg:
+        rc, _, err = _dpkg(["--configure", pkg], timeout=60)
+        if rc == 0:
+            return True
+        if err:
+            _set_error_signature(err)
 
     # Try apt install to pull in correct version
-    rc, _, _ = _apt(["install", "-y", pkg], timeout=120)
+    rc, _, err = _apt(["install", "-y", pkg], timeout=120)
     if rc == 0:
         return True
 
@@ -871,38 +1102,112 @@ def _fix_leaf_pkg(pkg: str, protected: set[str]) -> bool:
             policy["candidate"] != policy["installed"]):
         _log("*", f"    {pkg}: ver mismatch — installed={policy['installed']} "
              f"candidate={policy['candidate']}")
-        rc, _, _ = _apt(["install", "-y", f"{pkg}={policy['candidate']}"],
+        rc, _, err = _apt(["install", "-y", f"{pkg}={policy['candidate']}"],
                         timeout=120)
         if rc == 0:
             return True
+        if err:
+            _set_error_signature(err)
 
-    # Download + dpkg -i
+    # Download + dpkg -i (skips internally if no_dpkg)
     if _download_install(pkg):
         return True
 
     # Force-configure as last non-destructive step
-    if _force_configure_pkg(pkg):
+    if not no_dpkg and _force_configure_pkg(pkg):
         return True
 
     return False
+
+def _is_pkg_installed(pkg: str) -> bool:
+    """Quick check if a package is actually installed (any state except
+    not-installed/config-files). Uses dpkg-query which is faster than
+    dpkg -s for bulk checks."""
+    rc, out, _ = _run(["dpkg-query", "-W", "-f=${db:Status-Status}", pkg],
+                      timeout=10)
+    if rc != 0:
+        return False
+    status = out.strip().lower()
+    return status not in ("not-installed", "config-files", "")
+
+def _filter_installed_only(unmet: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Filter unmet dep map to only packages that are actually installed.
+    apt-cache unmet reports ALL packages with unmet deps in the repo — most
+    are packages that simply can't be installed, not broken installed ones."""
+    if not unmet:
+        return {}
+    # Batch query: dpkg-query can check multiple packages at once
+    all_pkgs = sorted(unmet.keys())
+    installed: set[str] = set()
+
+    # Process in batches of 200 for efficiency
+    for i in range(0, len(all_pkgs), 200):
+        batch = all_pkgs[i:i+200]
+        rc, out, _ = _run(
+            ["dpkg-query", "-W", "-f=${Package} ${db:Status-Status}\\n"] + batch,
+            timeout=30)
+        if rc == 0 or out:
+            for line in out.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    name, status = parts[0], parts[1].strip().lower()
+                    if status not in ("not-installed", "config-files", ""):
+                        installed.add(name.split(":")[0])
+
+    filtered = {k: v for k, v in unmet.items() if k in installed}
+    skipped = len(unmet) - len(filtered)
+    if skipped > 0:
+        _log("*", f"  Filtered out {skipped} non-installed packages "
+             f"(only {len(filtered)} actually installed with unmet deps)")
+    return filtered
 
 def _walk_dep_chain(start_pkgs: list[str], protected: set[str],
                     max_rounds: int = 8) -> tuple[int, list[str]]:
     """The 'rabbit trail': walk dependency chains bottom-up.
     1. apt-cache unmet + python3-apt → all packages with unmet deps
-    2. Build graph: which broken pkgs depend on other broken pkgs
-    3. Find leaves: broken packages whose own deps are NOT broken
-    4. Fix leaves first using _fix_leaf_pkg (dpkg-state-aware)
-    5. Re-scan and repeat until stable
+    2. Filter to INSTALLED packages only (skip repo-only entries)
+    3. Build graph: which broken pkgs depend on other broken pkgs
+    4. Find leaves: broken packages whose own deps are NOT broken
+    5. Fix leaves first using _fix_leaf_pkg (dpkg-state-aware)
+    6. Re-scan and repeat until stable
     Returns (fixed_count, remaining_broken_names)."""
     total_fixed = 0
     tried_failed: set[str] = set()
     all_fixed: list[str] = []
+    # Track error patterns for early bailout
+    error_signatures: dict[str, int] = {}
+    _BAILOUT_THRESHOLD = 5  # same error 5 times = systemic, stop
+
+    # Pre-check: is dpkg itself functional?
+    dpkg_health = _check_dpkg_health()
+    if not dpkg_health["ok"]:
+        glibc = dpkg_health.get("glibc_missing")
+        if glibc:
+            _log("-", f"  dpkg broken: missing {glibc} — attempting bootstrap…")
+            if _bootstrap_dpkg():
+                _log("+", "  dpkg restored — continuing with rabbit trail")
+            else:
+                _log("-", f"  dpkg bootstrap failed — dpkg-based repair unavailable")
+                _log("~", "  Falling back to apt-only repair (no dpkg -i)")
+                # Set a flag so _fix_leaf_pkg skips dpkg -i paths
+                os.environ["_SAFE_UPGRADE_NO_DPKG"] = "1"
+        else:
+            _log("-", f"  dpkg broken: {dpkg_health['error'][:100]}")
+            _log("~", "  Falling back to apt-only repair (no dpkg -i)")
+            os.environ["_SAFE_UPGRADE_NO_DPKG"] = "1"
 
     for round_num in range(1, max_rounds + 1):
         if _stopping:
             break
         unmet = _get_system_unmet()
+
+        # CRITICAL: Filter to only installed packages. apt-cache unmet lists
+        # ALL packages with unmet deps in the entire repo — packages that
+        # aren't installed are NOT broken, they just can't be installed.
+        unmet = _filter_installed_only(unmet)
 
         # Supplement with python3-apt on the first round only — catches
         # resolver-level breaks that apt-cache unmet misses. Expensive
@@ -919,7 +1224,8 @@ def _walk_dep_chain(start_pkgs: list[str], protected: set[str],
             _log("+", f"  Round {round_num}: no unmet deps remain")
             break
 
-        _log("*", f"  Round {round_num}: {len(unmet)} packages with unmet deps")
+        _log("*", f"  Round {round_num}: {len(unmet)} installed packages "
+             f"with unmet deps")
 
         broken_set = set(unmet.keys())
 
@@ -964,9 +1270,10 @@ def _walk_dep_chain(start_pkgs: list[str], protected: set[str],
         _log("*", f"  Leaves to fix: {len(leaves)}"
              f" ({len(tried_failed)} previously failed, skipped)")
         fixed_this_round = 0
+        bailout = False
 
         for pkg in leaves:
-            if _stopping:
+            if _stopping or bailout:
                 break
             if _fix_leaf_pkg(pkg, protected):
                 _log("+", f"    {pkg} fixed")
@@ -975,6 +1282,18 @@ def _walk_dep_chain(start_pkgs: list[str], protected: set[str],
             else:
                 _log("-", f"    {pkg} — could not fix")
                 tried_failed.add(pkg)
+
+                # Check for repeated identical error pattern (e.g., GLIBC missing)
+                # Extract the error signature from the last dpkg/apt failure
+                sig = _get_last_error_signature()
+                if sig:
+                    error_signatures[sig] = error_signatures.get(sig, 0) + 1
+                    if error_signatures[sig] >= _BAILOUT_THRESHOLD:
+                        _log("-", f"  Systemic failure detected: '{sig}' "
+                             f"({error_signatures[sig]} identical failures)")
+                        _log("~", f"  Stopping leaf iteration — this error "
+                             f"affects all packages identically")
+                        bailout = True
 
         total_fixed += fixed_this_round
 
@@ -990,8 +1309,41 @@ def _walk_dep_chain(start_pkgs: list[str], protected: set[str],
         # Let apt settle after fixing leaves
         _apt(["install", "-f", "-y"], timeout=300)
 
+    # Clean up the no-dpkg flag if we set it
+    os.environ.pop("_SAFE_UPGRADE_NO_DPKG", None)
+
     remaining = _get_system_unmet()
+    remaining = _filter_installed_only(remaining)
     return total_fixed, sorted(remaining.keys())
+
+# Error signature tracking for bailout detection
+_last_error_sig: str = ""
+
+def _get_last_error_signature() -> str:
+    """Return a normalized signature of the last failure for pattern detection."""
+    return _last_error_sig
+
+def _set_error_signature(err: str) -> None:
+    """Extract and store a normalized error signature from stderr."""
+    global _last_error_sig
+    if not err:
+        _last_error_sig = ""
+        return
+    # Normalize: extract the distinctive part of common error patterns
+    m = _GLIBC_RE.search(err)
+    if m:
+        _last_error_sig = f"GLIBC:{m.group(1)}"
+        return
+    # dpkg: error processing
+    for line in err.strip().splitlines():
+        line = line.strip()
+        if "dpkg:" in line and ("error" in line.lower() or "not found" in line.lower()):
+            # Normalize by removing package-specific parts
+            sig = re.sub(r'/\S+\.deb', '<pkg>', line)
+            sig = re.sub(r'package \S+', 'package <pkg>', sig)
+            _last_error_sig = sig[:120]
+            return
+    _last_error_sig = ""
 
 # ── Additional resolver diagnostics ──────────────────────────────────────
 _DEBUG_BROKEN_RE = re.compile(r'Broken\s+(\S+)\s+(Depends|PreDepends|Breaks|Conflicts)\s+on\s+(\S+)')
@@ -1998,6 +2350,23 @@ def phase_preflight(args: argparse.Namespace) -> dict:
 def phase_repair(ctx: dict) -> None:
     _phase_hdr(1, "Repair")
 
+    # Pre-check: is dpkg itself functional?
+    dpkg_health = _check_dpkg_health()
+    if not dpkg_health["ok"]:
+        glibc = dpkg_health.get("glibc_missing")
+        if glibc:
+            _log("-", f"dpkg binary broken: missing {glibc}")
+            _log("*", "Attempting to bootstrap dpkg by manually extracting libc6…")
+            if _bootstrap_dpkg():
+                _log("+", "dpkg restored — continuing with normal repair")
+            else:
+                _log("-", "dpkg bootstrap failed — dpkg operations will be skipped")
+                _log("~", "Only apt-based repairs available (limited)")
+                os.environ["_SAFE_UPGRADE_NO_DPKG"] = "1"
+        else:
+            _log("-", f"dpkg binary broken: {dpkg_health['error'][:120]}")
+            os.environ["_SAFE_UPGRADE_NO_DPKG"] = "1"
+
     broken = _get_broken_packages()
     if broken:
         _log("~", f"{len(broken)} packages in bad state:")
@@ -2006,12 +2375,19 @@ def phase_repair(ctx: dict) -> None:
     else:
         _log("+", "No broken packages detected")
 
-    _log("*", "Multi-pass dpkg --configure")
-    remaining = _configure_with_progress(broken, max_passes=8) if broken else {}
+    if not os.environ.get("_SAFE_UPGRADE_NO_DPKG"):
+        _log("*", "Multi-pass dpkg --configure")
+        remaining = _configure_with_progress(broken, max_passes=8) if broken else {}
+    else:
+        _log("~", "Skipping dpkg --configure (dpkg broken)")
+        remaining = broken
 
     # dpkg --audit: find packages stuck mid-postinst/mid-prerm
-    _log("*", "dpkg --audit")
-    audit_entries = _dpkg_audit()
+    if not os.environ.get("_SAFE_UPGRADE_NO_DPKG"):
+        _log("*", "dpkg --audit")
+    else:
+        _log("~", "Skipping dpkg --audit (dpkg broken)")
+    audit_entries = _dpkg_audit() if not os.environ.get("_SAFE_UPGRADE_NO_DPKG") else []
     if audit_entries:
         _log("~", f"{len(audit_entries)} packages in inconsistent state (dpkg audit)")
         audit_fixed = _fix_audit_packages(
