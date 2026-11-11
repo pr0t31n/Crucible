@@ -516,6 +516,14 @@ _DISPATCH = {
     "endpoint_network":  (_endpoint_network,   "bulk_insert_endpoint_network"),
     "endpoint_disk":     (_endpoint_disk,      "bulk_insert_endpoint_disk"),
     "endpoint_hardware": (_endpoint_hardware,  "bulk_insert_endpoint_hardware"),
+    "wireless_client":   (_wireless_network,    None),
+    "wireless_probe":    (_wireless_network,    None),
+    "wireless_handshake": (_wireless_network,   None),
+    "ble_device":        (_wireless_network,    None),
+    "ble_service":       (_wireless_network,    None),
+    "zigbee_network":    (_wireless_network,    None),
+    "zigbee_device":     (_wireless_network,    None),
+    "usb_device":        (_wireless_network,    None),
 }
 
 
