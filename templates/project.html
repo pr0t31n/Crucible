@@ -478,17 +478,17 @@
           <span class="panel-title">Surface Summary</span>
         </div>
         <div class="panel-body">
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
-            <div class="stat-card"><span class="stat-label">Hosts</span><span class="stat-value font-mono" id="asTotalHosts">0</span></div>
-            <div class="stat-card"><span class="stat-label">Ports</span><span class="stat-value font-mono" id="asTotalPorts">0</span></div>
-            <div class="stat-card"><span class="stat-label">Findings</span><span class="stat-value font-mono" id="asTotalFindings">0</span></div>
-            <div class="stat-card"><span class="stat-label">Coverage</span><span class="stat-value font-mono" id="asCoverage">0%</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px">
+            <div class="stat-card"><span class="stat-value font-mono" id="asTotalHosts">0</span><span class="stat-label">Hosts</span></div>
+            <div class="stat-card"><span class="stat-value font-mono" id="asTotalPorts">0</span><span class="stat-label">Ports</span></div>
+            <div class="stat-card"><span class="stat-value font-mono" id="asTotalFindings">0</span><span class="stat-label">Findings</span></div>
+            <div class="stat-card"><span class="stat-value font-mono" id="asCoverage">0%</span><span class="stat-label">Coverage</span></div>
           </div>
-          <div class="flex gap-12 flex-wrap">
-            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-critical">CRITICAL</span><span class="font-mono font-bold" id="asCritical">0</span></div>
-            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-high">HIGH</span><span class="font-mono font-bold" id="asHigh">0</span></div>
-            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-medium">MEDIUM</span><span class="font-mono font-bold" id="asMedium">0</span></div>
-            <div class="flex gap-4" style="align-items:center"><span class="risk-badge risk-low">LOW</span><span class="font-mono font-bold" id="asLow">0</span></div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:8px 0">
+            <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-critical" style="font-size:0.68rem;padding:3px 10px">CRITICAL</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asCritical">0</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-high" style="font-size:0.68rem;padding:3px 10px">HIGH</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asHigh">0</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-medium" style="font-size:0.68rem;padding:3px 10px">MEDIUM</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asMedium">0</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-low" style="font-size:0.68rem;padding:3px 10px">LOW</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asLow">0</span></div>
           </div>
         </div>
       </div>

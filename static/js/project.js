@@ -6957,7 +6957,7 @@ function _loadScopeOverview(body, empty) {
         var hostsData = results[1] || {};
         var iData = {};
         var tData = {targets: {network: hostsData.items || []}};
-        var allFindings = fData.items || [];
+        var allFindings = fData.findings || fData.items || [];
         var _scopeTools = _scopeToolsMap[_activeScope] || [];
         var scopeFindings = allFindings.filter(function(f) {
             var fs = (f.scope || '').toLowerCase();
@@ -13413,11 +13413,17 @@ function _asRenderHosts(hosts) {
     }
     if (empty) empty.hidden = true;
 
-    var html = '<table class="data-table"><thead><tr>';
-    html += '<th>IP</th><th>Hostname</th><th>Ports</th><th>Services</th>';
-    html += '<th style="min-width:120px">Severity</th>';
+    var anyHostname = hosts.some(function(h) { return h.hostname; });
+
+    var html = '<table class="as-table"><thead><tr>';
+    html += '<th>IP</th>';
+    if (anyHostname) html += '<th>Hostname</th>';
+    html += '<th>Ports</th><th>Services</th>';
+    html += '<th style="min-width:140px">Severity</th>';
     html += '<th>Findings</th><th>Tools</th><th>Coverage</th>';
     html += '</tr></thead><tbody>';
+
+    var colSpan = anyHostname ? 8 : 7;
 
     hosts.forEach(function(h, idx) {
         var svcs = [];
@@ -13425,23 +13431,34 @@ function _asRenderHosts(hosts) {
         var sc = h.severity_counts || {};
         var total = (sc.CRITICAL||0) + (sc.HIGH||0) + (sc.MEDIUM||0) + (sc.LOW||0) + (sc.INFO||0);
         var barHtml = _asSeverityBar(sc, total);
-        var covCls = h.coverage_pct >= 80 ? 'risk-low' : h.coverage_pct >= 50 ? 'risk-medium' : 'risk-high';
+        var covCls = h.coverage_pct >= 80 ? 'cov-good' : h.coverage_pct >= 50 ? 'cov-mid' : 'cov-low';
         var hasMissing = h.ports.some(function(p) { return p.missing_tools && p.missing_tools.length; });
 
-        html += '<tr class="as-host-row" data-as-idx="' + idx + '" style="cursor:pointer">';
-        html += '<td class="font-mono text-sm">' + esc(h.ip) + '</td>';
-        html += '<td class="text-sm">' + esc(h.hostname || '') + '</td>';
-        html += '<td class="text-sm">' + h.port_count + '</td>';
-        html += '<td class="text-sm text-truncate" style="max-width:200px">' + esc(svcs.join(', ')) + '</td>';
+        var svcHtml;
+        if (svcs.length) {
+            svcHtml = svcs.slice(0, 4).map(function(s) {
+                return '<span class="as-svc-chip">' + esc(s) + '</span>';
+            }).join('');
+            if (svcs.length > 4) svcHtml += '<span class="as-svc-chip">+' + (svcs.length - 4) + '</span>';
+        } else {
+            svcHtml = '<span class="as-empty-dash">—</span>';
+        }
+
+        html += '<tr class="as-host-row" data-as-idx="' + idx + '">';
+        html += '<td class="as-ip-cell">' + esc(h.ip) + '</td>';
+        if (anyHostname) html += '<td class="as-hostname-cell">' + (h.hostname ? esc(h.hostname) : '<span class="as-empty-dash">—</span>') + '</td>';
+        html += '<td><span class="as-num-badge">' + h.port_count + '</span></td>';
+        html += '<td>' + svcHtml + '</td>';
         html += '<td>' + barHtml + '</td>';
-        html += '<td class="text-sm">' + h.total_findings + '</td>';
-        html += '<td class="text-sm">' + h.tools.length + '</td>';
-        html += '<td class="text-sm"><span class="' + covCls + '">' + h.coverage_pct + '%</span>' +
-                (hasMissing ? ' <span class="as-gap-badge" title="Coverage gaps detected">!</span>' : '') + '</td>';
+        html += '<td><span class="as-num-badge">' + h.total_findings + '</span></td>';
+        html += '<td><span class="as-tools-badge">' + h.tools.length + '</span></td>';
+        html += '<td><span class="as-cov-pill ' + covCls + '">' + h.coverage_pct + '%' +
+                (hasMissing ? ' <span class="as-gap-badge" title="Coverage gaps detected">!</span>' : '') +
+                '</span></td>';
         html += '</tr>';
 
         html += '<tr class="as-detail-row" data-as-detail="' + idx + '" ' + (_asExpanded[idx] ? '' : 'hidden') + '>';
-        html += '<td colspan="8" style="padding:0"><div class="as-detail-inner">' + _asRenderPortDetail(h) + '</div></td>';
+        html += '<td colspan="' + colSpan + '" style="padding:0"><div class="as-detail-inner">' + _asRenderPortDetail(h) + '</div></td>';
         html += '</tr>';
     });
 
@@ -13474,7 +13491,7 @@ function _asSeverityBar(sc, total) {
 }
 
 function _asRenderPortDetail(host) {
-    var html = '<table class="data-table data-table-nested"><thead><tr>';
+    var html = '<table class="data-table-nested"><thead><tr>';
     html += '<th>Port</th><th>Service</th><th>Proto</th>';
     html += '<th>Findings</th><th>Tools</th><th>Gaps</th>';
     html += '</tr></thead><tbody>';
@@ -13482,27 +13499,38 @@ function _asRenderPortDetail(host) {
     host.ports.forEach(function(p) {
         var findingsList = '';
         if (p.findings && p.findings.length) {
-            findingsList = p.findings.map(function(f) {
-                var cls = 'risk-' + (f.risk || 'info').toLowerCase();
-                return '<span class="risk-badge ' + cls + '" style="font-size:0.6rem">' + esc(f.risk) + '</span> ' +
-                       '<a href="#" class="as-finding-link" data-fid="' + esc(f.id || '') + '">' + esc(f.title) + '</a>' +
-                       (f.kev ? ' <span class="kev-badge">KEV</span>' : '');
-            }).join('<br>');
+            findingsList = '<div style="display:flex;flex-direction:column;gap:4px">' +
+                p.findings.map(function(f) {
+                    var cls = 'risk-' + (f.risk || 'info').toLowerCase();
+                    return '<div style="display:flex;align-items:baseline;gap:6px">' +
+                           '<span class="risk-badge ' + cls + '" style="font-size:0.58rem;flex-shrink:0">' + esc(f.risk) + '</span>' +
+                           '<a href="#" class="as-finding-link" data-fid="' + esc(f.id || '') + '">' + esc(f.title) + '</a>' +
+                           (f.kev ? ' <span class="kev-badge">KEV</span>' : '') +
+                           '</div>';
+                }).join('') + '</div>';
+        }
+        var toolsHtml = '';
+        if (p.tools && p.tools.length) {
+            toolsHtml = p.tools.map(function(t) {
+                return '<span class="as-svc-chip">' + esc(t) + '</span>';
+            }).join(' ');
+        } else {
+            toolsHtml = '<span class="as-empty-dash">—</span>';
         }
         var gapHtml = '';
         if (p.missing_tools && p.missing_tools.length) {
             gapHtml = p.missing_tools.map(function(t) {
-                return '<span class="as-gap-tool">' + esc(t) + ' not run</span>';
+                return '<span class="as-gap-tool">' + esc(t) + '</span>';
             }).join(' ');
         }
 
         html += '<tr>';
-        html += '<td class="font-mono text-sm">' + p.port + '</td>';
-        html += '<td class="text-sm">' + esc(p.service || '') + '</td>';
-        html += '<td class="text-sm">' + esc(p.protocol || 'tcp') + '</td>';
-        html += '<td class="text-sm">' + (findingsList || '<span class="text-secondary">—</span>') + '</td>';
-        html += '<td class="text-sm">' + (p.tools || []).join(', ') + '</td>';
-        html += '<td class="text-sm">' + (gapHtml || '<span style="color:var(--status-success)">✓</span>') + '</td>';
+        html += '<td style="font-family:var(--font-mono,monospace);font-weight:600;font-size:0.8rem;white-space:nowrap">' + p.port + '</td>';
+        html += '<td><span class="as-svc-chip" style="font-size:0.72rem">' + esc(p.service || '—') + '</span></td>';
+        html += '<td style="font-size:0.78rem;color:var(--text-secondary)">' + esc(p.protocol || 'tcp') + '</td>';
+        html += '<td>' + (findingsList || '<span class="as-empty-dash">—</span>') + '</td>';
+        html += '<td>' + toolsHtml + '</td>';
+        html += '<td>' + (gapHtml || '<span style="color:var(--risk-low);font-size:0.8rem">✓</span>') + '</td>';
         html += '</tr>';
     });
 

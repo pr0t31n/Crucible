@@ -4221,45 +4221,162 @@ kbd {
     border-radius: 8px;
     min-width: 60px;
 }
-.stat-value { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
-.stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-top: 2px; }
+.stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    min-width: 80px;
+    transition: border-color .15s, box-shadow .15s;
+}
+.stat-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.stat-value { font-size: 1.4rem; font-weight: 700; line-height: 1.2; }
+.stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin-top: 4px; }
+
+/* Host table */
+.as-table { border-spacing: 0 4px; border-collapse: separate; width: 100%; }
+.as-table thead th {
+    padding: 10px 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+    border-bottom: 2px solid var(--border-mid);
+    text-align: left;
+    white-space: nowrap;
+}
+.as-table tbody td {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.as-table tbody tr.as-host-row {
+    cursor: pointer;
+    transition: background .12s;
+}
+.as-table tbody tr.as-host-row:hover { background: var(--bg-hover); }
+.as-table tbody tr.as-host-row:nth-child(4n+1) { background: var(--bg-card); }
+.as-table tbody tr.as-host-row:nth-child(4n+1):hover { background: var(--bg-hover); }
+.as-ip-cell {
+    font-family: var(--font-mono, 'SF Mono', 'Fira Code', 'Cascadia Code', monospace);
+    font-weight: 600;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+.as-hostname-cell {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.as-num-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+    border-radius: 6px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.as-svc-chip {
+    display: inline-block;
+    font-size: 0.68rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    margin: 1px 2px;
+    white-space: nowrap;
+}
+.as-tools-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+    border-radius: 6px;
+    background: rgba(74,144,217,.12);
+    color: var(--accent-primary);
+}
+.as-empty-dash {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+/* Severity bar */
 .as-sev-bar {
     display: flex;
-    height: 18px;
-    border-radius: 3px;
+    height: 22px;
+    border-radius: 6px;
     overflow: hidden;
-    min-width: 80px;
+    min-width: 120px;
     background: var(--bg-secondary);
+    gap: 1px;
 }
 .as-sev-seg {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.6rem;
+    font-size: 0.62rem;
     font-weight: 700;
     color: #fff;
     min-width: 0;
     transition: width .2s;
 }
+.as-sev-seg:first-child { border-radius: 5px 0 0 5px; }
+.as-sev-seg:last-child { border-radius: 0 5px 5px 0; }
+.as-sev-seg:only-child { border-radius: 5px; }
 .risk-bg-critical { background: var(--risk-critical); }
 .risk-bg-high { background: var(--risk-high); }
 .risk-bg-medium { background: var(--risk-medium); }
 .risk-bg-low { background: var(--risk-low); }
 .risk-bg-info { background: var(--risk-info, #6b7280); }
+
+/* Detail panel */
 .as-detail-inner {
-    padding: 8px 16px 12px;
+    padding: 12px 20px 16px;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
 }
-.data-table-nested { font-size: 0.8rem; }
-.data-table-nested th { padding: 4px 8px; font-size: 0.7rem; }
-.data-table-nested td { padding: 4px 8px; vertical-align: top; }
+.data-table-nested { font-size: 0.8rem; border-spacing: 0 2px; border-collapse: separate; }
+.data-table-nested th {
+    padding: 6px 10px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    text-align: left;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.data-table-nested td { padding: 6px 10px; vertical-align: top; }
+.data-table-nested tbody tr:hover { background: var(--bg-hover); }
+
+/* Gap & finding links */
 .as-gap-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     font-size: 0.65rem;
     font-weight: 700;
     border-radius: 50%;
@@ -4270,8 +4387,8 @@ kbd {
 .as-gap-tool {
     display: inline-block;
     font-size: 0.7rem;
-    padding: 1px 6px;
-    border-radius: 3px;
+    padding: 2px 8px;
+    border-radius: 4px;
     background: rgba(231,76,60,.1);
     color: var(--risk-high);
     margin: 1px 2px;
@@ -4282,7 +4399,21 @@ kbd {
     color: var(--accent);
 }
 .as-finding-link:hover { text-decoration: underline; }
-.as-host-row:hover { background: var(--bg-hover); }
+
+/* Coverage pill */
+.as-cov-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+}
+.as-cov-pill.cov-good { background: rgba(146,208,80,.12); color: var(--risk-low); }
+.as-cov-pill.cov-mid { background: rgba(255,192,0,.12); color: var(--risk-medium); }
+.as-cov-pill.cov-low { background: rgba(231,113,111,.12); color: var(--risk-high); }
 
 /* ── Import tab ──────────────────────────────────────────── */
 .import-detail-btn { font-size: 0.72rem; padding: 2px 8px; }
