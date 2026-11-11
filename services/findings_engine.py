@@ -53,14 +53,12 @@ class FindingsEngine:
         try:
             result = rdb.query_findings(page=1, per_page=500000)
             findings = result.get("findings", [])
-            if not findings:
-                return None
             self._backfill_categories_from_titles(findings)
             with self._lock:
                 self._cache[project_id] = findings
             return list(findings)
         except Exception:
-            log.debug("DB load failed for %s, falling back to JSON", project_id)
+            log.debug("DB load failed for %s", project_id)
             return None
         finally:
             rdb.close()
@@ -68,9 +66,9 @@ class FindingsEngine:
     def get_findings(self, project_id, project):
         """Get deduplicated findings for a project. Uses cache if available.
 
-        When the cache is cold, tries DB first (fast), then falls back
-        to full JSON refresh. Only one thread runs refresh() while
-        concurrent callers wait and then read from the now-warm cache.
+        When the cache is cold, loads from DB (sole source of truth).
+        Only one thread runs refresh() while concurrent callers wait
+        and then read from the now-warm cache.
         """
         with self._lock:
             if project_id in self._cache:
@@ -570,22 +568,18 @@ class FindingsEngine:
         return False
 
     def refresh(self, project_id, project):
-        """Refresh findings. DB is source of truth; disk is fallback."""
-        findings = None
+        """Refresh findings from engagement DB (sole source of truth)."""
+        findings = []
         if _fdb:
             rdb = self._open_readonly_db(project_id, project)
             if rdb is not None:
                 try:
                     result = rdb.query_findings(page=1, per_page=500000)
-                    db_findings = result.get("findings", [])
-                    if db_findings:
-                        findings = db_findings
+                    findings = result.get("findings", [])
                 except Exception:
                     log.debug("DB read in refresh failed for %s", project_id)
                 finally:
                     rdb.close()
-        if findings is None:
-            findings = load_all_findings(project)
         project_dir = project.get("project_dir", "")
         fps = load_false_positives(project_dir) if project_dir else []
         fp_ids = {fp.get("id") for fp in fps if fp.get("id")}

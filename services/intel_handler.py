@@ -368,6 +368,42 @@ def _console_chunk(db, row):
     r = _clean(row)
     db.add_console_chunk(**r)
 
+def _network_posture(db, row):
+    r = _clean(row)
+    db.add_network_posture(**r)
+
+def _cookie(db, row):
+    r = _clean(row)
+    db.add_cookie(**r)
+
+def _webapp_intel(db, row):
+    r = _clean(row)
+    db.add_webapp_intel(**r)
+
+def _api_inventory(db, row):
+    r = _clean(row)
+    db.add_api_inventory(**r)
+
+def _firewall_config(db, row):
+    r = _clean(row)
+    db.add_firewall_config(**r)
+
+def _endpoint_overview(db, row):
+    r = _clean(row)
+    db.add_endpoint_overview(**r)
+
+def _endpoint_network(db, row):
+    r = _clean(row)
+    db.add_endpoint_network(**r)
+
+def _endpoint_disk(db, row):
+    r = _clean(row)
+    db.add_endpoint_disk(**r)
+
+def _endpoint_hardware(db, row):
+    r = _clean(row)
+    db.add_endpoint_hardware(**r)
+
 
 # ── dispatch table: subtype → (single_handler, bulk_method_or_None) ──────
 _DISPATCH = {
@@ -439,6 +475,15 @@ _DISPATCH = {
     "host":              (_hostname_intel,       None),
     "output_file":       (_output_file,         None),
     "console_chunk":     (_console_chunk,       None),
+    "network_posture":   (_network_posture,    "bulk_insert_network_posture"),
+    "cookie":            (_cookie,             "bulk_insert_cookies"),
+    "webapp_intel":      (_webapp_intel,       "bulk_insert_webapp_intel"),
+    "api_inventory":     (_api_inventory,      "bulk_insert_api_inventory"),
+    "firewall_config":   (_firewall_config,    "bulk_insert_firewall_config"),
+    "endpoint_overview": (_endpoint_overview,  "bulk_insert_endpoint_overview"),
+    "endpoint_network":  (_endpoint_network,   "bulk_insert_endpoint_network"),
+    "endpoint_disk":     (_endpoint_disk,      "bulk_insert_endpoint_disk"),
+    "endpoint_hardware": (_endpoint_hardware,  "bulk_insert_endpoint_hardware"),
 }
 
 
