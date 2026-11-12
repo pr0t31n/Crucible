@@ -532,6 +532,16 @@ def _survey_ap(db, row):
         wps=1 if r.get("wps") else 0,
         in_scope=1 if r.get("in_scope") else 0,
     )
+    db.add_wireless_network(
+        bssid,
+        ssid=r.get("ssid", ""),
+        channel=r.get("channel"),
+        encryption=r.get("encryption", ""),
+        cipher=r.get("cipher", ""),
+        auth=r.get("auth", ""),
+        signal_dbm=r.get("signal") or r.get("power_dbm"),
+        wps=r.get("wps", False),
+    )
 
 
 def _survey_rogue_classify(db, row):
