@@ -256,6 +256,14 @@ def _backfill_from_project(settings, project, tool_id):
         if depth and settings.get("archive_depth", 5) == 5:
             settings["archive_depth"] = depth
     elif tool_id in ("aether", "aether_b", "aether_z", "aether_u"):
+        for _lk in ("target_ssids", "passive_ssids", "domains"):
+            _lv = settings.get(_lk)
+            if isinstance(_lv, str):
+                import json as _jm
+                try:
+                    settings[_lk] = _jm.loads(_lv)
+                except (ValueError, TypeError):
+                    settings[_lk] = []
         if not settings.get("interface"):
             iface = scope_def.get("wireless_interface", "")
             if iface:
@@ -264,14 +272,14 @@ def _backfill_from_project(settings, project, tool_id):
             ap = scope_def.get("wireless_ap_interface", "")
             if ap:
                 settings["ap_interface"] = ap
-        if not settings.get("target_ssids"):
+        if not isinstance(settings.get("target_ssids"), list) or not settings["target_ssids"]:
             active = scope_def.get("wireless_active_ssids", [])
             passive = scope_def.get("wireless_passive_ssids", [])
             legacy = scope_def.get("wireless_ssids", [])
             ssids = (active + passive) if (active or passive) else legacy
             if ssids:
                 settings["target_ssids"] = ssids
-        if not settings.get("passive_ssids"):
+        if not isinstance(settings.get("passive_ssids"), list) or not settings["passive_ssids"]:
             ps = scope_def.get("wireless_passive_ssids", [])
             if ps:
                 settings["passive_ssids"] = ps
