@@ -9792,25 +9792,94 @@ function _renderWifiAps(data) {
     var payload = data.wifi_aps || data;
     var aps = payload.aps || payload;
     if (!aps || !aps.length) return '<div class="empty-state"><div class="empty-state-text">No wireless access points discovered.</div></div>';
-    var total = payload.total || aps.length;
-    var h = '<div style="margin-bottom:12px;font-weight:600">'+total+' Access Points Discovered</div>';
-    var cols = ['BSSID','SSID','Vendor','Model','Encryption','Auth','Channel','Signal','Clients','WPS','LAA'];
-    var rows = aps.map(function(ap) {
-        return [
-            '<code>'+esc(ap.bssid||'')+'</code>',
-            esc(ap.ssid||'<hidden>'),
-            esc(ap.vendor||'Unknown'),
-            esc(ap.model||'—'),
-            _wifiEncBadge(ap.encryption||''),
-            esc(ap.auth||'—'),
-            ap.channel||'—',
-            _wifiSignalBadge(ap.signal),
-            ap.clients||0,
-            ap.wps ? '<span style="color:var(--danger)">Yes</span>' : 'No',
-            ap.laa ? '<span style="color:var(--warning)">Yes</span>' : 'No'
-        ];
+    var totalBssids = payload.total || aps.length;
+
+    var groupMap = {}, groupOrder = [];
+    aps.forEach(function(ap) {
+        var bssid = (ap.bssid || '').toUpperCase();
+        var prefix = bssid.length >= 14 ? bssid.substring(0, 14) : bssid;
+        if (!groupMap[prefix]) { groupMap[prefix] = []; groupOrder.push(prefix); }
+        groupMap[prefix].push(ap);
     });
-    return h + _intelTable(cols, rows, true);
+    var physCount = groupOrder.length;
+
+    var h = '<div style="margin-bottom:12px;font-weight:600">' + physCount +
+        ' Physical Access Point' + (physCount !== 1 ? 's' : '') +
+        ' <span style="font-weight:400;color:var(--text-secondary)">(' +
+        totalBssids + ' BSSIDs / virtual interfaces)</span></div>';
+
+    h += '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto">' +
+         '<table class="tool-table" style="width:100%"><thead><tr>' +
+         '<th style="width:28px"></th><th>Base MAC</th><th>Vendor</th>' +
+         '<th>SSIDs</th><th>Channels</th><th>Encryption</th>' +
+         '<th>Best Signal</th><th>Clients</th><th>BSSIDs</th><th>WPS</th>' +
+         '</tr></thead><tbody>';
+
+    groupOrder.forEach(function(prefix, gi) {
+        var members = groupMap[prefix];
+        var ssids = [], channels = [], encs = [];
+        var totalClients = 0, bestSig = -999, hasWps = false, hasLaa = false;
+        var vendor = 'Unknown', model = '—';
+        members.forEach(function(ap) {
+            var s = ap.ssid || '<hidden>';
+            if (ssids.indexOf(s) < 0) ssids.push(s);
+            var ch = '' + (ap.channel || '');
+            if (ch && channels.indexOf(ch) < 0) channels.push(ch);
+            var enc = ap.encryption || '';
+            if (enc && encs.indexOf(enc) < 0) encs.push(enc);
+            totalClients += (ap.clients || 0);
+            var sig = parseInt(ap.signal, 10);
+            if (!isNaN(sig) && sig > bestSig) bestSig = sig;
+            if (ap.wps) hasWps = true;
+            if (ap.laa) hasLaa = true;
+            if (ap.vendor && ap.vendor !== 'Unknown') vendor = ap.vendor;
+            if (ap.model && ap.model !== '—' && ap.model !== '') model = ap.model;
+        });
+        channels.sort(function(a, b) { return parseInt(a) - parseInt(b); });
+
+        var tid = 'ap-grp-' + gi;
+        h += '<tr style="cursor:pointer" onclick="(function(){var d=document.getElementById(\'' +
+             tid + '\');var a=document.getElementById(\'' + tid + '_a\');' +
+             'if(d.style.display===\'none\'){d.style.display=\'\';a.textContent=\'\\u25BE\'}' +
+             'else{d.style.display=\'none\';a.textContent=\'\\u25B8\'}})()">';
+        h += '<td><span id="' + tid + '_a" style="font-size:11px;color:var(--text-secondary)">\u25B8</span></td>';
+        h += '<td style="font-family:var(--font-mono);white-space:nowrap"><code>' +
+             esc(prefix) + ':__</code> <span class="badge" style="background:var(--bg-secondary)">' +
+             members.length + '</span></td>';
+        h += '<td>' + esc(vendor) +
+             (model !== '—' ? ' <span style="color:var(--text-secondary)">(' + esc(model) + ')</span>' : '') +
+             '</td>';
+        h += '<td>' + ssids.map(function(s) { return esc(s); }).join(', ') + '</td>';
+        h += '<td>' + (channels.join(', ') || '—') + '</td>';
+        h += '<td>' + encs.map(function(e) { return _wifiEncBadge(e); }).join(' ') + '</td>';
+        h += '<td>' + (bestSig > -999 ? _wifiSignalBadge(bestSig) : '—') + '</td>';
+        h += '<td>' + totalClients + '</td>';
+        h += '<td>' + members.length + '</td>';
+        h += '<td>' + (hasWps ? '<span style="color:var(--danger)">Yes</span>' : 'No') + '</td>';
+        h += '</tr>';
+
+        h += '<tr id="' + tid + '" style="display:none"><td></td><td colspan="9" style="padding:0 0 8px 0">';
+        h += '<table class="tool-table" style="width:100%;margin:0;background:var(--bg-secondary)">';
+        h += '<thead><tr><th>BSSID</th><th>SSID</th><th>Encryption</th><th>Auth</th>' +
+             '<th>Channel</th><th>Signal</th><th>Clients</th><th>WPS</th><th>LAA</th></tr></thead><tbody>';
+        members.forEach(function(ap) {
+            h += '<tr>';
+            h += '<td style="font-family:var(--font-mono);white-space:nowrap"><code>' + esc(ap.bssid || '') + '</code></td>';
+            h += '<td>' + esc(ap.ssid || '<hidden>') + '</td>';
+            h += '<td>' + _wifiEncBadge(ap.encryption || '') + '</td>';
+            h += '<td>' + esc(ap.auth || '—') + '</td>';
+            h += '<td>' + (ap.channel || '—') + '</td>';
+            h += '<td>' + _wifiSignalBadge(ap.signal) + '</td>';
+            h += '<td>' + (ap.clients || 0) + '</td>';
+            h += '<td>' + (ap.wps ? '<span style="color:var(--danger)">Yes</span>' : 'No') + '</td>';
+            h += '<td>' + (ap.laa ? '<span style="color:var(--warning)">Yes</span>' : 'No') + '</td>';
+            h += '</tr>';
+        });
+        h += '</tbody></table></td></tr>';
+    });
+
+    h += '</tbody></table></div>';
+    return h;
 }
 
 function _wifiEncBadge(enc) {
