@@ -510,6 +510,15 @@ def _endpoint_hardware(db, row):
 
 # ── survey (Aether wireless survey) ──────────────────────────────────────
 
+def _safe_int(val, default=0):
+    if val is None or val == "":
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def _survey_ap(db, row):
     r = _clean(row)
     loc_name = r.get("location", "")
@@ -522,13 +531,13 @@ def _survey_ap(db, row):
     db.upsert_survey_ap(
         loc_id, bssid,
         ssid=r.get("ssid", ""),
-        channel=int(r.get("channel", 0)),
+        channel=_safe_int(r.get("channel", 0)),
         encryption=r.get("encryption", ""),
         cipher=r.get("cipher", ""),
         auth=r.get("auth", ""),
-        signal=int(r.get("signal", r.get("power_dbm", -100))),
-        beacons=int(r.get("beacons", 0)),
-        client_count=int(r.get("client_count", 0)),
+        signal=_safe_int(r.get("signal", r.get("power_dbm")), -100),
+        beacons=_safe_int(r.get("beacons", 0)),
+        client_count=_safe_int(r.get("client_count", 0)),
         wps=1 if r.get("wps") else 0,
         in_scope=1 if r.get("in_scope") else 0,
     )
