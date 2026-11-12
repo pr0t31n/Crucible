@@ -441,6 +441,44 @@ def _endpoint_hardware(db, row):
     db.add_endpoint_hardware(**r)
 
 
+# ── survey (Aether wireless survey) ──────────────────────────────────────
+
+def _survey_ap(db, row):
+    r = _clean(row)
+    loc_name = r.get("location", "")
+    if not loc_name:
+        return
+    bssid = r.get("bssid", "")
+    if not bssid:
+        return
+    loc_id = db.ensure_survey_location(loc_name)
+    db.upsert_survey_ap(
+        loc_id, bssid,
+        ssid=r.get("ssid", ""),
+        channel=int(r.get("channel", 0)),
+        encryption=r.get("encryption", ""),
+        cipher=r.get("cipher", ""),
+        auth=r.get("auth", ""),
+        signal=int(r.get("signal", r.get("power_dbm", -100))),
+        beacons=int(r.get("beacons", 0)),
+        client_count=int(r.get("client_count", 0)),
+        wps=1 if r.get("wps") else 0,
+        in_scope=1 if r.get("in_scope") else 0,
+    )
+
+
+def _survey_rogue_classify(db, row):
+    r = _clean(row)
+    bssid = r.get("bssid", "")
+    if not bssid:
+        return
+    db.classify_survey_rogue(
+        bssid,
+        r.get("ssid", ""),
+        r.get("classification", "uncategorized"),
+    )
+
+
 # ── dispatch table: subtype → (single_handler, bulk_method_or_None) ──────
 _DISPATCH = {
     "software":          (_sw,               "bulk_insert_network_software"),
@@ -529,6 +567,8 @@ _DISPATCH = {
     "zigbee_network":    (_wireless_network,    None),
     "zigbee_device":     (_wireless_network,    None),
     "usb_device":        (_wireless_network,    None),
+    "survey_ap":             (_survey_ap,              None),
+    "survey_rogue_classify": (_survey_rogue_classify,  None),
 }
 
 _HOST_INTEL_SUBTYPES = frozenset({

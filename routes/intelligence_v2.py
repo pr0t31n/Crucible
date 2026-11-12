@@ -1691,3 +1691,240 @@ def api_intel_v2_reingest(project_id):
         return jsonify({"ok": True, "message": "Re-ingestion complete"})
     except Exception as e:
         return _err_500(e)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Survey Location CRUD
+# ═══════════════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/survey-locations/<pid>", methods=["GET"])
+def api_survey_locations(pid):
+    project = _get_project(pid)
+    if not project:
+        return jsonify({"items": [], "total": 0})
+    db = _get_db(project)
+    if not db:
+        return jsonify({"items": [], "total": 0})
+    try:
+        locations = db.list_survey_locations()
+    except AttributeError:
+        log.warning("api_survey_locations: DB missing list_survey_locations", exc_info=True)
+        return jsonify({"items": [], "total": 0})
+    return jsonify({"items": locations, "total": len(locations)})
+
+
+@intel_v2.route("/api/intel/v2/survey-locations/<pid>", methods=["POST"])
+def api_survey_location_create(pid):
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Location name required"}), 400
+    project = _get_project(pid)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    db = _get_db(project)
+    if not db:
+        return jsonify({"error": "DB unavailable"}), 500
+    try:
+        loc_id = db.ensure_survey_location(name)
+    except Exception as exc:
+        log.warning("api_survey_location_create: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "id": loc_id, "name": name})
+
+
+@intel_v2.route("/api/intel/v2/survey-locations/<pid>/<int:loc_id>",
+                methods=["DELETE"])
+def api_survey_location_delete(pid, loc_id):
+    project = _get_project(pid)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    db = _get_db(project)
+    if not db:
+        return jsonify({"error": "DB unavailable"}), 500
+    try:
+        db.delete_survey_location(loc_id)
+    except Exception as exc:
+        log.warning("api_survey_location_delete: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Survey AP queries
+# ═══════════════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/survey-aps/<pid>")
+def api_survey_aps(pid):
+    project = _get_project(pid)
+    if not project:
+        return _empty_page()
+    db = _get_db(project)
+    if not db:
+        return _empty_page()
+    loc_id = request.args.get("location_id", type=int)
+    if not loc_id:
+        return _empty_page()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 200, type=int)
+    search = request.args.get("search", "")
+    sort = request.args.get("sort", "signal")
+    order = request.args.get("order", "desc")
+    try:
+        return jsonify(db.query_survey_aps(
+            loc_id, page=page, per_page=per_page,
+            search=search, sort=sort, order=order))
+    except AttributeError:
+        log.warning("api_survey_aps: DB missing query_survey_aps", exc_info=True)
+        return _empty_page()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Rogue AP queries + classification
+# ═══════════════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/survey-rogues/<pid>")
+def api_survey_rogues(pid):
+    project = _get_project(pid)
+    if not project:
+        return _empty_page()
+    db = _get_db(project)
+    if not db:
+        return _empty_page()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 200, type=int)
+    search = request.args.get("search", "")
+    sort = request.args.get("sort", "best_signal")
+    order = request.args.get("order", "desc")
+    try:
+        return jsonify(db.query_survey_rogues(
+            page=page, per_page=per_page,
+            search=search, sort=sort, order=order))
+    except AttributeError:
+        log.warning("api_survey_rogues: DB missing query_survey_rogues", exc_info=True)
+        return _empty_page()
+
+
+@intel_v2.route("/api/intel/v2/survey-rogues/<pid>/classify",
+                methods=["POST"])
+def api_survey_rogue_classify(pid):
+    body = request.get_json(silent=True) or {}
+    bssid = (body.get("bssid") or "").strip()
+    ssid = (body.get("ssid") or "").strip()
+    classification = (body.get("classification") or "").strip().lower()
+    valid = ("known", "nearby", "rogue", "uncategorized")
+    if not bssid or classification not in valid:
+        return jsonify({"error": "bssid and valid classification required"}), 400
+    project = _get_project(pid)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    db = _get_db(project)
+    if not db:
+        return jsonify({"error": "DB unavailable"}), 500
+    try:
+        db.classify_survey_rogue(bssid, ssid, classification)
+    except Exception as exc:
+        log.warning("api_survey_rogue_classify: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+    if classification == "rogue":
+        _emit_rogue_finding(pid, db, bssid, ssid)
+    return jsonify({"ok": True})
+
+
+def _emit_rogue_finding(pid, db, bssid, ssid):
+    """Auto-generate a HIGH finding when an AP is classified as ROGUE."""
+    try:
+        from flask import current_app
+        import uuid
+        from datetime import datetime
+        finding_data = {
+            "id": str(uuid.uuid4()),
+            "tool": "aether",
+            "title": "Rogue Access Point: %s" % (ssid or bssid),
+            "risk": "HIGH",
+            "severity": "HIGH",
+            "description": (
+                "An unauthorized wireless access point was detected during "
+                "survey. BSSID: %s, SSID: %s. "
+                "This AP is not part of the authorized wireless "
+                "infrastructure and may represent a security threat."
+                % (bssid, ssid or "(hidden)")
+            ),
+            "remediation": (
+                "Investigate the rogue access point. Locate and disable the "
+                "unauthorized device. Implement wireless intrusion "
+                "detection/prevention (WIDS/WIPS) to detect future rogue APs."
+            ),
+            "ip": bssid,
+            "hostname": ssid,
+            "port": 0,
+            "service": "wifi",
+            "sources": "Aether Survey",
+            "affected": ("%s (%s)" % (ssid, bssid)) if ssid else bssid,
+            "datetime": datetime.now().isoformat(),
+            "ssid": ssid,
+            "bssid": bssid,
+            "catalogue_id": "AE-ROGUE-001",
+            "exploitdb": False,
+            "metasploit": False,
+        }
+        db.insert_finding(finding_data)
+        socketio = current_app.extensions.get("socketio")
+        if socketio:
+            socketio.emit("tool_finding", finding_data,
+                          room="project_%s" % pid)
+    except Exception as exc:
+        log.warning("_emit_rogue_finding: %s", exc, exc_info=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Survey start / stop / status
+# ═══════════════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/survey/start/<pid>", methods=["POST"])
+def api_survey_start(pid):
+    body = request.get_json(silent=True) or {}
+    location = (body.get("location") or "").strip()
+    interface = (body.get("interface") or "").strip()
+    if not location or not interface:
+        return jsonify({"error": "location and interface required"}), 400
+    from flask import current_app
+    pm = current_app.extensions.get("process_manager")
+    if not pm:
+        return jsonify({"error": "Process manager unavailable"}), 500
+    if pm.is_running(pid, "aether"):
+        return jsonify({"error": "Aether is already running"}), 409
+    project = _get_project(pid)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    from models.settings import load_settings
+    settings = load_settings(project.get("project_dir", ""), "aether")
+    settings["interface"] = interface
+    ok = pm.launch(
+        pid, "aether",
+        project=project, settings=settings,
+        extra_args=["--survey", "--location", location],
+    )
+    if not ok:
+        return jsonify({"error": "Failed to launch (may already be running)"}), 409
+    return jsonify({"ok": True})
+
+
+@intel_v2.route("/api/intel/v2/survey/stop/<pid>", methods=["POST"])
+def api_survey_stop(pid):
+    from flask import current_app
+    pm = current_app.extensions.get("process_manager")
+    if not pm:
+        return jsonify({"error": "Process manager unavailable"}), 500
+    killed = pm.kill(pid, "aether")
+    return jsonify({"ok": killed})
+
+
+@intel_v2.route("/api/intel/v2/survey/status/<pid>")
+def api_survey_status(pid):
+    from flask import current_app
+    pm = current_app.extensions.get("process_manager")
+    if not pm:
+        return jsonify({"running": False})
+    running = pm.is_running(pid, "aether")
+    return jsonify({"running": running})

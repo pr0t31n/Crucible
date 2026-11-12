@@ -430,6 +430,10 @@ socket.on('tool_status', function(data) {
         }
     }
     if (!data.phase) _fetchQueueData();
+    if ((_baseTool === 'aether') && !data.phase && (data.status === 'complete' || data.status === 'error' || data.status === 'stopped' || data.status === 'killed')) {
+        _surveyRunning = false;
+        _surveyBtnState();
+    }
     renderToolFeeds();
     updateConsoleHeader();
     _updatePauseAllButtons();
@@ -609,6 +613,14 @@ socket.on('tool_target', function(data) {
 socket.on('tool_port', function(data) {
     if (data.project_id !== PID) return;
     _scheduleTargetRefresh();
+});
+
+/* ── tool_intel: intelligence data (survey APs, etc.) ──────────── */
+socket.on('tool_intel', function(d) {
+    if (d.project_id !== PID) return;
+    if (d.type === 'survey_ap' && _activeIntelPanel === 'survey') {
+        _updateSurveyApRow(d);
+    }
 });
 
 /* ── tool_log / tool_error: log entries ────────────────────────── */
@@ -5744,7 +5756,7 @@ var TOOL_SUBTABS = {
     quill:    [['status','Mobile Status'],['mobile-components','Mobile Component Map'],['mobile-perms','Mobile Permission Matrix'],['mobile-hardening','Mobile Binary Hardening'],['mobile-data','Mobile Data Flow'],['mobile-domains','Domains & URLs'],['mobile-emails','Emails'],['mitm-cert','MITM CA Cert']],
     isotope:  [['status','File Status'],['iso-properties','File Properties'],['iso-entropy','Entropy Analysis'],['iso-contents','Archive Contents'],['iso-strings','String Analysis'],['iso-code','Code Analysis'],['iso-metadata','Metadata'],['iso-binary','Binary Analysis'],['iso-secrets','Secrets Detection'],['iso-ioc','IOC Matches']],
     dredge:   [['status','Endpoint Status'],['endpoint-overview','System Overview'],['endpoint-hardening','Hardening Assessment'],['endpoint-cis','CIS Benchmark'],['endpoint-nist','NIST 800-123'],['endpoint-stig','DISA STIG'],['endpoint-software','Software Inventory'],['endpoint-ad','Active Directory'],['endpoint-network','Network Posture'],['endpoint-browser','Browser Security'],['endpoint-disk','Disk & Storage'],['endpoint-hardware','Hardware Inventory']],
-    aether:   [['status','Wi-Fi Status'],['wifi-aps','AP Inventory'],['wifi-clients','Client Map'],['wifi-encryption','Encryption Posture'],['wifi-vendors','Vendor Distribution'],['wifi-channels','Channel Analysis'],['wifi-probes','Probe Request Intel'],['wifi-wps','WPS Exposure'],['wifi-firmware','Firmware Risk']], aether_b: [['status','Bluetooth Status']], aether_z: [['status','Zigbee Status']], aether_u: [['status','UWB Status']]
+    aether:   [['status','Wi-Fi Status'],['survey','Survey'],['rogue-aps','Rogue APs'],['wifi-aps','AP Inventory'],['wifi-clients','Client Map'],['wifi-encryption','Encryption Posture'],['wifi-vendors','Vendor Distribution'],['wifi-channels','Channel Analysis'],['wifi-probes','Probe Request Intel'],['wifi-wps','WPS Exposure'],['wifi-firmware','Firmware Risk']], aether_b: [['status','Bluetooth Status']], aether_z: [['status','Zigbee Status']], aether_u: [['status','UWB Status']]
 };
 
 /* ── Native scope for each tool (used as default when scope_tools is absent) */
@@ -6223,6 +6235,14 @@ function loadIntelPanel(panel, tool) {
         return;
     }
 
+    if (panel === 'survey') {
+        body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
+        body.hidden = false;
+        empty.style.display = 'none';
+        _renderSurveyPanel(body);
+        return;
+    }
+
     var urlMap = {
         'structure': '/api/intel/v2/structure-urls/' + PID,
         'access': '/api/intel/v2/access-matrix/' + PID,
@@ -6286,6 +6306,7 @@ function loadIntelPanel(panel, tool) {
         'endpoint-stig': '/api/intel/v2/endpoint-compliance/' + PID + '?framework=stig',
         'cookies': '/api/intel/v2/cookies/' + PID,
         'webapp-intel': '/api/intel/v2/webapp-intel/' + PID,
+        'rogue-aps': '/api/intel/v2/survey-rogues/' + PID,
     };
 
     var url = urlMap[panel];
@@ -10018,7 +10039,379 @@ var _INTEL_RENDERERS = {
     'wifi-probes': _renderWifiProbes,
     'wifi-wps': _renderWifiWps,
     'wifi-firmware': _renderWifiFirmware,
+    'rogue-aps': _renderRogueAPs,
 };
+
+
+/* ── Survey State ──────────────────────────────────────────────── */
+var _surveyRunning = false;
+var _surveyLocations = [];
+var _surveyApCache = {};
+var _surveyActiveLocationId = null;
+
+function _isAetherRunning() {
+    var aetherTools = ['aether', 'aether_b', 'aether_z', 'aether_u'];
+    for (var i = 0; i < aetherTools.length; i++) {
+        var st = toolStatuses[aetherTools[i]];
+        if (st && (st.status === 'running' || st.status === 'pausing')) return true;
+    }
+    return false;
+}
+
+function _surveyBtnState() {
+    var btn = document.getElementById('surveyStartBtn');
+    if (!btn) return;
+    var loc = document.getElementById('surveyLocationSelect');
+    var iface = document.getElementById('surveyIfaceSelect');
+    var locOk = loc && loc.value;
+    var ifaceOk = iface && iface.value;
+
+    if (_surveyRunning) {
+        btn.textContent = 'Stop Survey';
+        btn.style.background = 'var(--danger)';
+        btn.style.color = '#fff';
+        btn.disabled = false;
+        btn.onclick = _stopSurvey;
+        return;
+    }
+
+    var aetherBusy = _isAetherRunning();
+    btn.textContent = 'Start Survey';
+    if (locOk && ifaceOk && !aetherBusy) {
+        btn.style.background = 'var(--success)';
+        btn.style.color = '#fff';
+        btn.disabled = false;
+        btn.onclick = _startSurvey;
+    } else {
+        btn.style.background = 'var(--bg-elevated)';
+        btn.style.color = 'var(--text-secondary)';
+        btn.disabled = true;
+        btn.onclick = null;
+    }
+    if (aetherBusy && !_surveyRunning) {
+        btn.title = 'Aether is already running — stop it first';
+    } else if (!locOk) {
+        btn.title = 'Select a location first';
+    } else if (!ifaceOk) {
+        btn.title = 'Select a wireless interface first';
+    } else {
+        btn.title = '';
+    }
+}
+
+function _startSurvey() {
+    var loc = document.getElementById('surveyLocationSelect');
+    var iface = document.getElementById('surveyIfaceSelect');
+    if (!loc || !loc.value || !iface || !iface.value) return;
+    var body = {location: loc.options[loc.selectedIndex].text, location_id: parseInt(loc.value, 10), interface: iface.value};
+    fetch('/api/intel/v2/survey/start/' + PID, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+          if (d.ok) {
+              _surveyRunning = true;
+              toast('info', 'Survey started at ' + body.location);
+          } else {
+              toast('error', d.error || 'Failed to start survey');
+          }
+          _surveyBtnState();
+      })
+      .catch(function() { toast('error', 'Failed to start survey'); });
+}
+
+function _stopSurvey() {
+    fetch('/api/intel/v2/survey/stop/' + PID, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}'
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+          _surveyRunning = false;
+          toast('info', 'Survey stopped');
+          _surveyBtnState();
+      })
+      .catch(function() {
+          _surveyRunning = false;
+          _surveyBtnState();
+      });
+}
+
+function _loadSurveyLocations(cb) {
+    fetch('/api/intel/v2/survey-locations/' + PID, {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            _surveyLocations = d.items || [];
+            var sel = document.getElementById('surveyLocationSelect');
+            if (!sel) return;
+            var prev = sel.value;
+            sel.innerHTML = '<option value="">— Select location —</option>';
+            _surveyLocations.forEach(function(loc) {
+                var opt = document.createElement('option');
+                opt.value = loc.id;
+                opt.textContent = loc.name;
+                sel.appendChild(opt);
+            });
+            if (prev) sel.value = prev;
+            _surveyBtnState();
+            if (cb) cb();
+        })
+        .catch(function() {});
+}
+
+function _addSurveyLocation() {
+    var inp = document.getElementById('surveyLocationInput');
+    if (!inp) return;
+    var name = inp.value.trim();
+    if (!name) return;
+    fetch('/api/intel/v2/survey-locations/' + PID, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name})
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+          if (d.ok) {
+              inp.value = '';
+              _loadSurveyLocations(function() {
+                  var sel = document.getElementById('surveyLocationSelect');
+                  if (sel && d.id) sel.value = d.id;
+                  _surveyBtnState();
+                  _loadSurveyAllLocationTables();
+              });
+          } else {
+              toast('error', d.error || 'Failed to add location');
+          }
+      })
+      .catch(function() { toast('error', 'Failed to add location'); });
+}
+
+function _loadSurveyAps(locationId, container) {
+    if (!locationId || !container) return;
+    container.innerHTML = '<div style="padding:8px;color:var(--text-secondary)">Loading...</div>';
+    fetch('/api/intel/v2/survey-aps/' + PID + '?location_id=' + locationId + '&per_page=500', {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var aps = d.items || [];
+            if (!aps.length) {
+                container.innerHTML = '<div style="padding:12px;color:var(--text-secondary)">No access points recorded at this location yet.</div>';
+                return;
+            }
+            aps.forEach(function(ap) {
+                _surveyApCache[locationId + ':' + (ap.bssid||'').toUpperCase()] = ap;
+            });
+            container.innerHTML = _buildSurveyApTable(aps);
+        })
+        .catch(function() {
+            container.innerHTML = '<div style="padding:12px;color:var(--danger)">Failed to load AP data.</div>';
+        });
+}
+
+function _buildSurveyApTable(aps) {
+    var cols = ['BSSID','SSID','Channel','Encryption','Auth','Signal','Best Signal','Beacons','Clients','WPS','In-scope'];
+    var rows = aps.map(function(ap) {
+        var inScope = ap.in_scope ? '<span style="color:#4caf50;font-weight:bold">YES</span>'
+                                  : '<span style="color:#e74c3c;font-weight:bold">NO</span>';
+        var wps = ap.wps ? '<span style="color:var(--danger)">Yes</span>' : 'No';
+        return [
+            '<code>' + esc(ap.bssid || '') + '</code>',
+            esc(ap.ssid || '<hidden>'),
+            ap.channel || '—',
+            _wifiEncBadge(ap.encryption || ''),
+            esc(ap.auth || '—'),
+            _wifiSignalBadge(ap.signal),
+            _wifiSignalBadge(ap.best_signal),
+            ap.beacons || 0,
+            ap.client_count || 0,
+            wps,
+            inScope
+        ];
+    });
+    return _intelTable(cols, rows);
+}
+
+function _loadSurveyAllLocationTables() {
+    var container = document.getElementById('surveyLocationTables');
+    if (!container) return;
+    if (!_surveyLocations.length) {
+        container.innerHTML = '<div style="padding:16px;color:var(--text-secondary)">Add a location above to begin surveying.</div>';
+        return;
+    }
+    var h = '';
+    _surveyLocations.forEach(function(loc) {
+        h += '<details class="survey-loc-accordion" open style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+        h += '<summary style="padding:10px 14px;background:var(--bg-elevated);cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:600;user-select:none">';
+        h += '<span>' + esc(loc.name) + '</span>';
+        h += '<span id="surveyLocBadge_' + loc.id + '" class="badge" style="background:var(--bg-card);font-size:0.75rem;min-width:20px;text-align:center">…</span>';
+        h += '</summary>';
+        h += '<div id="surveyLocTable_' + loc.id + '" style="padding:4px"></div>';
+        h += '</details>';
+    });
+    container.innerHTML = h;
+    _surveyLocations.forEach(function(loc) {
+        var tableDiv = document.getElementById('surveyLocTable_' + loc.id);
+        _loadSurveyAps(loc.id, tableDiv);
+        _loadSurveyApCount(loc.id);
+    });
+}
+
+function _loadSurveyApCount(locationId) {
+    fetch('/api/intel/v2/survey-aps/' + PID + '?location_id=' + locationId + '&per_page=1', {credentials: 'same-origin'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var badge = document.getElementById('surveyLocBadge_' + locationId);
+            if (badge) badge.textContent = d.total || 0;
+        })
+        .catch(function() {});
+}
+
+function _renderSurveyPanel(body) {
+    var h = '';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px;padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border)">';
+    h += '<div style="display:flex;flex-direction:column;gap:4px">';
+    h += '<label style="font-size:0.75rem;color:var(--text-secondary)">New Location</label>';
+    h += '<div style="display:flex;gap:4px">';
+    h += '<input id="surveyLocationInput" type="text" placeholder="e.g. Server Room A" style="padding:6px 10px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;min-width:180px">';
+    h += '<button onclick="_addSurveyLocation()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">Add</button>';
+    h += '</div></div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px">';
+    h += '<label style="font-size:0.75rem;color:var(--text-secondary)">Location</label>';
+    h += '<select id="surveyLocationSelect" onchange="_surveyBtnState()" style="padding:6px 10px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;min-width:160px">';
+    h += '<option value="">— Select —</option></select>';
+    h += '</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px">';
+    h += '<label style="font-size:0.75rem;color:var(--text-secondary)">Wireless Card</label>';
+    h += '<select id="surveyIfaceSelect" onchange="_surveyBtnState()" style="padding:6px 10px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;min-width:200px">';
+    h += '<option value="">Loading...</option></select>';
+    h += '</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px">';
+    h += '<label style="font-size:0.75rem;color:transparent">_</label>';
+    h += '<button id="surveyStartBtn" disabled style="padding:6px 16px;border:none;border-radius:4px;cursor:pointer;font-weight:600;white-space:nowrap;background:var(--bg-elevated);color:var(--text-secondary)">Start Survey</button>';
+    h += '</div>';
+    h += '</div>';
+    h += '<div id="surveyLocationTables"></div>';
+    body.innerHTML = h;
+    _stLoadWifiInterfaces('surveyIfaceSelect');
+    _loadSurveyLocations(function() {
+        _loadSurveyAllLocationTables();
+    });
+    if (_isAetherRunning()) {
+        _surveyRunning = true;
+    }
+    _surveyBtnState();
+}
+
+
+function _rogueClassBadge(cls) {
+    var c = (cls || 'uncategorized').toLowerCase();
+    if (c === 'rogue') return '<span class="badge" style="background:var(--danger);color:#fff;font-weight:600">ROGUE</span>';
+    if (c === 'known') return '<span class="badge" style="background:var(--success);color:#fff">Known SSID</span>';
+    if (c === 'nearby') return '<span class="badge" style="background:var(--success);color:#fff">Nearby Business</span>';
+    return '<span class="badge" style="background:var(--warning);color:#000">Uncategorized</span>';
+}
+
+function _rogueRowBg(cls) {
+    var c = (cls || 'uncategorized').toLowerCase();
+    if (c === 'rogue') return 'rgba(231,113,111,0.08)';
+    if (c === 'known' || c === 'nearby') return 'rgba(76,175,80,0.06)';
+    return 'rgba(255,193,7,0.06)';
+}
+
+function _classifyRogue(bssid, ssid, classification, btnEl) {
+    fetch('/api/intel/v2/survey-rogues/' + PID + '/classify', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({bssid: bssid, ssid: ssid, classification: classification})
+    }).then(function(r) { return r.json(); })
+      .then(function(d) {
+          if (d.ok) {
+              toast('info', ssid + ' classified as ' + classification.toUpperCase());
+              if (_activeIntelPanel === 'rogue-aps') {
+                  loadIntelPanel('rogue-aps', _activeIntelTool);
+              }
+          } else {
+              toast('error', d.error || 'Failed to classify');
+          }
+      })
+      .catch(function() { toast('error', 'Failed to classify'); });
+}
+
+function _renderRogueAPs(data) {
+    var rogues = data.rogues || data.items || data;
+    if (!rogues || !rogues.length) return '<div class="empty-state"><div class="empty-state-text">No out-of-scope access points detected yet. Run a survey to discover nearby APs.</div></div>';
+
+    var total = rogues.length;
+    var rogueCount = 0, knownCount = 0, uncatCount = 0;
+    rogues.forEach(function(r) {
+        var c = (r.classification || 'uncategorized').toLowerCase();
+        if (c === 'rogue') rogueCount++;
+        else if (c === 'known' || c === 'nearby') knownCount++;
+        else uncatCount++;
+    });
+
+    var h = '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    h += '<div style="padding:10px 16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);min-width:120px;text-align:center">';
+    h += '<div style="font-size:1.5rem;font-weight:700">' + total + '</div>';
+    h += '<div style="font-size:0.75rem;color:var(--text-secondary)">Out-of-scope APs</div></div>';
+    h += '<div style="padding:10px 16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);min-width:120px;text-align:center">';
+    h += '<div style="font-size:1.5rem;font-weight:700;color:var(--danger)">' + rogueCount + '</div>';
+    h += '<div style="font-size:0.75rem;color:var(--text-secondary)">Rogue</div></div>';
+    h += '<div style="padding:10px 16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);min-width:120px;text-align:center">';
+    h += '<div style="font-size:1.5rem;font-weight:700;color:var(--success)">' + knownCount + '</div>';
+    h += '<div style="font-size:0.75rem;color:var(--text-secondary)">Known / Nearby</div></div>';
+    h += '<div style="padding:10px 16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);min-width:120px;text-align:center">';
+    h += '<div style="font-size:1.5rem;font-weight:700;color:var(--warning)">' + uncatCount + '</div>';
+    h += '<div style="font-size:0.75rem;color:var(--text-secondary)">Uncategorized</div></div>';
+    h += '</div>';
+
+    h += '<div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table class="tool-table" style="width:100%"><thead><tr>';
+    var cols = ['BSSID','SSID','Encryption','Best Signal','Location','Clients','Classification','Actions'];
+    cols.forEach(function(c) { h += '<th>' + esc(c) + '</th>'; });
+    h += '</tr></thead><tbody>';
+
+    rogues.forEach(function(r) {
+        var bg = _rogueRowBg(r.classification);
+        var bssidEsc = esc(r.bssid || '');
+        var ssidEsc = esc(r.ssid || '<hidden>');
+        var bssidJs = (r.bssid || '').replace(/'/g, "\\'");
+        var ssidJs = (r.ssid || '').replace(/'/g, "\\'");
+        h += '<tr style="background:' + bg + '">';
+        h += '<td style="font-family:var(--font-mono);white-space:nowrap"><code>' + bssidEsc + '</code></td>';
+        h += '<td>' + ssidEsc + '</td>';
+        h += '<td>' + _wifiEncBadge(r.encryption || '') + '</td>';
+        h += '<td>' + _wifiSignalBadge(r.best_signal) + '</td>';
+        h += '<td>' + esc(r.best_location || '—') + '</td>';
+        h += '<td>' + (r.max_clients || 0) + '</td>';
+        h += '<td>' + _rogueClassBadge(r.classification) + '</td>';
+        h += '<td style="white-space:nowrap">';
+        h += '<button onclick="_classifyRogue(\'' + bssidJs + '\',\'' + ssidJs + '\',\'known\',this)" style="padding:2px 8px;margin:1px;font-size:0.7rem;border:1px solid var(--success);background:transparent;color:var(--success);border-radius:12px;cursor:pointer" title="Mark as Known SSID">Known</button>';
+        h += '<button onclick="_classifyRogue(\'' + bssidJs + '\',\'' + ssidJs + '\',\'nearby\',this)" style="padding:2px 8px;margin:1px;font-size:0.7rem;border:1px solid var(--success);background:transparent;color:var(--success);border-radius:12px;cursor:pointer" title="Mark as Nearby Business">Nearby</button>';
+        h += '<button onclick="_classifyRogue(\'' + bssidJs + '\',\'' + ssidJs + '\',\'rogue\',this)" style="padding:2px 8px;margin:1px;font-size:0.7rem;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:12px;cursor:pointer;font-weight:600" title="Mark as ROGUE">ROGUE</button>';
+        h += '</td></tr>';
+    });
+
+    h += '</tbody></table></div>';
+    return h;
+}
+
+function _updateSurveyApRow(data) {
+    if (!data || !data.bssid) return;
+    var locId = data.location_id;
+    var key = locId + ':' + (data.bssid || '').toUpperCase();
+    _surveyApCache[key] = data;
+
+    var tableDiv = document.getElementById('surveyLocTable_' + locId);
+    if (!tableDiv) return;
+    var aps = [];
+    for (var k in _surveyApCache) {
+        if (k.indexOf(locId + ':') === 0) aps.push(_surveyApCache[k]);
+    }
+    if (aps.length) {
+        tableDiv.innerHTML = _buildSurveyApTable(aps);
+    }
+    var badge = document.getElementById('surveyLocBadge_' + locId);
+    if (badge) badge.textContent = aps.length;
+}
 
 
 /* ── Status Panel — Phase-Tree Renderer ────────────────────────── */
