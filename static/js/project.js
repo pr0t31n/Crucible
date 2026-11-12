@@ -6307,10 +6307,25 @@ function loadIntelPanel(panel, tool) {
         'cookies': '/api/intel/v2/cookies/' + PID,
         'webapp-intel': '/api/intel/v2/webapp-intel/' + PID,
         'rogue-aps': '/api/intel/v2/survey-rogues/' + PID,
+        'wifi-aps': '/api/intel/v2/wifi-aps/' + PID,
+        'wifi-clients': '/api/intel/v2/wifi-clients/' + PID,
+        'wifi-encryption': '/api/intel/v2/wifi-encryption/' + PID,
+        'wifi-vendors': '/api/intel/v2/wifi-vendors/' + PID,
+        'wifi-channels': '/api/intel/v2/wifi-channels/' + PID,
+        'wifi-probes': '/api/intel/v2/wifi-probes/' + PID,
+        'wifi-wps': '/api/intel/v2/wifi-wps/' + PID,
+        'wifi-firmware': '/api/intel/v2/wifi-firmware/' + PID,
     };
 
     var url = urlMap[panel];
-    if (!url) return;
+    if (!url) {
+        body.innerHTML = '<div class="empty-state p-20 text-center text-muted">' +
+            '<i class="bi bi-info-circle me-2"></i>No data available for this tab yet. ' +
+            'Start a scan to populate this view.</div>';
+        body.hidden = false;
+        empty.style.display = 'none';
+        return;
+    }
     if (tool) url += (url.indexOf('?') === -1 ? '?' : '&') + 'tool=' + encodeURIComponent(tool) + '&scope=' + encodeURIComponent(_activeScope);
 
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';

@@ -396,6 +396,73 @@ def _wireless_network(db, row):
     r = _clean(row)
     db.add_wireless_network(**r)
 
+def _wireless_ap(db, row):
+    r = _clean(row)
+    bssid = r.get("bssid", "")
+    if not bssid:
+        return
+    db.add_wireless_network(
+        bssid,
+        ssid=r.get("ssid", ""),
+        channel=r.get("channel"),
+        encryption=r.get("encryption", ""),
+        cipher=r.get("cipher", ""),
+        auth=r.get("auth", "") or r.get("auth_type", ""),
+        signal_dbm=r.get("signal_dbm") or r.get("power") or r.get("power_dbm"),
+        vendor=r.get("vendor", ""),
+        model=r.get("model", ""),
+        product_line=r.get("product_line", ""),
+        wps=r.get("wps", False),
+        laa=r.get("laa", False),
+        wps_version=r.get("wps_version", ""),
+        wps_locked=r.get("wps_locked"),
+        manufacturer=r.get("manufacturer", ""),
+        model_name=r.get("model_name", ""),
+        device_name=r.get("device_name", ""),
+    )
+
+def _wireless_client(db, row):
+    r = _clean(row)
+    mac = r.get("mac", "")
+    if not mac:
+        return
+    try:
+        db.add_wireless_client(
+            mac,
+            vendor=r.get("vendor", ""),
+            associated_bssid=r.get("associated_bssid", "") or r.get("bssid", ""),
+            associated_ssid=r.get("associated_ssid", "") or r.get("ssid", ""),
+            signal_dbm=r.get("signal_dbm") or r.get("power"),
+            packets=r.get("packets", 0),
+        )
+    except AttributeError:
+        db.add_wireless_network(mac, **r)
+    probes = r.get("probes", []) or r.get("probed_ssids", [])
+    if probes and isinstance(probes, list):
+        for ssid in probes:
+            if ssid:
+                try:
+                    db.add_wireless_probe(mac, ssid)
+                except AttributeError:
+                    pass
+
+def _wireless_probe(db, row):
+    r = _clean(row)
+    client_mac = r.get("client_mac", "") or r.get("mac", "")
+    probed_ssids = r.get("probed_ssids", []) or r.get("probes", [])
+    probed_ssid = r.get("probed_ssid", "")
+    if probed_ssid and not probed_ssids:
+        probed_ssids = [probed_ssid]
+    if not client_mac and not probed_ssids:
+        db.add_wireless_network(r.get("bssid", ""), **r)
+        return
+    for ssid in probed_ssids:
+        if ssid and client_mac:
+            try:
+                db.add_wireless_probe(client_mac, ssid)
+            except AttributeError:
+                pass
+
 def _output_file(db, row):
     r = _clean(row)
     db.add_output_file(**r)
@@ -542,7 +609,7 @@ _DISPATCH = {
     "isotope_content":   (_isotope_content,    "bulk_insert_isotope_contents"),
     "isotope_metadata":  (_isotope_metadata,   "bulk_insert_isotope_metadata"),
     "wireless_network":  (_wireless_network,    None),
-    "wireless_ap":       (_wireless_network,    None),
+    "wireless_ap":       (_wireless_ap,          None),
     "subdomain":         (_osint_subdomain,     None),
     "email":             (_osint_email,         None),
     "endpoint":          (_endpoint_inventory,  "bulk_insert_endpoint_inventory"),
@@ -559,8 +626,8 @@ _DISPATCH = {
     "endpoint_network":  (_endpoint_network,   "bulk_insert_endpoint_network"),
     "endpoint_disk":     (_endpoint_disk,      "bulk_insert_endpoint_disk"),
     "endpoint_hardware": (_endpoint_hardware,  "bulk_insert_endpoint_hardware"),
-    "wireless_client":   (_wireless_network,    None),
-    "wireless_probe":    (_wireless_network,    None),
+    "wireless_client":   (_wireless_client,      None),
+    "wireless_probe":    (_wireless_probe,       None),
     "wireless_handshake": (_wireless_network,   None),
     "ble_device":        (_wireless_network,    None),
     "ble_service":       (_wireless_network,    None),
