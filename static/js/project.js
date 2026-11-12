@@ -13898,6 +13898,9 @@ window.killAllSessions = killAllSessions;
 window.refreshSession = refreshSession;
 window.deleteSession = deleteSession;
 window.loadSessions = loadSessions;
+window._addSurveyLocation = _addSurveyLocation;
+window._surveyBtnState = _surveyBtnState;
+window._classifyRogue = _classifyRogue;
 
 /* ── Attack Surface tab ─────────────────────────────────────── */
 var _asLoaded = false;
