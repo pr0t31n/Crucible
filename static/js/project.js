@@ -154,11 +154,20 @@ tabNav.addEventListener('click', function(e) {
 /* ══════════════════════════════════════════════════════════════════
    2. SOCKET.IO CONNECTION
    ══════════════════════════════════════════════════════════════════ */
-var socket = io({transports: ['websocket', 'polling']});
+var socket = io({
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 15000,
+    timeout: 30000
+});
 
 socket.on('connect', function() {
     socket.emit('join_project', {project_id: PID});
     socket.emit('get_status', {project_id: PID});
+    var _b = document.getElementById('socketBanner');
+    if (_b) _b.hidden = true;
 });
 
 socket.on('reconnect', function() {
@@ -175,7 +184,10 @@ socket.on('disconnect', function() {
         _b.id = 'socketBanner';
         _b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#d32f2f;color:#fff;text-align:center;padding:4px 12px;font-size:13px;cursor:pointer';
         _b.textContent = 'Live connection lost — controls will use HTTP fallback. Click to reconnect.';
-        _b.onclick = function() { socket.connect(); };
+        _b.onclick = function() {
+            socket.disconnect();
+            setTimeout(function() { socket.connect(); }, 200);
+        };
         document.body.prepend(_b);
     }
     _b.hidden = false;

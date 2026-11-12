@@ -121,7 +121,8 @@ def create_app():
         pass
 
     socketio.init_app(app, cors_allowed_origins=[],
-                      async_mode="threading", manage_session=False)
+                      async_mode="threading", manage_session=False,
+                      ping_timeout=120, ping_interval=30)
 
     from services.process_manager import ProcessManager
     from services.queue_manager import QueueManager
