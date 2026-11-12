@@ -2762,13 +2762,38 @@ class ProcessManager:
                                     discovery_tool=tool_id,
                                 )
                             if product and hasattr(db, "bulk_insert_network_software"):
+                                sw_ver = version
+                                sw_os = ""
+                                m = re.match(
+                                    r'^([\d][\w.+-]*?)\s+'
+                                    r'(Ubuntu|Debian|Raspbian|CentOS|'
+                                    r'Red\s*Hat|RHEL|Fedora|SUSE|Alpine|'
+                                    r'FreeBSD|NetBSD|OpenBSD|Arch)\b'
+                                    r'(.*)',
+                                    version, re.IGNORECASE,
+                                )
+                                if m:
+                                    sw_ver = m.group(1)
+                                    sw_os = (m.group(2) + m.group(3)).strip()
+                                _SW_CANON = {
+                                    "nginx": "Nginx", "apache": "Apache",
+                                    "openssh": "OpenSSH", "openssl": "OpenSSL",
+                                    "mysql": "MySQL", "mariadb": "MariaDB",
+                                    "postgresql": "PostgreSQL",
+                                    "proftpd": "ProFTPD",
+                                    "vsftpd": "vsftpd", "isc": "ISC",
+                                }
+                                canon = _SW_CANON.get(product.lower())
+                                if canon:
+                                    product = canon
                                 db.bulk_insert_network_software([{
                                     "software": product,
-                                    "version": version,
+                                    "version": sw_ver,
                                     "ip": ip,
                                     "port": port_num,
                                     "hostname": data.get("hostname", ""),
                                     "method": "nmap service detection",
+                                    "os": sw_os,
                                 }])
             except Exception as exc:
                 log.warning("_handle_port DB: %s", exc)

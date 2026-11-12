@@ -1,6 +1,7 @@
 """Integration API routes — Nexus status, external orchestration."""
 
 from flask import Blueprint, request, jsonify, session
+from config import VERSION
 from routes._helpers import require_project
 
 integration_bp = Blueprint("integration", __name__)
@@ -9,7 +10,7 @@ integration_bp = Blueprint("integration", __name__)
 @integration_bp.route("/api/nexus-status")
 def nexus_status():
     """Public endpoint for Nexus hub to probe this instance."""
-    return jsonify({"status": "online"})
+    return jsonify({"status": "online", "version": VERSION})
 
 
 @integration_bp.route("/api/projects/<project_id>/status")
