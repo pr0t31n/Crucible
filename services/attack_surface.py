@@ -201,6 +201,8 @@ def build_surface(findings_engine, project_id, project, sort="severity",
             for svc_key, svc_tools in COVERAGE_HEURISTICS.items():
                 if svc_key in svc:
                     expected.update(svc_tools)
+            if svc in WEB_SERVICES or pd.get("port") in (80, 443, 8080, 8443):
+                expected.update(COVERAGE_HEURISTICS.get("http", []))
             if expected:
                 total_expected += len(expected)
                 total_covered += len(expected - set(pd.get("missing_tools", [])))
