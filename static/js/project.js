@@ -11303,8 +11303,9 @@ function renderSettingsFields(container, settings, schema) {
                     '</div>' +
                     '<input type="file" class="file-list-input" multiple accept="' + esc(accept) + '" style="font-size:0.82rem">' +
                     '<button type="button" class="btn btn-sm btn-secondary file-list-upload" style="margin-top:6px">Upload</button>' +
-                    '<input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(files)) + '">' +
+                    '<input type="hidden" name="' + esc(key) + '" value="">' +
                 '</div>';
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(files);
             (function(k, grp) {
                 var _flFiles = files.slice();
                 var _flHidden = grp.querySelector('input[name="' + k + '"]');
@@ -11348,8 +11349,9 @@ function renderSettingsFields(container, settings, schema) {
                     (checked.indexOf(o) !== -1 ? ' checked' : '') + '> ' +
                     esc(o) + '</label></div>';
             });
-            html += '</div><input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(checked)) + '">';
+            html += '</div><input type="hidden" name="' + esc(key) + '" value="">';
             group.innerHTML = html;
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(checked);
             (function(k) {
                 group.addEventListener('change', function() {
                     var vals = [];
@@ -11379,8 +11381,9 @@ function renderSettingsFields(container, settings, schema) {
             html += '<div style="margin-top:6px;display:flex;gap:8px">' +
                 '<button type="button" class="btn btn-secondary btn-sm cg-all-' + esc(key) + '">Select All</button>' +
                 '<button type="button" class="btn btn-secondary btn-sm cg-none-' + esc(key) + '">Deselect All</button></div>';
-            html += '<input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(checked)) + '">';
+            html += '<input type="hidden" name="' + esc(key) + '" value="">';
             group.innerHTML = html;
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(checked);
             (function(k) {
                 function _sync() {
                     var vals = [];
@@ -11601,12 +11604,16 @@ function renderSettingsFields(container, settings, schema) {
                 });
             })(group);
         } else if (type === 'tag_list') {
+            if (!Array.isArray(val) && typeof val === 'string' && val.charAt(0) === '[') {
+                try { val = JSON.parse(val); } catch(_e) {}
+            }
             var tags = Array.isArray(val) ? val : (val ? String(val).split('\n').filter(Boolean) : []);
             group.className += ' form-grid-full';
             group.innerHTML =
                 '<label class="form-label" for="s_' + esc(key) + '_ta">' + esc(label) + '</label>' +
                 '<textarea class="form-control" id="s_' + esc(key) + '_ta" rows="3" placeholder="One item per line">' + esc(tags.join('\n')) + '</textarea>' +
-                '<input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(tags)) + '">';
+                '<input type="hidden" name="' + esc(key) + '" value="">';
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(tags);
             (function(k) {
                 var ta = group.querySelector('#s_' + k + '_ta');
                 var hid = group.querySelector('input[name="' + k + '"]');
@@ -11628,8 +11635,9 @@ function renderSettingsFields(container, settings, schema) {
                     '<input type="checkbox" class="pt-' + esc(key) + '" value="' + esc(pk) + '"' +
                     (phases[pk] ? ' checked' : '') + '> ' + esc(pLabel) + '</label>';
             });
-            phHtml += '</div><input type="hidden" name="' + esc(key) + '" value="' + esc(JSON.stringify(phases)) + '">';
+            phHtml += '</div><input type="hidden" name="' + esc(key) + '" value="">';
             group.innerHTML = phHtml;
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(phases);
             (function(k) {
                 group.addEventListener('change', function() {
                     var obj = {};
@@ -11742,7 +11750,10 @@ document.addEventListener('click', function(e) {
     var btn = e.target.closest('.st-refresh-ifaces');
     if (!btn) return;
     var targetId = btn.dataset.target;
-    if (targetId) _stLoadWifiInterfaces(targetId, '');
+    if (!targetId) return;
+    var cur = document.getElementById(targetId);
+    var saved = (cur && cur.value) || (_settingsOriginal && _settingsOriginal[targetId.replace('s_', '')] || '');
+    _stLoadWifiInterfaces(targetId, saved);
 });
 
 function _applySettingsDeps() {
@@ -11785,6 +11796,15 @@ function _collectSettingsForm() {
                 try { formData[el.name] = JSON.parse(el.value); } catch(e) { formData[el.name] = el.value; }
             } else if (el.type === 'number') {
                 formData[el.name] = parseFloat(el.value) || 0;
+            } else if (el.tagName === 'SELECT' && el.closest('.form-group') &&
+                       el.options.length && el.options[0].textContent.match(/Loading|Failed to load/)) {
+                if (_settingsOriginal && _settingsOriginal[el.name] !== undefined) {
+                    formData[el.name] = _settingsOriginal[el.name];
+                } else {
+                    formData[el.name] = el.value;
+                }
+            } else if (el.tagName === 'SELECT' && !el.value && _settingsOriginal && _settingsOriginal[el.name]) {
+                formData[el.name] = _settingsOriginal[el.name];
             } else {
                 formData[el.name] = el.value;
             }
