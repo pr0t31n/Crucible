@@ -1694,6 +1694,154 @@ def api_intel_v2_reingest(project_id):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  Wireless Intelligence (Aether wifi-* tabs)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/wifi-aps/<pid>")
+def api_wifi_aps(pid):
+    project = _get_project(pid)
+    if not project:
+        return _empty_page()
+    db = _get_db(project)
+    if not db:
+        return _empty_page()
+    p = _paginate_params()
+    search = _search_param()
+    sort = request.args.get("sort", "signal_dbm")
+    order = request.args.get("order", "desc")
+    try:
+        return jsonify(db.query_wireless_aps(
+            page=p["page"], per_page=p["per_page"],
+            search=search, sort=sort, order=order))
+    except AttributeError:
+        log.warning("api_wifi_aps: DB missing query_wireless_aps", exc_info=True)
+        return _empty_page()
+
+
+@intel_v2.route("/api/intel/v2/wifi-clients/<pid>")
+def api_wifi_clients(pid):
+    project = _get_project(pid)
+    if not project:
+        return _empty_page()
+    db = _get_db(project)
+    if not db:
+        return _empty_page()
+    p = _paginate_params()
+    search = _search_param()
+    sort = request.args.get("sort", "last_seen")
+    order = request.args.get("order", "desc")
+    try:
+        return jsonify(db.query_wireless_clients(
+            page=p["page"], per_page=p["per_page"],
+            search=search, sort=sort, order=order))
+    except AttributeError:
+        log.warning("api_wifi_clients: DB missing query_wireless_clients", exc_info=True)
+        return _empty_page()
+
+
+@intel_v2.route("/api/intel/v2/wifi-encryption/<pid>")
+def api_wifi_encryption(pid):
+    project = _get_project(pid)
+    if not project:
+        return jsonify({})
+    db = _get_db(project)
+    if not db:
+        return jsonify({})
+    try:
+        return jsonify(db.query_wireless_encryption())
+    except AttributeError:
+        log.warning("api_wifi_encryption: DB missing query_wireless_encryption", exc_info=True)
+        return jsonify({})
+
+
+@intel_v2.route("/api/intel/v2/wifi-vendors/<pid>")
+def api_wifi_vendors(pid):
+    project = _get_project(pid)
+    if not project:
+        return jsonify({})
+    db = _get_db(project)
+    if not db:
+        return jsonify({})
+    try:
+        return jsonify(db.query_wireless_vendors())
+    except AttributeError:
+        log.warning("api_wifi_vendors: DB missing query_wireless_vendors", exc_info=True)
+        return jsonify({})
+
+
+@intel_v2.route("/api/intel/v2/wifi-channels/<pid>")
+def api_wifi_channels(pid):
+    project = _get_project(pid)
+    if not project:
+        return jsonify({})
+    db = _get_db(project)
+    if not db:
+        return jsonify({})
+    try:
+        return jsonify(db.query_wireless_channels())
+    except AttributeError:
+        log.warning("api_wifi_channels: DB missing query_wireless_channels", exc_info=True)
+        return jsonify({})
+
+
+@intel_v2.route("/api/intel/v2/wifi-probes/<pid>")
+def api_wifi_probes(pid):
+    project = _get_project(pid)
+    if not project:
+        return _empty_page()
+    db = _get_db(project)
+    if not db:
+        return _empty_page()
+    p = _paginate_params()
+    search = _search_param()
+    sort = request.args.get("sort", "client_count")
+    order = request.args.get("order", "desc")
+    try:
+        return jsonify(db.query_wireless_probes(
+            page=p["page"], per_page=p["per_page"],
+            search=search, sort=sort, order=order))
+    except AttributeError:
+        log.warning("api_wifi_probes: DB missing query_wireless_probes", exc_info=True)
+        return _empty_page()
+
+
+@intel_v2.route("/api/intel/v2/wifi-wps/<pid>")
+def api_wifi_wps(pid):
+    project = _get_project(pid)
+    if not project:
+        return _empty_page()
+    db = _get_db(project)
+    if not db:
+        return _empty_page()
+    p = _paginate_params()
+    search = _search_param()
+    sort = request.args.get("sort", "bssid")
+    order = request.args.get("order", "asc")
+    try:
+        return jsonify(db.query_wireless_wps(
+            page=p["page"], per_page=p["per_page"],
+            search=search, sort=sort, order=order))
+    except AttributeError:
+        log.warning("api_wifi_wps: DB missing query_wireless_wps", exc_info=True)
+        return _empty_page()
+
+
+@intel_v2.route("/api/intel/v2/wifi-firmware/<pid>")
+def api_wifi_firmware(pid):
+    project = _get_project(pid)
+    if not project:
+        return jsonify({"matches": []})
+    db = _get_db(project)
+    if not db:
+        return jsonify({"matches": []})
+    try:
+        return jsonify(db.query_wireless_firmware())
+    except AttributeError:
+        log.warning("api_wifi_firmware: DB missing query_wireless_firmware", exc_info=True)
+        return jsonify({"matches": []})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  Survey Location CRUD
 # ═══════════════════════════════════════════════════════════════════════════
 
