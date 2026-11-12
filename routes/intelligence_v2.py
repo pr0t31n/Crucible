@@ -27,7 +27,17 @@ def _get_db(project):
     """Get or create a FindingsDB handle for *project*."""
     pid = project.get("id", "")
     if pid in _db_cache:
-        return _db_cache[pid]
+        db = _db_cache[pid]
+        try:
+            db._conn.execute("SELECT 1")
+            return db
+        except Exception:
+            log.warning("intel_v2: stale DB handle for %s — reconnecting", pid)
+            try:
+                db.close()
+            except Exception:
+                pass
+            del _db_cache[pid]
     try:
         from pathlib import Path
         import sys
@@ -42,9 +52,10 @@ def _get_db(project):
             return None
         db = pr0t31n_findings_db.FindingsDB(str(db_path))
         _db_cache[pid] = db
+        log.info("intel_v2: opened FindingsDB for %s at %s", pid, db_path)
         return db
     except Exception:
-        log.debug("_get_db failed for %s", pid, exc_info=True)
+        log.warning("_get_db failed for %s", pid, exc_info=True)
         return None
 
 
@@ -115,7 +126,8 @@ def api_intel_v2_hosts(project_id):
     try:
         result = db.query_hosts(search=search, **p, **sp)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 hosts AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -135,7 +147,8 @@ def api_intel_v2_ports(project_id):
     try:
         result = db.query_ports(ip=ip, **p, **sp)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 ports AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -154,7 +167,8 @@ def api_intel_v2_services(project_id):
     try:
         result = db.query_services(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 services AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -174,7 +188,7 @@ def api_intel_v2_software(project_id):
         result = db.query_software(search=search, **p)
         return jsonify(result)
     except Exception as e:
-        log.debug("software v2: %s", e)
+        log.warning("intel_v2 software error for %s: %s", project_id, e, exc_info=True)
     return jsonify(_empty_page(p["page"]))
 
 
@@ -246,7 +260,8 @@ def api_intel_v2_network_posture(project_id):
     try:
         result = db.query_network_posture(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 network_posture AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -362,7 +377,8 @@ def api_intel_v2_cookies(project_id):
     try:
         result = db.query_cookies(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 cookies AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -381,7 +397,8 @@ def api_intel_v2_webapp_intel(project_id):
     try:
         result = db.query_webapp_intel(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 webapp_intel AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -404,7 +421,8 @@ def api_intel_v2_api_inventory(project_id):
     try:
         result = db.query_api_inventory(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 api_inventory AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -444,7 +462,8 @@ def api_intel_v2_osint_emails(project_id):
     try:
         result = db.query_osint_emails(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 osint_emails AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -464,7 +483,8 @@ def api_intel_v2_osint_breaches(project_id):
     try:
         result = db.query_osint_breaches(email_id=email_id, search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 osint_breaches AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -483,7 +503,8 @@ def api_intel_v2_osint_people(project_id):
     try:
         result = db.query_osint_people(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 osint_people AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -502,7 +523,8 @@ def api_intel_v2_osint_subdomains(project_id):
     try:
         result = db.query_osint_subdomains(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 osint_subdomains AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -523,7 +545,8 @@ def api_intel_v2_osint_dns(project_id):
         result = db.query_osint_dns(
             record_type=record_type, search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 osint_dns AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -542,7 +565,8 @@ def api_intel_v2_osint_certificates(project_id):
     try:
         result = db.query_osint_certificates(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 osint_certificates AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -682,7 +706,8 @@ def api_intel_v2_firewall_config(project_id):
     try:
         result = db.query_firewall_config(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 firewall_config AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -984,7 +1009,8 @@ def api_intel_v2_endpoint_overview(project_id):
     try:
         result = db.query_endpoint_overview(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 endpoint_overview AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1003,7 +1029,8 @@ def api_intel_v2_endpoint_network(project_id):
     try:
         result = db.query_endpoint_network(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 endpoint_network AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1022,7 +1049,8 @@ def api_intel_v2_endpoint_disk(project_id):
     try:
         result = db.query_endpoint_disk(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 endpoint_disk AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1041,7 +1069,8 @@ def api_intel_v2_endpoint_hardware(project_id):
     try:
         result = db.query_endpoint_hardware(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 endpoint_hardware AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1141,7 +1170,8 @@ def api_intel_v2_mobile_hardening(project_id):
     try:
         result = db.query_mobile_hardening(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 mobile_hardening AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1160,7 +1190,8 @@ def api_intel_v2_mobile_domains(project_id):
     try:
         result = db.query_mobile_domains(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 mobile_domains AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1179,7 +1210,8 @@ def api_intel_v2_mobile_emails(project_id):
     try:
         result = db.query_mobile_emails(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 mobile_emails AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1198,7 +1230,8 @@ def api_intel_v2_mitm_cert(project_id):
     try:
         result = db.query_mobile_mitm_certs(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 mitm_cert AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1297,7 +1330,8 @@ def api_intel_v2_isotope_entropy(project_id):
     try:
         result = db.query_isotope_entropy(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 isotope_entropy AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1316,7 +1350,8 @@ def api_intel_v2_isotope_contents(project_id):
     try:
         result = db.query_isotope_contents(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 isotope_contents AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1335,7 +1370,8 @@ def api_intel_v2_isotope_code(project_id):
     try:
         result = db.query_isotope_code(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 isotope_code AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1354,7 +1390,8 @@ def api_intel_v2_isotope_metadata(project_id):
     try:
         result = db.query_isotope_metadata(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 isotope_metadata AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
@@ -1373,7 +1410,8 @@ def api_intel_v2_isotope_binary(project_id):
     try:
         result = db.query_isotope_binary(search=search, **p)
         return jsonify(result)
-    except AttributeError:
+    except AttributeError as e:
+        log.warning("intel_v2 isotope_binary AttributeError for %s: %s", project_id, e, exc_info=True)
         return jsonify(_empty_page(p["page"]))
     except Exception as e:
         return _err_500(e)
