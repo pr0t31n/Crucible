@@ -899,6 +899,11 @@ class ProcessManager:
             if fp.exists():
                 with open(fp) as f:
                     existing = json.load(f)
+            else:
+                seed_fp = Path(proj_dir) / f"{prefix}_settings.json"
+                if seed_fp.exists():
+                    with open(seed_fp) as f:
+                        existing = json.load(f)
             scan = existing.setdefault("scan", {})
             if scan.get("project") == td:
                 return
