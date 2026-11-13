@@ -26,6 +26,8 @@ _CHECK_INTERVAL = 60
 _SCHEDULE_FILE = "schedule.json"
 _ENGAGEMENT_FILE = "engagement_hours.json"
 
+_TERMINAL_STATUSES = frozenset(("complete", "error", "skipped"))
+
 
 class SchedulerService:
     """Daemon service for scheduled engagement starts and engagement hours."""
@@ -253,7 +255,17 @@ class SchedulerService:
                 for tid in tools:
                     tool_scope_pairs.append((tid, scope))
 
+            tool_statuses = self._pm.get_status(project_id)
+
             for tid, scope in tool_scope_pairs:
+                tk = f"{tid}:{scope}" if scope else tid
+                cur_status = tool_statuses.get(tk)
+                if cur_status in _TERMINAL_STATUSES:
+                    skipped.append(tk)
+                    log.info("Skipped %s for scheduled engagement %s "
+                             "(already %s)", tk, project_id, cur_status)
+                    continue
+
                 settings = load_settings(
                     project.get("project_dir", ""), tid, scope=scope)
 
@@ -381,6 +393,12 @@ class SchedulerService:
 
             self._qm.resume_project(project_id)
             self._pm.resume_all(project_id, project=project)
+
+            if project.get("auto_queue"):
+                enqueued = self._qm.process_auto_queue(project_id, project)
+                if enqueued:
+                    log.info("Engagement resume triggered auto-queue for %s: "
+                             "%d job(s) enqueued", project_id, enqueued)
 
     # ── persistence ──────────────────────────────────────────────────────
 
