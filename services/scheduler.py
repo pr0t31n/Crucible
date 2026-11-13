@@ -144,8 +144,6 @@ class SchedulerService:
         now = datetime.now(tz)
         day_of_week = now.weekday()
         allowed_days = eh.get("days", [0, 1, 2, 3, 4])
-        if day_of_week not in allowed_days:
-            return False
 
         start_parts = eh.get("start_time", "00:00").split(":")
         end_parts = eh.get("end_time", "23:59").split(":")
@@ -156,7 +154,13 @@ class SchedulerService:
         start_minutes = start_h * 60 + start_m
         end_minutes = end_h * 60 + end_m
 
-        return start_minutes <= current_minutes < end_minutes
+        if day_of_week not in allowed_days:
+            return False
+
+        if end_minutes <= start_minutes:
+            return current_minutes >= start_minutes or current_minutes < end_minutes
+        else:
+            return start_minutes <= current_minutes < end_minutes
 
     # ── run loop ─────────────────────────────────────────────────────────
 
