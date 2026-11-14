@@ -196,6 +196,34 @@ def register_tool_events(socketio, process_manager, queue_manager):
         except Exception as exc:
             log.error("on_console_clear crashed: %s\n%s", exc, traceback.format_exc())
 
+    _RESETTABLE = frozenset(("failed", "error", "killed"))
+
+    @socketio.on("tool_reset")
+    def on_tool_reset(data):
+        if not socket_auth_check():
+            return
+        pid, tid, proj = socket_validate_ids(data, check_tool_enabled=True)
+        if not pid:
+            return
+        try:
+            scope = (data or {}).get("scope")
+            tk = f"{tid}:{scope}" if scope else tid
+            st = (process_manager.get_all_status(pid).get(tk) or {}).get("status", "")
+            if st not in _RESETTABLE:
+                emit("error", {"project_id": pid, "tool_id": tid,
+                               "message": f"Cannot reset tool in '{st}' state"})
+                return
+            process_manager.set_status(pid, tk, "idle")
+            process_manager.clear_console(pid, tid, scope=scope)
+            log.info("Reset %s to idle for project %s", tk, pid)
+            emit("tool_status", {"project_id": pid, "tool_id": tk,
+                                 "status": "idle"},
+                 to=_room(pid))
+        except Exception as exc:
+            log.error("on_tool_reset crashed: %s\n%s", exc, traceback.format_exc())
+            emit("error", {"project_id": pid, "tool_id": tid,
+                           "message": f"Reset error: {exc}"})
+
     @socketio.on("get_status")
     def on_get_status(data):
         if not socket_auth_check():
