@@ -231,6 +231,7 @@ class SchedulerService:
         with self._app.app_context():
             from models.project import get_project
             from models.settings import load_settings
+            from routes.settings import _backfill_from_project
             project = get_project(project_id)
             if not project:
                 entry["status"] = "failed"
@@ -272,6 +273,7 @@ class SchedulerService:
 
                 settings = load_settings(
                     project.get("project_dir", ""), tid, scope=scope)
+                _backfill_from_project(settings, project, tid)
 
                 can, reason = self._qm.can_launch(project_id, tid,
                                                   scope=scope)
