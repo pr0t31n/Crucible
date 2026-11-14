@@ -1427,6 +1427,15 @@ function updateConsoleHeader() {
     } else {
         document.getElementById('btnToolPause').textContent = 'Pause';
     }
+    var _resetBtn = document.getElementById('btnToolReset');
+    var _canReset = false;
+    if (selectedTool && (status === 'failed' || status === 'error' || status === 'killed')) {
+        var _rScope = _selSci !== -1 ? selectedTool.substring(_selSci + 1) : '';
+        var _rScopeTools = _rScope && PROJECT.scope_tools ? PROJECT.scope_tools[_rScope] : null;
+        if (_rScopeTools && _rScopeTools.indexOf(_baseSel) !== -1) _canReset = true;
+    }
+    _resetBtn.style.display = _canReset ? '' : 'none';
+    _resetBtn.disabled = !_canReset;
     _updateFixWirelessButton();
 }
 
@@ -1628,6 +1637,12 @@ document.getElementById('btnToolPause').addEventListener('click', function() {
 document.getElementById('btnToolResume').addEventListener('click', function() {
     if (!selectedTool) return;
     socket.emit('tool_start', {project_id: PID, tool_id: selectedTool, resume: true});
+});
+
+document.getElementById('btnToolReset').addEventListener('click', function() {
+    if (!selectedTool) return;
+    if (!confirm('Reset this tool to idle? Console output will be cleared.')) return;
+    socket.emit('tool_reset', {project_id: PID, tool_id: selectedTool});
 });
 
 document.getElementById('btnMitmStop').addEventListener('click', function() {
