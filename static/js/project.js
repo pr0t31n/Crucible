@@ -1235,7 +1235,13 @@ function renderFeed(containerId, clickable) {
         if (tid.indexOf(':') === -1) return;
         if (allTids.indexOf(tid) !== -1) return;
         var st = (toolStatuses[tid] || {}).status || 'idle';
-        if (st === 'idle') return;
+        if (st === 'idle') {
+            var _sci2 = tid.indexOf(':');
+            var _bt2 = tid.substring(0, _sci2);
+            var _sc2 = tid.substring(_sci2 + 1);
+            var _scList = (PROJECT.scope_tools || {})[_sc2];
+            if (!_scList || _scList.indexOf(_bt2) === -1) return;
+        }
         allTids.push(tid);
     });
 
