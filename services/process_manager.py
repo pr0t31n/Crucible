@@ -1511,7 +1511,11 @@ class ProcessManager:
 
     def resume_all(self, project_id: str, *, project: dict,
                    sudo_password: str | None = None) -> list[str]:
-        """Resume all paused or killed-with-checkpoint tools in a project.
+        """Resume all paused tools in a project.
+
+        Only resumes tools with status "paused" (set by engagement hours
+        or user pause).  Killed tools (user kill OR signal/OOM) are never
+        auto-resumed — the user must explicitly restart them.
 
         Returns a list of tool keys that were relaunched.
         """
@@ -1519,16 +1523,10 @@ class ProcessManager:
         with self._lock:
             statuses = dict((self._tool_status.get(project_id) or {}))
         for tk, status in statuses.items():
-            if status not in ("paused", "killed"):
+            if status != "paused":
                 continue
             base_tool = tk.split(":")[0]
             scope = tk.split(":", 1)[1] if ":" in tk else None
-            if status == "killed":
-                from routes.console import _find_checkpoint_candidates
-                has_cp = any(cp.exists()
-                             for cp in _find_checkpoint_candidates(project, base_tool))
-                if not has_cp:
-                    continue
             from models.settings import load_settings
             settings = load_settings(project.get("project_dir", ""),
                                      base_tool, scope=scope)

@@ -10,6 +10,7 @@ Provides two features:
 Runs as a daemon thread checking every 60 seconds.
 """
 
+import ipaddress
 import json
 import logging
 import threading
@@ -26,7 +27,81 @@ _CHECK_INTERVAL = 60
 _SCHEDULE_FILE = "schedule.json"
 _ENGAGEMENT_FILE = "engagement_hours.json"
 
-_TERMINAL_STATUSES = frozenset(("complete", "error", "skipped"))
+_NETWORK_TOOLS = frozenset(("ss3", "trawler"))
+
+
+def _extract_targets(settings, tool_id):
+    """Extract the target set from loaded+backfilled settings for a tool."""
+    targets = set()
+    if tool_id == "ss3":
+        raw = (settings.get("targets") or "").strip()
+        if raw:
+            targets.update(t.strip() for t in raw.splitlines() if t.strip())
+        scan_targets = (settings.get("scan") or {}).get("targets", [])
+        if isinstance(scan_targets, list):
+            targets.update(t for t in scan_targets
+                           if isinstance(t, str) and t.strip())
+    elif tool_id == "osift":
+        raw = (settings.get("target_domains") or "").strip()
+        if raw:
+            targets.update(t.strip() for t in raw.splitlines() if t.strip())
+    elif tool_id == "fracture":
+        raw = (settings.get("target_url") or "").strip()
+        if raw:
+            targets.update(t.strip() for t in raw.splitlines() if t.strip())
+    elif tool_id == "siphon":
+        raw = (settings.get("api_base_url") or "").strip()
+        if raw:
+            targets.add(raw)
+        extras = settings.get("api_base_urls", [])
+        if isinstance(extras, list):
+            targets.update(t.strip() for t in extras
+                           if isinstance(t, str) and t.strip())
+    elif tool_id == "auger":
+        raw = (settings.get("host") or "").strip()
+        if raw:
+            targets.add(raw)
+    elif tool_id == "dredge":
+        raw = (settings.get("winrm_host") or "").strip()
+        if raw:
+            targets.add(raw)
+    elif tool_id == "trawler":
+        raw = settings.get("targets", [])
+        if isinstance(raw, list):
+            targets.update(t.strip() for t in raw
+                           if isinstance(t, str) and t.strip())
+        elif isinstance(raw, str) and raw.strip():
+            targets.update(t.strip() for t in raw.splitlines() if t.strip())
+    return targets
+
+
+def _network_targets_covered(new_targets, existing_targets):
+    """True if every new network target is a subnet-of some existing target."""
+    existing_nets = []
+    for t in existing_targets:
+        try:
+            existing_nets.append(ipaddress.ip_network(t, strict=False))
+        except ValueError:
+            pass
+    if not existing_nets:
+        return False
+    for t in new_targets:
+        try:
+            new_net = ipaddress.ip_network(t, strict=False)
+        except ValueError:
+            continue
+        if not any(new_net.subnet_of(en) for en in existing_nets):
+            return False
+    return bool(new_targets)
+
+
+def _targets_covered(new_targets, existing_targets, tool_id):
+    """True if new_targets are fully covered by existing_targets."""
+    if not new_targets:
+        return False
+    if tool_id in _NETWORK_TOOLS:
+        return _network_targets_covered(new_targets, existing_targets)
+    return new_targets.issubset(existing_targets)
 
 
 class SchedulerService:
@@ -154,13 +229,21 @@ class SchedulerService:
         start_minutes = start_h * 60 + start_m
         end_minutes = end_h * 60 + end_m
 
-        if day_of_week not in allowed_days:
-            return False
-
-        if end_minutes <= start_minutes:
-            return current_minutes >= start_minutes or current_minutes < end_minutes
-        else:
+        if end_minutes > start_minutes:
+            if day_of_week not in allowed_days:
+                return False
             return start_minutes <= current_minutes < end_minutes
+
+        # Overnight window (e.g. 1700–0600): the after-midnight portion
+        # belongs to the PREVIOUS day's window, not today's.
+        if current_minutes >= start_minutes:
+            # Evening portion — check today
+            return day_of_week in allowed_days
+        if current_minutes < end_minutes:
+            # After-midnight portion — check yesterday
+            yesterday = (day_of_week - 1) % 7
+            return yesterday in allowed_days
+        return False
 
     # ── run loop ─────────────────────────────────────────────────────────
 
@@ -261,19 +344,58 @@ class SchedulerService:
                     tool_scope_pairs.append((tid, scope))
 
             tool_statuses = self._pm.get_status(project_id)
+            proj_dir = project.get("project_dir", "")
+
+            # Build target sets from existing runs of each base tool
+            # (complete, running, paused) so we can detect coverage.
+            _existing_targets: dict[str, set] = {}
+            _coverage_statuses = ("complete", "running", "paused", "pausing")
+            for tk, status in tool_statuses.items():
+                if status not in _coverage_statuses:
+                    continue
+                ex_base = tk.split(":")[0]
+                ex_scope = tk.split(":", 1)[1] if ":" in tk else None
+                try:
+                    ex_settings = load_settings(proj_dir, ex_base,
+                                                scope=ex_scope)
+                    _backfill_from_project(ex_settings, project, ex_base)
+                    tgts = _extract_targets(ex_settings, ex_base)
+                    if tgts:
+                        _existing_targets.setdefault(ex_base, set()).update(tgts)
+                except Exception:
+                    pass
 
             for tid, scope in tool_scope_pairs:
                 tk = f"{tid}:{scope}" if scope else tid
+
+                # ── Guard 1: skip if this key already has any run ────
                 cur_status = tool_statuses.get(tk)
-                if cur_status in _TERMINAL_STATUSES:
+                if cur_status is not None:
                     skipped.append(tk)
                     log.info("Skipped %s for scheduled engagement %s "
-                             "(already %s)", tk, project_id, cur_status)
+                             "(already exists, status: %s)",
+                             tk, project_id, cur_status)
                     continue
 
-                settings = load_settings(
-                    project.get("project_dir", ""), tid, scope=scope)
+                settings = load_settings(proj_dir, tid, scope=scope)
                 _backfill_from_project(settings, project, tid)
+
+                # ── Guard 2: skip if no targets configured ───────────
+                new_targets = _extract_targets(settings, tid)
+                if not new_targets:
+                    skipped.append(tk)
+                    log.info("Skipped %s for scheduled engagement %s "
+                             "(no targets configured)", tk, project_id)
+                    continue
+
+                # ── Guard 3: skip if targets already covered ─────────
+                existing = _existing_targets.get(tid, set())
+                if existing and _targets_covered(new_targets, existing, tid):
+                    skipped.append(tk)
+                    log.info("Skipped %s for scheduled engagement %s "
+                             "(targets already covered by existing %s run)",
+                             tk, project_id, tid)
+                    continue
 
                 can, reason = self._qm.can_launch(project_id, tid,
                                                   scope=scope)
