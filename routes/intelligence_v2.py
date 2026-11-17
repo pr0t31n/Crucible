@@ -10,7 +10,9 @@ Register this blueprint in Crucible's app factory::
     app.register_blueprint(intel_v2)
 """
 
+import json
 import logging
+from pathlib import Path
 
 from flask import Blueprint, request, jsonify
 
@@ -100,6 +102,22 @@ def _err_503():
 def _err_500(e):
     log.warning("intel_v2 error: %s", e, exc_info=True)
     return jsonify({"error": "Internal error"}), 500
+
+
+def _ss3_json_fallback(project, filename):
+    """Load a raw JSON file from the SS3 output directory."""
+    try:
+        from routes.intelligence import _resolve_tool_dirs
+    except ImportError:
+        return None
+    for d in _resolve_tool_dirs(project, "ss3"):
+        p = Path(d) / filename
+        if p.is_file():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    return None
 
 
 def _empty_page(page=1):
@@ -198,17 +216,22 @@ def api_intel_v2_hostname_intel(project_id):
     if not project:
         return _err_404()
     db = _get_db(project)
-    if not db:
-        return _err_503()
-    p = _paginate_params()
-    search = _search_param()
-    env_tag = request.args.get("environment_tag")
-    try:
-        result = db.query_hostname_intel(
-            environment_tag=env_tag, search=search, **p)
-        return jsonify(result)
-    except Exception as e:
-        return _err_500(e)
+    db_empty = True
+    if db:
+        try:
+            p = _paginate_params()
+            search = _search_param()
+            env_tag = request.args.get("environment_tag")
+            result = db.query_hostname_intel(
+                environment_tag=env_tag, search=search, **p)
+            if result.get("total", 0) > 0:
+                return jsonify(result)
+        except Exception:
+            pass
+    raw = _ss3_json_fallback(project, "hostname_intelligence.json")
+    if raw:
+        return jsonify(raw)
+    return jsonify(_empty_page())
 
 
 @intel_v2.route("/api/intel/v2/server-roles/<project_id>")
@@ -217,16 +240,20 @@ def api_intel_v2_server_roles(project_id):
     if not project:
         return _err_404()
     db = _get_db(project)
-    if not db:
-        return _err_503()
-    p = _paginate_params()
-    ip = request.args.get("ip")
-    role = request.args.get("role")
-    try:
-        result = db.query_server_roles(ip=ip, role=role, **p)
-        return jsonify(result)
-    except Exception as e:
-        return _err_500(e)
+    if db:
+        try:
+            p = _paginate_params()
+            ip = request.args.get("ip")
+            role = request.args.get("role")
+            result = db.query_server_roles(ip=ip, role=role, **p)
+            if result.get("total", 0) > 0:
+                return jsonify(result)
+        except Exception:
+            pass
+    raw = _ss3_json_fallback(project, "server_roles.json")
+    if raw:
+        return jsonify(raw)
+    return jsonify(_empty_page())
 
 
 @intel_v2.route("/api/intel/v2/screenshots/<project_id>")
@@ -253,18 +280,19 @@ def api_intel_v2_network_posture(project_id):
     if not project:
         return _err_404()
     db = _get_db(project)
-    if not db:
-        return _err_503()
-    p = _paginate_params()
-    search = _search_param()
-    try:
-        result = db.query_network_posture(search=search, **p)
-        return jsonify(result)
-    except AttributeError as e:
-        log.warning("intel_v2 network_posture AttributeError for %s: %s", project_id, e, exc_info=True)
-        return jsonify(_empty_page(p["page"]))
-    except Exception as e:
-        return _err_500(e)
+    if db:
+        try:
+            p = _paginate_params()
+            search = _search_param()
+            result = db.query_network_posture(search=search, **p)
+            if result.get("total", 0) > 0:
+                return jsonify(result)
+        except Exception:
+            pass
+    raw = _ss3_json_fallback(project, "network_posture.json")
+    if raw:
+        return jsonify(raw)
+    return jsonify(_empty_page())
 
 
 # ═══════════════════════════════════════════════════════════════════

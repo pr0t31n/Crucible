@@ -161,13 +161,6 @@ def _access_matrix(db, row):
     r = _clean(row)
     if "endpoint_path" in r:
         db.add_access_matrix_entry(**r)
-    elif "roles" in r:
-        for role in r.get("roles", []):
-            try:
-                db.add_server_role(ip="", role=role,
-                                   confidence=1.0, evidence="access_matrix")
-            except Exception:
-                pass
 
 def _auth_session(db, row):
     r = _clean(row)
