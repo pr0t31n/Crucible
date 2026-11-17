@@ -5766,7 +5766,7 @@ var _scopeToolsMap = {};
 
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
-    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['net-hostname-env','Environment Map'],['net-hostname-apps','Application Inventory'],['net-hostname-hw','Hardware Inventory'],['net-posture','Network Posture'],['screenshots','{scope} Screenshots']],
+    ss3:      [['status','{scope} Status'],['net-hosts','Host Map'],['net-services','Service Matrix'],['net-software','Software Inventory'],['net-ports','Port Heatmap'],['net-roles','Server Roles'],['net-hostname-env','Environment Map'],['net-hostname-apps','Application Inventory'],['net-hostname-hw','Hardware Inventory'],['net-posture','Network Posture'],['domain-intel','Domain Intelligence'],['screenshots','{scope} Screenshots']],
     fracture: [['status','WebApp Status'],['webapp-intel','Web Application Intelligence'],['structure','WebApp Structure Map'],['access','WebApp Access Matrix'],['auth','WebApp Auth Status'],['cookies','WebApp Cookies'],['screenshots','WebApp Screenshots']],
     siphon:   [['status','API Status'],['structure','API Structure Map'],['access','API Access Matrix'],['auth','API Auth Status'],['cookies','API Cookies'],['api','API Inventory']],
     osift:    [['status','OSINT Status'],['osint-domains','OSINT Domains'],['osint-dns','OSINT DNS'],['osint-certs','OSINT Certificates'],['osint-emails','OSINT Emails'],['osint-people','OSINT People'],['osint-breaches','OSINT Data Breaches'],['osint-wayback','OSINT Wayback URLs'],['osint-typosquat','OSINT Typosquatting']],
@@ -6295,6 +6295,7 @@ function loadIntelPanel(panel, tool) {
         'net-hostname-apps': '/api/intel/v2/hostname-intel/' + PID,
         'net-hostname-hw': '/api/intel/v2/hostname-intel/' + PID,
         'net-posture': '/api/intel/v2/network-posture/' + PID,
+        'domain-intel': '/api/intel/v2/domain-overview/' + PID,
         'osint-domains': '/api/intel/v2/osint-domains/' + PID,
         'osint-dns': '/api/intel/v2/osint-dns/' + PID,
         'osint-certs': '/api/intel/v2/osint-certificates/' + PID,
@@ -10087,6 +10088,123 @@ function _renderWifiFirmware(data) {
 }
 
 
+function _renderDomainIntel(data) {
+    var payload = data.domain_intel || data;
+    if (!payload) return _renderIntelGeneric(data);
+    var summary = payload.summary || {};
+    var domains = payload.domains || [];
+    if (!domains.length && !summary.domains_discovered) return _renderIntelGeneric(data);
+
+    var _typeBadge = function(t) {
+        var colors = {
+            'ad_domain': 'background:#2563eb;color:#fff',
+            'workgroup': 'background:#7c3aed;color:#fff',
+            'dns_domain': 'background:#059669;color:#fff',
+            'unknown': 'background:#6b7280;color:#fff'
+        };
+        var style = colors[t] || colors['unknown'];
+        var label = (t || 'unknown').replace(/_/g, ' ');
+        return '<span style="display:inline-block;padding:2px 8px;border-radius:3px;' +
+            'font-size:0.8em;font-weight:600;text-transform:uppercase;' + style + '">' +
+            esc(label) + '</span>';
+    };
+
+    var cards = '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">' +
+        '<div style="flex:1;min-width:140px;padding:12px 16px;border-radius:8px;' +
+        'background:var(--accent,#2563eb);color:#fff;text-align:center">' +
+        '<div style="font-size:2em;font-weight:700">' + (summary.domains_discovered || 0) + '</div>' +
+        '<div style="font-size:0.85em;opacity:0.9">Domains Found</div></div>' +
+        '<div style="flex:1;min-width:140px;padding:12px 16px;border-radius:8px;' +
+        'background:var(--surface,#f3f4f6);text-align:center">' +
+        '<div style="font-size:2em;font-weight:700;color:var(--fg)">' + (summary.domain_controllers || 0) + '</div>' +
+        '<div style="font-size:0.85em;color:var(--fg);opacity:0.7">Domain Controllers</div></div>' +
+        '<div style="flex:1;min-width:140px;padding:12px 16px;border-radius:8px;' +
+        'background:var(--surface,#f3f4f6);text-align:center">' +
+        '<div style="font-size:2em;font-weight:700;color:var(--fg)">' + (summary.member_hosts || 0) + '</div>' +
+        '<div style="font-size:0.85em;color:var(--fg);opacity:0.7">Member Hosts</div></div>' +
+        '<div style="flex:1;min-width:140px;padding:12px 16px;border-radius:8px;' +
+        'background:var(--surface,#f3f4f6);text-align:center">' +
+        '<div style="font-size:2em;font-weight:700;color:var(--fg)">' + (summary.sources_used || []).length + '</div>' +
+        '<div style="font-size:0.85em;color:var(--fg);opacity:0.7">Sources</div></div></div>';
+
+    var sections = '';
+    domains.forEach(function(dom, idx) {
+        var dcs = dom.domain_controllers || [];
+        var members = dom.members || [];
+        var srcCounts = dom.source_count || {};
+
+        var srcPills = Object.keys(srcCounts).map(function(s) {
+            return '<span style="display:inline-block;padding:2px 8px;margin:2px;' +
+                'border-radius:3px;font-size:0.8em;background:var(--surface,#e5e7eb);' +
+                'color:var(--fg)">' + esc(s) + ' (' + srcCounts[s] + ')</span>';
+        }).join('');
+
+        var dcHtml = '';
+        if (dcs.length) {
+            dcHtml = '<div style="margin:8px 0"><strong style="font-size:0.9em;color:var(--accent,#2563eb)">' +
+                'Domain Controllers (' + dcs.length + ')</strong>' +
+                '<div style="overflow-x:auto;margin-top:4px"><table class="tool-table" style="width:100%"><thead><tr>' +
+                '<th>IP</th><th>Hostname</th><th>Computer Name</th><th>Sources</th></tr></thead><tbody>' +
+                dcs.map(function(dc) {
+                    return '<tr><td style="font-family:var(--font-mono);white-space:nowrap">' + esc(dc.ip || '') +
+                        '</td><td>' + esc(dc.hostname || '') +
+                        '</td><td>' + esc(dc.computer_name || '') +
+                        '</td><td style="font-size:0.85em">' + esc((dc.sources || []).join(', ')) + '</td></tr>';
+                }).join('') + '</tbody></table></div></div>';
+        }
+
+        var memberHtml = '';
+        if (members.length) {
+            var shown = members.slice(0, 50);
+            memberHtml = '<div style="margin:8px 0"><strong style="font-size:0.9em">' +
+                'Member Hosts (' + members.length + ')</strong>' +
+                '<div style="overflow-x:auto;margin-top:4px"><table class="tool-table" style="width:100%"><thead><tr>' +
+                '<th>IP</th><th>Hostname</th><th>Computer Name</th><th>Sources</th></tr></thead><tbody>' +
+                shown.map(function(m) {
+                    return '<tr><td style="font-family:var(--font-mono);white-space:nowrap">' + esc(m.ip || '') +
+                        '</td><td>' + esc(m.hostname || '') +
+                        '</td><td>' + esc(m.computer_name || '') +
+                        '</td><td style="font-size:0.85em">' + esc((m.sources || []).join(', ')) + '</td></tr>';
+                }).join('') + '</tbody></table></div>';
+            if (members.length > 50) {
+                memberHtml += '<div style="font-size:0.85em;color:var(--fg);opacity:0.6;margin-top:4px">' +
+                    '... and ' + (members.length - 50) + ' more</div>';
+            }
+            memberHtml += '</div>';
+        }
+
+        var metaLine = '';
+        if (dom.netbios_name) metaLine += '<span style="margin-right:12px">NetBIOS: <strong>' + esc(dom.netbios_name) + '</strong></span>';
+        if (dom.dns_tree) metaLine += '<span style="margin-right:12px">DNS Tree: <strong>' + esc(dom.dns_tree) + '</strong></span>';
+        if (dom.sid) metaLine += '<span style="margin-right:12px">SID: <code style="font-size:0.85em">' + esc(dom.sid) + '</code></span>';
+
+        var certsHtml = '';
+        var certs = dom.certificates_referencing || [];
+        if (certs.length) {
+            certsHtml = '<div style="margin:8px 0"><strong style="font-size:0.9em">TLS Certificates Referencing (' + certs.length + ')</strong>' +
+                '<div style="margin-top:4px">' + certs.map(function(c) {
+                    return '<span style="display:inline-block;padding:2px 8px;margin:2px;' +
+                        'border-radius:3px;font-size:0.85em;background:var(--surface,#e5e7eb);' +
+                        'font-family:var(--font-mono);color:var(--fg)">' + esc(c) + '</span>';
+                }).join('') + '</div></div>';
+        }
+
+        sections += '<details ' + (idx === 0 ? 'open' : '') + ' style="margin-bottom:12px;border:1px solid var(--border,#e5e7eb);border-radius:8px;overflow:hidden">' +
+            '<summary style="padding:12px 16px;cursor:pointer;background:var(--surface,#f9fafb);display:flex;align-items:center;gap:8px">' +
+            '<strong style="font-size:1.1em">' + esc(dom.name) + '</strong> ' + _typeBadge(dom.type) +
+            '<span style="margin-left:auto;font-size:0.85em;color:var(--fg);opacity:0.6">' +
+            dcs.length + ' DC' + (dcs.length !== 1 ? 's' : '') + ' · ' +
+            members.length + ' member' + (members.length !== 1 ? 's' : '') + '</span></summary>' +
+            '<div style="padding:12px 16px">' +
+            (metaLine ? '<div style="margin-bottom:8px;font-size:0.9em;color:var(--fg)">' + metaLine + '</div>' : '') +
+            '<div style="margin-bottom:8px"><strong style="font-size:0.85em">Discovery Sources:</strong> ' + srcPills + '</div>' +
+            dcHtml + memberHtml + certsHtml +
+            '</div></details>';
+    });
+
+    return cards + sections;
+}
+
 var _INTEL_RENDERERS = {
     'cookies': _renderCookies,
     'net-hosts': _renderNetHosts,
@@ -10098,6 +10216,7 @@ var _INTEL_RENDERERS = {
     'net-hostname-apps': _renderHostnameApps,
     'net-hostname-hw': _renderHostnameHw,
     'net-posture': _renderNetPosture,
+    'domain-intel': _renderDomainIntel,
     'osint-domains': _renderOsintDomains,
     'osint-dns': _renderOsintDns,
     'osint-certs': _renderOsintCerts,

@@ -558,11 +558,21 @@ def _survey_rogue_classify(db, row):
     )
 
 
+def _domain_intel(db, row):
+    r = _clean(row)
+    dn = r.get("domain_name", "")
+    src = r.get("source", "")
+    if not dn or not src:
+        return
+    db.add_domain_intel(**r)
+
+
 # ── dispatch table: subtype → (single_handler, bulk_method_or_None) ──────
 _DISPATCH = {
     "software":          (_sw,               "bulk_insert_network_software"),
     "hostname_intel":    (_hostname_intel,     None),
     "server_role":       (_server_role,        None),
+    "domain_intel":      (_domain_intel,       "bulk_insert_domain_intel"),
     "dns_record":        (_dns_record,         None),
     "certificate":       (_certificate,        None),
     "screenshot":        (_screenshot,         None),

@@ -1561,6 +1561,70 @@ def api_intel_v2_console(project_id, tool_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  Domain Intelligence  (SS3 internal)
+# ═══════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/domain-intel/<project_id>")
+def api_intel_v2_domain_intel(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if db:
+        try:
+            p = _paginate_params()
+            domain = request.args.get("domain")
+            ip = request.args.get("ip")
+            is_dc = request.args.get("is_dc")
+            kw = {}
+            if domain:
+                kw["domain_name"] = domain
+            if ip:
+                kw["source_ip"] = ip
+            if is_dc is not None:
+                kw["is_dc"] = is_dc.lower() in ("1", "true", "yes")
+            result = db.query_domain_intel(**kw, **p)
+            if result.get("total", 0) > 0:
+                return jsonify(result)
+        except Exception:
+            pass
+    raw = _ss3_json_fallback(project, "domain_intelligence.json")
+    if raw:
+        obs = raw.get("observations", [])
+        return jsonify({"items": obs, "total": len(obs), "page": 1,
+                        "pages": 1})
+    return jsonify(_empty_page())
+
+
+@intel_v2.route("/api/intel/v2/domain-overview/<project_id>")
+def api_intel_v2_domain_overview(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if db:
+        try:
+            fn = getattr(db, "query_domain_intel_aggregated", None)
+            if fn:
+                result = fn()
+                if result.get("summary", {}).get("domains_discovered", 0) > 0:
+                    return jsonify(result)
+        except Exception:
+            pass
+    raw = _ss3_json_fallback(project, "domain_intelligence.json")
+    if raw:
+        summary = raw.get("summary", {})
+        domains = raw.get("domains", [])
+        if summary or domains:
+            return jsonify({"summary": summary, "domains": domains})
+    return jsonify({"summary": {"domains_discovered": 0,
+                                "domain_controllers": 0,
+                                "member_hosts": 0,
+                                "sources_used": []},
+                    "domains": []})
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  Summary  (lightweight counts for all intelligence types)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -1663,6 +1727,8 @@ def api_intel_v2_summary(project_id):
             "isotope_binary": _safe_table_count(db, "isotope_binary"),
             # Network posture (SS3)
             "network_posture": _safe_table_count(db, "network_posture"),
+            # Domain intelligence (SS3)
+            "domain_intel": _safe_count(db, "count_domain_intel"),
             # WebApp / API
             "cookies": _safe_table_count(db, "cookies"),
             "webapp_intel": _safe_table_count(db, "webapp_intel"),
