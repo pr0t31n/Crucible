@@ -9322,9 +9322,9 @@ function _renderWebappIntel(data) {
         var ips = a.ip_addresses || [];
         h += '<td style="font-family:var(--font-mono)">' + (ips.length ? ips.map(function(ip) { return esc(ip); }).join('<br>') : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
         if (a.load_balancer) {
-            h += '<td><span style="color:var(--clr-medium)">Yes</span> (' + ips.length + ' IPs)</td>';
+            h += '<td>' + esc(a.load_balancer_type || 'Yes') + '</td>';
         } else {
-            h += '<td><span style="color:var(--text-secondary)">No</span></td>';
+            h += '<td><span style="color:var(--text-secondary)">—</span></td>';
         }
         h += '<td>' + (a.cdn ? esc(a.cdn) : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
         h += '<td>' + (a.cms ? esc(a.cms) : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
