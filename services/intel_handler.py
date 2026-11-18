@@ -742,28 +742,39 @@ def handle_intel(findings_engine, socketio, project_id: str,
     if intel_type in _HOST_INTEL_SUBTYPES:
         scope_id = _resolve_project_scope_id(db, project)
 
+    def _ensure_tool(row):
+        if isinstance(row, dict) and "tool" not in row and tool_id:
+            row["tool"] = tool_id
+
     try:
         if is_bulk and isinstance(payload, list):
             if bulk_method and hasattr(db, bulk_method):
                 cleaned = [_clean(r) for r in payload if isinstance(r, dict)]
+                for c in cleaned:
+                    _ensure_tool(c)
                 getattr(db, bulk_method)(cleaned)
             else:
                 for row in payload:
                     if isinstance(row, dict):
+                        _ensure_tool(row)
                         if scope_id is not None:
                             row["_scope_id"] = scope_id
                         handler_fn(db, row)
         elif isinstance(payload, dict):
+            _ensure_tool(payload)
             if scope_id is not None:
                 payload["_scope_id"] = scope_id
             handler_fn(db, payload)
         elif isinstance(payload, list):
             if bulk_method and hasattr(db, bulk_method):
                 cleaned = [_clean(r) for r in payload if isinstance(r, dict)]
+                for c in cleaned:
+                    _ensure_tool(c)
                 getattr(db, bulk_method)(cleaned)
             else:
                 for row in payload:
                     if isinstance(row, dict):
+                        _ensure_tool(row)
                         if scope_id is not None:
                             row["_scope_id"] = scope_id
                         handler_fn(db, row)
