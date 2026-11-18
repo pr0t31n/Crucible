@@ -150,20 +150,18 @@ def _backfill_from_project(settings, project, tool_id):
                 settings["api_key_file"] = akf
         _backfill_osift_api_keys(settings)
     elif tool_id == "fracture":
-        if not settings.get("target_url"):
-            urls = scope_def.get("target_urls", [])
-            if urls:
-                settings["target_url"] = "\n".join(urls)
+        urls = scope_def.get("target_urls", [])
+        if urls:
+            settings["target_url"] = "\n".join(urls)
         if scope_def.get("fracture_unauthenticated"):
             settings["unauthenticated"] = True
         if scope_def.get("fracture_no_browser_assist"):
             settings["no_browser_assist"] = True
     elif tool_id == "siphon":
-        if not settings.get("api_base_url"):
-            api_urls = scope_def.get("api_urls", [])
-            if api_urls:
-                settings["api_base_url"] = api_urls[0]
-                settings["api_base_urls"] = api_urls[1:]
+        api_urls = scope_def.get("api_urls", [])
+        if api_urls:
+            settings["api_base_url"] = api_urls[0]
+            settings["api_base_urls"] = api_urls[1:]
     elif tool_id == "auger":
         if not settings.get("host"):
             db_targets = scope_def.get("db_targets", [])

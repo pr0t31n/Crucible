@@ -462,6 +462,46 @@ def _sync_scope_to_tool_settings(data, project):
                         else:
                             disk_settings[settings_key] = val
                     save_settings(_wt, tid, disk_settings)
+    # Fracture target_urls: scope_definition stores a list, settings stores
+    # a newline-joined string — the generic loop can't handle the conversion.
+    if "fracture" in tools:
+        fr_urls = scope_def.get("target_urls", [])
+        if fr_urls:
+            fr_joined = "\n".join(fr_urls)
+            fr_ts = dict(ts.get("fracture", {}))
+            if fr_ts.get("target_url") != fr_joined:
+                fr_ts["target_url"] = fr_joined
+                ts["fracture"] = fr_ts
+                changed = True
+                if proj_dir:
+                    _write_targets = [proj_dir]
+                    _td = (project.get("tool_dirs") or {}).get("fracture")
+                    if _td and str(_td) != str(proj_dir):
+                        _write_targets.append(_td)
+                    for _wt in _write_targets:
+                        disk_settings = load_settings(_wt, "fracture")
+                        disk_settings["target_url"] = fr_joined
+                        save_settings(_wt, "fracture", disk_settings)
+    # Siphon api_urls: same list→string conversion needed.
+    if "siphon" in tools:
+        si_urls = scope_def.get("api_urls", [])
+        if si_urls:
+            si_ts = dict(ts.get("siphon", {}))
+            if si_ts.get("api_base_url") != si_urls[0] or si_ts.get("api_base_urls") != si_urls[1:]:
+                si_ts["api_base_url"] = si_urls[0]
+                si_ts["api_base_urls"] = si_urls[1:]
+                ts["siphon"] = si_ts
+                changed = True
+                if proj_dir:
+                    _write_targets = [proj_dir]
+                    _td = (project.get("tool_dirs") or {}).get("siphon")
+                    if _td and str(_td) != str(proj_dir):
+                        _write_targets.append(_td)
+                    for _wt in _write_targets:
+                        disk_settings = load_settings(_wt, "siphon")
+                        disk_settings["api_base_url"] = si_urls[0]
+                        disk_settings["api_base_urls"] = si_urls[1:]
+                        save_settings(_wt, "siphon", disk_settings)
     ae_tools = {"aether", "aether_b", "aether_z", "aether_u"}
     for ae_tid in ae_tools:
         if ae_tid not in tools:
