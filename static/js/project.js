@@ -9277,78 +9277,85 @@ function _renderCookies(data) {
 
 /* ── Web Application Intelligence Renderer ───────────────────── */
 function _renderWebappIntel(data) {
-    var dns = data.dns;
-    var infra = data.infrastructure || {};
-    var tp = data.target_profile || {};
-    if (!dns && !Object.keys(infra).length && !Object.keys(tp).length)
-        return '<div class="empty-state"><div class="empty-state-text">No web application intelligence data available yet.<br>DNS resolution data will appear once Fracture begins testing.</div></div>';
+    var apps = data.webapps || [];
+    if (!apps.length)
+        return '<div class="empty-state"><div class="empty-state-text">No web application intelligence data available yet.<br>Data will appear once Fracture begins testing.</div></div>';
 
     var h = '';
 
-    /* ── DNS Resolution ────────────────── */
-    if (dns) {
-        h += '<div style="margin-bottom:20px">';
-        h += '<div style="font-weight:600;font-size:15px;margin-bottom:10px">DNS Resolution</div>';
-        h += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">';
+    /* ── Summary pills ───────────────────── */
+    var totalApps = apps.length;
+    var totalIps = 0;
+    var lbCount = 0;
+    var cdnSet = {};
+    apps.forEach(function(a) {
+        totalIps += (a.ip_addresses || []).length;
+        if (a.load_balancer) lbCount++;
+        if (a.cdn) cdnSet[a.cdn] = 1;
+    });
+    h += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+       + '<span style="color:var(--text-secondary)">Web Applications:</span> <strong>' + totalApps + '</strong></div>';
+    h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+       + '<span style="color:var(--text-secondary)">Total IPs:</span> <strong>' + totalIps + '</strong></div>';
+    h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
+       + '<span style="color:var(--text-secondary)">Load Balanced:</span> <strong style="color:' + (lbCount ? 'var(--clr-medium)' : 'var(--clr-info)') + '">'
+       + lbCount + ' of ' + totalApps + '</strong></div>';
+    var cdnNames = Object.keys(cdnSet);
+    if (cdnNames.length) {
         h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
-           + '<span style="color:var(--text-secondary)">Hostname:</span> <strong>' + esc(dns.hostname || '') + '</strong></div>';
-        h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
-           + '<span style="color:var(--text-secondary)">Unique IPs:</span> <strong>' + (dns.total_unique_ips || 0) + '</strong></div>';
-        var lbDet = dns.load_balancer_detected;
-        var lbColor = lbDet ? 'var(--clr-medium)' : 'var(--clr-info)';
-        h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
-           + '<span style="color:var(--text-secondary)">Load Balancer:</span> <strong style="color:' + lbColor + '">' + (lbDet ? 'Detected' : 'Not Detected') + '</strong></div>';
-        if (dns.last_updated) {
-            h += '<div style="padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">'
-               + '<span style="color:var(--text-secondary)">Last Updated:</span> ' + esc(dns.last_updated) + '</div>';
+           + '<span style="color:var(--text-secondary)">CDN:</span> <strong>' + esc(cdnNames.join(', ')) + '</strong></div>';
+    }
+    h += '</div>';
+
+    /* ── Infrastructure table ────────────── */
+    h += '<div style="font-weight:600;font-size:15px;margin-bottom:10px">Web Application Infrastructure</div>';
+    h += '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto"><table class="tool-table" style="width:100%"><thead><tr>';
+    var cols = ['Web Application', 'IP Address(es)', 'Load Balancer', 'CDN', 'CMS', 'Server', 'WAF'];
+    cols.forEach(function(c) { h += '<th>' + esc(c) + '</th>'; });
+    h += '</tr></thead><tbody>';
+
+    apps.forEach(function(a) {
+        h += '<tr>';
+        var urlLabel = esc(a.url || a.hostname || '');
+        h += '<td style="font-family:var(--font-mono);white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis" title="' + urlLabel + '">' + urlLabel + '</td>';
+        var ips = a.ip_addresses || [];
+        h += '<td style="font-family:var(--font-mono)">' + (ips.length ? ips.map(function(ip) { return esc(ip); }).join('<br>') : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
+        if (a.load_balancer) {
+            h += '<td><span style="color:var(--clr-medium)">Yes</span> (' + ips.length + ' IPs)</td>';
+        } else {
+            h += '<td><span style="color:var(--text-secondary)">No</span></td>';
         }
-        h += '</div>';
+        h += '<td>' + (a.cdn ? esc(a.cdn) : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
+        h += '<td>' + (a.cms ? esc(a.cms) : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
+        h += '<td>' + (a.server ? esc(a.server) : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
+        h += '<td>' + (a.waf ? esc(a.waf) : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
+        h += '</tr>';
+    });
+    h += '</tbody></table></div>';
 
-        var ips = dns.resolved_ips || [];
-        if (ips.length) {
-            var rows = ips.map(function(entry) {
-                var srcs = entry.sources || [];
-                return [
-                    '<span style="font-family:var(--font-mono)">' + esc(entry.ip || '') + '</span>',
-                    esc(entry.first_seen || ''),
-                    esc(entry.last_seen || ''),
-                    srcs.map(function(s) {
-                        return '<span style="display:inline-block;padding:2px 6px;margin:1px 2px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;font-size:12px">' + esc(s) + '</span>';
-                    }).join(' ')
-                ];
-            });
-            h += _intelTable(['IP Address', 'First Seen', 'Last Seen', 'Sources'], rows);
+    /* ── Per-app detail cards ────────────── */
+    apps.forEach(function(a) {
+        var items = [];
+        if (a.powered_by) items.push(['X-Powered-By', esc(a.powered_by)]);
+        if (a.edge_security) items.push(['Edge Security', esc(String(a.edge_security))]);
+        if (a.technologies && a.technologies.length) items.push(['Technologies', esc(a.technologies.join(', '))]);
+        if (a.frameworks && a.frameworks.length) items.push(['Frameworks', esc(a.frameworks.join(', '))]);
+        if (a.programming_languages && a.programming_languages.length) items.push(['Languages', esc(a.programming_languages.join(', '))]);
+        if (a.bi_tools) items.push(['BI / Monitoring', esc(a.bi_tools)]);
+        if (a.tls_enabled !== null && a.tls_enabled !== undefined) {
+            items.push(['TLS', a.tls_enabled ? '<span style="color:var(--clr-low)">Enabled</span>' : '<span style="color:var(--clr-high)">Disabled</span>']);
         }
-        h += '</div>';
-    }
+        if (a.tls_protocols) items.push(['TLS Protocols', esc(String(a.tls_protocols))]);
+        if (a.cert_issuer) items.push(['Certificate Issuer', esc(a.cert_issuer)]);
+        if (a.cert_subject) items.push(['Certificate Subject', esc(a.cert_subject)]);
+        if (a.cert_expiry) items.push(['Certificate Expiry', esc(a.cert_expiry)]);
+        if (items.length) {
+            h += _intelCard(a.hostname || a.url || 'Details', items);
+        }
+    });
 
-    /* ── Infrastructure Summary ─────────── */
-    var infraItems = [];
-    if (infra.waf) infraItems.push(['WAF / Edge Security', esc(typeof infra.waf === 'object' ? JSON.stringify(infra.waf) : String(infra.waf))]);
-    if (infra.edge_security) infraItems.push(['Edge Security', esc(String(infra.edge_security))]);
-    if (infra.cdn) infraItems.push(['CDN', esc(String(infra.cdn))]);
-    if (infra.load_balancer) infraItems.push(['Load Balancer', '<span style="color:var(--clr-medium)">Detected</span> (' + (infra.backend_ips || 0) + ' backend IPs)']);
-    if (infra.tls_enabled !== undefined) infraItems.push(['TLS', infra.tls_enabled ? '<span style="color:var(--clr-low)">Enabled</span>' : '<span style="color:var(--clr-high)">Disabled</span>']);
-    if (infra.tls_protocols) infraItems.push(['TLS Protocols', esc(Array.isArray(infra.tls_protocols) ? infra.tls_protocols.join(', ') : String(infra.tls_protocols))]);
-    if (infra.cert_issuer) infraItems.push(['Certificate Issuer', esc(String(infra.cert_issuer))]);
-    if (infra.cert_subject) infraItems.push(['Certificate Subject', esc(String(infra.cert_subject))]);
-    if (infra.cert_expiry) infraItems.push(['Certificate Expiry', esc(String(infra.cert_expiry))]);
-    if (infraItems.length) {
-        h += _intelCard('Infrastructure', infraItems);
-    }
-
-    /* ── Target Profile extras ─────────── */
-    var tpItems = [];
-    if (tp.server) tpItems.push(['Server', esc(String(tp.server))]);
-    if (tp.technologies && tp.technologies.length) tpItems.push(['Technologies', esc(tp.technologies.join(', '))]);
-    if (tp.frameworks && tp.frameworks.length) tpItems.push(['Frameworks', esc(tp.frameworks.join(', '))]);
-    if (tp.cms) tpItems.push(['CMS', esc(String(tp.cms))]);
-    if (tp.programming_languages && tp.programming_languages.length) tpItems.push(['Languages', esc(tp.programming_languages.join(', '))]);
-    if (tpItems.length) {
-        h += _intelCard('Target Profile', tpItems);
-    }
-
-    return h || '<div class="empty-state"><div class="empty-state-text">No data available.</div></div>';
+    return h;
 }
 
 /* ── Hostname Intelligence Renderers ──────────────────────────── */
