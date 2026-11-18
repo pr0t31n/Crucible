@@ -2017,6 +2017,7 @@ mark.ev-hl-current { background: rgba(255,140,0,.7); outline: 2px solid rgba(255
 
 .project-card-actions {
     display: flex;
+    align-items: center;
     gap: 4px;
     opacity: 0;
     transition: opacity var(--transition-fast);
@@ -2025,10 +2026,21 @@ mark.ev-hl-current { background: rgba(255,140,0,.7); outline: 2px solid rgba(255
     opacity: 1;
 }
 
-.project-card-actions .btn-icon {
+.project-card-actions .btn-icon,
+.project-card-actions .dl-dropdown .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 24px;
     height: 24px;
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: none;
+    flex-shrink: 0;
 }
 .project-card-actions .btn-icon:hover {
     color: var(--accent-primary);
@@ -2037,6 +2049,12 @@ mark.ev-hl-current { background: rgba(255,140,0,.7); outline: 2px solid rgba(255
 .project-card-actions .btn-icon svg {
     width: 13px;
     height: 13px;
+    flex-shrink: 0;
+}
+.project-card-actions .dl-dropdown {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
 }
 
 
