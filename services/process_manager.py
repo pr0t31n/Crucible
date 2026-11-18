@@ -888,11 +888,26 @@ class ProcessManager:
         tool_path = Path(td)
         tool_path.mkdir(parents=True, exist_ok=True)
         fp = tool_path / fname
-        # Migrate: if old file exists in proj_dir but not in tool dir, move it
         old_fp = Path(proj_dir) / fname
         if old_fp.exists() and not fp.exists():
             old_fp.rename(fp)
         elif old_fp.exists() and fp.exists():
+            try:
+                with open(old_fp) as _rf:
+                    _root_data = json.load(_rf)
+                with open(fp) as _tf:
+                    _tool_data = json.load(_tf)
+                for _rk, _rv in _root_data.items():
+                    if _rk in ("scan", "engagement"):
+                        continue
+                    if isinstance(_rv, dict) and isinstance(_tool_data.get(_rk), dict):
+                        _tool_data[_rk].update(_rv)
+                    else:
+                        _tool_data[_rk] = _rv
+                with open(fp, "w") as _wf:
+                    json.dump(_tool_data, _wf, indent=2)
+            except Exception:
+                pass
             old_fp.unlink()
         try:
             existing = {}

@@ -445,18 +445,23 @@ def _sync_scope_to_tool_settings(data, project):
         if disk_changed:
             ts[tid] = tool_ts
             if proj_dir:
-                disk_settings = load_settings(proj_dir, tid)
-                for scope_key, (settings_key, _) in field_map.items():
-                    val = scope_def.get(scope_key)
-                    if val is None:
-                        continue
-                    if settings_key == "app_files":
-                        coerced = _coerce_app_files(val)
-                        if coerced:
-                            disk_settings["app_files"] = coerced
-                    else:
-                        disk_settings[settings_key] = val
-                save_settings(proj_dir, tid, disk_settings)
+                _write_targets = [proj_dir]
+                _td = (project.get("tool_dirs") or {}).get(tid)
+                if _td and str(_td) != str(proj_dir):
+                    _write_targets.append(_td)
+                for _wt in _write_targets:
+                    disk_settings = load_settings(_wt, tid)
+                    for scope_key, (settings_key, _) in field_map.items():
+                        val = scope_def.get(scope_key)
+                        if val is None:
+                            continue
+                        if settings_key == "app_files":
+                            coerced = _coerce_app_files(val)
+                            if coerced:
+                                disk_settings["app_files"] = coerced
+                        else:
+                            disk_settings[settings_key] = val
+                    save_settings(_wt, tid, disk_settings)
     ae_tools = {"aether", "aether_b", "aether_z", "aether_u"}
     for ae_tid in ae_tools:
         if ae_tid not in tools:
