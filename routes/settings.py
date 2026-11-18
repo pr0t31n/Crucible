@@ -487,7 +487,7 @@ def api_test_connection(tool_id):
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=45,
+            cmd, capture_output=True, text=True, timeout=90,
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
         parsed = None
