@@ -6813,7 +6813,18 @@ function _renderNetPorts(data) {
 
 function _renderOsintDomains(data) {
     var payload = data.osint_domains || data;
-    if (!payload || (typeof payload !== 'object') || Array.isArray(payload)) return _INTEL_EMPTY_PLACEHOLDER;
+    if (!payload || (typeof payload !== 'object')) return _INTEL_EMPTY_PLACEHOLDER;
+    // DB view returns array of domain objects — merge into grouped shape
+    if (Array.isArray(payload)) {
+        if (!payload.length) return _INTEL_EMPTY_PLACEHOLDER;
+        var merged = { domains: [], whois: [], subdomains: [] };
+        payload.forEach(function(d) {
+            if (d.domain) merged.domains.push(d.domain);
+            if (Array.isArray(d.whois)) d.whois.forEach(function(w) { merged.whois.push(w); });
+            if (Array.isArray(d.subdomains)) d.subdomains.forEach(function(s) { merged.subdomains.push(s); });
+        });
+        payload = merged;
+    }
     if (typeof payload === 'object') {
         var h = '';
         var rootDomains = {};
@@ -8114,8 +8125,22 @@ function _renderOsintTyposquat(data) {
 function _renderOsintWayback(data) {
     var payload = data.osint_wayback || data;
     if (!payload) return _renderIntelGeneric(data);
-    var domains = Array.isArray(payload) ? payload : (payload.domains || []);
-    if (!domains.length) return '<div class="empty-state"><div class="empty-state-text">No Wayback Machine data available.</div></div>';
+    var raw = Array.isArray(payload) ? payload : (payload.items || payload.domains || []);
+    if (!raw.length) return '<div class="empty-state"><div class="empty-state-text">No Wayback Machine data available.</div></div>';
+    // Group flat rows {domain, url} into [{domain, url_count, urls}]
+    var domains;
+    if (raw.length && raw[0].url && !raw[0].urls) {
+        var gmap = {};
+        raw.forEach(function(r) {
+            var d = r.domain || 'unknown';
+            if (!gmap[d]) gmap[d] = { domain: d, url_count: 0, urls: [] };
+            gmap[d].url_count++;
+            gmap[d].urls.push(r.url);
+        });
+        domains = Object.keys(gmap).sort().map(function(k) { return gmap[k]; });
+    } else {
+        domains = raw;
+    }
     var totalUrls = 0, totalEndpoints = 0;
     domains.forEach(function(d) { totalUrls += (d.url_count || 0); totalEndpoints += (d.endpoint_count || 0); });
     var h = '<div style="margin-bottom:12px;font-weight:600;font-size:1.1rem">Wayback Machine — Historical URLs</div>';

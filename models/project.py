@@ -570,7 +570,7 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         if urls:
             settings["scan"]["target_url"] = urls[0]
             settings["scan"]["target_urls"] = urls
-            settings["target_url"] = urls[0]
+            settings["target_url"] = "\n".join(urls)
         if "engagement" not in settings:
             settings["engagement"] = {}
         settings["engagement"]["engagement_name"] = eng_name
