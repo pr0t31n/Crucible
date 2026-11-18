@@ -24,16 +24,26 @@ def _clean(row: dict) -> dict:
     return {k: v for k, v in row.items() if k not in _STRIP_KEYS}
 
 
-def _safe_db_call(method, row):
+def _safe_db_call(method, row, intel_type=""):
     """Call a DB method filtering kwargs to its accepted params."""
     sig = inspect.signature(method)
     params = sig.parameters
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
         return method(**row)
-    else:
-        accepted = {k: v for k, v in row.items()
-                    if k in params and k != "self"}
-        return method(**accepted)
+    accepted = {k: v for k, v in row.items()
+                if k in params and k != "self"}
+    for pname, p in params.items():
+        if pname == "self":
+            continue
+        if (p.default is inspect.Parameter.empty
+                and p.kind not in (inspect.Parameter.VAR_POSITIONAL,
+                                   inspect.Parameter.VAR_KEYWORD)
+                and pname not in accepted):
+            log.error("intel_handler: %s/%s missing required arg '%s' "
+                      "(row keys: %s)", intel_type, method.__name__,
+                      pname, list(row.keys()))
+            return None
+    return method(**accepted)
 
 
 # ── subtype → handler function ───────────────────────────────────────────
@@ -722,9 +732,10 @@ def handle_intel(findings_engine, socketio, project_id: str,
         log.warning("handle_intel: project %s: %s", project_id[:8], exc)
         return
 
-    db = findings_engine._get_db(project_id, project)
+    db = findings_engine._get_db(project_id, project, create=True)
     if db is None:
-        log.debug("handle_intel: no DB for project %s", project_id[:8])
+        log.warning("handle_intel: cannot open/create DB for project %s",
+                     project_id[:8])
         return
 
     scope_id = None
@@ -764,6 +775,15 @@ def handle_intel(findings_engine, socketio, project_id: str,
     except Exception as exc:
         log.warning("handle_intel DB insert (%s/%s): %s",
                      intel_type, tool_id, exc)
+        try:
+            socketio.emit("tool_error", {
+                "project_id": project_id,
+                "tool_id": tool_id,
+                "message": f"Intel DB insert failed ({intel_type}): {exc}",
+                "level": "ERROR",
+            }, room=f"project_{project_id}")
+        except Exception:
+            pass
 
     try:
         room = f"project_{project_id}"

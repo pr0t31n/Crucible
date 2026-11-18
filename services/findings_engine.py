@@ -170,16 +170,20 @@ class FindingsEngine:
         threading.Thread(target=self._preload_catalogues,
                          name="catalogue-preload", daemon=True).start()
 
-    def _get_db_path(self, project_id, project):
+    def _get_db_path(self, project_id, project, create=False):
         """Return the DB file path for a project, or None."""
         eng_dir = project.get("project_dir") or project.get("engagement_dir", "")
         if not eng_dir:
             return None
         from config import FINDINGS_DB_FILENAME
         p = Path(eng_dir) / FINDINGS_DB_FILENAME
-        return str(p) if p.exists() else None
+        if p.exists():
+            return str(p)
+        if create and Path(eng_dir).is_dir():
+            return str(p)
+        return None
 
-    def _get_db(self, project_id, project):
+    def _get_db(self, project_id, project, create=False):
         """Get or create a cached read-write FindingsDB handle."""
         if _fdb is None:
             return None
@@ -187,7 +191,7 @@ class FindingsEngine:
             db = self._db_handles.get(project_id)
             if db is not None:
                 return db
-        db_path = self._get_db_path(project_id, project)
+        db_path = self._get_db_path(project_id, project, create=create)
         if not db_path:
             return None
         try:
