@@ -5783,6 +5783,7 @@ var intelSubNav = document.getElementById('intelSubNav');
 var intelScopeNav = document.getElementById('intelScopeNav');
 var _activeScope = null;
 var _scopeToolsMap = {};
+var _intelReqId = 0;
 
 /* ── Per-tool subtab definitions: [id, display name] ─────────── */
 var TOOL_SUBTABS = {
@@ -6292,6 +6293,7 @@ function loadIntelPanel(panel, tool) {
     }
 
     if (panel === 'overview') {
+        ++_intelReqId;
         body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
         body.hidden = false;
         empty.style.display = 'none';
@@ -6400,6 +6402,7 @@ function loadIntelPanel(panel, tool) {
         url += (url.indexOf('?') === -1 ? '?' : '&') + 'tool=' + encodeURIComponent(tool) + '&scope=' + encodeURIComponent(_scopeParam);
     }
 
+    var reqId = ++_intelReqId;
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
     body.hidden = false;
     empty.style.display = 'none';
@@ -6410,6 +6413,7 @@ function loadIntelPanel(panel, tool) {
             return r.json();
         })
         .then(function(data) {
+            if (reqId !== _intelReqId) return;
             if (data && data.error) {
                 console.warn('[intel] ' + panel + ' error:', data.error);
                 body.hidden = true;
@@ -6425,9 +6429,12 @@ function loadIntelPanel(panel, tool) {
                 empty.style.display = '';
                 return;
             }
+            body.hidden = false;
+            empty.style.display = 'none';
             body.innerHTML = _renderIntelPanel(panel, payload);
         })
         .catch(function(e) {
+            if (reqId !== _intelReqId) return;
             console.error('[intel] ' + panel + ' fetch failed:', e);
             body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load intelligence data.</div></div>';
         });
@@ -7134,6 +7141,7 @@ function _loadScopeOverview(body, empty) {
     for (var _ki = 0; _ki < _keys.length; _ki++) {
         if (SCOPE_DISPLAY_NAMES[_keys[_ki]] === _activeScope) { scopeKey = _keys[_ki]; break; }
     }
+    var reqId = _intelReqId;
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
     body.hidden = false;
     empty.style.display = 'none';
@@ -7145,6 +7153,7 @@ function _loadScopeOverview(body, empty) {
         fetch('/api/findings/v2/' + PID + '?per_page=100000' + _toolQ + _scopeQ, {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
         fetch('/api/intel/v2/hosts/' + PID + '?per_page=100000' + _toolQ + _scopeQ, {credentials: 'same-origin'}).then(function(r) { return r.json(); })
     ]).then(function(results) {
+        if (reqId !== _intelReqId) return;
         var fData = results[0] || {};
         var hostsData = results[1] || {};
         var iData = {};
@@ -7164,6 +7173,7 @@ function _loadScopeOverview(body, empty) {
         var renderer = _SCOPE_OVERVIEW_RENDERERS[scopeKey] || _renderGenericScopeOverview;
         body.innerHTML = renderer(scopeFindings, iData, fData.summary || {}, scopeKey, tData);
     }).catch(function() {
+        if (reqId !== _intelReqId) return;
         body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load overview data.</div></div>';
     });
 }

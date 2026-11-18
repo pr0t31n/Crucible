@@ -904,6 +904,16 @@ class ProcessManager:
                         _tool_data[_rk].update(_rv)
                     else:
                         _tool_data[_rk] = _rv
+                _root_scan = _root_data.get("scan", {})
+                _tool_scan = _tool_data.setdefault("scan", {})
+                _PROPAGATE_SCAN_KEYS = (
+                    "target_url", "target_urls",
+                    "api_base_url", "api_base_urls",
+                    "api_spec_files",
+                )
+                for _pk in _PROPAGATE_SCAN_KEYS:
+                    if _pk in _root_scan:
+                        _tool_scan[_pk] = _root_scan[_pk]
                 with open(fp, "w") as _wf:
                     json.dump(_tool_data, _wf, indent=2)
             except Exception:
