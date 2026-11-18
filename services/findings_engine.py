@@ -980,8 +980,8 @@ class FindingsEngine:
         if _fdb:
             try:
                 db = self._get_db(project_id, project)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("_get_db failed for %s: %s", project_id[:8], exc)
         if db:
             try:
                 result = db.query_findings(page=1, per_page=500000)
@@ -1032,8 +1032,9 @@ class FindingsEngine:
                 try:
                     db.insert_finding(f)
                     inserted += 1
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.warning("insert_finding straggler failed for %s: %s",
+                                project_id[:8], exc)
         if inserted:
             db.rebuild_fts()
             log.info("Validated %s for %s: inserted %d stragglers",
