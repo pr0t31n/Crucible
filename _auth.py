@@ -391,7 +391,8 @@ _last_prune_time: float = 0.0
 _PRUNE_INTERVAL: float = 300.0
 
 def _prune_session_tokens(max_age: int = 1800) -> None:
-    """Remove tokens older than max_age seconds. Runs at most every 5 min."""
+    """Remove tokens older than max_age seconds. Runs at most every 5 min.
+    Also persists refreshed timestamps so restarts don't kill active sessions."""
     global _last_prune_time
     now = time.time()
     if now - _last_prune_time < _PRUNE_INTERVAL:
@@ -402,6 +403,7 @@ def _prune_session_tokens(max_age: int = 1800) -> None:
         expired = [t for t, ts in _session_tokens.items() if ts < cutoff]
         for t in expired:
             del _session_tokens[t]
+        _persist_session_tokens()
 
 def auth_gate():
     """Call from app.before_request. Returns a redirect Response if auth needed, else None."""

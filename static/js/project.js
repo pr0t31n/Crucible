@@ -7,6 +7,7 @@
 /* ── Bootstrap data ────────────────────────────────────────────── */
 var _cfg = JSON.parse(document.getElementById('projectConfig').textContent);
 var PID = _cfg.pid;
+window._PROJECT_ID = PID;
 var PROJECT = _cfg.project;
 var TOOLS_CFG = _cfg.toolsCfg;
 var PROJECT_TOOLS = PROJECT.tools || [];
@@ -6404,8 +6405,17 @@ function loadIntelPanel(panel, tool) {
     empty.style.display = 'none';
 
     fetch(url, {credentials: 'same-origin'})
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (!r.ok) console.warn('[intel] ' + panel + ' HTTP ' + r.status);
+            return r.json();
+        })
         .then(function(data) {
+            if (data && data.error) {
+                console.warn('[intel] ' + panel + ' error:', data.error);
+                body.hidden = true;
+                empty.style.display = '';
+                return;
+            }
             var payload = data;
             if (data && typeof data === 'object' && !Array.isArray(data) && data.items !== undefined) {
                 payload = data.items;
@@ -6417,7 +6427,8 @@ function loadIntelPanel(panel, tool) {
             }
             body.innerHTML = _renderIntelPanel(panel, payload);
         })
-        .catch(function() {
+        .catch(function(e) {
+            console.error('[intel] ' + panel + ' fetch failed:', e);
             body.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load intelligence data.</div></div>';
         });
 }
@@ -6456,7 +6467,7 @@ function _intelCard(title, items) {
 function _renderIntelPanel(panel, data) {
     var renderer = _INTEL_RENDERERS[panel];
     if (renderer) {
-        try { return renderer(data); } catch(e) { /* fallback */ }
+        try { return renderer(data); } catch(e) { console.error('[intel] renderer ' + panel + ' threw:', e); }
     }
     return _renderIntelGeneric(data);
 }

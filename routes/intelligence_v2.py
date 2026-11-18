@@ -2061,10 +2061,16 @@ def api_intel_v2_structure_view(project_id):
         return _err_404()
     idb = _get_idb(project)
     if not idb:
+        log.warning("structure-view: idb=None for %s", project_id)
         return jsonify({"structure_map": {}, "api_map": {}})
     try:
         stp = _scope_tool_params(_get_db(project) or idb)
-        return jsonify(idb.query_structure_tree(scope_id=stp.get("scope_id")))
+        result = idb.query_structure_tree(scope_id=stp.get("scope_id"))
+        sm = result.get("structure_map", {})
+        n = sum(len(v.get("paths", {})) for v in sm.values()) if sm else 0
+        log.info("structure-view: scope_id=%s targets=%d paths=%d",
+                 stp.get("scope_id"), len(sm), n)
+        return jsonify(result)
     except Exception as e:
         return _err_500(e)
 

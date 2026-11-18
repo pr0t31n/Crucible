@@ -31,7 +31,9 @@
     };
 
     function _loadAiSurface() {
-        fetch('/api/ai_surface/' + PID, {credentials: 'same-origin'})
+        var _pid = window._PROJECT_ID;
+        if (!_pid) return;
+        fetch('/api/ai_surface/' + _pid, {credentials: 'same-origin'})
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 _data = data;
