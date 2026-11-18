@@ -6882,6 +6882,26 @@ function _renderOsintDomains(data) {
     return _renderIntelGeneric(data);
 }
 
+function _dnsValueCell(r) {
+    var val = esc(r.value || '');
+    var d = r.details;
+    if (!d || typeof d !== 'object') return val;
+    var parts = [];
+    if (val) parts.push('<span style="font-family:var(--font-mono);word-break:break-all">' + val + '</span>');
+    var labels = {
+        priority: 'Priority', spf_policy: 'SPF Policy', policy: 'Policy',
+        pct: 'Percentage', rua: 'Aggregate Reports', ruf: 'Forensic Reports',
+        txt_type: 'Type', weight: 'Weight', port: 'Port',
+        mname: 'Primary NS', rname: 'Admin', serial: 'Serial',
+        refresh: 'Refresh', retry: 'Retry', expire: 'Expire', minimum: 'Min TTL'
+    };
+    Object.keys(d).forEach(function(k) {
+        var label = labels[k] || k;
+        parts.push('<span style="color:var(--text-secondary);font-size:0.85em">' + esc(label) + ': ' + esc(String(d[k])) + '</span>');
+    });
+    return '<div style="display:flex;flex-direction:column;gap:2px">' + parts.join('') + '</div>';
+}
+
 function _renderOsintDns(data) {
     var payload = data.osint_dns || data;
     if (!payload) return _renderIntelGeneric(data);
@@ -6889,19 +6909,32 @@ function _renderOsintDns(data) {
         var h = '';
         Object.keys(payload).sort().forEach(function(domain) {
             var records = payload[domain];
-            h += '<div style="margin-bottom:16px"><div style="font-weight:600;margin-bottom:8px">' + esc(domain) + '</div>';
+            h += '<div style="margin-bottom:20px;padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border)">';
+            h += '<div style="font-weight:600;margin-bottom:10px;font-size:1.05em">' + esc(domain) + '</div>';
             if (Array.isArray(records)) {
-                var rows = records.map(function(r) { return [esc(r.type || r.record_type || ''), esc(r.name || r.host || ''), esc(r.value || r.data || r.address || '')]; });
-                h += _intelTable(['Type', 'Name', 'Value'], rows);
+                h += '<div style="overflow-x:auto"><table class="tool-table" style="width:100%"><thead><tr>';
+                h += '<th style="width:80px">Type</th><th>Value</th><th style="width:60px">TTL</th></tr></thead><tbody>';
+                records.forEach(function(r) {
+                    var rtype = r.type || r.record_type || '';
+                    var badge = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8em;font-weight:600;font-family:var(--font-mono);'
+                        + 'background:var(--bg-subtle);color:var(--text-secondary)">' + esc(rtype) + '</span>';
+                    h += '<tr><td>' + badge + '</td>';
+                    h += '<td>' + _dnsValueCell(r) + '</td>';
+                    h += '<td style="font-family:var(--font-mono);color:var(--text-secondary)">' + esc(r.ttl != null ? String(r.ttl) : '') + '</td>';
+                    h += '</tr>';
+                });
+                h += '</tbody></table></div>';
             } else if (typeof records === 'object') {
                 Object.keys(records).forEach(function(rtype) {
                     var recs = records[rtype];
                     if (Array.isArray(recs)) {
-                        var rows2 = recs.map(function(r) {
-                            if (typeof r === 'string') return [esc(rtype), esc(r)];
-                            return [esc(rtype), esc(r.host || r.name || ''), esc(r.value || r.data || r.address || JSON.stringify(r))];
+                        recs.forEach(function(r) {
+                            if (typeof r === 'string') {
+                                h += '<div style="padding:4px 0"><span style="color:var(--text-secondary)">' + esc(rtype) + '</span> ' + esc(r) + '</div>';
+                            } else {
+                                h += '<div style="padding:4px 0"><span style="color:var(--text-secondary)">' + esc(rtype) + '</span> ' + _dnsValueCell(r) + '</div>';
+                            }
                         });
-                        h += _intelTable(typeof recs[0] === 'string' ? ['Type', 'Value'] : ['Type', 'Name', 'Value'], rows2);
                     }
                 });
             }
