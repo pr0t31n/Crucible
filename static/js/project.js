@@ -11258,8 +11258,8 @@ function renderStatusPanel(tool, body, empty) {
         var terminal = overallStatus === 'complete' || overallStatus === 'killed'
                      || overallStatus === 'failed' || overallStatus === 'cancelled' || overallStatus === 'halted';
         if (terminal && !_checkpointFetched[tool]) {
+            _checkpointFetched[tool] = true;
             if (!phaseKeys.length) {
-                _checkpointFetched[tool] = true;
                 _fetchCheckpointPhases(tool, overallStatus);
             } else {
                 _fallbackFillPhases(tool, overallStatus);
