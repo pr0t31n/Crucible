@@ -7002,6 +7002,9 @@ function _renderOsintBreaches(data) {
 
 function _renderProfile(data) {
     var payload = data.target_profile || data;
+    if (Array.isArray(payload) && payload.length) {
+        return payload.map(function(p) { return _renderObjectCards(p); }).join('<hr style="margin:16px 0;border-color:var(--border)">');
+    }
     if (!payload || (typeof payload === 'object' && payload.target_profile === null)) {
         return '<div class="empty-state"><div class="empty-state-text">No target profile data available. Run a scan to populate.</div></div>';
     }
@@ -7560,12 +7563,12 @@ function _loadScreenshotsPanel(body, empty, tool) {
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
     body.hidden = false;
     empty.style.display = 'none';
-    var ssUrl = '/api/screenshots/' + PID + '?scope=' + encodeURIComponent(scopeKey);
+    var ssUrl = '/api/intel/v2/screenshots/' + PID + '?scope=' + encodeURIComponent(scopeKey) + '&per_page=500';
     if (tool) ssUrl += '&tool=' + encodeURIComponent(tool);
     fetch(ssUrl, {credentials: 'same-origin'})
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var items = data.screenshots || [];
+            var items = data.items || data.screenshots || [];
             if (!items.length) {
                 body.innerHTML = '<div class="empty-state"><div class="empty-state-text">No screenshots available for this scope.</div></div>';
                 return;
@@ -7595,7 +7598,7 @@ function _loadScreenshotsPanel(body, empty, tool) {
                 else if (dl.indexOf('landing') !== -1 || dl.indexOf('interesting') !== -1) descClass = ' style="color:var(--clr-info);font-weight:600"';
                 var _sUrl = (s.url || '').split(/[\r\n]/)[0].trim();
                 var _ipCell = _isWebApp ? (_sUrl ? _sUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : esc(s.ip)) : esc(s.ip);
-                h += '<tr style="cursor:pointer" data-ss-path="' + esc(s.screenshot_path) + '" data-ss-url="' + esc(_sUrl) + '" data-ss-desc="' + esc((s.description || '').replace(/[\r\n]+/g, ' ')) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
+                h += '<tr style="cursor:pointer" data-ss-path="' + esc(s.screenshot_path || s.file_path || '') + '" data-ss-url="' + esc(_sUrl) + '" data-ss-desc="' + esc((s.description || '').replace(/[\r\n]+/g, ' ')) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
                     '<td>' + (i + 1) + '</td>' +
                     '<td style="font-family:var(--font-mono);font-size:0.8rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(_sUrl) + '">' + esc(_sUrl) + '</td>' +
                     '<td style="font-family:var(--font-mono);font-size:0.85rem">' + esc(_ipCell) + '</td>' +
@@ -7786,6 +7789,22 @@ function _renderApiStructureTree(apiMap) {
 var _INTEL_EMPTY_PLACEHOLDER = '<div class="empty-state"><div class="empty-state-text">Intelligence panels populate as tools run and discover data.</div></div>';
 
 function _renderStructure(data) {
+    if (Array.isArray(data) && data.length) {
+        var rows = data.map(function(r) {
+            var sc = r.status_code || '';
+            var scCls = sc >= 200 && sc < 300 ? 'color:var(--clr-low)' : sc >= 300 && sc < 400 ? 'color:var(--clr-medium)' : sc >= 400 ? 'color:var(--clr-high)' : '';
+            return [
+                '<span style="font-family:var(--font-mono);font-size:.82rem;word-break:break-all">' + esc(r.url || '') + '</span>',
+                esc(r.method || 'GET'),
+                '<span style="' + scCls + ';font-weight:600">' + esc(String(sc || '—')) + '</span>',
+                esc(r.content_type || '—'),
+                esc(r.source || '—'),
+                r.response_time_ms != null ? esc(String(r.response_time_ms)) + 'ms' : '—'
+            ];
+        });
+        return '<div style="margin-bottom:8px;font-weight:600">WebApp Structure Map (' + data.length + ' URLs)</div>' +
+            _intelTable(['URL', 'Method', 'Status', 'Content-Type', 'Source', 'Response Time'], rows);
+    }
     var frMap = data.structure_map;
     var apiMap = data.api_map;
     if (!frMap && !apiMap) return _INTEL_EMPTY_PLACEHOLDER;
@@ -7869,6 +7888,26 @@ function _renderAccessMatrixSingle(matrix) {
 }
 
 function _renderAccessMatrix(data) {
+    if (Array.isArray(data) && data.length) {
+        var roleSet = {}, pathSet = {};
+        data.forEach(function(r) {
+            if (r.role) roleSet[r.role] = true;
+            if (r.endpoint_path) pathSet[r.endpoint_path] = true;
+        });
+        var roles = Object.keys(roleSet).sort();
+        var paths = Object.keys(pathSet).sort();
+        var lookup = {};
+        data.forEach(function(r) { lookup[(r.endpoint_path||'') + '|' + (r.role||'')] = r; });
+        var matrix = {roles: roles, endpoints: paths.map(function(p) {
+            var acc = {};
+            roles.forEach(function(role) {
+                var entry = lookup[p + '|' + role];
+                if (entry) acc[role] = entry.actual_status || (entry.result === 'allowed' ? true : entry.result === 'denied' ? false : entry.result);
+            });
+            return {path: p, access: acc};
+        })};
+        return _renderAccessMatrixSingle(matrix) || '<div class="empty-state"><div class="empty-state-text">No access matrix data.</div></div>';
+    }
     var matrix = data.access_matrix;
     if (!matrix) return _INTEL_EMPTY_PLACEHOLDER;
     if (matrix.roles || matrix.endpoints || matrix.paths) {
@@ -7899,6 +7938,19 @@ function _renderAccessMatrix(data) {
 
 /* ── Auth Status Renderer ──────────────────────────────────────── */
 function _renderAuthStatus(data) {
+    if (Array.isArray(data) && data.length) {
+        var entries = data.map(function(r) {
+            return {
+                role: r.role || r.session_name || '',
+                username: r.username || '',
+                status: r.valid ? 'success' : (r.valid === 0 ? 'failed' : ''),
+                session_name: r.session_name || '',
+                cookies: r.cookies || [],
+                auth_headers: r.auth_headers || []
+            };
+        });
+        return _renderAuthStatus({auth_status: entries});
+    }
     var entries = data.auth_status;
     if (!entries || !Array.isArray(entries) || !entries.length) return _INTEL_EMPTY_PLACEHOLDER;
     var html = '<div class="auth-role-grid">';
@@ -7962,7 +8014,7 @@ function _renderAuthStatus(data) {
 function _renderOsintPeople(data) {
     var payload = data.osint_people || data;
     if (!payload) return _renderIntelGeneric(data);
-    var employees = payload.employees || [];
+    var employees = Array.isArray(payload) ? payload : (payload.employees || []);
     var phones = payload.phone_numbers || [];
     if (!employees.length && !phones.length) return '<div class="empty-state"><div class="empty-state-text">No people intelligence data available.</div></div>';
     var h = '<div style="margin-bottom:12px;font-weight:600;font-size:1.1rem">People Intelligence (' + employees.length + ' employee' + (employees.length !== 1 ? 's' : '') + ')</div>';
@@ -7997,7 +8049,7 @@ function _renderOsintPeople(data) {
 function _renderOsintTyposquat(data) {
     var payload = data.osint_typosquat || data;
     if (!payload) return _renderIntelGeneric(data);
-    var domains = payload.domains || [];
+    var domains = Array.isArray(payload) ? payload : (payload.domains || []);
     if (!domains.length) return '<div class="empty-state"><div class="empty-state-text">No typosquatting data available.</div></div>';
     var high = 0, medium = 0, info = 0;
     domains.forEach(function(d) {
@@ -8034,7 +8086,7 @@ function _renderOsintTyposquat(data) {
 function _renderOsintWayback(data) {
     var payload = data.osint_wayback || data;
     if (!payload) return _renderIntelGeneric(data);
-    var domains = payload.domains || [];
+    var domains = Array.isArray(payload) ? payload : (payload.domains || []);
     if (!domains.length) return '<div class="empty-state"><div class="empty-state-text">No Wayback Machine data available.</div></div>';
     var totalUrls = 0, totalEndpoints = 0;
     domains.forEach(function(d) { totalUrls += (d.url_count || 0); totalEndpoints += (d.endpoint_count || 0); });
@@ -8064,7 +8116,7 @@ function _renderOsintWayback(data) {
 }
 
 function _renderApiInventory(data) {
-    var inv = data.api_inventory;
+    var inv = Array.isArray(data) ? data : data.api_inventory;
     if (!inv) return _INTEL_EMPTY_PLACEHOLDER;
     if (Array.isArray(inv) && !inv.length) return _INTEL_EMPTY_PLACEHOLDER;
     if (typeof inv === 'object' && !Array.isArray(inv) && !Object.keys(inv).length) return _INTEL_EMPTY_PLACEHOLDER;
@@ -8188,6 +8240,7 @@ function _epSection(title, content) {
 
 function _renderEndpointOverview(data) {
     var d = data.endpoint_overview || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d || !d.hostname) return '<div class="empty-state"><div class="empty-state-text">No endpoint overview data available.</div></div>';
     var h = '';
 
@@ -8246,6 +8299,7 @@ function _renderEndpointOverview(data) {
 
 function _renderEndpointHardening(data) {
     var d = data.endpoint_hardening || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No hardening assessment data available.</div></div>';
     var h = '';
 
@@ -8321,6 +8375,7 @@ function _renderEndpointHardening(data) {
 
 function _renderEndpointSoftware(data) {
     var d = data.endpoint_software || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No software inventory data available.</div></div>';
     var h = '';
 
@@ -8390,6 +8445,7 @@ function _renderEndpointSoftware(data) {
 
 function _renderEndpointAD(data) {
     var d = data.endpoint_ad || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No Active Directory data available.</div></div>';
     var h = '';
 
@@ -8493,6 +8549,7 @@ function _renderEndpointAD(data) {
 
 function _renderEndpointNetwork(data) {
     var d = data.endpoint_network || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No network posture data available.</div></div>';
     var h = '';
 
@@ -8576,6 +8633,7 @@ function _renderEndpointNetwork(data) {
 
 function _renderEndpointBrowser(data) {
     var d = data.endpoint_browser || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No browser security data available.</div></div>';
 
     var browsers = ['Chrome', 'Edge', 'Firefox'];
@@ -8635,6 +8693,7 @@ function _renderEndpointBrowser(data) {
 
 function _renderEndpointDisk(data) {
     var d = data.endpoint_disk || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No disk/storage data available. Requires Dredge v1.3.0+.</div></div>';
     var h = '';
 
@@ -8752,6 +8811,7 @@ function _intelTableRaw(headers, rows) {
 
 function _renderEndpointHardware(data) {
     var d = data.endpoint_hardware || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d) return '<div class="empty-state"><div class="empty-state-text">No hardware inventory data available. Requires Dredge v1.3.0+.</div></div>';
     var h = '';
 
@@ -8932,6 +8992,7 @@ function _complianceSectionBreakdown(controls, sectionKey) {
 
 function _renderComplianceAssessment(data) {
     var d = data.endpoint_cis || data.endpoint_nist || data.endpoint_stig || data;
+    if (Array.isArray(d) && d.length) d = d[0];
     if (!d || !d.categories) return '<div class="empty-state"><div class="empty-state-text">No compliance data available. Re-run Dredge to generate the assessment.</div></div>';
 
     var scorePct = d.score_percent || 0;
@@ -9037,6 +9098,22 @@ function _complianceGauge(score) {
 }
 
 function _renderCookies(data) {
+    if (Array.isArray(data) && data.length) {
+        var misHttp = 0, misSec = 0, misSS = 0;
+        var allCk = data.map(function(r) {
+            if (!r.httponly) misHttp++;
+            if (!r.secure) misSec++;
+            if (!r.samesite) misSS++;
+            return {
+                name: r.name || '', value: r.value || '', domain: r.domain || '',
+                path: r.path || '/', httpOnly: !!r.httponly, secure: !!r.secure,
+                sameSite: r.samesite || '', expires: r.expires_at || '',
+                roles: r.tool ? [r.tool] : []
+            };
+        });
+        var stats = {total: allCk.length, missing_httponly: misHttp, missing_secure: misSec, missing_samesite: misSS};
+        return _renderCookies({cookies: {all: allCk, site_wide: [], per_role: {}, stats: stats}});
+    }
     var cookies = data.cookies;
     if (!cookies || typeof cookies !== 'object') return _renderIntelGeneric(data);
     var siteWide = cookies.site_wide || [];
@@ -9142,6 +9219,31 @@ function _renderCookies(data) {
 
 /* ── Web Application Intelligence Renderer ───────────────────── */
 function _renderWebappIntel(data) {
+    if (Array.isArray(data)) {
+        var _infra = {}, _tp = {}, _dns = null;
+        data.forEach(function(r) {
+            if (r.server) _infra.server = r.server;
+            if (r.cdn) _infra.cdn = r.cdn;
+            if (r.edge_security) _infra.edge_security = r.edge_security;
+            if (r.powered_by) _tp.server = r.powered_by;
+            if (r.cms) _tp.cms = r.cms;
+            var techs = r.technologies;
+            if (typeof techs === 'string') { try { techs = JSON.parse(techs); } catch(e) { techs = []; } }
+            if (Array.isArray(techs) && techs.length) _tp.technologies = techs;
+            if (r.hostname || r.url) {
+                _dns = _dns || {};
+                _dns.hostname = r.hostname || (r.url || '').replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
+                if (r.ip) {
+                    _dns.resolved_ips = _dns.resolved_ips || [];
+                    var _ex = false;
+                    for (var _i = 0; _i < _dns.resolved_ips.length; _i++) { if (_dns.resolved_ips[_i].ip === r.ip) { _ex = true; break; } }
+                    if (!_ex) _dns.resolved_ips.push({ip: r.ip});
+                }
+                _dns.total_unique_ips = (_dns.resolved_ips || []).length;
+            }
+        });
+        return _renderWebappIntel({dns: _dns, infrastructure: _infra, target_profile: _tp});
+    }
     var dns = data.dns;
     var infra = data.infrastructure || {};
     var tp = data.target_profile || {};
@@ -9217,7 +9319,22 @@ function _renderWebappIntel(data) {
 }
 
 /* ── Hostname Intelligence Renderers ──────────────────────────── */
+function _buildHostnameSummary(hosts, kind) {
+    var s = {};
+    if (kind === 'environments') {
+        s.environments = {};
+        hosts.forEach(function(h) { if (h.environment) s.environments[h.environment] = (s.environments[h.environment] || 0) + 1; });
+    } else if (kind === 'applications') {
+        s.applications = {};
+        hosts.forEach(function(h) { (h.applications || []).forEach(function(a) { var n = a.name || a; s.applications[n] = (s.applications[n] || 0) + 1; }); });
+    } else if (kind === 'hardware_models') {
+        s.hardware_models = {};
+        hosts.forEach(function(h) { if (h.hardware && h.hardware.model) s.hardware_models[h.hardware.model] = (s.hardware_models[h.hardware.model] || 0) + 1; });
+    }
+    return s;
+}
 function _renderHostnameEnv(data) {
+    if (Array.isArray(data)) data = {hosts: data, summary: _buildHostnameSummary(data, 'environments')};
     var payload = data;
     if (!payload || !payload.hosts) return _renderIntelGeneric(data);
     var hosts = payload.hosts.filter(function(h) { return h.environment; });
@@ -9246,6 +9363,7 @@ function _renderHostnameEnv(data) {
 }
 
 function _renderHostnameApps(data) {
+    if (Array.isArray(data)) data = {hosts: data, summary: _buildHostnameSummary(data, 'applications')};
     var payload = data;
     if (!payload || !payload.hosts) return _renderIntelGeneric(data);
     var hosts = payload.hosts.filter(function(h) { return h.applications && h.applications.length; });
@@ -9276,6 +9394,7 @@ function _renderHostnameApps(data) {
 }
 
 function _renderHostnameHw(data) {
+    if (Array.isArray(data)) data = {hosts: data, summary: _buildHostnameSummary(data, 'hardware_models')};
     var payload = data;
     if (!payload || !payload.hosts) return _renderIntelGeneric(data);
     var hosts = payload.hosts.filter(function(h) { return h.hardware; });
@@ -9303,6 +9422,11 @@ function _renderHostnameHw(data) {
 }
 
 function _renderNetPosture(data) {
+    if (Array.isArray(data) && data.length) {
+        var seg = 0;
+        data.forEach(function(s) { if (s.segmented) seg++; });
+        data = {subnets: data, subnet_count: data.length, segmented_count: seg};
+    }
     if (!data || !data.subnets || !data.subnets.length) return '<div class="empty-state"><div class="empty-state-text">No network posture data available. Port scan results with state breakdowns are required.</div></div>';
     var segCount = data.segmented_count || 0;
     var subCount = data.subnet_count || 0;
@@ -10091,6 +10215,20 @@ function _renderWifiFirmware(data) {
 function _renderDomainIntel(data) {
     var payload = data.domain_intel || data;
     if (!payload) return _renderIntelGeneric(data);
+    if (Array.isArray(payload)) {
+        var domMap = {};
+        payload.forEach(function(r) {
+            var dn = r.domain_name || r.name || '';
+            if (!dn) return;
+            if (!domMap[dn]) domMap[dn] = {name: dn, type: r.domain_type || '', netbios_name: r.netbios_name || '', sid: r.sid || '', members: [], domain_controllers: [], source_count: {}};
+            var d = domMap[dn];
+            if (r.is_dc) d.domain_controllers.push({ip: r.source_ip, hostname: r.hostname, sources: [r.source]});
+            else if (r.source_ip) d.members.push({ip: r.source_ip, computer_name: r.computer_name, hostname: r.hostname, sources: [r.source]});
+            d.source_count[r.source] = (d.source_count[r.source] || 0) + 1;
+        });
+        var doms = Object.values(domMap);
+        payload = {domains: doms, summary: {domains_discovered: doms.length}};
+    }
     var summary = payload.summary || {};
     var domains = payload.domains || [];
     if (!domains.length && !summary.domains_discovered) return _renderIntelGeneric(data);
