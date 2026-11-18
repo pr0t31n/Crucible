@@ -7635,19 +7635,20 @@ function _loadScreenshotsPanel(body, empty, tool) {
             h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">';
             for (var i = 0; i < items.length; i++) {
                 var s = items[i];
-                var dl = (s.description || '').toLowerCase();
+                var _cls = (s.classification || '').trim();
+                var dl = (_cls || s.description || '').toLowerCase();
                 var _classBg = '';
-                var _classLabel = esc(s.description || '—');
-                if (dl.indexOf('login') !== -1 || dl.indexOf('dashboard') !== -1) { _classBg = 'background:rgba(var(--clr-high-rgb,230,126,34),0.12);border-color:var(--clr-high)'; }
-                else if (dl.indexOf('restricted') !== -1 || dl.indexOf('admin') !== -1) { _classBg = 'background:rgba(var(--clr-critical-rgb,231,76,60),0.12);border-color:var(--clr-critical)'; }
-                else if (dl.indexOf('directory') !== -1 || dl.indexOf('error') !== -1) { _classBg = 'background:rgba(var(--clr-medium-rgb,241,196,15),0.08)'; }
+                var _classLabel = esc(_cls || '—');
+                if (dl.indexOf('login') !== -1 || dl.indexOf('dashboard') !== -1 || dl.indexOf('admin') !== -1) { _classBg = 'background:rgba(var(--clr-high-rgb,230,126,34),0.12);border-color:var(--clr-high)'; }
+                else if (dl.indexOf('restricted') !== -1 || dl.indexOf('forbidden') !== -1 || dl.indexOf('unauthorized') !== -1) { _classBg = 'background:rgba(var(--clr-critical-rgb,231,76,60),0.12);border-color:var(--clr-critical)'; }
+                else if (dl.indexOf('directory') !== -1 || dl.indexOf('error') !== -1 || dl.indexOf('fault') !== -1) { _classBg = 'background:rgba(var(--clr-medium-rgb,241,196,15),0.08)'; }
                 var _sUrl = (s.url || '').split(/[\r\n]/)[0].trim();
                 var _ipCell = _isWebApp ? (_sUrl ? _sUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : esc(s.ip)) : esc(s.ip);
                 var _ssPath = s.screenshot_path || s.file_path || '';
                 var _thumbUrl = '/api/file_serve/' + PID + '?path=' + encodeURIComponent(_ssPath);
                 var _statusPill = s.status_code ? '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:0.75rem;font-weight:600;background:' + (s.status_code < 300 ? 'var(--clr-low,#27ae60)' : s.status_code < 400 ? 'var(--clr-info,#3498db)' : 'var(--clr-high,#e67e22)') + ';color:#fff">' + s.status_code + '</span>' : '';
                 h += '<div class="ss-card" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;' + _classBg + '" ' +
-                    'data-ss-path="' + esc(_ssPath) + '" data-ss-url="' + esc(_sUrl) + '" data-ss-desc="' + esc((s.description || '').replace(/[\r\n]+/g, ' ')) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
+                    'data-ss-path="' + esc(_ssPath) + '" data-ss-url="' + esc(_sUrl) + '" data-ss-cls="' + esc(_cls) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
                     '<div style="width:100%;height:180px;background:var(--bg-inset,var(--bg-card));overflow:hidden;display:flex;align-items:center;justify-content:center">' +
                     '<img src="' + _thumbUrl + '" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'<div style=padding:20px;color:var(--text-muted);font-size:.85rem>Preview unavailable</div>\'">' +
                     '</div>' +
@@ -7673,7 +7674,7 @@ function _loadScreenshotsPanel(body, empty, tool) {
                     _openScreenshot(
                         card.getAttribute('data-ss-path'),
                         card.getAttribute('data-ss-url'),
-                        card.getAttribute('data-ss-desc'),
+                        card.getAttribute('data-ss-cls'),
                         card.getAttribute('data-ss-ip'),
                         parseInt(card.getAttribute('data-ss-port'), 10) || 0,
                         card.getAttribute('data-ss-server')
