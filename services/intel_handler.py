@@ -271,7 +271,29 @@ def _auth_session(db, row):
     r.pop("headers", None)
     if "status" in r and "valid" not in r:
         r["valid"] = 1 if str(r.pop("status")).lower() in ("active", "valid", "1", "true") else 0
-    session_id = _safe_db_call(db.add_auth_session, r)
+    sid = r.pop("_scope_id", None)
+    try:
+        session_id = _safe_db_call(db.add_auth_session, r)
+    except Exception:
+        session_id = None
+        tool = r.get("tool", "")
+        role = r.get("role", r.get("session_name", ""))
+        try:
+            cur = db._conn.execute(
+                "SELECT id FROM auth_sessions WHERE tool = ? AND role = ? "
+                "ORDER BY id DESC LIMIT 1", (tool, role))
+            hit = cur.fetchone()
+            if hit:
+                session_id = hit[0] if isinstance(hit, (tuple, list)) else hit["id"]
+                updates = {k: v for k, v in r.items()
+                           if k not in ("tool", "role") and v is not None}
+                if updates:
+                    set_clause = ", ".join(f"{k} = ?" for k in updates)
+                    db._conn.execute(
+                        f"UPDATE auth_sessions SET {set_clause} WHERE id = ?",
+                        list(updates.values()) + [session_id])
+        except Exception:
+            log.warning("_auth_session: upsert fallback failed", exc_info=True)
     if session_id and cookies and isinstance(cookies, list):
         for ck in cookies:
             if isinstance(ck, dict) and ck.get("name"):
@@ -324,7 +346,6 @@ def _osint_whois(db, row):
             if hit:
                 r["domain_id"] = hit[0] if isinstance(hit, (tuple, list)) else hit["id"]
             else:
-                scope_id = r.get("_scope_id")
                 db.add_osint_domain(domain=domain_name, source=r.get("source", "osift"))
                 cur2 = db._conn.execute(
                     "SELECT id FROM osint_domains WHERE domain = ?",
@@ -335,14 +356,38 @@ def _osint_whois(db, row):
         except Exception:
             log.warning("_osint_whois: domain_id resolve failed for %s", domain_name, exc_info=True)
             return
-    ns = r.get("nameservers")
-    if isinstance(ns, list):
-        r["nameservers"] = ", ".join(str(s) for s in ns)
+    if "registrar" in r and "registrant_org" not in r:
+        r["registrant_org"] = r.pop("registrar")
+    extra = {}
+    for k in ("created", "expires", "source", "registrant_name",
+              "registrant_email", "registrant_state", "registrant_city"):
+        v = r.pop(k, None)
+        if v is not None:
+            extra[k] = v
+    ns = r.pop("nameservers", None)
+    if ns is not None:
+        extra["nameservers"] = ", ".join(str(s) for s in ns) if isinstance(ns, list) else ns
+    if extra:
+        existing = r.get("parsed") or {}
+        if isinstance(existing, str):
+            try:
+                existing = json.loads(existing)
+            except (json.JSONDecodeError, TypeError):
+                existing = {}
+        existing.update(extra)
+        r["parsed"] = existing
+    r.pop("tool", None)
+    r.pop("_scope_id", None)
     _safe_db_call(db.add_osint_whois, r)
 
 def _osint_email(db, row):
     r = _clean(row)
     _safe_db_call(db.add_email, r)
+
+def _osint_certificate(db, row):
+    r = _clean(row)
+    if hasattr(db, "add_osint_certificate"):
+        _safe_db_call(db.add_osint_certificate, r)
 
 def _osint_subdomain(db, row):
     r = _clean(row)
@@ -372,13 +417,21 @@ def _osint_person(db, row):
 
 def _osint_wayback(db, row):
     r = _clean(row)
-    if "domain" not in r and "url" in r:
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(r["url"])
-            r["domain"] = parsed.netloc or parsed.path.split("/")[0]
-        except Exception:
+    if "domain" not in r:
+        url = r.get("url", "")
+        if url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(url)
+                r["domain"] = parsed.netloc or parsed.path.split("/")[0] or ""
+            except Exception:
+                r["domain"] = ""
+        else:
             r["domain"] = ""
+    if not r.get("domain") or not r.get("url"):
+        return
+    r.pop("tool", None)
+    r.pop("_scope_id", None)
     _safe_db_call(db.add_osint_wayback_url, r)
 
 def _osint_typosquat(db, row):
@@ -885,6 +938,7 @@ _DISPATCH = {
     "auth_cookie":       (_auth_cookie,         None),
     "osint_domain":      (_osint_domain,       "bulk_insert_osint_domains"),
     "osint_whois":       (_osint_whois,         None),
+    "osint_certificate": (_osint_certificate,  "bulk_insert_osint_certificates"),
     "osint_email":       (_osint_email,         None),
     "osint_subdomain":   (_osint_subdomain,     None),
     "osint_phone":       (_osint_phone,        "bulk_insert_osint_phones"),
@@ -973,7 +1027,7 @@ _SCOPED_INTEL_SUBTYPES = frozenset({
     "endpoint_compliance", "endpoint_ad", "endpoint_browser",
     "endpoint_inventory", "endpoint_overview", "endpoint_network",
     "endpoint_disk", "endpoint_hardware", "osint_domain",
-    "osint_whois", "osint_email", "osint_subdomain", "osint_phone",
+    "osint_whois", "osint_certificate", "osint_email", "osint_subdomain", "osint_phone",
     "osint_breach", "osint_person", "osint_wayback", "osint_typosquat",
     "mobile_component", "mobile_permission", "mobile_data_flow",
     "mobile_traffic", "mobile_hardening", "mobile_domain",
