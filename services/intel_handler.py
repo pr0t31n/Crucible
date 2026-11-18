@@ -128,6 +128,15 @@ def _target_profile(db, row):
 
 def _structure_url(db, row):
     r = _clean(row)
+    if "status" in r and "status_code" not in r:
+        r["status_code"] = r.pop("status")
+    if "auth_only" in r and "auth_required" not in r:
+        r["auth_required"] = 1 if r.pop("auth_only") else 0
+    if "auth_users" in r and "auth_roles" not in r:
+        au = r.pop("auth_users")
+        r["auth_roles"] = json.dumps(au) if isinstance(au, list) else au
+    if "rogue" in r and "is_rogue" not in r:
+        r["is_rogue"] = 1 if r.pop("rogue") else 0
     params = r.pop("params", [])
     forms = r.pop("forms", [])
     headers = r.pop("headers", [])
@@ -185,6 +194,32 @@ def _api_endpoint(db, row):
 
 def _access_matrix(db, row):
     r = _clean(row)
+    paths = r.pop("paths", r.pop("path_access", None))
+    if paths and isinstance(paths, list):
+        roles = r.get("roles", [])
+        target_url = r.get("target_url", "")
+        scope_id = r.get("_scope_id")
+        for pe in paths:
+            path = pe.get("path") or pe.get("url", "")
+            access = pe.get("access", {})
+            body_class_map = pe.get("body_class", {})
+            for role, status in access.items():
+                entry = {
+                    "endpoint_path": path,
+                    "role": role,
+                    "actual_status": status if isinstance(status, int) else None,
+                    "result": "allowed" if (isinstance(status, int) and status < 400) else "denied",
+                    "target_url": target_url,
+                }
+                bc = body_class_map.get(role)
+                if bc:
+                    entry["body_class"] = str(bc)
+                    if isinstance(bc, str) and "denied" in bc.lower():
+                        entry["body_denied"] = 1
+                if scope_id:
+                    entry["_scope_id"] = scope_id
+                _safe_db_call(db.add_access_matrix_entry, entry)
+        return
     if "endpoint_path" in r:
         _safe_db_call(db.add_access_matrix_entry, r)
 
@@ -492,6 +527,63 @@ def _console_chunk(db, row):
 
 def _network_posture(db, row):
     r = _clean(row)
+    if "subnets" in r and isinstance(r["subnets"], list):
+        scope_id = r.get("_scope_id")
+        for sn in r["subnets"]:
+            cidr = sn.get("cidr", "")
+            if not cidr:
+                continue
+            sn_data = {
+                "cidr": cidr,
+                "host_count": sn.get("host_count", 0),
+                "open_hosts": sn.get("open_hosts", 0),
+                "filtered_hosts": sn.get("filtered_hosts", 0),
+                "closed_hosts": sn.get("closed_hosts", 0),
+                "segmented": 1 if sn.get("segmented") else 0,
+            }
+            if scope_id:
+                sn_data["scope_id"] = scope_id
+            try:
+                conn = db._conn
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS network_posture_subnets ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, cidr TEXT NOT NULL, "
+                    "host_count INTEGER DEFAULT 0, open_hosts INTEGER DEFAULT 0, "
+                    "filtered_hosts INTEGER DEFAULT 0, closed_hosts INTEGER DEFAULT 0, "
+                    "segmented INTEGER DEFAULT 0, scope_id INTEGER, "
+                    "UNIQUE(cidr, scope_id))")
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS network_posture_hosts ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "subnet_id INTEGER REFERENCES network_posture_subnets(id) ON DELETE CASCADE, "
+                    "ip TEXT NOT NULL, hostname TEXT, posture TEXT, "
+                    "open_port_count INTEGER DEFAULT 0, port_open INTEGER DEFAULT 0, "
+                    "port_closed INTEGER DEFAULT 0, port_filtered INTEGER DEFAULT 0, "
+                    "port_scanned INTEGER DEFAULT 0)")
+                cur = conn.execute(
+                    "INSERT OR REPLACE INTO network_posture_subnets "
+                    "(cidr, host_count, open_hosts, filtered_hosts, closed_hosts, "
+                    "segmented, scope_id) VALUES (?,?,?,?,?,?,?)",
+                    (sn_data["cidr"], sn_data["host_count"], sn_data["open_hosts"],
+                     sn_data["filtered_hosts"], sn_data["closed_hosts"],
+                     sn_data["segmented"], sn_data.get("scope_id")))
+                subnet_id = cur.lastrowid
+                for h in sn.get("hosts", []):
+                    conn.execute(
+                        "INSERT INTO network_posture_hosts "
+                        "(subnet_id, ip, hostname, posture, open_port_count, "
+                        "port_open, port_closed, port_filtered, port_scanned) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (subnet_id, h.get("ip", ""), h.get("hostname", ""),
+                         h.get("posture", ""), h.get("open_port_count", 0),
+                         h.get("open", h.get("port_open", 0)),
+                         h.get("closed", h.get("port_closed", 0)),
+                         h.get("filtered", h.get("port_filtered", 0)),
+                         h.get("scanned", h.get("port_scanned", 0))))
+                conn.commit()
+            except Exception:
+                log.warning("network_posture subnet insert failed", exc_info=True)
+        return
     _safe_db_call(db.add_network_posture, r)
 
 def _cookie(db, row):
@@ -500,6 +592,14 @@ def _cookie(db, row):
 
 def _webapp_intel(db, row):
     r = _clean(row)
+    if "frameworks" in r and isinstance(r["frameworks"], list):
+        r["frameworks"] = json.dumps(r["frameworks"])
+    if "programming_languages" in r and isinstance(r["programming_languages"], list):
+        r["programming_languages"] = json.dumps(r["programming_languages"])
+    if "tls_protocols" in r and isinstance(r["tls_protocols"], list):
+        r["tls_protocols"] = json.dumps(r["tls_protocols"])
+    if "backend_ips" in r and isinstance(r["backend_ips"], list):
+        r["backend_ips"] = json.dumps(r["backend_ips"])
     _safe_db_call(db.add_webapp_intel, r)
 
 def _api_inventory(db, row):

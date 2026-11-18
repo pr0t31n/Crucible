@@ -23,6 +23,7 @@ intel_v2 = Blueprint("intel_v2", __name__)
 # ── FindingsDB handle cache ───────────────────────────────────────
 
 _db_cache = {}
+_idb_cache = {}
 
 
 def _get_db(project):
@@ -64,6 +65,39 @@ def _get_db(project):
         return db
     except Exception:
         log.warning("_get_db failed for %s", pid, exc_info=True)
+        return None
+
+
+def _get_idb(project):
+    """Get or create an IntelligenceDB handle for *project*."""
+    pid = project.get("id", "")
+    if pid in _idb_cache:
+        idb = _idb_cache[pid]
+        try:
+            idb._conn.execute("SELECT 1")
+            return idb
+        except Exception:
+            try:
+                idb.close()
+            except Exception:
+                pass
+            del _idb_cache[pid]
+    try:
+        import sys
+        if "/opt/pr0t31n/shared" not in sys.path:
+            sys.path.insert(0, "/opt/pr0t31n/shared")
+        import pr0t31n_intelligence_db
+        pd = project.get("project_dir") or project.get("engagement_dir", "")
+        if not pd:
+            return None
+        db_path = Path(pd) / "findings.db"
+        if not db_path.exists():
+            return None
+        idb = pr0t31n_intelligence_db.IntelligenceDB(str(db_path))
+        _idb_cache[pid] = idb
+        return idb
+    except Exception:
+        log.warning("_get_idb failed for %s", pid, exc_info=True)
         return None
 
 
@@ -138,20 +172,6 @@ def _scope_tool_params(db):
     return {"scope_id": scope_id, "tool": tool}
 
 
-def _ss3_json_fallback(project, filename):
-    """Load a raw JSON file from the SS3 output directory."""
-    try:
-        from routes.intelligence import _resolve_tool_dirs
-    except ImportError:
-        return None
-    for d in _resolve_tool_dirs(project, "ss3"):
-        p = Path(d) / filename
-        if p.is_file():
-            try:
-                return json.loads(p.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-    return None
 
 
 def _empty_page(page=1):
@@ -271,9 +291,6 @@ def api_intel_v2_hostname_intel(project_id):
                 return jsonify(result)
         except Exception:
             pass
-    raw = _ss3_json_fallback(project, "hostname_intelligence.json")
-    if raw:
-        return jsonify(raw)
     return jsonify(_empty_page())
 
 
@@ -295,9 +312,6 @@ def api_intel_v2_server_roles(project_id):
                 return jsonify(result)
         except Exception:
             pass
-    raw = _ss3_json_fallback(project, "server_roles.json")
-    if raw:
-        return jsonify(raw)
     return jsonify(_empty_page())
 
 
@@ -338,9 +352,6 @@ def api_intel_v2_network_posture(project_id):
                 return jsonify(result)
         except Exception:
             pass
-    raw = _ss3_json_fallback(project, "network_posture.json")
-    if raw:
-        return jsonify(raw)
     return jsonify(_empty_page())
 
 
@@ -1701,11 +1712,6 @@ def api_intel_v2_domain_intel(project_id):
                 return jsonify(result)
         except Exception:
             pass
-    raw = _ss3_json_fallback(project, "domain_intelligence.json")
-    if raw:
-        obs = raw.get("observations", [])
-        return jsonify({"items": obs, "total": len(obs), "page": 1,
-                        "pages": 1})
     return jsonify(_empty_page())
 
 
@@ -1724,12 +1730,6 @@ def api_intel_v2_domain_overview(project_id):
                     return jsonify(result)
         except Exception:
             pass
-    raw = _ss3_json_fallback(project, "domain_intelligence.json")
-    if raw:
-        summary = raw.get("summary", {})
-        domains = raw.get("domains", [])
-        if summary or domains:
-            return jsonify({"summary": summary, "domains": domains})
     return jsonify({"summary": {"domains_discovered": 0,
                                 "domain_controllers": 0,
                                 "member_hosts": 0,
@@ -2046,6 +2046,160 @@ def api_wifi_firmware(pid):
     except AttributeError:
         log.warning("api_wifi_firmware: DB missing query_wireless_firmware", exc_info=True)
         return jsonify({"matches": []})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Intelligence View Endpoints — structured aggregated data for JS renderers
+# ═══════════════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/structure-view/<project_id>")
+def api_intel_v2_structure_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"structure_map": {}, "api_map": {}})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_structure_tree(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/access-view/<project_id>")
+def api_intel_v2_access_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"access_matrix": {}})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_access_matrix_view(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/auth-view/<project_id>")
+def api_intel_v2_auth_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"auth_status": []})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_auth_view(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/cookies-view/<project_id>")
+def api_intel_v2_cookies_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"cookies": {"all": [], "site_wide": [], "per_role": {}, "stats": {}}})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_cookies_view(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/webapp-view/<project_id>")
+def api_intel_v2_webapp_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"dns": None, "infrastructure": {}, "target_profile": {}})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_webapp_view(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/osint-domains-view/<project_id>")
+def api_intel_v2_osint_domains_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"osint_domains": {}})
+    try:
+        return jsonify(idb.query_osint_domains_view())
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/osint-dns-view/<project_id>")
+def api_intel_v2_osint_dns_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"osint_dns": {}})
+    try:
+        return jsonify(idb.query_osint_dns_grouped())
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/posture-view/<project_id>")
+def api_intel_v2_posture_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"subnets": [], "subnet_count": 0, "segmented_count": 0})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_network_posture_view(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/hostname-view/<project_id>")
+def api_intel_v2_hostname_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"hosts": [], "summary": {}})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        kind = request.args.get("kind")
+        return jsonify(idb.query_hostname_intel_view(
+            scope_id=stp.get("scope_id"), kind=kind))
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/roles-view/<project_id>")
+def api_intel_v2_roles_view(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    idb = _get_idb(project)
+    if not idb:
+        return jsonify({"roles": [], "summary": {"role_counts": {}}})
+    try:
+        stp = _scope_tool_params(_get_db(project) or idb)
+        return jsonify(idb.query_server_roles_view(scope_id=stp.get("scope_id")))
+    except Exception as e:
+        return _err_500(e)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -5788,6 +5788,12 @@ var TOOL_NATIVE_SCOPES = {
     aether_b:'bluetooth', aether_z:'zigbee', aether_u:'uwb'
 };
 
+var SCOPE_HIDDEN_SUBTABS = {
+    'External': ['net-hostname-env', 'net-hostname-apps', 'net-hostname-hw', 'net-posture', 'domain-intel'],
+    'OSINT': ['net-hostname-env', 'net-hostname-apps', 'net-hostname-hw', 'net-posture', 'domain-intel',
+              'net-services', 'net-software', 'net-ports', 'net-roles']
+};
+
 var _SS3_SCOPE_SUB = [
     {key: 'p1_discovery',  label: 'Phase 1: Host Discovery',              toolList: true},
     {key: 'p1_5_hostname', label: 'Phase 1.5: Hostname Resolution',       toolList: true},
@@ -6179,9 +6185,11 @@ function selectScope(scopeName) {
         intelSubNav.appendChild(tBtn);
     }
 
+    var _hiddenTabs = SCOPE_HIDDEN_SUBTABS[scopeName] || [];
     tools.forEach(function(t) {
         var subs = TOOL_SUBTABS[t] || [];
         subs.forEach(function(pair) {
+            if (_hiddenTabs.indexOf(pair[0]) !== -1) return;
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'tab-btn';
@@ -6265,9 +6273,9 @@ function loadIntelPanel(panel, tool) {
     }
 
     var urlMap = {
-        'structure': '/api/intel/v2/structure-urls/' + PID,
-        'access': '/api/intel/v2/access-matrix/' + PID,
-        'auth': '/api/intel/v2/auth-sessions/' + PID,
+        'structure': '/api/intel/v2/structure-view/' + PID,
+        'access': '/api/intel/v2/access-view/' + PID,
+        'auth': '/api/intel/v2/auth-view/' + PID,
         'api': '/api/intel/v2/api-inventory/' + PID,
         'profile': '/api/intel/v2/target-profiles/' + PID,
         'fw-rules': '/api/intel/v2/firewall-rules/' + PID,
@@ -6290,14 +6298,14 @@ function loadIntelPanel(panel, tool) {
         'net-services': '/api/intel/v2/services/' + PID + '?per_page=500',
         'net-software': '/api/intel/v2/software/' + PID,
         'net-ports': '/api/intel/v2/ports/' + PID + '?per_page=500',
-        'net-roles': '/api/intel/v2/server-roles/' + PID,
-        'net-hostname-env': '/api/intel/v2/hostname-intel/' + PID,
-        'net-hostname-apps': '/api/intel/v2/hostname-intel/' + PID,
-        'net-hostname-hw': '/api/intel/v2/hostname-intel/' + PID,
-        'net-posture': '/api/intel/v2/network-posture/' + PID,
+        'net-roles': '/api/intel/v2/roles-view/' + PID,
+        'net-hostname-env': '/api/intel/v2/hostname-view/' + PID + '?kind=env',
+        'net-hostname-apps': '/api/intel/v2/hostname-view/' + PID + '?kind=apps',
+        'net-hostname-hw': '/api/intel/v2/hostname-view/' + PID + '?kind=hw',
+        'net-posture': '/api/intel/v2/posture-view/' + PID,
         'domain-intel': '/api/intel/v2/domain-overview/' + PID,
-        'osint-domains': '/api/intel/v2/osint-domains/' + PID,
-        'osint-dns': '/api/intel/v2/osint-dns/' + PID,
+        'osint-domains': '/api/intel/v2/osint-domains-view/' + PID,
+        'osint-dns': '/api/intel/v2/osint-dns-view/' + PID,
         'osint-certs': '/api/intel/v2/osint-certificates/' + PID,
         'osint-emails': '/api/intel/v2/osint-emails/' + PID,
         'osint-breaches': '/api/intel/v2/osint-breaches/' + PID,
@@ -6326,8 +6334,8 @@ function loadIntelPanel(panel, tool) {
         'endpoint-cis': '/api/intel/v2/endpoint-compliance/' + PID + '?framework=cis',
         'endpoint-nist': '/api/intel/v2/endpoint-compliance/' + PID + '?framework=nist',
         'endpoint-stig': '/api/intel/v2/endpoint-compliance/' + PID + '?framework=stig',
-        'cookies': '/api/intel/v2/cookies/' + PID,
-        'webapp-intel': '/api/intel/v2/webapp-intel/' + PID,
+        'cookies': '/api/intel/v2/cookies-view/' + PID,
+        'webapp-intel': '/api/intel/v2/webapp-view/' + PID,
         'rogue-aps': '/api/intel/v2/survey-rogues/' + PID,
         'wifi-aps': '/api/intel/v2/wifi-aps/' + PID,
         'wifi-clients': '/api/intel/v2/wifi-clients/' + PID,
@@ -6689,10 +6697,8 @@ function _renderNetSoftware(data) {
 }
 
 function _renderNetRoles(data) {
-    var payload = data.net_roles || data;
-    if (!payload) return _renderIntelGeneric(data);
-    var items = Array.isArray(payload) ? payload : (payload.items || []);
-    if (!items.length) return _renderIntelGeneric(data);
+    var items = data.roles || data.items || [];
+    if (!items.length) return _INTEL_EMPTY_PLACEHOLDER;
     var roleCounts = {};
     items.forEach(function(r) {
         var role = r.role || 'Unknown';
@@ -6773,16 +6779,7 @@ function _renderNetPorts(data) {
 
 function _renderOsintDomains(data) {
     var payload = data.osint_domains || data;
-    if (!payload) return _renderIntelGeneric(data);
-    if (Array.isArray(payload)) {
-        /* Simple subdomain list */
-        if (typeof payload[0] === 'string') {
-            var rows = payload.map(function(d) { return [esc(d)]; });
-            return '<div style="margin-bottom:8px;font-weight:600">Discovered Subdomains (' + payload.length + ')</div>' +
-                _intelTable(['Domain'], rows);
-        }
-        return _renderArrayTable(payload);
-    }
+    if (!payload || (typeof payload !== 'object') || Array.isArray(payload)) return _INTEL_EMPTY_PLACEHOLDER;
     if (typeof payload === 'object') {
         var h = '';
         var rootDomains = {};
@@ -7800,22 +7797,6 @@ function _renderApiStructureTree(apiMap) {
 var _INTEL_EMPTY_PLACEHOLDER = '<div class="empty-state"><div class="empty-state-text">Intelligence panels populate as tools run and discover data.</div></div>';
 
 function _renderStructure(data) {
-    if (Array.isArray(data) && data.length) {
-        var rows = data.map(function(r) {
-            var sc = r.status_code || '';
-            var scCls = sc >= 200 && sc < 300 ? 'color:var(--clr-low)' : sc >= 300 && sc < 400 ? 'color:var(--clr-medium)' : sc >= 400 ? 'color:var(--clr-high)' : '';
-            return [
-                '<span style="font-family:var(--font-mono);font-size:.82rem;word-break:break-all">' + esc(r.url || '') + '</span>',
-                esc(r.method || 'GET'),
-                '<span style="' + scCls + ';font-weight:600">' + esc(String(sc || '—')) + '</span>',
-                esc(r.content_type || '—'),
-                esc(r.source || '—'),
-                r.response_time_ms != null ? esc(String(r.response_time_ms)) + 'ms' : '—'
-            ];
-        });
-        return '<div style="margin-bottom:8px;font-weight:600">WebApp Structure Map (' + data.length + ' URLs)</div>' +
-            _intelTable(['URL', 'Method', 'Status', 'Content-Type', 'Source', 'Response Time'], rows);
-    }
     var frMap = data.structure_map;
     var apiMap = data.api_map;
     if (!frMap && !apiMap) return _INTEL_EMPTY_PLACEHOLDER;
@@ -7899,26 +7880,6 @@ function _renderAccessMatrixSingle(matrix) {
 }
 
 function _renderAccessMatrix(data) {
-    if (Array.isArray(data) && data.length) {
-        var roleSet = {}, pathSet = {};
-        data.forEach(function(r) {
-            if (r.role) roleSet[r.role] = true;
-            if (r.endpoint_path) pathSet[r.endpoint_path] = true;
-        });
-        var roles = Object.keys(roleSet).sort();
-        var paths = Object.keys(pathSet).sort();
-        var lookup = {};
-        data.forEach(function(r) { lookup[(r.endpoint_path||'') + '|' + (r.role||'')] = r; });
-        var matrix = {roles: roles, endpoints: paths.map(function(p) {
-            var acc = {};
-            roles.forEach(function(role) {
-                var entry = lookup[p + '|' + role];
-                if (entry) acc[role] = entry.actual_status || (entry.result === 'allowed' ? true : entry.result === 'denied' ? false : entry.result);
-            });
-            return {path: p, access: acc};
-        })};
-        return _renderAccessMatrixSingle(matrix) || '<div class="empty-state"><div class="empty-state-text">No access matrix data.</div></div>';
-    }
     var matrix = data.access_matrix;
     if (!matrix) return _INTEL_EMPTY_PLACEHOLDER;
     if (matrix.roles || matrix.endpoints || matrix.paths) {
@@ -7949,19 +7910,6 @@ function _renderAccessMatrix(data) {
 
 /* ── Auth Status Renderer ──────────────────────────────────────── */
 function _renderAuthStatus(data) {
-    if (Array.isArray(data) && data.length) {
-        var entries = data.map(function(r) {
-            return {
-                role: r.role || r.session_name || '',
-                username: r.username || '',
-                status: r.valid ? 'success' : (r.valid === 0 ? 'failed' : ''),
-                session_name: r.session_name || '',
-                cookies: r.cookies || [],
-                auth_headers: r.auth_headers || []
-            };
-        });
-        return _renderAuthStatus({auth_status: entries});
-    }
     var entries = data.auth_status;
     if (!entries || !Array.isArray(entries) || !entries.length) return _INTEL_EMPTY_PLACEHOLDER;
     var html = '<div class="auth-role-grid">';
@@ -9109,22 +9057,6 @@ function _complianceGauge(score) {
 }
 
 function _renderCookies(data) {
-    if (Array.isArray(data) && data.length) {
-        var misHttp = 0, misSec = 0, misSS = 0;
-        var allCk = data.map(function(r) {
-            if (!r.httponly) misHttp++;
-            if (!r.secure) misSec++;
-            if (!r.samesite) misSS++;
-            return {
-                name: r.name || '', value: r.value || '', domain: r.domain || '',
-                path: r.path || '/', httpOnly: !!r.httponly, secure: !!r.secure,
-                sameSite: r.samesite || '', expires: r.expires_at || '',
-                roles: r.tool ? [r.tool] : []
-            };
-        });
-        var stats = {total: allCk.length, missing_httponly: misHttp, missing_secure: misSec, missing_samesite: misSS};
-        return _renderCookies({cookies: {all: allCk, site_wide: [], per_role: {}, stats: stats}});
-    }
     var cookies = data.cookies;
     if (!cookies || typeof cookies !== 'object') return _renderIntelGeneric(data);
     var siteWide = cookies.site_wide || [];
@@ -9230,31 +9162,6 @@ function _renderCookies(data) {
 
 /* ── Web Application Intelligence Renderer ───────────────────── */
 function _renderWebappIntel(data) {
-    if (Array.isArray(data)) {
-        var _infra = {}, _tp = {}, _dns = null;
-        data.forEach(function(r) {
-            if (r.server) _infra.server = r.server;
-            if (r.cdn) _infra.cdn = r.cdn;
-            if (r.edge_security) _infra.edge_security = r.edge_security;
-            if (r.powered_by) _tp.server = r.powered_by;
-            if (r.cms) _tp.cms = r.cms;
-            var techs = r.technologies;
-            if (typeof techs === 'string') { try { techs = JSON.parse(techs); } catch(e) { techs = []; } }
-            if (Array.isArray(techs) && techs.length) _tp.technologies = techs;
-            if (r.hostname || r.url) {
-                _dns = _dns || {};
-                _dns.hostname = r.hostname || (r.url || '').replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
-                if (r.ip) {
-                    _dns.resolved_ips = _dns.resolved_ips || [];
-                    var _ex = false;
-                    for (var _i = 0; _i < _dns.resolved_ips.length; _i++) { if (_dns.resolved_ips[_i].ip === r.ip) { _ex = true; break; } }
-                    if (!_ex) _dns.resolved_ips.push({ip: r.ip});
-                }
-                _dns.total_unique_ips = (_dns.resolved_ips || []).length;
-            }
-        });
-        return _renderWebappIntel({dns: _dns, infrastructure: _infra, target_profile: _tp});
-    }
     var dns = data.dns;
     var infra = data.infrastructure || {};
     var tp = data.target_profile || {};
@@ -9345,7 +9252,6 @@ function _buildHostnameSummary(hosts, kind) {
     return s;
 }
 function _renderHostnameEnv(data) {
-    if (Array.isArray(data)) data = {hosts: data, summary: _buildHostnameSummary(data, 'environments')};
     var payload = data;
     if (!payload || !payload.hosts) return _renderIntelGeneric(data);
     var hosts = payload.hosts.filter(function(h) { return h.environment; });
@@ -9374,7 +9280,6 @@ function _renderHostnameEnv(data) {
 }
 
 function _renderHostnameApps(data) {
-    if (Array.isArray(data)) data = {hosts: data, summary: _buildHostnameSummary(data, 'applications')};
     var payload = data;
     if (!payload || !payload.hosts) return _renderIntelGeneric(data);
     var hosts = payload.hosts.filter(function(h) { return h.applications && h.applications.length; });
@@ -9405,7 +9310,6 @@ function _renderHostnameApps(data) {
 }
 
 function _renderHostnameHw(data) {
-    if (Array.isArray(data)) data = {hosts: data, summary: _buildHostnameSummary(data, 'hardware_models')};
     var payload = data;
     if (!payload || !payload.hosts) return _renderIntelGeneric(data);
     var hosts = payload.hosts.filter(function(h) { return h.hardware; });
@@ -9433,11 +9337,6 @@ function _renderHostnameHw(data) {
 }
 
 function _renderNetPosture(data) {
-    if (Array.isArray(data) && data.length) {
-        var seg = 0;
-        data.forEach(function(s) { if (s.segmented) seg++; });
-        data = {subnets: data, subnet_count: data.length, segmented_count: seg};
-    }
     if (!data || !data.subnets || !data.subnets.length) return '<div class="empty-state"><div class="empty-state-text">No network posture data available. Port scan results with state breakdowns are required.</div></div>';
     var segCount = data.segmented_count || 0;
     var subCount = data.subnet_count || 0;
