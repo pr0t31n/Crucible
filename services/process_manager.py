@@ -3434,6 +3434,17 @@ class ProcessManager:
                 log.warning("Auto-dequeue error for %s: %s", project_id, exc)
                 self._emit_console(project_id, tool_id,
                     f"[Crucible] Auto-dequeue error: {exc}", "system")
+        elif self._queue_manager and final_status == "killed":
+            self._emit_console(project_id, tool_id,
+                f"[Crucible] {tool_id} killed — dequeuing next tool(s)",
+                "system")
+            try:
+                self._queue_manager.auto_dequeue(project_id)
+            except Exception as exc:
+                log.warning("Auto-dequeue after kill for %s: %s",
+                            project_id, exc)
+                self._emit_console(project_id, tool_id,
+                    f"[Crucible] Auto-dequeue error: {exc}", "system")
         elif self._queue_manager and final_status == "failed":
             self._emit_console(project_id, tool_id,
                 f"[Crucible] {tool_id} failed (rc={rc}) — queue held, "
