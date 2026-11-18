@@ -59,8 +59,14 @@ def _hostname_intel(db, row):
     ip = r.get("ip", "")
     scope_id = r.pop("_scope_id", None)
     if ip:
-        db.ensure_host(ip, is_alive=1 if r.get("alive", True) else 0,
-                       scope_id=scope_id)
+        _host_kw = {"is_alive": 1 if r.get("alive", True) else 0}
+        if scope_id is not None:
+            _host_kw["scope_id"] = scope_id
+        if r.get("os_family"):
+            _host_kw["os_family"] = r["os_family"]
+        if r.get("os_name"):
+            _host_kw["os_name"] = r["os_name"]
+        db.ensure_host(ip, **_host_kw)
     r.pop("alive", None)
     r.pop("scope", None)
     if r.get("hostname"):
@@ -71,6 +77,22 @@ def _hostname_intel(db, row):
         if scope_id is not None:
             safe["scope_id"] = scope_id
         db.add_hostname_intel(**safe)
+
+
+def _host_os(db, row):
+    r = _clean(row)
+    ip = r.get("ip", "")
+    if not ip:
+        return
+    kw = {}
+    scope_id = r.pop("_scope_id", None)
+    if scope_id is not None:
+        kw["scope_id"] = scope_id
+    if r.get("os_family"):
+        kw["os_family"] = r["os_family"]
+    if r.get("os_name"):
+        kw["os_name"] = r["os_name"]
+    db.ensure_host(ip, **kw)
 
 
 def _port_intel(db, row):
@@ -846,6 +868,7 @@ def _domain_intel(db, row):
 _DISPATCH = {
     "software":          (_sw,               "bulk_insert_network_software"),
     "hostname_intel":    (_hostname_intel,     None),
+    "host_os":           (_host_os,            None),
     "server_role":       (_server_role,        None),
     "domain_intel":      (_domain_intel,       "bulk_insert_domain_intel"),
     "dns_record":        (_dns_record,         None),
@@ -936,7 +959,7 @@ _DISPATCH = {
 }
 
 _SCOPED_INTEL_SUBTYPES = frozenset({
-    "hostname_intel", "host", "port", "certificate",
+    "hostname_intel", "host", "host_os", "port", "certificate",
     "software", "server_role", "network_posture", "screenshot",
     "cookie", "webapp_intel", "dns_record", "structure_url",
     "structure_param", "structure_form", "structure_header",
