@@ -1248,6 +1248,7 @@ function renderFeed(containerId, clickable) {
     /* Classify each tool into sections */
     var depsTids = [];
     var activeTids = [];
+    var idleTids = [];
     var completeTids = [];
     var queuedTidSet = {};
     _queueData.forEach(function(e) { queuedTidSet[e.tool_id] = true; });
@@ -1258,9 +1259,13 @@ function renderFeed(containerId, clickable) {
             depsTids.push(tid);
             return;
         }
+        if (queuedTidSet[tid]) return;
         var st = (toolStatuses[tid] || {}).status || 'idle';
+        if (st === 'queued') return;
         if (_COMPLETE_STATUSES[st]) {
             completeTids.push(tid);
+        } else if (st === 'idle') {
+            idleTids.push(tid);
         } else {
             activeTids.push(tid);
         }
@@ -1308,7 +1313,21 @@ function renderFeed(containerId, clickable) {
         container.appendChild(emptyActive);
     }
 
-    /* 3. Queued section */
+    /* 3. Idle section */
+    container.appendChild(_buildSectionHeader('Idle'));
+    if (idleTids.length) {
+        idleTids.forEach(function(tid) {
+            rendered[tid] = true;
+            container.appendChild(_buildFeedItem(tid, clickable));
+        });
+    } else {
+        var emptyIdle = document.createElement('div');
+        emptyIdle.style.cssText = 'padding:8px 12px;font-size:0.78rem;color:var(--text-muted);font-style:italic';
+        emptyIdle.textContent = 'No idle tools';
+        container.appendChild(emptyIdle);
+    }
+
+    /* 4. Queued section */
     container.appendChild(_buildSectionHeader('Queued'));
     if (_queueData.length) {
         _queueData.forEach(function(entry, idx) {
@@ -1322,7 +1341,7 @@ function renderFeed(containerId, clickable) {
         container.appendChild(emptyQueue);
     }
 
-    /* 4. Completed section */
+    /* 5. Completed section */
     container.appendChild(_buildSectionHeader('Completed'));
     if (completeTids.length) {
         completeTids.forEach(function(tid) {
