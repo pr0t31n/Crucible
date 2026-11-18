@@ -7582,52 +7582,53 @@ function _loadScreenshotsPanel(body, empty, tool) {
                 return;
             }
             var h = '<div style="margin-bottom:16px"><h3 style="margin:0 0 4px 0;font-size:1.1rem">Screenshots <span style="font-weight:400;color:var(--text-secondary);font-size:0.85rem">(' + items.length + ')</span></h3>' +
-                '<div style="color:var(--text-secondary);font-size:0.85rem">Click a row to view the screenshot</div></div>';
+                '<div style="color:var(--text-secondary);font-size:0.85rem">Click to view full size</div></div>';
             var _isWebApp = (scopeKey === 'webapp' || tool === 'fracture');
-            var _ipHeader = _isWebApp ? 'Base URL' : 'IP';
-            h += '<div style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr>' +
-                '<th style="width:40px">#</th>' +
-                '<th>URL</th>' +
-                '<th>' + _ipHeader + '</th>' +
-                '<th style="width:60px">Port</th>' +
-                '<th>Page Title</th>' +
-                '<th>Server</th>' +
-                '<th style="width:60px">Status</th>' +
-                '<th>Classification</th>' +
-                '</tr></thead><tbody>';
+            h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">';
             for (var i = 0; i < items.length; i++) {
                 var s = items[i];
-                var descClass = '';
                 var dl = (s.description || '').toLowerCase();
-                if (dl.indexOf('login') !== -1 || dl.indexOf('dashboard') !== -1) descClass = ' style="color:var(--clr-high);font-weight:600"';
-                else if (dl.indexOf('default') !== -1 || dl.indexOf('blank') !== -1) descClass = ' style="color:var(--text-secondary)"';
-                else if (dl.indexOf('directory') !== -1 || dl.indexOf('error') !== -1) descClass = ' style="color:var(--clr-medium)"';
-                else if (dl.indexOf('restricted') !== -1 || dl.indexOf('admin') !== -1) descClass = ' style="color:var(--clr-critical)"';
-                else if (dl.indexOf('landing') !== -1 || dl.indexOf('interesting') !== -1) descClass = ' style="color:var(--clr-info);font-weight:600"';
+                var _classBg = '';
+                var _classLabel = esc(s.description || '—');
+                if (dl.indexOf('login') !== -1 || dl.indexOf('dashboard') !== -1) { _classBg = 'background:rgba(var(--clr-high-rgb,230,126,34),0.12);border-color:var(--clr-high)'; }
+                else if (dl.indexOf('restricted') !== -1 || dl.indexOf('admin') !== -1) { _classBg = 'background:rgba(var(--clr-critical-rgb,231,76,60),0.12);border-color:var(--clr-critical)'; }
+                else if (dl.indexOf('directory') !== -1 || dl.indexOf('error') !== -1) { _classBg = 'background:rgba(var(--clr-medium-rgb,241,196,15),0.08)'; }
                 var _sUrl = (s.url || '').split(/[\r\n]/)[0].trim();
                 var _ipCell = _isWebApp ? (_sUrl ? _sUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : esc(s.ip)) : esc(s.ip);
-                h += '<tr style="cursor:pointer" data-ss-path="' + esc(s.screenshot_path || s.file_path || '') + '" data-ss-url="' + esc(_sUrl) + '" data-ss-desc="' + esc((s.description || '').replace(/[\r\n]+/g, ' ')) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
-                    '<td>' + (i + 1) + '</td>' +
-                    '<td style="font-family:var(--font-mono);font-size:0.8rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(_sUrl) + '">' + esc(_sUrl) + '</td>' +
-                    '<td style="font-family:var(--font-mono);font-size:0.85rem">' + esc(_ipCell) + '</td>' +
-                    '<td>' + s.port + '</td>' +
-                    '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.title || '') + '">' + esc(s.title || '—') + '</td>' +
-                    '<td style="font-size:0.85rem">' + esc(s.server || '—') + '</td>' +
-                    '<td>' + (s.status_code || '—') + '</td>' +
-                    '<td' + descClass + '>' + esc(s.description) + '</td>' +
-                    '</tr>';
+                var _ssPath = s.screenshot_path || s.file_path || '';
+                var _thumbUrl = '/api/file_serve/' + PID + '?path=' + encodeURIComponent(_ssPath);
+                var _statusPill = s.status_code ? '<span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:0.75rem;font-weight:600;background:' + (s.status_code < 300 ? 'var(--clr-low,#27ae60)' : s.status_code < 400 ? 'var(--clr-info,#3498db)' : 'var(--clr-high,#e67e22)') + ';color:#fff">' + s.status_code + '</span>' : '';
+                h += '<div class="ss-card" style="border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;' + _classBg + '" ' +
+                    'data-ss-path="' + esc(_ssPath) + '" data-ss-url="' + esc(_sUrl) + '" data-ss-desc="' + esc((s.description || '').replace(/[\r\n]+/g, ' ')) + '" data-ss-ip="' + esc(s.ip) + '" data-ss-port="' + s.port + '" data-ss-server="' + esc(s.server || '') + '">' +
+                    '<div style="width:100%;height:180px;background:var(--bg-inset,var(--bg-card));overflow:hidden;display:flex;align-items:center;justify-content:center">' +
+                    '<img src="' + _thumbUrl + '" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'<div style=padding:20px;color:var(--text-muted);font-size:.85rem>Preview unavailable</div>\'">' +
+                    '</div>' +
+                    '<div style="padding:10px 12px">' +
+                    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">' +
+                    _statusPill +
+                    '<span style="font-weight:600;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' + esc(s.title || _sUrl) + '">' + esc(s.title || '—') + '</span>' +
+                    '</div>' +
+                    '<div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(_sUrl) + '">' + esc(_sUrl || '—') + '</div>' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:0.8rem;color:var(--text-secondary)">' +
+                    '<span>' + esc(_ipCell) + (s.port ? ':' + s.port : '') + '</span>' +
+                    '<span style="font-size:0.78rem">' + _classLabel + '</span>' +
+                    '</div>' +
+                    (s.server ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">' + esc(s.server) + '</div>' : '') +
+                    '</div></div>';
             }
-            h += '</tbody></table></div>';
+            h += '</div>';
             body.innerHTML = h;
-            body.querySelectorAll('tr[data-ss-path]').forEach(function(tr) {
-                tr.addEventListener('click', function() {
+            body.querySelectorAll('.ss-card[data-ss-path]').forEach(function(card) {
+                card.addEventListener('mouseenter', function() { card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; card.style.transform = 'translateY(-2px)'; });
+                card.addEventListener('mouseleave', function() { card.style.boxShadow = ''; card.style.transform = ''; });
+                card.addEventListener('click', function() {
                     _openScreenshot(
-                        tr.getAttribute('data-ss-path'),
-                        tr.getAttribute('data-ss-url'),
-                        tr.getAttribute('data-ss-desc'),
-                        tr.getAttribute('data-ss-ip'),
-                        parseInt(tr.getAttribute('data-ss-port'), 10) || 0,
-                        tr.getAttribute('data-ss-server')
+                        card.getAttribute('data-ss-path'),
+                        card.getAttribute('data-ss-url'),
+                        card.getAttribute('data-ss-desc'),
+                        card.getAttribute('data-ss-ip'),
+                        parseInt(card.getAttribute('data-ss-port'), 10) || 0,
+                        card.getAttribute('data-ss-server')
                     );
                 });
             });

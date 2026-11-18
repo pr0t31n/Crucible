@@ -68,6 +68,8 @@ def _hostname_intel(db, row):
                 if k in ("hostname", "ip", "environment_tag",
                          "application_tag", "hardware_tag",
                          "role_tag", "confidence")}
+        if scope_id is not None:
+            safe["scope_id"] = scope_id
         db.add_hostname_intel(**safe)
 
 
@@ -94,6 +96,9 @@ def _port_intel(db, row):
 
 def _server_role(db, row):
     r = _clean(row)
+    sid = r.pop("_scope_id", None)
+    if sid is not None:
+        r["scope_id"] = sid
     _safe_db_call(db.add_server_role, r)
 
 def _dns_record(db, row):
@@ -120,6 +125,10 @@ def _certificate(db, row):
 
 def _screenshot(db, row):
     r = _clean(row)
+    if "path" in r and "file_path" not in r:
+        r["file_path"] = r.pop("path")
+    if "screenshot_path" in r and "file_path" not in r:
+        r["file_path"] = r.pop("screenshot_path")
     _safe_db_call(db.add_screenshot, r)
 
 def _target_profile(db, row):
@@ -128,6 +137,10 @@ def _target_profile(db, row):
 
 def _structure_url(db, row):
     r = _clean(row)
+    if "url" not in r and "path" in r:
+        base = r.get("target_url", r.get("base_url", ""))
+        path = r.pop("path")
+        r["url"] = (base.rstrip("/") + "/" + path.lstrip("/")) if base else path
     if "status" in r and "status_code" not in r:
         r["status_code"] = r.pop("status")
     if "auth_only" in r and "auth_required" not in r:
@@ -137,6 +150,9 @@ def _structure_url(db, row):
         r["auth_roles"] = json.dumps(au) if isinstance(au, list) else au
     if "rogue" in r and "is_rogue" not in r:
         r["is_rogue"] = 1 if r.pop("rogue") else 0
+    sid = r.pop("_scope_id", None)
+    if sid is not None:
+        r["scope_id"] = sid
     params = r.pop("params", [])
     forms = r.pop("forms", [])
     headers = r.pop("headers", [])
@@ -196,7 +212,7 @@ def _access_matrix(db, row):
     r = _clean(row)
     paths = r.pop("paths", r.pop("path_access", None))
     if paths and isinstance(paths, list):
-        roles = r.get("roles", [])
+        tool = r.get("tool", "")
         target_url = r.get("target_url", "")
         scope_id = r.get("_scope_id")
         for pe in paths:
@@ -205,6 +221,7 @@ def _access_matrix(db, row):
             body_class_map = pe.get("body_class", {})
             for role, status in access.items():
                 entry = {
+                    "tool": tool,
                     "endpoint_path": path,
                     "role": role,
                     "actual_status": status if isinstance(status, int) else None,
@@ -217,18 +234,56 @@ def _access_matrix(db, row):
                     if isinstance(bc, str) and "denied" in bc.lower():
                         entry["body_denied"] = 1
                 if scope_id:
-                    entry["_scope_id"] = scope_id
+                    entry["scope_id"] = scope_id
                 _safe_db_call(db.add_access_matrix_entry, entry)
         return
     if "endpoint_path" in r:
+        sid = r.pop("_scope_id", None)
+        if sid is not None:
+            r["scope_id"] = sid
         _safe_db_call(db.add_access_matrix_entry, r)
 
 def _auth_session(db, row):
     r = _clean(row)
-    _safe_db_call(db.add_auth_session, r)
+    cookies = r.pop("cookies", None)
+    r.pop("headers", None)
+    if "status" in r and "valid" not in r:
+        r["valid"] = 1 if str(r.pop("status")).lower() in ("active", "valid", "1", "true") else 0
+    session_id = _safe_db_call(db.add_auth_session, r)
+    if session_id and cookies and isinstance(cookies, list):
+        for ck in cookies:
+            if isinstance(ck, dict) and ck.get("name"):
+                ck["session_id"] = session_id
+                ck["tool"] = r.get("tool", "")
+                _auth_cookie(db, ck)
 
 def _auth_cookie(db, row):
     r = _clean(row)
+    if "httpOnly" in r and "httponly" not in r:
+        r["httponly"] = r.pop("httpOnly")
+    if "sameSite" in r and "samesite" not in r:
+        r["samesite"] = r.pop("sameSite")
+    if "session_id" not in r:
+        tool = r.get("tool", "unknown")
+        role = r.get("role", r.get("username", "default"))
+        try:
+            cur = db._conn.execute(
+                "SELECT id FROM auth_sessions WHERE tool = ? AND role = ? "
+                "ORDER BY id DESC LIMIT 1", (tool, role))
+            hit = cur.fetchone()
+            if hit:
+                r["session_id"] = hit[0] if isinstance(hit, (tuple, list)) else hit["id"]
+            else:
+                db.add_auth_session(tool=tool, role=role, status="active")
+                cur2 = db._conn.execute(
+                    "SELECT id FROM auth_sessions WHERE tool = ? AND role = ? "
+                    "ORDER BY id DESC LIMIT 1", (tool, role))
+                hit2 = cur2.fetchone()
+                if hit2:
+                    r["session_id"] = hit2[0] if isinstance(hit2, (tuple, list)) else hit2["id"]
+        except Exception:
+            log.warning("_auth_cookie: session_id resolve failed", exc_info=True)
+            return
     _safe_db_call(db.add_auth_cookie, r)
 
 def _osint_domain(db, row):
@@ -237,6 +292,30 @@ def _osint_domain(db, row):
 
 def _osint_whois(db, row):
     r = _clean(row)
+    if "domain_id" not in r and "domain" in r:
+        domain_name = r.pop("domain")
+        try:
+            cur = db._conn.execute(
+                "SELECT id FROM osint_domains WHERE domain = ?",
+                (domain_name,))
+            hit = cur.fetchone()
+            if hit:
+                r["domain_id"] = hit[0] if isinstance(hit, (tuple, list)) else hit["id"]
+            else:
+                scope_id = r.get("_scope_id")
+                db.add_osint_domain(domain=domain_name, source=r.get("source", "osift"))
+                cur2 = db._conn.execute(
+                    "SELECT id FROM osint_domains WHERE domain = ?",
+                    (domain_name,))
+                hit2 = cur2.fetchone()
+                if hit2:
+                    r["domain_id"] = hit2[0] if isinstance(hit2, (tuple, list)) else hit2["id"]
+        except Exception:
+            log.warning("_osint_whois: domain_id resolve failed for %s", domain_name, exc_info=True)
+            return
+    ns = r.get("nameservers")
+    if isinstance(ns, list):
+        r["nameservers"] = ", ".join(str(s) for s in ns)
     _safe_db_call(db.add_osint_whois, r)
 
 def _osint_email(db, row):
@@ -245,6 +324,9 @@ def _osint_email(db, row):
 
 def _osint_subdomain(db, row):
     r = _clean(row)
+    src = r.get("source")
+    if isinstance(src, list):
+        r["source"] = ", ".join(str(s) for s in src) if src else None
     _safe_db_call(db.add_subdomain, r)
 
 def _osint_phone(db, row):
@@ -268,6 +350,13 @@ def _osint_person(db, row):
 
 def _osint_wayback(db, row):
     r = _clean(row)
+    if "domain" not in r and "url" in r:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(r["url"])
+            r["domain"] = parsed.netloc or parsed.path.split("/")[0]
+        except Exception:
+            r["domain"] = ""
     _safe_db_call(db.add_osint_wayback_url, r)
 
 def _osint_typosquat(db, row):
@@ -584,14 +673,71 @@ def _network_posture(db, row):
             except Exception:
                 log.warning("network_posture subnet insert failed", exc_info=True)
         return
+    for k, v in list(r.items()):
+        if isinstance(v, (dict, list)):
+            r[k] = json.dumps(v, default=str)
+    if "category" not in r:
+        r["category"] = r.pop("type", r.get("tool", "posture"))
+    if "check_name" not in r:
+        r["check_name"] = r.pop("check", r.pop("name", "summary"))
+    if "status" not in r:
+        r["status"] = r.pop("result", "info")
+    sid = r.pop("_scope_id", None)
+    if sid is not None:
+        r["scope_id"] = sid
     _safe_db_call(db.add_network_posture, r)
+
+_COOKIE_COLS = {
+    "name", "domain", "path", "secure", "httponly", "samesite",
+    "expires_at", "scope", "tool", "url", "risk", "issues", "value", "role",
+}
 
 def _cookie(db, row):
     r = _clean(row)
-    _safe_db_call(db.add_cookie, r)
+    mf = r.pop("missing_flags", None)
+    if isinstance(mf, dict) and not r.get("issues"):
+        flagged = [k for k, v in mf.items() if v]
+        if flagged:
+            r["issues"] = "Missing: " + ", ".join(flagged)
+    raw = r.pop("raw", None)
+    if raw and not r.get("name"):
+        try:
+            parts = raw.split(";")
+            kv = parts[0].strip()
+            eq = kv.find("=")
+            if eq > 0:
+                r["name"] = kv[:eq].strip()
+                r.setdefault("value", kv[eq+1:].strip())
+                for attr in parts[1:]:
+                    attr = attr.strip().lower()
+                    if attr.startswith("domain="):
+                        r.setdefault("domain", attr.split("=", 1)[1].strip())
+                    elif attr.startswith("path="):
+                        r.setdefault("path", attr.split("=", 1)[1].strip())
+                    elif attr == "secure":
+                        r.setdefault("secure", True)
+                    elif attr == "httponly":
+                        r.setdefault("httponly", True)
+                    elif attr.startswith("samesite="):
+                        r.setdefault("samesite", attr.split("=", 1)[1].strip())
+        except Exception:
+            pass
+    ip = r.pop("ip", None)
+    port = r.pop("port", None)
+    hostname = r.pop("hostname", None)
+    if not r.get("url") and ip:
+        scheme = r.pop("scheme", "https")
+        r["url"] = f"{scheme}://{ip}" + (f":{port}" if port else "")
+    r.pop("scheme", None)
+    filtered = {k: v for k, v in r.items() if k in _COOKIE_COLS}
+    if not filtered.get("name"):
+        return
+    _safe_db_call(db.add_cookie, filtered)
 
 def _webapp_intel(db, row):
     r = _clean(row)
+    if "x_powered_by" in r and "powered_by" not in r:
+        r["powered_by"] = r.pop("x_powered_by")
     if "frameworks" in r and isinstance(r["frameworks"], list):
         r["frameworks"] = json.dumps(r["frameworks"])
     if "programming_languages" in r and isinstance(r["programming_languages"], list):
@@ -600,6 +746,9 @@ def _webapp_intel(db, row):
         r["tls_protocols"] = json.dumps(r["tls_protocols"])
     if "backend_ips" in r and isinstance(r["backend_ips"], list):
         r["backend_ips"] = json.dumps(r["backend_ips"])
+    sid = r.pop("_scope_id", None)
+    if sid is not None:
+        r["scope_id"] = sid
     _safe_db_call(db.add_webapp_intel, r)
 
 def _api_inventory(db, row):
@@ -712,13 +861,13 @@ _DISPATCH = {
     "auth_session":      (_auth_session,        None),
     "auth_cookie":       (_auth_cookie,         None),
     "osint_domain":      (_osint_domain,       "bulk_insert_osint_domains"),
-    "osint_whois":       (_osint_whois,        "bulk_insert_osint_whois"),
+    "osint_whois":       (_osint_whois,         None),
     "osint_email":       (_osint_email,         None),
     "osint_subdomain":   (_osint_subdomain,     None),
     "osint_phone":       (_osint_phone,        "bulk_insert_osint_phones"),
     "osint_breach":      (_osint_breach,        None),
     "osint_person":      (_osint_person,        None),
-    "osint_wayback":     (_osint_wayback,      "bulk_insert_osint_wayback_urls"),
+    "osint_wayback":     (_osint_wayback,       None),
     "osint_typosquat":   (_osint_typosquat,    "bulk_insert_osint_typosquats"),
     "firewall_rule":     (_firewall_rule,      "bulk_insert_firewall_rules"),
     "firewall_zone":     (_firewall_zone,      "bulk_insert_firewall_zones"),
