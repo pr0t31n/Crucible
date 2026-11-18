@@ -6348,7 +6348,14 @@ function loadIntelPanel(panel, tool) {
         empty.style.display = 'none';
         return;
     }
-    if (tool) url += (url.indexOf('?') === -1 ? '?' : '&') + 'tool=' + encodeURIComponent(tool) + '&scope=' + encodeURIComponent(_activeScope);
+    if (tool) {
+        var _scopeParam = _activeScope;
+        var _dnKeys = Object.keys(SCOPE_DISPLAY_NAMES);
+        for (var _si = 0; _si < _dnKeys.length; _si++) {
+            if (SCOPE_DISPLAY_NAMES[_dnKeys[_si]] === _activeScope) { _scopeParam = _dnKeys[_si]; break; }
+        }
+        url += (url.indexOf('?') === -1 ? '?' : '&') + 'tool=' + encodeURIComponent(tool) + '&scope=' + encodeURIComponent(_scopeParam);
+    }
 
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
     body.hidden = false;
@@ -7044,9 +7051,13 @@ function _loadScopeOverview(body, empty) {
     body.innerHTML = '<div class="flex-center p-20"><div class="spinner"></div></div>';
     body.hidden = false;
     empty.style.display = 'none';
+    var _scopeTools = _scopeToolsMap[_activeScope] || [];
+    var _overviewTool = _scopeTools.length ? _scopeTools[0] : '';
+    var _scopeQ = scopeKey ? '&scope=' + encodeURIComponent(scopeKey) : '';
+    var _toolQ = _overviewTool ? '&tool=' + encodeURIComponent(_overviewTool) : '';
     Promise.all([
-        fetch('/api/findings/v2/' + PID + '?per_page=100000', {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
-        fetch('/api/intel/v2/hosts/' + PID + '?per_page=100000', {credentials: 'same-origin'}).then(function(r) { return r.json(); })
+        fetch('/api/findings/v2/' + PID + '?per_page=100000' + _toolQ + _scopeQ, {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
+        fetch('/api/intel/v2/hosts/' + PID + '?per_page=100000' + _toolQ + _scopeQ, {credentials: 'same-origin'}).then(function(r) { return r.json(); })
     ]).then(function(results) {
         var fData = results[0] || {};
         var hostsData = results[1] || {};

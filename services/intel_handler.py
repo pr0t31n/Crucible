@@ -686,18 +686,51 @@ _DISPATCH = {
     "survey_rogue_classify": (_survey_rogue_classify,  None),
 }
 
-_HOST_INTEL_SUBTYPES = frozenset({
+_SCOPED_INTEL_SUBTYPES = frozenset({
     "hostname_intel", "host", "port", "certificate",
+    "software", "server_role", "network_posture", "screenshot",
+    "cookie", "webapp_intel", "dns_record", "structure_url",
+    "structure_param", "structure_form", "structure_header",
+    "domain_intel", "api_endpoint", "access_matrix", "auth_session",
+    "auth_cookie", "target_profile", "api_inventory",
+    "firewall_rule", "firewall_zone", "firewall_compliance",
+    "firewall_config", "cloud_resource", "cloud_iam_policy",
+    "cloud_iam_role", "cloud_service", "traffic_conversation",
+    "traffic_summary", "db_schema", "db_table", "db_column",
+    "db_privilege", "endpoint_software", "endpoint_hardening",
+    "endpoint_compliance", "endpoint_ad", "endpoint_browser",
+    "endpoint_inventory", "endpoint_overview", "endpoint_network",
+    "endpoint_disk", "endpoint_hardware", "osint_domain",
+    "osint_whois", "osint_email", "osint_subdomain", "osint_phone",
+    "osint_breach", "osint_person", "osint_wayback", "osint_typosquat",
+    "mobile_component", "mobile_permission", "mobile_data_flow",
+    "mobile_traffic", "mobile_hardening", "mobile_domain",
+    "mobile_email", "mobile_api_endpoint",
+    "isotope_string", "isotope_property", "isotope_entropy",
+    "isotope_secret", "isotope_code", "isotope_binary",
+    "isotope_ioc", "isotope_content", "isotope_metadata",
+    "wireless_network", "wireless_ap", "wireless_client",
+    "wireless_probe", "wireless_handshake",
+    "ble_device", "ble_service", "zigbee_network", "zigbee_device",
+    "usb_device", "survey_ap", "survey_rogue_classify",
+    "output_file", "console_chunk",
+    "subdomain", "email", "endpoint",
 })
 
 
-def _resolve_project_scope_id(db, project):
+def _resolve_project_scope_id(db, project, tool_id=None):
+    base_tool = tool_id.split(":")[0] if tool_id and ":" in tool_id else tool_id
+    if base_tool:
+        scope_tools = project.get("scope_tools") or {}
+        for scope_name, tools in scope_tools.items():
+            if base_tool in (tools or []):
+                return db.ensure_scope(scope_name)
     scopes = project.get("active_scopes") or []
     if not scopes:
         s = project.get("scope", "external")
         scopes = [] if s == "multi" else [s]
     if len(scopes) == 1:
-        return db.get_scope_id(scopes[0])
+        return db.ensure_scope(scopes[0])
     return None
 
 
@@ -739,12 +772,14 @@ def handle_intel(findings_engine, socketio, project_id: str,
         return
 
     scope_id = None
-    if intel_type in _HOST_INTEL_SUBTYPES:
-        scope_id = _resolve_project_scope_id(db, project)
+    if intel_type in _SCOPED_INTEL_SUBTYPES:
+        scope_id = _resolve_project_scope_id(db, project, tool_id=tool_id)
+
+    base_tool = tool_id.split(":")[0] if tool_id and ":" in tool_id else tool_id
 
     def _ensure_tool(row):
-        if isinstance(row, dict) and "tool" not in row and tool_id:
-            row["tool"] = tool_id
+        if isinstance(row, dict) and "tool" not in row and base_tool:
+            row["tool"] = base_tool
 
     try:
         if is_bulk and isinstance(payload, list):
@@ -752,6 +787,8 @@ def handle_intel(findings_engine, socketio, project_id: str,
                 cleaned = [_clean(r) for r in payload if isinstance(r, dict)]
                 for c in cleaned:
                     _ensure_tool(c)
+                    if scope_id is not None:
+                        c["_scope_id"] = scope_id
                 getattr(db, bulk_method)(cleaned)
             else:
                 for row in payload:
@@ -770,6 +807,8 @@ def handle_intel(findings_engine, socketio, project_id: str,
                 cleaned = [_clean(r) for r in payload if isinstance(r, dict)]
                 for c in cleaned:
                     _ensure_tool(c)
+                    if scope_id is not None:
+                        c["_scope_id"] = scope_id
                 getattr(db, bulk_method)(cleaned)
             else:
                 for row in payload:

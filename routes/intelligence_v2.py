@@ -54,6 +54,12 @@ def _get_db(project):
             return None
         db = pr0t31n_findings_db.FindingsDB(str(db_path))
         _db_cache[pid] = db
+        scope_tools = project.get("scope_tools") or {}
+        for scope_name in scope_tools:
+            try:
+                db.ensure_scope(scope_name)
+            except Exception:
+                pass
         log.info("intel_v2: opened FindingsDB for %s at %s", pid, db_path)
         return db
     except Exception:
@@ -104,6 +110,34 @@ def _err_500(e):
     return jsonify({"error": "Internal error"}), 500
 
 
+_SCOPE_DISPLAY_TO_KEY = {
+    "External": "external", "Internal": "internal",
+    "Web Application": "webapp", "API": "api", "OSINT": "osint",
+    "Database": "database", "PCAP Analysis": "pcap",
+    "Wi-Fi (802.11)": "wifi", "Bluetooth (802.15.1)": "bluetooth",
+    "Zigbee (802.15.4)": "zigbee",
+    "Ultra-Wideband (UWB) (802.15.4z)": "uwb",
+    "Firewall Config Analysis": "firewall",
+    "Cloud Infrastructure": "cloud", "Mobile Application": "mobile",
+    "File Analysis": "file", "Endpoint Security": "endpoint",
+}
+
+
+def _resolve_scope_id(db, scope_param):
+    """Resolve a scope query-param (display name or key) to a DB scope_id."""
+    if not scope_param or not db:
+        return None
+    key = _SCOPE_DISPLAY_TO_KEY.get(scope_param, scope_param).lower()
+    return db.get_scope_id(key)
+
+
+def _scope_tool_params(db):
+    """Extract scope_id and tool from request query string."""
+    tool = request.args.get("tool")
+    scope_id = _resolve_scope_id(db, request.args.get("scope"))
+    return {"scope_id": scope_id, "tool": tool}
+
+
 def _ss3_json_fallback(project, filename):
     """Load a raw JSON file from the SS3 output directory."""
     try:
@@ -141,8 +175,10 @@ def api_intel_v2_hosts(project_id):
     p = _paginate_params()
     search = _search_param()
     sp = _sort_params(default_sort="ip")
+    stp = _scope_tool_params(db)
     try:
-        result = db.query_hosts(search=search, **p, **sp)
+        result = db.query_hosts(search=search, scope_id=stp["scope_id"],
+                                **p, **sp)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 hosts AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -162,8 +198,9 @@ def api_intel_v2_ports(project_id):
     p = _paginate_params()
     ip = request.args.get("ip")
     sp = _sort_params(default_sort="port")
+    stp = _scope_tool_params(db)
     try:
-        result = db.query_ports(ip=ip, **p, **sp)
+        result = db.query_ports(ip=ip, scope_id=stp["scope_id"], **p, **sp)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 ports AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -182,8 +219,10 @@ def api_intel_v2_services(project_id):
         return _err_503()
     p = _paginate_params()
     search = _search_param()
+    stp = _scope_tool_params(db)
     try:
-        result = db.query_services(search=search, **p)
+        result = db.query_services(search=search, scope_id=stp["scope_id"],
+                                   **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 services AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -202,8 +241,10 @@ def api_intel_v2_software(project_id):
         return jsonify(_empty_page(1))
     p = _paginate_params()
     search = _search_param()
+    stp = _scope_tool_params(db)
     try:
-        result = db.query_software(search=search, **p)
+        result = db.query_software(search=search,
+                                   scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         log.warning("intel_v2 software error for %s: %s", project_id, e, exc_info=True)
@@ -221,9 +262,11 @@ def api_intel_v2_hostname_intel(project_id):
         try:
             p = _paginate_params()
             search = _search_param()
+            stp = _scope_tool_params(db)
             env_tag = request.args.get("environment_tag")
             result = db.query_hostname_intel(
-                environment_tag=env_tag, search=search, **p)
+                environment_tag=env_tag, search=search,
+                scope_id=stp["scope_id"], **p)
             if result.get("total", 0) > 0:
                 return jsonify(result)
         except Exception:
@@ -243,9 +286,11 @@ def api_intel_v2_server_roles(project_id):
     if db:
         try:
             p = _paginate_params()
+            stp = _scope_tool_params(db)
             ip = request.args.get("ip")
             role = request.args.get("role")
-            result = db.query_server_roles(ip=ip, role=role, **p)
+            result = db.query_server_roles(ip=ip, role=role,
+                                           scope_id=stp["scope_id"], **p)
             if result.get("total", 0) > 0:
                 return jsonify(result)
         except Exception:
@@ -265,10 +310,12 @@ def api_intel_v2_screenshots(project_id):
     if not db:
         return _err_503()
     p = _paginate_params()
+    stp = _scope_tool_params(db)
     ip = request.args.get("ip")
-    tool = request.args.get("tool")
+    tool = stp["tool"] or request.args.get("tool")
     try:
-        result = db.query_screenshots(tool=tool, ip=ip, **p)
+        result = db.query_screenshots(tool=tool, ip=ip,
+                                      scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -284,7 +331,9 @@ def api_intel_v2_network_posture(project_id):
         try:
             p = _paginate_params()
             search = _search_param()
-            result = db.query_network_posture(search=search, **p)
+            stp = _scope_tool_params(db)
+            result = db.query_network_posture(search=search,
+                                              tool=stp["tool"], **p)
             if result.get("total", 0) > 0:
                 return jsonify(result)
         except Exception:
@@ -307,13 +356,14 @@ def api_intel_v2_structure_urls(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     status_code = request.args.get("status_code", type=int)
     source = request.args.get("source")
     try:
         result = db.query_structure_urls(
-            status_code=status_code, source=source, search=search, **p)
+            status_code=status_code, source=source, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -327,12 +377,13 @@ def api_intel_v2_structure_params(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     url_id = request.args.get("url_id", type=int)
     try:
         result = db.query_structure_params(
-            url_id=url_id, search=search, **p)
+            url_id=url_id, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -346,13 +397,14 @@ def api_intel_v2_access_matrix(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     tool = request.args.get("tool")
     role = request.args.get("role")
     result_filter = request.args.get("result")
     try:
         result = db.query_access_matrix_entries(
-            tool=tool, role=role, result=result_filter, **p)
+            tool=tool, role=role, result=result_filter, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -366,10 +418,11 @@ def api_intel_v2_auth_sessions(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     tool = request.args.get("tool")
     try:
-        result = db.query_auth_sessions(tool=tool, **p)
+        result = db.query_auth_sessions(tool=tool, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -383,10 +436,11 @@ def api_intel_v2_target_profiles(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     tool = request.args.get("tool")
     try:
-        result = db.query_target_profiles(tool=tool, **p)
+        result = db.query_target_profiles(tool=tool, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -402,8 +456,10 @@ def api_intel_v2_cookies(project_id):
         return _err_503()
     p = _paginate_params()
     search = _search_param()
+    stp = _scope_tool_params(db)
+    tool = stp["tool"] or request.args.get("tool")
     try:
-        result = db.query_cookies(search=search, **p)
+        result = db.query_cookies(search=search, tool=tool, **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 cookies AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -420,10 +476,12 @@ def api_intel_v2_webapp_intel(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
+    tool = request.args.get("tool")
     try:
-        result = db.query_webapp_intel(search=search, **p)
+        result = db.query_webapp_intel(search=search, tool=tool, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 webapp_intel AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -444,10 +502,11 @@ def api_intel_v2_api_inventory(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_api_inventory(search=search, **p)
+        result = db.query_api_inventory(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 api_inventory AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -468,10 +527,11 @@ def api_intel_v2_osint_domains(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_osint_domains(search=search, **p)
+        result = db.query_osint_domains(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -485,10 +545,11 @@ def api_intel_v2_osint_emails(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_osint_emails(search=search, **p)
+        result = db.query_osint_emails(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 osint_emails AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -505,11 +566,12 @@ def api_intel_v2_osint_breaches(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     email_id = request.args.get("email_id", type=int)
     try:
-        result = db.query_osint_breaches(email_id=email_id, search=search, **p)
+        result = db.query_osint_breaches(email_id=email_id, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 osint_breaches AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -526,10 +588,11 @@ def api_intel_v2_osint_people(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_osint_people(search=search, **p)
+        result = db.query_osint_people(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 osint_people AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -546,10 +609,11 @@ def api_intel_v2_osint_subdomains(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_osint_subdomains(search=search, **p)
+        result = db.query_osint_subdomains(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 osint_subdomains AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -566,12 +630,13 @@ def api_intel_v2_osint_dns(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     record_type = request.args.get("record_type")
     try:
         result = db.query_osint_dns(
-            record_type=record_type, search=search, **p)
+            record_type=record_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 osint_dns AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -588,10 +653,11 @@ def api_intel_v2_osint_certificates(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_osint_certificates(search=search, **p)
+        result = db.query_osint_certificates(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 osint_certificates AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -608,12 +674,13 @@ def api_intel_v2_osint_wayback(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     domain = request.args.get("domain")
     mime_type = request.args.get("mime_type")
     try:
         result = db.query_osint_wayback_urls(
-            domain=domain, mime_type=mime_type, **p)
+            domain=domain, mime_type=mime_type, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -627,12 +694,13 @@ def api_intel_v2_osint_typosquats(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     domain = request.args.get("domain")
     fuzzer = request.args.get("fuzzer")
     try:
         result = db.query_osint_typosquats(
-            domain=domain, fuzzer=fuzzer, **p)
+            domain=domain, fuzzer=fuzzer, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -646,13 +714,14 @@ def api_intel_v2_osint_phones(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     phone_type = request.args.get("phone_type")
     person_id = request.args.get("person_id", type=int)
     try:
         result = db.query_osint_phones(
-            person_id=person_id, phone_type=phone_type, search=search, **p)
+            person_id=person_id, phone_type=phone_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -670,6 +739,7 @@ def api_intel_v2_firewall_rules(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     action = request.args.get("action")
     source_zone = request.args.get("source_zone")
@@ -678,7 +748,7 @@ def api_intel_v2_firewall_rules(project_id):
     try:
         result = db.query_firewall_rules(
             action=action, source_zone=source_zone, dest_zone=dest_zone,
-            search=search, **p)
+            search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -692,10 +762,11 @@ def api_intel_v2_firewall_zones(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     zone_type = request.args.get("zone_type")
     try:
-        result = db.query_firewall_zones(zone_type=zone_type, **p)
+        result = db.query_firewall_zones(zone_type=zone_type, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -709,13 +780,14 @@ def api_intel_v2_firewall_compliance(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     status = request.args.get("status")
     framework = request.args.get("framework")
     search = _search_param()
     try:
         result = db.query_firewall_compliance(
-            status=status, framework=framework, search=search, **p)
+            status=status, framework=framework, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -729,10 +801,11 @@ def api_intel_v2_firewall_config(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_firewall_config(search=search, **p)
+        result = db.query_firewall_config(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 firewall_config AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -753,13 +826,14 @@ def api_intel_v2_cloud_resources(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     resource_type = request.args.get("resource_type")
     region = request.args.get("region")
     search = _search_param()
     try:
         result = db.query_cloud_resources(
-            resource_type=resource_type, region=region, search=search, **p)
+            resource_type=resource_type, region=region, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -773,12 +847,13 @@ def api_intel_v2_cloud_iam_policies(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     policy_type = request.args.get("policy_type")
     search = _search_param()
     try:
         result = db.query_cloud_iam_policies(
-            policy_type=policy_type, search=search, **p)
+            policy_type=policy_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -792,6 +867,7 @@ def api_intel_v2_cloud_iam_roles(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     is_service_role = request.args.get("is_service_role")
@@ -799,7 +875,7 @@ def api_intel_v2_cloud_iam_roles(project_id):
         is_service_role = is_service_role.lower() in ("1", "true", "yes")
     try:
         result = db.query_cloud_iam_roles(
-            is_service_role=is_service_role, search=search, **p)
+            is_service_role=is_service_role, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -813,10 +889,11 @@ def api_intel_v2_cloud_services(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_cloud_services(search=search, **p)
+        result = db.query_cloud_services(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -834,13 +911,14 @@ def api_intel_v2_traffic_conversations(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     src_ip = request.args.get("src_ip")
     dst_ip = request.args.get("dst_ip")
     protocol = request.args.get("protocol")
     try:
         result = db.query_traffic_conversations(
-            src_ip=src_ip, dst_ip=dst_ip, protocol=protocol, **p)
+            src_ip=src_ip, dst_ip=dst_ip, protocol=protocol, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -854,12 +932,13 @@ def api_intel_v2_traffic_summary(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     category = request.args.get("category")
     search = _search_param()
     try:
         result = db.query_traffic_summary(
-            category=category, search=search, **p)
+            category=category, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -877,13 +956,14 @@ def api_intel_v2_db_schemas(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     db_type = request.args.get("db_type")
     host = request.args.get("host")
     search = _search_param()
     try:
         result = db.query_db_schemas(
-            db_type=db_type, host=host, search=search, **p)
+            db_type=db_type, host=host, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -897,12 +977,13 @@ def api_intel_v2_db_tables(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     schema_id = request.args.get("schema_id", type=int)
     search = _search_param()
     try:
         result = db.query_db_tables(
-            schema_id=schema_id, search=search, **p)
+            schema_id=schema_id, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -916,12 +997,13 @@ def api_intel_v2_db_privileges(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     grantee = request.args.get("grantee")
     privilege_type = request.args.get("privilege_type")
     try:
         result = db.query_db_privileges(
-            grantee=grantee, privilege_type=privilege_type, **p)
+            grantee=grantee, privilege_type=privilege_type, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -939,12 +1021,13 @@ def api_intel_v2_endpoint_software(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     category = request.args.get("category")
     try:
         result = db.query_endpoint_software(
-            search=search, category=category, **p)
+            search=search, category=category, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -958,12 +1041,13 @@ def api_intel_v2_endpoint_hardening(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     status = request.args.get("status")
     category = request.args.get("category")
     try:
         result = db.query_endpoint_hardening(
-            status=status, category=category, **p)
+            status=status, category=category, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -977,12 +1061,13 @@ def api_intel_v2_endpoint_compliance(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     framework = request.args.get("framework")
     status = request.args.get("status")
     try:
         result = db.query_endpoint_compliance(
-            framework=framework, status=status, **p)
+            framework=framework, status=status, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -996,12 +1081,13 @@ def api_intel_v2_endpoint_ad(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     check_category = request.args.get("check_category")
     search = _search_param()
     try:
         result = db.query_endpoint_ad(
-            check_category=check_category, search=search, **p)
+            check_category=check_category, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1015,10 +1101,11 @@ def api_intel_v2_endpoint_browsers(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_endpoint_browsers(search=search, **p)
+        result = db.query_endpoint_browsers(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1032,10 +1119,11 @@ def api_intel_v2_endpoint_overview(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_endpoint_overview(search=search, **p)
+        result = db.query_endpoint_overview(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 endpoint_overview AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1052,10 +1140,11 @@ def api_intel_v2_endpoint_network(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_endpoint_network(search=search, **p)
+        result = db.query_endpoint_network(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 endpoint_network AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1072,10 +1161,11 @@ def api_intel_v2_endpoint_disk(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_endpoint_disk(search=search, **p)
+        result = db.query_endpoint_disk(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 endpoint_disk AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1092,10 +1182,11 @@ def api_intel_v2_endpoint_hardware(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_endpoint_hardware(search=search, **p)
+        result = db.query_endpoint_hardware(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 endpoint_hardware AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1116,12 +1207,13 @@ def api_intel_v2_mobile_components(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     component_type = request.args.get("component_type")
     search = _search_param()
     try:
         result = db.query_mobile_components(
-            component_type=component_type, search=search, **p)
+            component_type=component_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1135,12 +1227,13 @@ def api_intel_v2_mobile_permissions(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     protection_level = request.args.get("protection_level")
     try:
         result = db.query_mobile_permissions(
-            protection_level=protection_level, search=search, **p)
+            protection_level=protection_level, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1154,6 +1247,7 @@ def api_intel_v2_mobile_data_flows(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     encrypted = request.args.get("encrypted")
     if encrypted is not None:
@@ -1161,7 +1255,7 @@ def api_intel_v2_mobile_data_flows(project_id):
     search = _search_param()
     try:
         result = db.query_mobile_data_flows(
-            encrypted=encrypted, search=search, **p)
+            encrypted=encrypted, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1175,11 +1269,12 @@ def api_intel_v2_mobile_traffic(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     host = request.args.get("host")
     search = _search_param()
     try:
-        result = db.query_mobile_traffic(host=host, search=search, **p)
+        result = db.query_mobile_traffic(host=host, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1193,10 +1288,11 @@ def api_intel_v2_mobile_hardening(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_mobile_hardening(search=search, **p)
+        result = db.query_mobile_hardening(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 mobile_hardening AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1213,10 +1309,11 @@ def api_intel_v2_mobile_domains(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_mobile_domains(search=search, **p)
+        result = db.query_mobile_domains(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 mobile_domains AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1233,10 +1330,11 @@ def api_intel_v2_mobile_emails(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_mobile_emails(search=search, **p)
+        result = db.query_mobile_emails(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 mobile_emails AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1253,10 +1351,11 @@ def api_intel_v2_mitm_cert(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_mobile_mitm_certs(search=search, **p)
+        result = db.query_mobile_mitm_certs(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 mitm_cert AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1277,12 +1376,13 @@ def api_intel_v2_isotope_strings(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     string_type = request.args.get("string_type")
     search = _search_param()
     try:
         result = db.query_isotope_strings(
-            string_type=string_type, search=search, **p)
+            string_type=string_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1296,12 +1396,13 @@ def api_intel_v2_isotope_secrets(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     secret_type = request.args.get("secret_type")
     search = _search_param()
     try:
         result = db.query_isotope_secrets(
-            secret_type=secret_type, search=search, **p)
+            secret_type=secret_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1315,12 +1416,13 @@ def api_intel_v2_isotope_iocs(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     ioc_type = request.args.get("ioc_type")
     search = _search_param()
     try:
         result = db.query_isotope_iocs(
-            ioc_type=ioc_type, search=search, **p)
+            ioc_type=ioc_type, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1334,12 +1436,13 @@ def api_intel_v2_isotope_properties(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     category = request.args.get("category")
     search = _search_param()
     try:
         result = db.query_isotope_properties(
-            category=category, search=search, **p)
+            category=category, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1353,10 +1456,11 @@ def api_intel_v2_isotope_entropy(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_isotope_entropy(search=search, **p)
+        result = db.query_isotope_entropy(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 isotope_entropy AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1373,10 +1477,11 @@ def api_intel_v2_isotope_contents(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_isotope_contents(search=search, **p)
+        result = db.query_isotope_contents(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 isotope_contents AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1393,10 +1498,11 @@ def api_intel_v2_isotope_code(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_isotope_code(search=search, **p)
+        result = db.query_isotope_code(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 isotope_code AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1413,10 +1519,11 @@ def api_intel_v2_isotope_metadata(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_isotope_metadata(search=search, **p)
+        result = db.query_isotope_metadata(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 isotope_metadata AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1433,10 +1540,11 @@ def api_intel_v2_isotope_binary(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     search = _search_param()
     try:
-        result = db.query_isotope_binary(search=search, **p)
+        result = db.query_isotope_binary(search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 isotope_binary AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -1457,11 +1565,12 @@ def api_intel_v2_action_items(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     status = request.args.get("status")
     tool = request.args.get("tool")
     try:
-        result = db.get_action_items(status=status, tool=tool, **p)
+        result = db.get_action_items(status=status, tool=tool, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1475,13 +1584,14 @@ def api_intel_v2_output_files(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     tool = request.args.get("tool")
     extension = request.args.get("extension")
     search = _search_param()
     try:
         result = db.query_output_files(
-            tool=tool, extension=extension, search=search, **p)
+            tool=tool, extension=extension, search=search, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1496,6 +1606,7 @@ def api_intel_v2_crucible_logs(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     level = request.args.get("level")
     tool = request.args.get("tool")
@@ -1503,7 +1614,7 @@ def api_intel_v2_crucible_logs(project_id):
     to_ts = request.args.get("to_ts")
     try:
         result = db.query_crucible_logs(
-            level=level, tool=tool, from_ts=from_ts, to_ts=to_ts, **p)
+            level=level, tool=tool, from_ts=from_ts, to_ts=to_ts, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1518,6 +1629,7 @@ def api_intel_v2_crucible_errors(project_id):
     db = _get_db(project)
     if not db:
         return _err_503()
+    stp = _scope_tool_params(db)
     p = _paginate_params()
     level = request.args.get("level")
     tool = request.args.get("tool")
@@ -1525,7 +1637,7 @@ def api_intel_v2_crucible_errors(project_id):
     to_ts = request.args.get("to_ts")
     try:
         result = db.query_crucible_errors(
-            level=level, tool=tool, from_ts=from_ts, to_ts=to_ts, **p)
+            level=level, tool=tool, from_ts=from_ts, to_ts=to_ts, scope_id=stp["scope_id"], **p)
         return jsonify(result)
     except Exception as e:
         return _err_500(e)
@@ -1572,6 +1684,7 @@ def api_intel_v2_domain_intel(project_id):
     db = _get_db(project)
     if db:
         try:
+            stp = _scope_tool_params(db)
             p = _paginate_params()
             domain = request.args.get("domain")
             ip = request.args.get("ip")
@@ -1583,7 +1696,7 @@ def api_intel_v2_domain_intel(project_id):
                 kw["source_ip"] = ip
             if is_dc is not None:
                 kw["is_dc"] = is_dc.lower() in ("1", "true", "yes")
-            result = db.query_domain_intel(**kw, **p)
+            result = db.query_domain_intel(**kw, scope_id=stp["scope_id"], **p)
             if result.get("total", 0) > 0:
                 return jsonify(result)
         except Exception:
