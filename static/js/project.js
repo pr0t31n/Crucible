@@ -6235,6 +6235,21 @@ function _refreshActiveIntel() {
     if (_activeIntelPanel) loadIntelPanel(_activeIntelPanel, _activeIntelTool);
 }
 
+function _isIntelPayloadEmpty(payload) {
+    if (!payload) return true;
+    if (Array.isArray(payload)) return !payload.length;
+    if (typeof payload !== 'object') return false;
+    var keys = Object.keys(payload);
+    if (!keys.length) return true;
+    if (keys.length === 1) {
+        var inner = payload[keys[0]];
+        if (!inner) return true;
+        if (Array.isArray(inner)) return !inner.length;
+        if (typeof inner === 'object') return !Object.keys(inner).length;
+    }
+    return false;
+}
+
 function loadIntelPanel(panel, tool) {
     var body = document.getElementById('intelBody');
     var empty = document.getElementById('intelEmpty');
@@ -6376,7 +6391,7 @@ function loadIntelPanel(panel, tool) {
             if (data && typeof data === 'object' && !Array.isArray(data) && data.items !== undefined) {
                 payload = data.items;
             }
-            if (!payload || (Array.isArray(payload) && !payload.length) || (typeof payload === 'object' && !Array.isArray(payload) && !Object.keys(payload).length)) {
+            if (_isIntelPayloadEmpty(payload)) {
                 body.hidden = true;
                 empty.style.display = '';
                 return;
