@@ -10,6 +10,7 @@ resolving internal IDs (host_id, port_id, url_id) where needed.
 Imported by process_manager.py; no Flask dependencies.
 """
 
+import inspect
 import json
 import logging
 
@@ -23,9 +24,21 @@ def _clean(row: dict) -> dict:
     return {k: v for k, v in row.items() if k not in _STRIP_KEYS}
 
 
+def _safe_db_call(method, row):
+    """Call a DB method filtering kwargs to its accepted params."""
+    sig = inspect.signature(method)
+    params = sig.parameters
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return method(**row)
+    else:
+        accepted = {k: v for k, v in row.items()
+                    if k in params and k != "self"}
+        return method(**accepted)
+
+
 # ── subtype → handler function ───────────────────────────────────────────
 # Each handler takes (db, row) and does the insert.
-# Methods that take raw data use _simple_kwargs or _simple_row.
+# Methods that take raw data use _safe_db_call for kwargs filtering.
 # Methods that need ID resolution have explicit handlers.
 
 def _sw(db, row):
@@ -71,11 +84,11 @@ def _port_intel(db, row):
 
 def _server_role(db, row):
     r = _clean(row)
-    db.add_server_role(**r)
+    _safe_db_call(db.add_server_role, r)
 
 def _dns_record(db, row):
     r = _clean(row)
-    db.add_dns_record(**r)
+    _safe_db_call(db.add_dns_record, r)
 
 def _certificate(db, row):
     ip = row.get("ip", "")
@@ -90,22 +103,25 @@ def _certificate(db, row):
     r.pop("port", None)
     r.pop("hostname", None)
     r.pop("_scope_id", None)
-    db.add_certificate(port_id, **r)
+    sig = inspect.signature(db.add_certificate)
+    pnames = [n for n in sig.parameters if n != "self"]
+    accepted = {k: v for k, v in r.items() if k in pnames}
+    db.add_certificate(port_id, **accepted)
 
 def _screenshot(db, row):
     r = _clean(row)
-    db.add_screenshot(**r)
+    _safe_db_call(db.add_screenshot, r)
 
 def _target_profile(db, row):
     r = _clean(row)
-    db.add_target_profile(**r)
+    _safe_db_call(db.add_target_profile, r)
 
 def _structure_url(db, row):
     r = _clean(row)
     params = r.pop("params", [])
     forms = r.pop("forms", [])
     headers = r.pop("headers", [])
-    url_id = db.add_structure_url(**r)
+    url_id = _safe_db_call(db.add_structure_url, r)
     if url_id:
         for p in (params or []):
             try:
@@ -160,186 +176,186 @@ def _api_endpoint(db, row):
 def _access_matrix(db, row):
     r = _clean(row)
     if "endpoint_path" in r:
-        db.add_access_matrix_entry(**r)
+        _safe_db_call(db.add_access_matrix_entry, r)
 
 def _auth_session(db, row):
     r = _clean(row)
-    db.add_auth_session(**r)
+    _safe_db_call(db.add_auth_session, r)
 
 def _auth_cookie(db, row):
     r = _clean(row)
-    db.add_auth_cookie(**r)
+    _safe_db_call(db.add_auth_cookie, r)
 
 def _osint_domain(db, row):
     r = _clean(row)
-    db.add_osint_domain(**r)
+    _safe_db_call(db.add_osint_domain, r)
 
 def _osint_whois(db, row):
     r = _clean(row)
-    db.add_osint_whois(**r)
+    _safe_db_call(db.add_osint_whois, r)
 
 def _osint_email(db, row):
     r = _clean(row)
-    db.add_email(**r)
+    _safe_db_call(db.add_email, r)
 
 def _osint_subdomain(db, row):
     r = _clean(row)
-    db.add_subdomain(**r)
+    _safe_db_call(db.add_subdomain, r)
 
 def _osint_phone(db, row):
     r = _clean(row)
     if hasattr(db, "add_osint_phone"):
-        db.add_osint_phone(**r)
+        _safe_db_call(db.add_osint_phone, r)
 
 def _osint_breach(db, row):
     r = _clean(row)
     if hasattr(db, "add_osint_breach"):
-        db.add_osint_breach(**r)
+        _safe_db_call(db.add_osint_breach, r)
     elif hasattr(db, "bulk_insert_osint_breaches"):
         db.bulk_insert_osint_breaches([r])
 
 def _osint_person(db, row):
     r = _clean(row)
     if hasattr(db, "add_osint_person"):
-        db.add_osint_person(**r)
+        _safe_db_call(db.add_osint_person, r)
     elif hasattr(db, "bulk_insert_osint_people"):
         db.bulk_insert_osint_people([r])
 
 def _osint_wayback(db, row):
     r = _clean(row)
-    db.add_osint_wayback_url(**r)
+    _safe_db_call(db.add_osint_wayback_url, r)
 
 def _osint_typosquat(db, row):
     r = _clean(row)
-    db.add_osint_typosquat(**r)
+    _safe_db_call(db.add_osint_typosquat, r)
 
 def _firewall_rule(db, row):
     r = _clean(row)
-    db.add_firewall_rule(**r)
+    _safe_db_call(db.add_firewall_rule, r)
 
 def _firewall_zone(db, row):
     r = _clean(row)
-    db.add_firewall_zone(**r)
+    _safe_db_call(db.add_firewall_zone, r)
 
 def _firewall_compliance(db, row):
     r = _clean(row)
-    db.add_firewall_compliance(**r)
+    _safe_db_call(db.add_firewall_compliance, r)
 
 def _cloud_resource(db, row):
     r = _clean(row)
-    db.add_cloud_resource(**r)
+    _safe_db_call(db.add_cloud_resource, r)
 
 def _cloud_iam_policy(db, row):
     r = _clean(row)
-    db.add_cloud_iam_policy(**r)
+    _safe_db_call(db.add_cloud_iam_policy, r)
 
 def _cloud_iam_role(db, row):
     r = _clean(row)
-    db.add_cloud_iam_role(**r)
+    _safe_db_call(db.add_cloud_iam_role, r)
 
 def _cloud_service(db, row):
     r = _clean(row)
-    db.add_cloud_service(**r)
+    _safe_db_call(db.add_cloud_service, r)
 
 def _traffic_conversation(db, row):
     r = _clean(row)
-    db.add_traffic_conversation(**r)
+    _safe_db_call(db.add_traffic_conversation, r)
 
 def _traffic_summary(db, row):
     r = _clean(row)
-    db.add_traffic_summary(**r)
+    _safe_db_call(db.add_traffic_summary, r)
 
 def _db_schema(db, row):
     r = _clean(row)
-    db.add_db_schema(**r)
+    _safe_db_call(db.add_db_schema, r)
 
 def _db_table(db, row):
     r = _clean(row)
-    db.add_db_table(**r)
+    _safe_db_call(db.add_db_table, r)
 
 def _db_column(db, row):
     r = _clean(row)
-    db.add_db_column(**r)
+    _safe_db_call(db.add_db_column, r)
 
 def _db_privilege(db, row):
     r = _clean(row)
-    db.add_db_privilege(**r)
+    _safe_db_call(db.add_db_privilege, r)
 
 def _endpoint_software(db, row):
     r = _clean(row)
-    db.add_endpoint_software(**r)
+    _safe_db_call(db.add_endpoint_software, r)
 
 def _endpoint_hardening(db, row):
     r = _clean(row)
-    db.add_endpoint_hardening(**r)
+    _safe_db_call(db.add_endpoint_hardening, r)
 
 def _endpoint_compliance(db, row):
     r = _clean(row)
-    db.add_endpoint_compliance(**r)
+    _safe_db_call(db.add_endpoint_compliance, r)
 
 def _endpoint_ad(db, row):
     r = _clean(row)
-    db.add_endpoint_ad(**r)
+    _safe_db_call(db.add_endpoint_ad, r)
 
 def _endpoint_browser(db, row):
     r = _clean(row)
-    db.add_endpoint_browser(**r)
+    _safe_db_call(db.add_endpoint_browser, r)
 
 def _endpoint_inventory(db, row):
     r = _clean(row)
-    db.add_endpoint_inventory(**r)
+    _safe_db_call(db.add_endpoint_inventory, r)
 
 def _mobile_component(db, row):
     r = _clean(row)
-    db.add_mobile_component(**r)
+    _safe_db_call(db.add_mobile_component, r)
 
 def _mobile_permission(db, row):
     r = _clean(row)
-    db.add_mobile_permission(**r)
+    _safe_db_call(db.add_mobile_permission, r)
 
 def _mobile_data_flow(db, row):
     r = _clean(row)
-    db.add_mobile_data_flow(**r)
+    _safe_db_call(db.add_mobile_data_flow, r)
 
 def _mobile_traffic(db, row):
     r = _clean(row)
-    db.add_mobile_traffic(**r)
+    _safe_db_call(db.add_mobile_traffic, r)
 
 def _isotope_string(db, row):
     r = _clean(row)
-    db.add_isotope_string(**r)
+    _safe_db_call(db.add_isotope_string, r)
 
 def _isotope_property(db, row):
     r = _clean(row)
-    db.add_isotope_property(**r)
+    _safe_db_call(db.add_isotope_property, r)
 
 def _isotope_entropy(db, row):
     r = _clean(row)
-    db.add_isotope_entropy(**r)
+    _safe_db_call(db.add_isotope_entropy, r)
 
 def _isotope_secret(db, row):
     r = _clean(row)
-    db.add_isotope_secret(**r)
+    _safe_db_call(db.add_isotope_secret, r)
 
 def _isotope_code(db, row):
     r = _clean(row)
-    db.add_isotope_code(**r)
+    _safe_db_call(db.add_isotope_code, r)
 
 def _isotope_binary(db, row):
     r = _clean(row)
-    db.add_isotope_binary(**r)
+    _safe_db_call(db.add_isotope_binary, r)
 
 def _isotope_ioc(db, row):
     r = _clean(row)
-    db.add_isotope_ioc(**r)
+    _safe_db_call(db.add_isotope_ioc, r)
 
 def _isotope_content(db, row):
     r = _clean(row)
-    db.add_isotope_content(**r)
+    _safe_db_call(db.add_isotope_content, r)
 
 def _isotope_metadata(db, row):
     r = _clean(row)
-    db.add_isotope_metadata(**r)
+    _safe_db_call(db.add_isotope_metadata, r)
 
 def _mobile_hardening(db, row):
     r = _clean(row)
@@ -387,7 +403,7 @@ def _mobile_api_endpoint(db, row):
 
 def _wireless_network(db, row):
     r = _clean(row)
-    db.add_wireless_network(**r)
+    _safe_db_call(db.add_wireless_network, r)
 
 def _wireless_ap(db, row):
     r = _clean(row)
@@ -447,7 +463,7 @@ def _wireless_probe(db, row):
     if probed_ssid and not probed_ssids:
         probed_ssids = [probed_ssid]
     if not client_mac and not probed_ssids:
-        db.add_wireless_network(r.get("bssid", ""), **r)
+        _safe_db_call(db.add_wireless_network, r)
         return
     for ssid in probed_ssids:
         if ssid and client_mac:
@@ -458,47 +474,47 @@ def _wireless_probe(db, row):
 
 def _output_file(db, row):
     r = _clean(row)
-    db.add_output_file(**r)
+    _safe_db_call(db.add_output_file, r)
 
 def _console_chunk(db, row):
     r = _clean(row)
-    db.add_console_chunk(**r)
+    _safe_db_call(db.add_console_chunk, r)
 
 def _network_posture(db, row):
     r = _clean(row)
-    db.add_network_posture(**r)
+    _safe_db_call(db.add_network_posture, r)
 
 def _cookie(db, row):
     r = _clean(row)
-    db.add_cookie(**r)
+    _safe_db_call(db.add_cookie, r)
 
 def _webapp_intel(db, row):
     r = _clean(row)
-    db.add_webapp_intel(**r)
+    _safe_db_call(db.add_webapp_intel, r)
 
 def _api_inventory(db, row):
     r = _clean(row)
-    db.add_api_inventory(**r)
+    _safe_db_call(db.add_api_inventory, r)
 
 def _firewall_config(db, row):
     r = _clean(row)
-    db.add_firewall_config(**r)
+    _safe_db_call(db.add_firewall_config, r)
 
 def _endpoint_overview(db, row):
     r = _clean(row)
-    db.add_endpoint_overview(**r)
+    _safe_db_call(db.add_endpoint_overview, r)
 
 def _endpoint_network(db, row):
     r = _clean(row)
-    db.add_endpoint_network(**r)
+    _safe_db_call(db.add_endpoint_network, r)
 
 def _endpoint_disk(db, row):
     r = _clean(row)
-    db.add_endpoint_disk(**r)
+    _safe_db_call(db.add_endpoint_disk, r)
 
 def _endpoint_hardware(db, row):
     r = _clean(row)
-    db.add_endpoint_hardware(**r)
+    _safe_db_call(db.add_endpoint_hardware, r)
 
 
 # ── survey (Aether wireless survey) ──────────────────────────────────────
@@ -564,7 +580,7 @@ def _domain_intel(db, row):
     src = r.get("source", "")
     if not dn or not src:
         return
-    db.add_domain_intel(**r)
+    _safe_db_call(db.add_domain_intel, r)
 
 
 # ── dispatch table: subtype → (single_handler, bulk_method_or_None) ──────
