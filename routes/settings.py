@@ -155,9 +155,9 @@ def _backfill_from_project(settings, project, tool_id):
             if urls:
                 settings["target_url"] = "\n".join(urls)
         if scope_def.get("fracture_unauthenticated"):
-            settings.setdefault("unauthenticated", True)
+            settings["unauthenticated"] = True
         if scope_def.get("fracture_no_browser_assist"):
-            settings.setdefault("no_browser_assist", True)
+            settings["no_browser_assist"] = True
     elif tool_id == "siphon":
         if not settings.get("api_base_url"):
             api_urls = scope_def.get("api_urls", [])

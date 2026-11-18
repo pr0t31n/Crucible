@@ -376,6 +376,10 @@ def api_create_project():
 
 
 _SCOPE_TO_SETTINGS = {
+    "fracture": {
+        "fracture_unauthenticated": ("unauthenticated", False),
+        "fracture_no_browser_assist": ("no_browser_assist", False),
+    },
     "quill": {
         "mobile_platform": ("mobile_platform", "auto"),
         "mobile_app_paths": ("app_files", None),
