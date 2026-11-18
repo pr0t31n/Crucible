@@ -1858,6 +1858,8 @@ def api_intel_v2_summary(project_id):
             "endpoint_network": _safe_table_count(db, "endpoint_network"),
             "endpoint_disk": _safe_table_count(db, "endpoint_disk"),
             "endpoint_hardware": _safe_table_count(db, "endpoint_hardware"),
+            # Software vulnerability cross-reference
+            "software_vulns": _safe_count(db, "count_software_vulns"),
             # Cross-cutting
             "action_items": _safe_table_count(db, "action_items"),
             "output_files": _safe_count(db, "count_output_files"),
@@ -2437,3 +2439,117 @@ def api_survey_status(pid):
         return jsonify({"running": False})
     running = pm.is_running(pid, "aether")
     return jsonify({"running": running})
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Software Vulnerability Cross-Reference
+# ═══════════════════════════════════════════════════════════════════
+
+@intel_v2.route("/api/intel/v2/software-vulns/<project_id>")
+def api_intel_v2_software_vulns(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return jsonify(_empty_page(1))
+    p = _paginate_params()
+    search = _search_param()
+    try:
+        fn = getattr(db, "query_software_vulns", None)
+        if not fn:
+            return jsonify(_empty_page(p["page"]))
+        result = fn(search=search, **p)
+        return jsonify(result)
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/cve-crossref/<project_id>")
+def api_intel_v2_cve_crossref(project_id):
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return jsonify({"summary": {}, "software": [], "details": []})
+    try:
+        fn = getattr(db, "query_software_cve_crossref", None)
+        if not fn:
+            return jsonify({"summary": {}, "software": [], "details": []})
+        return jsonify(fn())
+    except Exception as e:
+        return _err_500(e)
+
+
+@intel_v2.route("/api/intel/v2/enrich-searchsploit/<project_id>",
+                methods=["POST"])
+def api_intel_v2_enrich_searchsploit(project_id):
+    import shutil
+    import subprocess
+    ssploit = shutil.which("searchsploit")
+    if not ssploit:
+        return jsonify({"error": "searchsploit not found on this system"}), 400
+    project = _get_project(project_id)
+    if not project:
+        return _err_404()
+    db = _get_db(project)
+    if not db:
+        return jsonify({"error": "Database not available"}), 503
+    try:
+        sw_rows = db._conn.execute("""
+            SELECT DISTINCT s.id, s.product, s.vendor, hs.version
+            FROM host_software hs
+            JOIN software s ON s.id = hs.software_id
+            WHERE s.product IS NOT NULL AND s.product != ''
+        """).fetchall()
+        if not sw_rows:
+            return jsonify({"enriched": 0, "message": "No software to enrich"})
+        seen = set()
+        results = []
+        for sw_id, product, vendor, version in sw_rows:
+            term = product.strip()
+            if version and version.strip():
+                term += " " + version.strip().split()[0]
+            if term in seen:
+                continue
+            seen.add(term)
+            try:
+                proc = subprocess.run(
+                    [ssploit, "--json", "-t", term],
+                    capture_output=True, text=True, timeout=15)
+                if proc.returncode != 0 or not proc.stdout.strip():
+                    continue
+                data = json.loads(proc.stdout)
+                exploits = data.get("RESULTS_EXPLOIT", [])
+                for ex in exploits[:10]:
+                    title = ex.get("Title", "").strip()
+                    edb_id = ex.get("EDB-ID", "")
+                    path = ex.get("Path", "")
+                    results.append({
+                        "software_id": sw_id,
+                        "title": title,
+                        "edb_id": str(edb_id) if edb_id else "",
+                        "version": version or "",
+                        "risk": "HIGH" if any(k in title.lower()
+                            for k in ("remote code", "rce", "injection",
+                                      "overflow", "privilege")) else "MEDIUM",
+                        "source": "searchsploit",
+                        "url": (f"https://www.exploit-db.com/exploits/{edb_id}"
+                                if edb_id else ""),
+                        "description": f"Exploit: {path}" if path else title,
+                    })
+            except (subprocess.TimeoutExpired, json.JSONDecodeError):
+                continue
+        if results:
+            fn = getattr(db, "bulk_insert_software_vulns", None)
+            if fn:
+                fn(results)
+        return jsonify({
+            "enriched": len(results),
+            "products_checked": len(seen),
+            "message": f"Found {len(results)} potential exploits "
+                       f"across {len(seen)} products",
+        })
+    except Exception as e:
+        return _err_500(e)
