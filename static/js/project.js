@@ -8011,63 +8011,80 @@ function _renderAccessMatrix(data) {
 
 /* ── Auth Status Renderer ──────────────────────────────────────── */
 function _renderAuthStatus(data) {
-    var entries = data.auth_status;
-    if (!entries || !Array.isArray(entries) || !entries.length) return _INTEL_EMPTY_PLACEHOLDER;
-    var html = '<div class="auth-role-grid">';
-    for (var i = 0; i < entries.length; i++) {
-        var e = entries[i];
-        var role = e.role || '';
-        var username = e.username || '';
-        var status = (e.status || '').toLowerCase();
-        var cookies = e.cookies || [];
-        var headers = e.auth_headers || [];
-        var sessionName = e.session_name || '';
-        var statusCls = 'auth-status-unknown';
-        if (status === 'success') statusCls = 'auth-status-success';
-        else if (status === 'failed') statusCls = 'auth-status-failed';
-        else if (status === 'unauthenticated') statusCls = 'auth-status-unauth';
-        var dispRole = role === 'unauthenticated' ? 'Unauthenticated' : esc(role);
-        html += '<div class="auth-role-card">';
-        html += '<div class="auth-role-header">';
-        html += '<span class="auth-role-name">' + dispRole + '</span>';
-        html += '<span class="auth-status-badge ' + statusCls + '">' + esc(status || 'unknown') + '</span>';
-        html += '</div>';
-        if (username) {
-            html += '<div class="auth-field-row"><span class="auth-field-label">Username</span><span class="auth-field-val">' + esc(username) + '</span></div>';
-        }
-        if (sessionName) {
-            html += '<div class="auth-field-row"><span class="auth-field-label">Session</span><span class="auth-field-val" style="font-family:var(--font-mono);font-size:.8rem">' + esc(sessionName) + '</span></div>';
-        }
-        if (headers.length) {
-            html += '<div class="auth-field-row auth-field-row-top"><span class="auth-field-label">Auth Headers</span><div class="auth-cookie-table-wrap"><table class="auth-cookie-table">';
-            html += '<thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>';
-            for (var hi = 0; hi < headers.length; hi++) {
-                html += '<tr><td>' + esc(headers[hi].name || '') + '</td><td style="font-family:var(--font-mono);font-size:.78rem">' + esc(headers[hi].value || '') + '</td></tr>';
-            }
-            html += '</tbody></table></div></div>';
-        }
-        if (cookies.length) {
-            html += '<div class="auth-field-row auth-field-row-top"><span class="auth-field-label">Cookies</span><div class="auth-cookie-table-wrap"><table class="auth-cookie-table">';
-            html += '<thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Secure</th><th>HttpOnly</th><th>Expires</th></tr></thead><tbody>';
-            for (var ci = 0; ci < cookies.length; ci++) {
-                var c = cookies[ci];
-                var cval = c.value || '';
-                var dispVal = cval.length > 40 ? cval.slice(0, 40) + '…' : cval;
-                html += '<tr>';
-                html += '<td style="font-family:var(--font-mono)">' + esc(c.name || '') + '</td>';
-                html += '<td class="auth-cookie-val" style="font-family:var(--font-mono)" title="' + esc(cval) + '">' + esc(dispVal) + '</td>';
-                html += '<td>' + esc(c.domain || '') + '</td>';
-                html += '<td>' + esc(c.path || '') + '</td>';
-                html += '<td>' + (c.secure ? '✓' : '') + '</td>';
-                html += '<td>' + (c.httpOnly ? '✓' : '') + '</td>';
-                html += '<td style="font-size:.75rem;color:var(--text-muted)">' + esc(c.expires || '') + '</td>';
-                html += '</tr>';
-            }
-            html += '</tbody></table></div></div>';
-        }
-        html += '</div>';
-    }
+    var grouped = data.auth_status;
+    if (!grouped || typeof grouped !== 'object') return _INTEL_EMPTY_PLACEHOLDER;
+    var urls = Object.keys(grouped);
+    if (!urls.length) return _INTEL_EMPTY_PLACEHOLDER;
+    var totalRoles = 0;
+    urls.forEach(function(u) { totalRoles += (grouped[u] || []).length; });
+    var html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">';
+    html += '<span class="intel-pill">' + urls.length + ' Web App' + (urls.length !== 1 ? 's' : '') + '</span>';
+    html += '<span class="intel-pill">' + totalRoles + ' Auth Session' + (totalRoles !== 1 ? 's' : '') + '</span>';
     html += '</div>';
+    for (var ui = 0; ui < urls.length; ui++) {
+        var turl = urls[ui];
+        var entries = grouped[turl] || [];
+        html += '<div class="intel-webapp-group" style="margin-bottom:24px">';
+        html += '<div style="font-weight:600;font-size:1rem;margin-bottom:10px;padding:8px 12px;background:var(--bg-elevated,var(--bg-card,#f7f7f8));border-radius:6px;border-left:3px solid var(--clr-accent,#0066cc)">';
+        html += turl ? esc(turl) : '<em style="color:var(--text-muted)">Unknown Target</em>';
+        html += ' <span style="font-weight:400;font-size:.85rem;color:var(--text-muted)">(' + entries.length + ' role' + (entries.length !== 1 ? 's' : '') + ')</span>';
+        html += '</div>';
+        html += '<div class="auth-role-grid">';
+        for (var i = 0; i < entries.length; i++) {
+            var e = entries[i];
+            var role = e.role || '';
+            var username = e.username || '';
+            var status = (e.status || '').toLowerCase();
+            var cookies = e.cookies || [];
+            var headers = e.auth_headers || [];
+            var sessionName = e.session_name || '';
+            var statusCls = 'auth-status-unknown';
+            if (status === 'success') statusCls = 'auth-status-success';
+            else if (status === 'failed') statusCls = 'auth-status-failed';
+            else if (status === 'unauthenticated') statusCls = 'auth-status-unauth';
+            var dispRole = role === 'unauthenticated' ? 'Unauthenticated' : esc(role);
+            html += '<div class="auth-role-card">';
+            html += '<div class="auth-role-header">';
+            html += '<span class="auth-role-name">' + dispRole + '</span>';
+            html += '<span class="auth-status-badge ' + statusCls + '">' + esc(status || 'unknown') + '</span>';
+            html += '</div>';
+            if (username) {
+                html += '<div class="auth-field-row"><span class="auth-field-label">Username</span><span class="auth-field-val">' + esc(username) + '</span></div>';
+            }
+            if (sessionName) {
+                html += '<div class="auth-field-row"><span class="auth-field-label">Session</span><span class="auth-field-val" style="font-family:var(--font-mono);font-size:.8rem">' + esc(sessionName) + '</span></div>';
+            }
+            if (headers.length) {
+                html += '<div class="auth-field-row auth-field-row-top"><span class="auth-field-label">Auth Headers</span><div class="auth-cookie-table-wrap"><table class="auth-cookie-table">';
+                html += '<thead><tr><th>Header</th><th>Value</th></tr></thead><tbody>';
+                for (var hi = 0; hi < headers.length; hi++) {
+                    html += '<tr><td>' + esc(headers[hi].name || '') + '</td><td style="font-family:var(--font-mono);font-size:.78rem">' + esc(headers[hi].value || '') + '</td></tr>';
+                }
+                html += '</tbody></table></div></div>';
+            }
+            if (cookies.length) {
+                html += '<div class="auth-field-row auth-field-row-top"><span class="auth-field-label">Cookies</span><div class="auth-cookie-table-wrap"><table class="auth-cookie-table">';
+                html += '<thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Secure</th><th>HttpOnly</th><th>Expires</th></tr></thead><tbody>';
+                for (var ci = 0; ci < cookies.length; ci++) {
+                    var c = cookies[ci];
+                    var cval = c.value || '';
+                    var dispVal = cval.length > 40 ? cval.slice(0, 40) + '…' : cval;
+                    html += '<tr>';
+                    html += '<td style="font-family:var(--font-mono)">' + esc(c.name || '') + '</td>';
+                    html += '<td class="auth-cookie-val" style="font-family:var(--font-mono)" title="' + esc(cval) + '">' + esc(dispVal) + '</td>';
+                    html += '<td>' + esc(c.domain || '') + '</td>';
+                    html += '<td>' + esc(c.path || '') + '</td>';
+                    html += '<td>' + (c.secure ? '✓' : '') + '</td>';
+                    html += '<td>' + (c.httpOnly ? '✓' : '') + '</td>';
+                    html += '<td style="font-size:.75rem;color:var(--text-muted)">' + esc(c.expires || '') + '</td>';
+                    html += '</tr>';
+                }
+                html += '</tbody></table></div></div>';
+            }
+            html += '</div>';
+        }
+        html += '</div></div>';
+    }
     return html;
 }
 

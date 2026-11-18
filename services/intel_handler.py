@@ -272,6 +272,7 @@ def _auth_session(db, row):
     if "status" in r and "valid" not in r:
         r["valid"] = 1 if str(r.pop("status")).lower() in ("active", "valid", "1", "true") else 0
     sid = r.pop("_scope_id", None)
+    target_url = r.get("target_url", "")
     try:
         session_id = _safe_db_call(db.add_auth_session, r)
     except Exception:
@@ -281,12 +282,13 @@ def _auth_session(db, row):
         try:
             cur = db._conn.execute(
                 "SELECT id FROM auth_sessions WHERE tool = ? AND role = ? "
-                "ORDER BY id DESC LIMIT 1", (tool, role))
+                "AND target_url = ? ORDER BY id DESC LIMIT 1",
+                (tool, role, target_url))
             hit = cur.fetchone()
             if hit:
                 session_id = hit[0] if isinstance(hit, (tuple, list)) else hit["id"]
                 updates = {k: v for k, v in r.items()
-                           if k not in ("tool", "role") and v is not None}
+                           if k not in ("tool", "role", "target_url") and v is not None}
                 if updates:
                     set_clause = ", ".join(f"{k} = ?" for k in updates)
                     db._conn.execute(
@@ -310,18 +312,22 @@ def _auth_cookie(db, row):
     if "session_id" not in r:
         tool = r.get("tool", "unknown")
         role = r.get("role", r.get("username", "default"))
+        target_url = r.get("target_url", "")
         try:
             cur = db._conn.execute(
                 "SELECT id FROM auth_sessions WHERE tool = ? AND role = ? "
-                "ORDER BY id DESC LIMIT 1", (tool, role))
+                "AND target_url = ? ORDER BY id DESC LIMIT 1",
+                (tool, role, target_url))
             hit = cur.fetchone()
             if hit:
                 r["session_id"] = hit[0] if isinstance(hit, (tuple, list)) else hit["id"]
             else:
-                db.add_auth_session(tool=tool, role=role, status="active")
+                db.add_auth_session(tool=tool, role=role, status="active",
+                                    target_url=target_url)
                 cur2 = db._conn.execute(
                     "SELECT id FROM auth_sessions WHERE tool = ? AND role = ? "
-                    "ORDER BY id DESC LIMIT 1", (tool, role))
+                    "AND target_url = ? ORDER BY id DESC LIMIT 1",
+                    (tool, role, target_url))
                 hit2 = cur2.fetchone()
                 if hit2:
                     r["session_id"] = hit2[0] if isinstance(hit2, (tuple, list)) else hit2["id"]
