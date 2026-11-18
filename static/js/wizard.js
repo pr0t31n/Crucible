@@ -1572,18 +1572,22 @@
 
     /* Engagement hours */
     var wizEhEnabled = document.getElementById('wizEngagementEnabled');
-    if (wizEhEnabled && wizEhEnabled.checked) {
-      var ehDays = [];
-      document.querySelectorAll('.wizEngDay:checked').forEach(function(cb) {
-        ehDays.push(parseInt(cb.value));
-      });
-      payload.engagement_hours = {
-        enabled: true,
-        start_time: document.getElementById('wizEngagementStart').value,
-        end_time: document.getElementById('wizEngagementEnd').value,
-        timezone: document.getElementById('wizEngagementTz').value,
-        days: ehDays
-      };
+    if (wizEhEnabled) {
+      if (wizEhEnabled.checked) {
+        var ehDays = [];
+        document.querySelectorAll('.wizEngDay:checked').forEach(function(cb) {
+          ehDays.push(parseInt(cb.value));
+        });
+        payload.engagement_hours = {
+          enabled: true,
+          start_time: document.getElementById('wizEngagementStart').value,
+          end_time: document.getElementById('wizEngagementEnd').value,
+          timezone: document.getElementById('wizEngagementTz').value,
+          days: ehDays
+        };
+      } else {
+        payload.engagement_hours = { enabled: false };
+      }
     }
 
     /* Scheduled engagement start */

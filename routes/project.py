@@ -340,7 +340,10 @@ def _apply_wizard_scheduling(project_id, meta, data):
         return
     eh = data.get("engagement_hours")
     if eh and isinstance(eh, dict):
-        sched.set_engagement_hours(project_id, eh)
+        if eh.get("enabled"):
+            sched.set_engagement_hours(project_id, eh)
+        else:
+            sched.clear_engagement_hours(project_id)
     scheduled_at = data.get("scheduled_start")
     if scheduled_at:
         sched.schedule_engagement_start(

@@ -13771,6 +13771,15 @@ if (_engToggle) {
     _engToggle.addEventListener('change', function() {
         var cfg = document.getElementById('engagementConfig');
         if (cfg) cfg.style.display = this.checked ? 'flex' : 'none';
+        if (!this.checked) {
+            fetch('/api/engagement_hours/clear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ project_id: PID })
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (d.ok) toast('success', 'Engagement hours disabled');
+            });
+        }
     });
 }
 
