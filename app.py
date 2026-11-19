@@ -249,7 +249,25 @@ def _setup_logging():
     logging.getLogger("socketio").setLevel(logging.WARNING)
 
 
+def _check_shared():
+    _shared = Path("/opt/pr0t31n/shared")
+    if not _shared.is_dir():
+        print("\n  ERROR: /opt/pr0t31n/shared is not installed.")
+        print("  Crucible requires the pr0t31n Shared modules.")
+        print("  Install via:  sudo arsenal  (select Shared)")
+        print("  Or manually:  cd /opt/pr0t31n && sudo git clone "
+              "https://github.com/pr0t31n/shared.git\n")
+        sys.exit(1)
+    _fdb = _shared / "pr0t31n_findings_db.py"
+    if not _fdb.is_file():
+        print("\n  ERROR: pr0t31n_findings_db.py not found in /opt/pr0t31n/shared/")
+        print("  The Shared module installation appears incomplete.")
+        print("  Re-install via:  sudo arsenal  (select Shared)\n")
+        sys.exit(1)
+
+
 def main():
+    _check_shared()
     _setup_logging()
     app = create_app()
     log = logging.getLogger("werkzeug")
