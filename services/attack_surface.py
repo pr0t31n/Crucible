@@ -65,6 +65,13 @@ def _load_correlated_tools(project):
                         name = (entry.get("name") or "").lower()
                         if name:
                             engagement_tools.add(name)
+            td = Path(td_path)
+            for lf in td.glob("*/vulnscan/Provided/*.log"):
+                stem = lf.stem.split("_")[0].lower()
+                if stem in ("nuclei", "nikto", "sslscan", "testssl",
+                            "gobuster", "whatweb", "webanalyze",
+                            "wpscan", "xsstrike"):
+                    engagement_tools.add(stem)
     return per_port, engagement_tools
 
 RISK_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
@@ -91,6 +98,16 @@ _ENGAGEMENT_LEVEL_TOOLS = {
     "shcheck": WEB_SERVICES | _WEB_PORTS,
     "webanalyze": WEB_SERVICES | _WEB_PORTS,
     "xsstrike": WEB_SERVICES | _WEB_PORTS,
+}
+
+_WRAPPER_SUBTOOLS = {
+    "fracture": frozenset({
+        "nuclei", "nikto", "sslscan", "testssl", "shcheck",
+        "gobuster", "whatweb", "webanalyze", "wpscan", "xsstrike",
+    }),
+    "siphon": frozenset({
+        "nuclei", "nikto", "sslscan",
+    }),
 }
 
 
@@ -169,7 +186,11 @@ def build_surface(findings_engine, project_id, project, sort="severity",
                 expected.add("siphon")
 
             port_tools = set(p.get("tools", []))
-            missing_tools = sorted(expected - port_tools - tools_set)
+            covered = set(port_tools) | tools_set
+            for wrapper, subs in _WRAPPER_SUBTOOLS.items():
+                if wrapper in covered:
+                    covered.update(subs)
+            missing_tools = sorted(expected - covered)
 
             findings_summary = []
             for f in p.get("findings", []):
@@ -215,7 +236,8 @@ def build_surface(findings_engine, project_id, project, sort="severity",
                 expected.update(COVERAGE_HEURISTICS.get("http", []))
             if expected:
                 total_expected += len(expected)
-                total_covered += len(expected - set(pd.get("missing_tools", [])))
+                missing = set(pd.get("missing_tools", []))
+                total_covered += len(expected - missing)
 
         host_entry = {
             "ip": h.get("ip", ""),

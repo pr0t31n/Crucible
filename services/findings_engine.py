@@ -1373,6 +1373,13 @@ class FindingsEngine:
                 port_info = host["ports"][port_str]
                 port_info["findings"].append(finding_entry)
                 port_info["tools"].add(tool)
+                for _src_line in (f.get("sources") or "").split("\n"):
+                    _src = _src_line.strip().lower()
+                    if _src and not _src.startswith("fracture-") \
+                            and not _src.startswith("siphon-") \
+                            and _src != tool:
+                        port_info["tools"].add(_src)
+                        host["tools"].add(_src)
                 port_info["risk_counts"][risk] = \
                     port_info["risk_counts"].get(risk, 0) + 1
                 if f.get("service") and not port_info["service"]:
