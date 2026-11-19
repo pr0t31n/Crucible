@@ -1048,10 +1048,10 @@ class FindingsEngine:
             renamed = _apply_title_renames(title)
             if renamed != title:
                 f["title"] = renamed
-            if not f.get("tool"):
-                f["tool"] = tool_id
+            f["tool"] = tool_id
             if scope and not f.get("scope"):
                 f["scope"] = scope
+            self._normalize_adapter_fields(f)
             dk = _fdb.compute_dedup_key(f)
             existing = db._conn.execute(
                 "SELECT id FROM findings WHERE dedup_key=?", (dk,)
@@ -1067,6 +1067,24 @@ class FindingsEngine:
             db.rebuild_fts()
             log.info("Validated %s for %s: inserted %d stragglers",
                      tool_id, project_id, inserted)
+
+    @staticmethod
+    def _normalize_adapter_fields(f):
+        """Map tool-internal field names to universal schema fields.
+
+        Some tools (OSift) use internal names like ``severity``, ``detail``,
+        ``domain`` in their on-disk JSON.  This ensures the straggler
+        path uses the same field names as the token-stream path so
+        ``insert_finding`` receives the data it expects.
+        """
+        if not f.get("risk") and f.get("severity"):
+            f["risk"] = f["severity"].upper()
+        if not f.get("description") and f.get("detail"):
+            f["description"] = f["detail"]
+        if not f.get("hostname") and f.get("domain"):
+            f["hostname"] = f["domain"]
+        if not f.get("affected") and f.get("domain"):
+            f["affected"] = f["domain"]
 
     @staticmethod
     def _load_tool_adapter_findings(project, tool_id):

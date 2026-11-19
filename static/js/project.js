@@ -927,7 +927,8 @@ function updateRiskOverview() {
     document.getElementById('riskInfo').textContent = counts.INFO;
     var total = counts.CRITICAL + counts.HIGH + counts.MEDIUM + counts.LOW + counts.INFO;
     document.getElementById('riskTotal').textContent = total + ' finding' + (total !== 1 ? 's' : '');
-    document.getElementById('findingsPill').textContent = _serverTotal || total || '';
+    var _unfilteredPill = (_serverSummary && _serverSummary.total) || _serverTotal || total || 0;
+    document.getElementById('findingsPill').textContent = _unfilteredPill || '';
 
     /* risk bar */
     var bar = document.getElementById('riskBarInner');
@@ -1968,7 +1969,10 @@ function _fetchFindingsV2(params) {
             _v2Params = params;
             findingsPage = data.page || 1;
             var pill = document.getElementById('findingsPill');
-            if (pill) pill.textContent = _serverTotal || '';
+            if (pill) {
+                var _unfilteredTotal = (_serverSummary && _serverSummary.total) || _serverTotal || 0;
+                pill.textContent = _unfilteredTotal || '';
+            }
             if (categoryViewActive) {
                 renderCategoryView();
             } else {
