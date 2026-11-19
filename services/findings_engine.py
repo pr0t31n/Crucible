@@ -1252,13 +1252,53 @@ class FindingsEngine:
         27017: "mongodb",
     }
 
+    _IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+    @staticmethod
+    def _parse_affected_entries(affected_str, default_port):
+        """Parse space-separated affected entries into (host, port) pairs."""
+        if not affected_str:
+            return []
+        pairs = []
+        seen = set()
+        for entry in affected_str.split():
+            entry = entry.strip()
+            if not entry:
+                continue
+            if ":" in entry:
+                host_part, port_part = entry.rsplit(":", 1)
+                if port_part.isdigit():
+                    pair = (host_part, port_part)
+                else:
+                    pair = (entry, default_port)
+            else:
+                pair = (entry, default_port)
+            if pair not in seen:
+                seen.add(pair)
+                pairs.append(pair)
+        return pairs
+
     def get_host_correlation(self, project_id, project):
-        """Group findings by (ip, port) across all tools.
+        """Group findings by (target, port) across all tools.
+
+        Expands the ``affected`` field so every listed host/IP gets its
+        own entry.  Reads fresh from the DB to avoid stale cache.
 
         Returns a list of host dicts sorted by max risk, each containing:
           ip, hostname, ports, tools, cves, max_risk, total_findings.
         """
-        findings = self.get_findings(project_id, project)
+        rdb = self._open_readonly_db(project_id, project)
+        if rdb is not None:
+            try:
+                result = rdb.query_findings(page=1, per_page=500000)
+                findings = result.get("findings", [])
+            except Exception:
+                findings = self.get_findings(project_id, project)
+            finally:
+                rdb.close()
+        else:
+            findings = self.get_findings(project_id, project)
+
         hosts = {}
         risk_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
 
@@ -1267,41 +1307,14 @@ class FindingsEngine:
             hostname = f.get("hostname", "")
             if not ip and not hostname:
                 continue
-            host_key = ip or hostname
-            port = str(f.get("port", 0))
             tool = f.get("tool", "unknown")
             risk = (f.get("risk") or "INFO").upper()
-
-            if host_key not in hosts:
-                hosts[host_key] = {
-                    "ip": ip, "hostname": hostname,
-                    "ports": {}, "tools": set(),
-                    "cves": set(), "findings_count": 0,
-                }
-            host = hosts[host_key]
-            if hostname and not host["hostname"]:
-                host["hostname"] = hostname
-            host["tools"].add(tool)
-            host["findings_count"] += 1
-
+            default_port = str(f.get("port", 0))
             cves = f.get("cves", "")
-            if cves:
-                for cve in cves.split(","):
-                    cve = cve.strip()
-                    if cve:
-                        host["cves"].add(cve)
+            fid = f.get("id")
 
-            if port not in host["ports"]:
-                host["ports"][port] = {
-                    "port": int(port) if port.isdigit() else 0,
-                    "service": f.get("service", ""),
-                    "findings": [],
-                    "tools": set(),
-                    "risk_counts": {},
-                }
-            port_info = host["ports"][port]
-            port_info["findings"].append({
-                "id": f.get("id"),
+            finding_entry = {
+                "id": fid,
                 "title": f.get("title", ""),
                 "risk": risk,
                 "tool": tool,
@@ -1309,15 +1322,60 @@ class FindingsEngine:
                 "kev": f.get("kev", False),
                 "cvss_score": f.get("cvss_score"),
                 "cves": cves,
-            })
-            port_info["tools"].add(tool)
-            port_info["risk_counts"][risk] = \
-                port_info["risk_counts"].get(risk, 0) + 1
-            if f.get("service") and not port_info["service"]:
-                port_info["service"] = f["service"]
+            }
+
+            affected_pairs = self._parse_affected_entries(
+                f.get("affected", ""), default_port)
+            if not affected_pairs:
+                affected_pairs = [(ip or hostname, default_port)]
+
+            seen_for_finding = set()
+            for host_key, port_str in affected_pairs:
+                if not host_key:
+                    continue
+                dedup = (host_key, port_str, fid)
+                if dedup in seen_for_finding:
+                    continue
+                seen_for_finding.add(dedup)
+
+                if host_key not in hosts:
+                    is_ip = bool(self._IP_RE.match(host_key))
+                    hosts[host_key] = {
+                        "ip": host_key if is_ip else "",
+                        "hostname": host_key if not is_ip else "",
+                        "ports": {}, "tools": set(),
+                        "cves": set(), "findings_count": 0,
+                    }
+                host = hosts[host_key]
+                if hostname and not host["hostname"] and host_key != hostname:
+                    host["hostname"] = hostname
+                host["tools"].add(tool)
+                host["findings_count"] += 1
+
+                if cves:
+                    for cve in cves.split(","):
+                        cve = cve.strip()
+                        if cve:
+                            host["cves"].add(cve)
+
+                if port_str not in host["ports"]:
+                    host["ports"][port_str] = {
+                        "port": int(port_str) if port_str.isdigit() else 0,
+                        "service": f.get("service", ""),
+                        "findings": [],
+                        "tools": set(),
+                        "risk_counts": {},
+                    }
+                port_info = host["ports"][port_str]
+                port_info["findings"].append(finding_entry)
+                port_info["tools"].add(tool)
+                port_info["risk_counts"][risk] = \
+                    port_info["risk_counts"].get(risk, 0) + 1
+                if f.get("service") and not port_info["service"]:
+                    port_info["service"] = f["service"]
 
         result = []
-        for ip, host in hosts.items():
+        for hk, host in hosts.items():
             port_list = []
             max_risk = "INFO"
             for port_key, pi in sorted(host["ports"].items(),
@@ -1330,7 +1388,7 @@ class FindingsEngine:
                     if risk_order.get(r, 5) < risk_order.get(max_risk, 5):
                         max_risk = r
             result.append({
-                "ip": ip,
+                "ip": host["ip"] or hk,
                 "hostname": host["hostname"],
                 "ports": port_list,
                 "tools": sorted(host["tools"]),

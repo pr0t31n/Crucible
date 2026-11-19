@@ -14302,10 +14302,10 @@ function _asRenderHosts(hosts) {
     }
     if (empty) empty.hidden = true;
 
-    var anyHostname = hosts.some(function(h) { return h.hostname; });
+    var anyHostname = hosts.some(function(h) { return h.hostname && h.hostname !== h.ip; });
 
     var html = '<table class="as-table"><thead><tr>';
-    html += '<th>IP</th>';
+    html += '<th>Target</th>';
     if (anyHostname) html += '<th>Hostname</th>';
     html += '<th>Ports</th><th>Services</th>';
     html += '<th style="min-width:140px">Severity</th>';
@@ -14333,9 +14333,12 @@ function _asRenderHosts(hosts) {
             svcHtml = '<span class="as-empty-dash">—</span>';
         }
 
+        var targetDisplay = h.ip || h.hostname || '—';
+        var hostnameDisplay = (h.hostname && h.hostname !== h.ip) ? h.hostname : '';
+
         html += '<tr class="as-host-row" data-as-idx="' + idx + '">';
-        html += '<td class="as-ip-cell">' + esc(h.ip) + '</td>';
-        if (anyHostname) html += '<td class="as-hostname-cell">' + (h.hostname ? esc(h.hostname) : '<span class="as-empty-dash">—</span>') + '</td>';
+        html += '<td class="as-ip-cell">' + esc(targetDisplay) + '</td>';
+        if (anyHostname) html += '<td class="as-hostname-cell">' + (hostnameDisplay ? esc(hostnameDisplay) : '<span class="as-empty-dash">—</span>') + '</td>';
         html += '<td><span class="as-num-badge">' + h.port_count + '</span></td>';
         html += '<td>' + svcHtml + '</td>';
         html += '<td>' + barHtml + '</td>';
