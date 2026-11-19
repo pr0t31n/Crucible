@@ -528,6 +528,12 @@ class SchedulerService:
                     log.info("Engagement resume triggered auto-queue for %s: "
                              "%d job(s) enqueued", project_id, enqueued)
 
+            try:
+                self._qm.auto_dequeue(project_id)
+            except Exception as exc:
+                log.warning("Engagement resume auto-dequeue error for %s: %s",
+                            project_id, exc)
+
     # ── persistence ──────────────────────────────────────────────────────
 
     def _persist_schedules(self, project_id: str) -> None:
