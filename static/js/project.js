@@ -2881,7 +2881,7 @@ function _detailList(label, arr) {
 }
 function _detailPre(label, val) {
     if (!val) return '';
-    return '<div class="mb-8"><span class="form-label">' + esc(label) + '</span><pre style="margin-top:4px;max-height:200px">' + esc(val) + '</pre></div>';
+    return '<div class="mb-8"><span class="form-label">' + esc(label) + '</span><pre style="margin-top:4px;max-height:200px;white-space:pre-wrap;word-wrap:break-word">' + esc(val) + '</pre></div>';
 }
 function openFindingDetail(f) {
     if (!f) return;
