@@ -27,20 +27,18 @@ _idb_cache = {}
 
 
 def _get_db(project):
-    """Get or create a FindingsDB handle for *project*."""
+    """Get or create a FindingsDB handle for *project*.
+
+    Opens a fresh connection every time to avoid stale WAL snapshots.
+    SQLite in WAL mode allows concurrent readers so this is safe.
+    """
     pid = project.get("id", "")
-    if pid in _db_cache:
-        db = _db_cache[pid]
+    old = _db_cache.pop(pid, None)
+    if old:
         try:
-            db._conn.execute("SELECT 1")
-            return db
+            old.close()
         except Exception:
-            log.warning("intel_v2: stale DB handle for %s — reconnecting", pid)
-            try:
-                db.close()
-            except Exception:
-                pass
-            del _db_cache[pid]
+            pass
     try:
         from pathlib import Path
         import sys
@@ -54,14 +52,12 @@ def _get_db(project):
         if not db_path.exists():
             return None
         db = pr0t31n_findings_db.FindingsDB(str(db_path))
-        _db_cache[pid] = db
         scope_tools = project.get("scope_tools") or {}
         for scope_name in scope_tools:
             try:
                 db.ensure_scope(scope_name)
             except Exception:
                 pass
-        log.info("intel_v2: opened FindingsDB for %s at %s", pid, db_path)
         return db
     except Exception:
         log.warning("_get_db failed for %s", pid, exc_info=True)
@@ -69,19 +65,17 @@ def _get_db(project):
 
 
 def _get_idb(project):
-    """Get or create an IntelligenceDB handle for *project*."""
+    """Get or create an IntelligenceDB handle for *project*.
+
+    Opens a fresh connection every time to avoid stale WAL snapshots.
+    """
     pid = project.get("id", "")
-    if pid in _idb_cache:
-        idb = _idb_cache[pid]
+    old = _idb_cache.pop(pid, None)
+    if old:
         try:
-            idb._conn.execute("SELECT 1")
-            return idb
+            old.close()
         except Exception:
-            try:
-                idb.close()
-            except Exception:
-                pass
-            del _idb_cache[pid]
+            pass
     try:
         import sys
         if "/opt/pr0t31n/shared" not in sys.path:
@@ -93,9 +87,7 @@ def _get_idb(project):
         db_path = Path(pd) / "findings.db"
         if not db_path.exists():
             return None
-        idb = pr0t31n_intelligence_db.IntelligenceDB(str(db_path))
-        _idb_cache[pid] = idb
-        return idb
+        return pr0t31n_intelligence_db.IntelligenceDB(str(db_path))
     except Exception:
         log.warning("_get_idb failed for %s", pid, exc_info=True)
         return None
