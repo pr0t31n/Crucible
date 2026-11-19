@@ -4453,6 +4453,86 @@ kbd {
 .as-scope-pill.as-scope-wireless { background: rgba(168,130,255,.12); color: #a882ff; border-color: rgba(168,130,255,.22); }
 .as-scope-pill.as-scope-webapp { background: rgba(0,187,170,.12); color: #00bbaa; border-color: rgba(0,187,170,.22); }
 
+/* OSINT source pills — third-party tool colors for the Domains tab */
+.osint-src-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+    margin: 1px 2px;
+    text-transform: lowercase;
+    letter-spacing: .02em;
+}
+.osint-src-amass       { background: rgba(99,132,227,.14); color: #6384e3; border: 1px solid rgba(99,132,227,.28); }
+.osint-src-subfinder   { background: rgba(52,211,153,.14); color: #34d399; border: 1px solid rgba(52,211,153,.28); }
+.osint-src-dnsx        { background: rgba(45,212,191,.14); color: #2dd4bf; border: 1px solid rgba(45,212,191,.28); }
+.osint-src-crtsh       { background: rgba(251,191,146,.14); color: #d4976a; border: 1px solid rgba(251,191,146,.28); }
+.osint-src-theharvester{ background: rgba(232,121,249,.14); color: #e879f9; border: 1px solid rgba(232,121,249,.28); }
+.osint-src-hackertarget{ background: rgba(253,224,71,.14); color: #c9a830; border: 1px solid rgba(253,224,71,.28); }
+.osint-src-rapiddns    { background: rgba(129,140,248,.14); color: #818cf8; border: 1px solid rgba(129,140,248,.28); }
+.osint-src-threatcrowd { background: rgba(251,146,60,.14); color: #fb923c; border: 1px solid rgba(251,146,60,.28); }
+.osint-src-alienvault  { background: rgba(168,130,255,.14); color: #a882ff; border: 1px solid rgba(168,130,255,.28); }
+.osint-src-dnsdumpster { background: rgba(196,181,253,.14); color: #c4b5fd; border: 1px solid rgba(196,181,253,.28); }
+.osint-src-fullhunt    { background: rgba(244,114,182,.14); color: #f472b6; border: 1px solid rgba(244,114,182,.28); }
+.osint-src-fofa        { background: rgba(248,113,113,.14); color: #f87171; border: 1px solid rgba(248,113,113,.28); }
+.osint-src-zoomeye     { background: rgba(96,165,250,.14); color: #60a5fa; border: 1px solid rgba(96,165,250,.28); }
+.osint-src-puredns     { background: rgba(74,222,128,.14); color: #4ade80; border: 1px solid rgba(74,222,128,.28); }
+.osint-src-nslookup    { background: rgba(148,163,184,.14); color: #94a3b8; border: 1px solid rgba(148,163,184,.28); }
+.osint-src-bruteforce  { background: rgba(220,38,38,.14); color: #dc2626; border: 1px solid rgba(220,38,38,.28); }
+.osint-src-dns         { background: rgba(148,163,184,.14); color: #94a3b8; border: 1px solid rgba(148,163,184,.28); }
+.osint-src-shodan       { background: rgba(248,113,113,.14); color: #f87171; border: 1px solid rgba(248,113,113,.28); }
+.osint-src-censys       { background: rgba(99,102,241,.14); color: #6366f1; border: 1px solid rgba(99,102,241,.28); }
+.osint-src-securitytrails { background: rgba(244,114,182,.14); color: #f472b6; border: 1px solid rgba(244,114,182,.28); }
+.osint-src-netlas       { background: rgba(34,211,238,.14); color: #22d3ee; border: 1px solid rgba(34,211,238,.28); }
+.osint-src-virustotal   { background: rgba(74,222,128,.14); color: #4ade80; border: 1px solid rgba(74,222,128,.28); }
+.osint-src-urlscan      { background: rgba(129,140,248,.14); color: #818cf8; border: 1px solid rgba(129,140,248,.28); }
+.osint-src-xurlfind3r   { background: rgba(232,121,249,.14); color: #e879f9; border: 1px solid rgba(232,121,249,.28); }
+.osint-src-waybackurls  { background: rgba(253,224,71,.14); color: #c9a830; border: 1px solid rgba(253,224,71,.28); }
+.osint-src-waymore      { background: rgba(251,146,60,.14); color: #fb923c; border: 1px solid rgba(251,146,60,.28); }
+.osint-src-uncover      { background: rgba(168,130,255,.14); color: #a882ff; border: 1px solid rgba(168,130,255,.28); }
+.osint-src-cloudlist    { background: rgba(96,165,250,.14); color: #60a5fa; border: 1px solid rgba(96,165,250,.28); }
+.osint-src-default     { background: rgba(148,163,184,.10); color: #94a3b8; border: 1px solid rgba(148,163,184,.20); }
+
+/* OSINT Domains subdomain table polish */
+.osint-sub-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.osint-sub-table thead th {
+    position: sticky; top: 0; z-index: 1;
+    padding: 8px 12px; font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-secondary); background: var(--bg-surface);
+    border-bottom: 2px solid var(--border);
+    text-align: left;
+}
+.osint-sub-table tbody td {
+    padding: 6px 12px; font-size: 0.82rem;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+}
+.osint-sub-table tbody tr:hover { background: var(--bg-hover, rgba(99,132,227,.04)); }
+.osint-sub-table .osint-sub-name {
+    font-family: var(--font-mono); white-space: nowrap; font-size: 0.82rem;
+}
+.osint-sub-table .osint-sub-ip {
+    font-family: var(--font-mono); white-space: nowrap; font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.osint-sub-table .osint-sub-status { text-align: center; white-space: nowrap; }
+.osint-sub-alive { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.osint-sub-alive.alive-yes { background: var(--status-success, #2ecc71); }
+.osint-sub-alive.alive-no  { background: var(--risk-medium, #e67e22); }
+.osint-sub-alive.alive-unk { background: var(--text-secondary, #666); opacity: .3; }
+.osint-http-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 0.72rem; font-weight: 600; font-family: var(--font-mono);
+}
+.osint-http-2xx { background: rgba(46,204,113,.12); color: var(--status-success); }
+.osint-http-3xx { background: rgba(99,132,227,.12); color: #6384e3; }
+.osint-http-4xx { background: rgba(255,192,0,.12); color: var(--risk-medium); }
+.osint-http-5xx { background: rgba(231,76,60,.12); color: var(--status-error); }
+
 /* ── Import tab ──────────────────────────────────────────── */
 .import-detail-btn { font-size: 0.72rem; padding: 2px 8px; }
 .detail-table { border-collapse: collapse; }

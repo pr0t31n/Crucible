@@ -6829,6 +6829,63 @@ function _renderNetPorts(data) {
     return html || _renderIntelGeneric(data);
 }
 
+var _OSINT_SRC_MAP = {
+    'amass':'amass','subfinder':'subfinder','dnsx':'dnsx','dnsx_cname':'dnsx',
+    'dnsx_enrich':'dnsx','crt.sh':'crtsh','theharvester':'theharvester',
+    'hackertarget':'hackertarget','rapiddns':'rapiddns','threatcrowd':'threatcrowd',
+    'alienvault':'alienvault','dnsdumpster':'dnsdumpster','fullhunt':'fullhunt',
+    'fofa':'fofa','zoomeye':'zoomeye','puredns':'puredns','puredns_resolved':'puredns',
+    'nslookup':'nslookup','nslookup-reverse':'nslookup','nslookup-ns':'nslookup',
+    'nslookup-mx':'nslookup','nslookup-cname':'nslookup',
+    'brute force':'bruteforce','brute_force':'bruteforce',
+    'mx record':'dns','ns record':'dns','cname record':'dns','srv record':'dns',
+    'shodan':'shodan','shodan_ssl':'shodan','censys':'censys','censys_cert':'censys',
+    'securitytrails':'securitytrails','netlas':'netlas','netlas_cert':'netlas',
+    'virustotal':'virustotal','urlscan':'urlscan','otx_url':'alienvault',
+    'xurlfind3r':'xurlfind3r','waybackurls':'waybackurls','waymore':'waymore',
+    'uncover':'uncover','cloudlist':'cloudlist','dig':'dns','dig_cname':'dns'
+};
+var _OSINT_SRC_LABELS = {
+    'dnsx_cname':'dnsx','dnsx_enrich':'dnsx','crt.sh':'crt.sh',
+    'nslookup-reverse':'nslookup','nslookup-ns':'nslookup',
+    'nslookup-mx':'nslookup','nslookup-cname':'nslookup',
+    'brute force':'brute force','brute_force':'brute force',
+    'mx record':'MX record','ns record':'NS record',
+    'cname record':'CNAME record','srv record':'SRV record',
+    'shodan_ssl':'shodan','censys_cert':'censys','netlas_cert':'netlas',
+    'otx_url':'OTX','puredns_resolved':'puredns','dig_cname':'dig',
+    'xurlfind3r':'xurlfind3r','waybackurls':'wayback','waymore':'waymore'
+};
+function _renderOsintSrcPills(raw) {
+    if (!raw) return '';
+    var parts = String(raw).split(',');
+    var seen = {};
+    var html = '';
+    for (var i = 0; i < parts.length; i++) {
+        var s = parts[i].trim();
+        if (!s || s.toLowerCase() === 'osift') continue;
+        var key = s.toLowerCase();
+        var label = _OSINT_SRC_LABELS[key] || s;
+        var dedup = label.toLowerCase();
+        if (seen[dedup]) continue;
+        seen[dedup] = true;
+        var cls = _OSINT_SRC_MAP[key] || 'default';
+        html += '<span class="osint-src-pill osint-src-' + cls + '" title="' + esc(s) + '">' + esc(label) + '</span>';
+    }
+    if (!html) return '<span class="osint-src-pill osint-src-default">discovery</span>';
+    return html;
+}
+function _osintHttpBadge(status) {
+    if (status == null || status === '') return '';
+    var s = String(status);
+    var cls = 'osint-http-badge';
+    if (s.charAt(0) === '2') cls += ' osint-http-2xx';
+    else if (s.charAt(0) === '3') cls += ' osint-http-3xx';
+    else if (s.charAt(0) === '4') cls += ' osint-http-4xx';
+    else if (s.charAt(0) === '5') cls += ' osint-http-5xx';
+    return '<span class="' + cls + '">' + esc(s) + '</span>';
+}
+
 function _renderOsintDomains(data) {
     var payload = data.osint_domains || data;
     if (!payload || (typeof payload !== 'object')) return _INTEL_EMPTY_PLACEHOLDER;
@@ -6912,17 +6969,36 @@ function _renderOsintDomains(data) {
             var groupKeys = Object.keys(grouped).sort();
             groupKeys.forEach(function(root) {
                 var subs = grouped[root];
-                var srows = subs.map(function(s) {
-                    if (typeof s === 'string') return [esc(s)];
+                var aliveCount = subs.filter(function(s) { return typeof s !== 'string' && s.is_alive; }).length;
+                h += '<div style="margin-top:20px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+                h += '<span style="font-weight:700;font-size:1rem;color:var(--clr-accent)">' + esc(root) + '</span>';
+                h += '<span style="font-size:0.78rem;color:var(--text-secondary)">' + subs.length + ' subdomains</span>';
+                if (aliveCount > 0) h += '<span style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:rgba(46,204,113,.12);color:var(--status-success);font-weight:600">' + aliveCount + ' alive</span>';
+                h += '</div>';
+                h += '<div style="overflow-x:auto;max-height:70vh;overflow-y:auto;border:1px solid var(--border-subtle);border-radius:8px">';
+                h += '<table class="osint-sub-table"><thead><tr>';
+                h += '<th>Subdomain</th><th>IP(s)</th><th>Sources</th><th>HTTP</th><th>First Seen</th>';
+                h += '</tr></thead><tbody>';
+                subs.forEach(function(s) {
+                    if (typeof s === 'string') {
+                        h += '<tr><td class="osint-sub-name" colspan="5">' + esc(s) + '</td></tr>';
+                        return;
+                    }
                     var nm = s.host || s.subdomain || s.domain || '';
                     var ip = Array.isArray(s.ips) && s.ips.length ? s.ips.join(', ') : (s.ip || '');
                     var src = Array.isArray(s.sources) ? s.sources.join(', ') : (s.source || '');
-                    var status = s.http_status != null ? String(s.http_status) : '';
-                    var redir = s.redirect_to || (Array.isArray(s.redirects_to) && s.redirects_to.length ? s.redirects_to.join(', ') : '');
-                    return [esc(nm), esc(ip), esc(src), esc(status), esc(s.first_seen || ''), esc(redir)];
+                    var status = s.http_status != null ? s.http_status : '';
+                    var alive = s.is_alive;
+                    var aliveClass = alive === 1 || alive === true ? 'alive-yes' : (alive === 0 || alive === false ? 'alive-no' : 'alive-unk');
+                    h += '<tr>';
+                    h += '<td class="osint-sub-name"><span class="osint-sub-alive ' + aliveClass + '"></span>' + esc(nm) + '</td>';
+                    h += '<td class="osint-sub-ip">' + esc(ip) + '</td>';
+                    h += '<td>' + _renderOsintSrcPills(src) + '</td>';
+                    h += '<td class="osint-sub-status">' + _osintHttpBadge(status) + '</td>';
+                    h += '<td style="white-space:nowrap;font-size:0.78rem;color:var(--text-secondary)">' + esc(s.first_seen || '') + '</td>';
+                    h += '</tr>';
                 });
-                var scols = typeof subs[0] === 'string' ? ['Subdomain'] : ['Subdomain', 'IP(s)', 'Sources', 'HTTP', 'First Seen', 'Redirects'];
-                h += '<div style="margin-top:16px;margin-bottom:8px;font-weight:600;color:var(--clr-accent)">' + esc(root) + ' <span style="color:var(--text-secondary);font-weight:400">(' + subs.length + ' subdomains)</span></div>' + _intelTable(scols, srows);
+                h += '</tbody></table></div>';
             });
         }
         return h || _renderIntelGeneric(data);
