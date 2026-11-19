@@ -1584,18 +1584,18 @@ class ActionEngine:
             return []
 
         items = []
-        target = ""
         scope_def = (project or {}).get("scope_definition") or {}
         targets = scope_def.get("targets") or scope_def.get("urls") or []
-        if targets:
-            target = targets[0] if isinstance(targets, list) else str(targets)
+        if isinstance(targets, str):
+            targets = [targets]
+        targets = list(targets) if targets else []
 
         for chk in checks:
             item = {
                 "type": "manual_check",
                 "title": chk.get("title", ""),
                 "description": chk.get("description", ""),
-                "target": target,
+                "target": targets[0] if targets else "",
                 "scope": "",
                 "source_tool": source_tool,
                 "recommended_tool": None,
@@ -1608,6 +1608,8 @@ class ActionEngine:
                     "instructions": chk.get("instructions", []),
                     "finding_template": chk.get("finding_template", {}),
                     "owasp_mapping": chk.get("owasp_mapping", ""),
+                    "targets": targets,
+                    "target_resolutions": {},
                 },
             }
             if _collector is not None:

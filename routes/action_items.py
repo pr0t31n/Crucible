@@ -1404,3 +1404,84 @@ def api_resolve_manual_check():
     except Exception as exc:
         log.exception("Error resolving manual check %s", item_id)
         return jsonify({"error": "Internal error"}), 500
+
+
+@action_items_bp.route("/api/action-item/resolve-manual-target", methods=["POST"])
+def api_resolve_manual_check_target():
+    """Resolve a single target within a manual check item."""
+    body = request.get_json(silent=True) or {}
+    project_id = body.get("project_id", "")
+    item_id = body.get("item_id", "")
+    target = body.get("target", "")
+    resolution = body.get("resolution", "")
+    if not project_id or not item_id or not target or resolution not in ("missing", "exists"):
+        return jsonify({"error": "project_id, item_id, target and resolution (missing|exists) required"}), 400
+
+    try:
+        project = require_project(project_id)
+        proj_dir = project.get("project_dir", "")
+
+        from models.action_items import (get_action_item,
+                                         update_action_item_metadata)
+        item = get_action_item(proj_dir, item_id)
+        if not item:
+            return jsonify({"error": "Item not found"}), 404
+        if item.get("type") != "manual_check":
+            return jsonify({"error": "Item is not a manual check"}), 400
+
+        meta = item.get("metadata") or {}
+        all_targets = meta.get("targets") or []
+        if target not in all_targets:
+            return jsonify({"error": "Target not in this check's target list"}), 400
+        resolutions = meta.get("target_resolutions") or {}
+        if target in resolutions:
+            return jsonify({"error": "Target already resolved"}), 400
+
+        finding_id = None
+        if resolution == "missing":
+            template = meta.get("finding_template", {})
+            check_id = meta.get("check_id", "")
+            fe = get_ext("findings_engine")
+            if fe and template:
+                f = fe.create_finding_from_manual_check(
+                    project_id, project, template, check_id, target=target)
+                finding_id = f.get("id", "")
+
+        resolutions[target] = resolution
+        all_resolved = all_targets and all(t in resolutions for t in all_targets)
+        new_status = None
+        if all_resolved:
+            has_missing = any(resolutions[t] == "missing" for t in all_targets)
+            new_status = "confirmed_missing" if has_missing else "confirmed_exists"
+
+        from datetime import datetime
+        patch = {"target_resolutions": resolutions}
+        if finding_id:
+            fids = meta.get("finding_ids") or []
+            fids.append(finding_id)
+            patch["finding_ids"] = fids
+        update_action_item_metadata(proj_dir, item_id, patch,
+                                    new_status=new_status)
+
+        sio = get_ext("socketio")
+        if sio:
+            sio.emit("manual_check_target_resolved", {
+                "item_id": item_id,
+                "target": target,
+                "resolution": resolution,
+                "finding_id": finding_id,
+                "new_status": new_status,
+                "target_resolutions": resolutions,
+            }, room=_room(project_id))
+
+        return jsonify({
+            "ok": True,
+            "target": target,
+            "resolution": resolution,
+            "finding_id": finding_id,
+            "new_status": new_status,
+            "target_resolutions": resolutions,
+        })
+    except Exception as exc:
+        log.exception("Error resolving manual check target %s/%s", item_id, target)
+        return jsonify({"error": "Internal error"}), 500

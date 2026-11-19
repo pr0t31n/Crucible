@@ -856,7 +856,18 @@ class FindingsEngine:
                     log.exception("Failed to generate action for live finding")
 
     def create_finding_from_manual_check(self, project_id, project,
-                                           template, source_check_id):
+                                           template, source_check_id,
+                                           target=None):
+        _mc_hostname = ""
+        _mc_ip = ""
+        _mc_affected = ""
+        if target:
+            import re as _re_mc
+            if _re_mc.match(r'^\d{1,3}(\.\d{1,3}){3}$', target):
+                _mc_ip = target
+            else:
+                _mc_hostname = target
+            _mc_affected = target
         try:
             import sys as _sys
             if "/opt/pr0t31n/shared" not in _sys.path:
@@ -868,11 +879,12 @@ class FindingsEngine:
                 risk=(template.get("risk") or "MEDIUM").upper(),
                 description=template.get("description", ""),
                 remediation=template.get("remediation", ""),
-                ip="",
+                ip=_mc_ip,
                 port=0,
+                hostname=_mc_hostname,
                 command="Manual verification by tester",
                 sources="crucible",
-                affected="",
+                affected=_mc_affected,
                 cves=",".join(template.get("cve_examples", [])),
                 service="",
                 owasp=template.get("owasp_web", ""),
@@ -892,9 +904,9 @@ class FindingsEngine:
                 "description": template.get("description", ""),
                 "remediation": template.get("remediation", ""),
                 "datetime": _dt.now().isoformat(),
-                "ip": "", "port": 0, "hostname": "",
+                "ip": _mc_ip, "port": 0, "hostname": _mc_hostname,
                 "command": "Manual verification by tester",
-                "sources": "crucible", "affected": "",
+                "sources": "crucible", "affected": _mc_affected,
                 "cves": ",".join(template.get("cve_examples", [])),
                 "service": "", "output": "", "output_file": "",
                 "owasp": template.get("owasp_web", ""),

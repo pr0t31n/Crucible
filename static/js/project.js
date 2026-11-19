@@ -4830,6 +4830,52 @@ function _bulkGroupLabel(key) {
 })();
 
 /* ── Manual check card renderer ────────────────────────────────── */
+(function() {
+    if (!document.getElementById('mcTargetStyles')) {
+        var _sty = document.createElement('style');
+        _sty.id = 'mcTargetStyles';
+        _sty.textContent =
+            '.mc-target-list{margin-top:8px;display:flex;flex-direction:column;gap:4px}' +
+            '.mc-target-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-secondary);border-radius:var(--radius-sm,4px);font-size:.82rem}' +
+            '.mc-target-name{flex:1;font-family:var(--font-mono,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+            '.mc-target-actions{display:flex;gap:4px;flex-shrink:0}' +
+            '.mc-target-badge{font-size:.75rem;padding:2px 8px;border-radius:3px;font-weight:600;white-space:nowrap}' +
+            '.mc-target-badge.missing{background:var(--risk-high);color:#fff}' +
+            '.mc-target-badge.exists{background:var(--risk-info,#3b82f6);color:#fff}' +
+            '.mc-progress{margin-top:6px;font-size:.78rem;color:var(--text-muted)}' +
+            '.mc-target-btn{font-size:.72rem;padding:3px 8px;border-radius:3px;border:1px solid var(--border-subtle);cursor:pointer;font-weight:600;background:transparent;color:var(--text-primary)}' +
+            '.mc-target-btn:hover{opacity:.85}' +
+            '.mc-target-btn.mc-btn-missing{border-color:var(--risk-high);color:var(--risk-high)}' +
+            '.mc-target-btn.mc-btn-exists{border-color:var(--risk-info,#3b82f6);color:var(--risk-info,#3b82f6)}' +
+            '.mc-target-btn:disabled{opacity:.4;cursor:not-allowed}';
+        document.head.appendChild(_sty);
+    }
+    var grid = document.getElementById('manualChecksGrid');
+    if (grid && !grid._mcDelegated) {
+        grid._mcDelegated = true;
+        grid.addEventListener('click', function(e) {
+            var btn = e.target.closest('[data-mc-action]');
+            if (btn) {
+                _resolveManualCheckTarget(
+                    btn.getAttribute('data-mc-item'),
+                    btn.getAttribute('data-mc-target'),
+                    btn.getAttribute('data-mc-action'),
+                    btn
+                );
+                return;
+            }
+            var togBtn = e.target.closest('.mc-toggle-instructions');
+            if (togBtn) {
+                var instrEl = togBtn.nextElementSibling;
+                if (instrEl) {
+                    instrEl.classList.toggle('expanded');
+                    togBtn.textContent = instrEl.classList.contains('expanded') ? 'Hide instructions' : 'Show instructions';
+                }
+            }
+        });
+    }
+})();
+
 function _renderManualChecks(items) {
     var grid = document.getElementById('manualChecksGrid');
     var emptyEl = document.getElementById('manualEmpty');
@@ -4855,13 +4901,17 @@ function _renderManualChecks(items) {
         var item = sorted[i];
         var meta = item.metadata || {};
         var status = (item.status || 'pending').toLowerCase();
-        var resolved = (status === 'confirmed_missing' || status === 'confirmed_exists');
+        var allResolved = (status === 'confirmed_missing' || status === 'confirmed_exists');
         var pri = (item.priority || 'HIGH').toUpperCase();
         var priColor = pri === 'CRITICAL' ? 'var(--risk-critical)' :
                        pri === 'HIGH' ? 'var(--risk-high)' :
                        pri === 'MEDIUM' ? 'var(--risk-medium)' : 'var(--risk-low)';
         var instructions = meta.instructions || [];
         var owasp = meta.owasp_mapping || '';
+        var targets = meta.targets || [];
+        var resolutions = meta.target_resolutions || {};
+        if (!targets.length && item.target) targets = [item.target];
+
         html += '<div class="manual-check-card">';
         html += '<div class="mc-header">';
         html += '<span class="badge" style="background:' + priColor + ';color:#fff;font-size:.7rem">' + esc(pri) + '</span>';
@@ -4870,34 +4920,106 @@ function _renderManualChecks(items) {
         html += '<div class="mc-desc">' + esc(item.description || '') + '</div>';
         if (owasp) html += '<div class="mc-owasp-ref">OWASP: ' + esc(owasp) + '</div>';
         if (instructions.length) {
-            html += '<button type="button" class="mc-toggle-instructions" onclick="this.nextElementSibling.classList.toggle(\'expanded\');this.textContent=this.nextElementSibling.classList.contains(\'expanded\')?\'Hide instructions\':\'Show instructions\'">Show instructions</button>';
+            html += '<button type="button" class="mc-toggle-instructions">Show instructions</button>';
             html += '<div class="mc-instructions"><ol>';
             for (var j = 0; j < instructions.length; j++) {
                 html += '<li>' + esc(instructions[j]) + '</li>';
             }
             html += '</ol></div>';
         }
-        if (resolved) {
+
+        if (allResolved) {
             if (status === 'confirmed_missing') {
                 html += '<div class="mc-resolved-badge missing">Issue Confirmed — Finding Created</div>';
             } else {
                 html += '<div class="mc-resolved-badge exists">Verified — No Issue Found</div>';
             }
-        } else {
-            html += '<div class="manual-check-actions">';
-            html += '<button type="button" class="mc-btn-missing" onclick="_resolveManualCheck(\'' + esc(item.id) + '\',\'missing\',this)">Missing — Issue Confirmed</button>';
-            html += '<button type="button" class="mc-btn-exists" onclick="_resolveManualCheck(\'' + esc(item.id) + '\',\'exists\',this)">Exists — No Issue</button>';
-            html += '</div>';
         }
+
+        if (targets.length) {
+            html += '<div class="form-label" style="margin-top:10px;margin-bottom:4px">Targets</div>';
+            html += '<div class="mc-target-list">';
+            var resolvedCount = 0;
+            for (var t = 0; t < targets.length; t++) {
+                var tgt = targets[t];
+                var tRes = resolutions[tgt];
+                if (tRes) resolvedCount++;
+                html += '<div class="mc-target-row">';
+                html += '<span class="mc-target-name">' + esc(tgt) + '</span>';
+                if (tRes === 'missing') {
+                    html += '<span class="mc-target-badge missing">Issue Confirmed</span>';
+                } else if (tRes === 'exists') {
+                    html += '<span class="mc-target-badge exists">No Issue</span>';
+                } else if (!allResolved) {
+                    html += '<span class="mc-target-actions">';
+                    html += '<button type="button" class="mc-target-btn mc-btn-missing" '
+                        + 'data-mc-action="missing" data-mc-item="' + esc(item.id) + '" '
+                        + 'data-mc-target="' + esc(tgt) + '">Missing</button>';
+                    html += '<button type="button" class="mc-target-btn mc-btn-exists" '
+                        + 'data-mc-action="exists" data-mc-item="' + esc(item.id) + '" '
+                        + 'data-mc-target="' + esc(tgt) + '">Exists</button>';
+                    html += '</span>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            if (!allResolved && targets.length > 1) {
+                html += '<div class="mc-progress">' + resolvedCount + ' of ' + targets.length + ' targets resolved</div>';
+            }
+        } else if (!allResolved) {
+            html += '<div class="mc-target-list"><div class="mc-target-row">';
+            html += '<span class="mc-target-name" style="color:var(--text-muted)">No targets defined</span>';
+            html += '<span class="mc-target-actions">';
+            html += '<button type="button" class="mc-target-btn mc-btn-missing" '
+                + 'data-mc-action="missing" data-mc-item="' + esc(item.id) + '" '
+                + 'data-mc-target="">Missing</button>';
+            html += '<button type="button" class="mc-target-btn mc-btn-exists" '
+                + 'data-mc-action="exists" data-mc-item="' + esc(item.id) + '" '
+                + 'data-mc-target="">Exists</button>';
+            html += '</span></div></div>';
+        }
+
         html += '</div>';
     }
     grid.innerHTML = html;
 }
 
+function _resolveManualCheckTarget(itemId, target, resolution, btn) {
+    if (!target) {
+        _resolveManualCheck(itemId, resolution, btn);
+        return;
+    }
+    var row = btn.closest('.mc-target-row');
+    if (row) row.querySelectorAll('.mc-target-btn').forEach(function(b) { b.disabled = true; });
+    fetch('/api/action-item/resolve-manual-target', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, item_id: itemId, target: target, resolution: resolution})
+    }).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.ok) {
+            for (var i = 0; i < allActionItems.length; i++) {
+                if (allActionItems[i].id === itemId) {
+                    var meta = allActionItems[i].metadata || {};
+                    meta.target_resolutions = resp.target_resolutions || {};
+                    allActionItems[i].metadata = meta;
+                    if (resp.new_status) allActionItems[i].status = resp.new_status;
+                    break;
+                }
+            }
+            renderActionItems();
+            if (resolution === 'missing') loadFindings(true);
+        } else {
+            if (row) row.querySelectorAll('.mc-target-btn').forEach(function(b) { b.disabled = false; });
+        }
+    }).catch(function() {
+        if (row) row.querySelectorAll('.mc-target-btn').forEach(function(b) { b.disabled = false; });
+    });
+}
+
+/* ── Backward compat: old bulk resolve (resolves all targets at once) ── */
 function _resolveManualCheck(itemId, resolution, btn) {
     var card = btn.closest('.manual-check-card');
-    var btns = card.querySelectorAll('button.mc-btn-missing, button.mc-btn-exists');
-    btns.forEach(function(b) { b.disabled = true; });
+    if (card) card.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
     fetch('/api/action-item/resolve-manual', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -4911,24 +5033,44 @@ function _resolveManualCheck(itemId, resolution, btn) {
                 }
             }
             renderActionItems();
-            if (resolution === 'missing') {
-                loadFindings(true);
-            }
+            if (resolution === 'missing') loadFindings(true);
         } else {
-            btns.forEach(function(b) { b.disabled = false; });
-            alert(resp.error || 'Failed to resolve manual check');
+            if (card) card.querySelectorAll('button').forEach(function(b) { b.disabled = false; });
         }
     }).catch(function() {
-        btns.forEach(function(b) { b.disabled = false; });
+        if (card) card.querySelectorAll('button').forEach(function(b) { b.disabled = false; });
     });
 }
 
-/* ── manual_check_resolved socket event ────────────────────────── */
+/* ── manual_check_resolved socket event (backward compat) ─────── */
 socket.on('manual_check_resolved', function(data) {
     if (!data || !data.item_id) return;
     for (var i = 0; i < allActionItems.length; i++) {
         if (allActionItems[i].id === data.item_id) {
-            allActionItems[i].status = data.status;
+            if (data.status) allActionItems[i].status = data.status;
+            break;
+        }
+    }
+    if (document.querySelector('.tab-content[data-tab="action-items"].active')) {
+        renderActionItems();
+    }
+    if (data.resolution === 'missing') loadFindings(true);
+});
+
+/* ── manual_check_target_resolved socket event ────────────────── */
+socket.on('manual_check_target_resolved', function(data) {
+    if (!data || !data.item_id) return;
+    for (var i = 0; i < allActionItems.length; i++) {
+        if (allActionItems[i].id === data.item_id) {
+            var meta = allActionItems[i].metadata || {};
+            if (data.target_resolutions) {
+                meta.target_resolutions = data.target_resolutions;
+            } else {
+                if (!meta.target_resolutions) meta.target_resolutions = {};
+                if (data.target) meta.target_resolutions[data.target] = data.resolution;
+            }
+            allActionItems[i].metadata = meta;
+            if (data.new_status) allActionItems[i].status = data.new_status;
             break;
         }
     }

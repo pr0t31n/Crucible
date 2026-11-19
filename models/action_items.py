@@ -323,6 +323,23 @@ class ActionItemStore:
                     break
             self._persist(project_dir)
 
+    def update_item_metadata(self, project_dir, item_id, metadata_patch,
+                             new_status=None):
+        with self._lock:
+            self._ensure_loaded(project_dir)
+            for item in self._stores.get(project_dir, []):
+                if item.get("id") == item_id:
+                    meta = item.get("metadata") or {}
+                    meta.update(metadata_patch)
+                    item["metadata"] = meta
+                    item["updated"] = datetime.now().isoformat()
+                    if new_status:
+                        item["status"] = new_status
+                        if new_status in ("confirmed_missing", "confirmed_exists"):
+                            item["resolved_at"] = datetime.now().isoformat()
+                    break
+            self._persist(project_dir)
+
     def bulk_update_status(self, project_dir, item_ids, new_status):
         with self._lock:
             self._ensure_loaded(project_dir)
@@ -692,6 +709,12 @@ def update_action_item_status(project_dir, item_id, new_status,
                               extra_fields=None):
     _store.update_status(project_dir, item_id, new_status,
                          extra_fields=extra_fields)
+
+
+def update_action_item_metadata(project_dir, item_id, metadata_patch,
+                                new_status=None):
+    _store.update_item_metadata(project_dir, item_id, metadata_patch,
+                                new_status=new_status)
 
 
 def dismiss_action_item(project_dir, item_id):
