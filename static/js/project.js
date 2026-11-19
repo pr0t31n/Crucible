@@ -2410,7 +2410,7 @@ function renderFindingsTable() {
         tr.setAttribute('data-finding-idx', String(globalIdx));
         tr.style.cursor = 'pointer';
         tr.innerHTML =
-            '<td class="col-risk"><span class="risk-badge ' + riskCls + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span>' + (f.kev ? '<span class="kev-badge">KEV</span>' : '') + '</td>' +
+            '<td class="col-risk"><span class="risk-badge ' + riskCls + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span>' + (f.kev ? '<span class="kev-badge">KEV</span>' : '') + (f.metasploit ? '<span class="msf-badge">MSF</span>' : '') + '</td>' +
             '<td class="text-sm">' + esc(cvss) + '</td>' +
             '<td class="text-sm">' + esc(scope) + '</td>' +
             '<td class="col-tool"><span class="tool-badge ' + toolCls + '" title="' + esc(toolName) + '">' + esc(toolKey) + '</span></td>' +
@@ -2589,10 +2589,14 @@ function renderCategoryView() {
         });
 
         var catId = 'cat-' + cat.replace(/[^a-zA-Z0-9]/g, '_');
+        var hasKev = findings.some(function(f) { return f.kev; });
+        var hasMsf = findings.some(function(f) { return f.metasploit; });
 
         html += '<div class="cat-group">';
         html += '<div class="cat-header" data-cat="' + catId + '">';
         html += '<svg class="cat-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
+        if (hasKev) html += '<span class="kev-badge" style="margin-right:6px">KEV</span>';
+        if (hasMsf) html += '<span class="msf-badge" style="margin-right:6px">MSF</span>';
         html += '<span class="cat-name">' + esc(cat) + '</span>';
         html += '<span class="cat-meta">';
         html += '<span class="risk-badge ' + riskCls + '">' + bestRisk + '</span>';
@@ -2631,7 +2635,7 @@ function renderCategoryView() {
             var sources = f.sources || '';
 
             html += '<tr style="cursor:pointer" data-finding-cat-idx="' + globalIdx + '">';
-            html += '<td class="col-risk"><span class="risk-badge ' + fRiskCls + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span></td>';
+            html += '<td class="col-risk"><span class="risk-badge ' + fRiskCls + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span>' + (f.kev ? '<span class="kev-badge">KEV</span>' : '') + (f.metasploit ? '<span class="msf-badge">MSF</span>' : '') + '</td>';
             html += '<td class="text-sm">' + esc(cvss) + '</td>';
             html += '<td class="text-sm">' + esc(scope) + '</td>';
             html += '<td class="col-tool"><span class="tool-badge ' + toolCls + '" title="' + esc(toolName) + '">' + esc(toolKey) + '</span></td>';
@@ -2894,6 +2898,7 @@ function openFindingDetail(f) {
 
     var html = '<div class="mb-8"><span class="risk-badge risk-' + (f.risk||'info').toLowerCase() + '">' + esc((f.risk||'INFO').toUpperCase()) + '</span>';
     if (f.kev) html += ' <span class="kev-badge">KEV</span>';
+    if (f.metasploit) html += ' <span class="msf-badge">MSF</span>';
     if (f.confidence) html += ' <span class="tag">' + esc(f.confidence) + '</span>';
     html += '</div>';
 
@@ -14656,6 +14661,7 @@ function _asRenderPortDetail(host) {
                            '<span class="risk-badge ' + cls + '" style="font-size:0.58rem;flex-shrink:0">' + esc(f.risk) + '</span>' +
                            '<a href="#" class="as-finding-link" data-fid="' + esc(f.id || '') + '">' + esc(f.title) + '</a>' +
                            (f.kev ? ' <span class="kev-badge">KEV</span>' : '') +
+                           (f.metasploit ? ' <span class="msf-badge">MSF</span>' : '') +
                            '</div>';
                 }).join('') + '</div>';
         }
