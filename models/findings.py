@@ -470,6 +470,8 @@ _TITLE_RENAMES = [
     (re.compile(r'^HTTP Parameter Pollution \(HPP\)$', re.IGNORECASE), 'Injection: HTTP Parameter Pollution (HPP)'),
     (re.compile(r'^HTTP Parameter Pollution \(Reflected\)$', re.IGNORECASE), 'Injection: HTTP Parameter Pollution (Reflected)'),
     (re.compile(r'^Mass Assignment\s*/\s*Privilege Escalation via Parameter Binding$', re.IGNORECASE), 'Injection: Mass Assignment (Privilege Escalation)'),
+    # Merge A06 version-check into searchsploit's title so dedup folds them
+    (re.compile(r'^Out of Date Software: Vulnerable Component: (.+)$', re.IGNORECASE), r'Vulnerability (Version Based): \1'),
     # Out of Date Software: prefix the full title (preserves version-specific detail)
     (re.compile(r'^(OpenSSH\b.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
     (re.compile(r'^(Apache Log4j\b.*)$', re.IGNORECASE), r'Out of Date Software: \1'),
