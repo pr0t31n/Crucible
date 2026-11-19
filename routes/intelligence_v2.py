@@ -330,6 +330,15 @@ def api_intel_v2_screenshots(project_id):
     try:
         result = db.query_screenshots(tool=tool, ip=ip,
                                       scope_id=stp["scope_id"], **p)
+        if not result.get("items"):
+            total = db._conn.execute(
+                "SELECT COUNT(*) FROM screenshots").fetchone()[0]
+            log.warning("screenshots: 0 items returned for %s "
+                        "(tool=%s ip=%s scope_id=%s) but table has %d rows; "
+                        "db_path=%s",
+                        project_id[:8], tool, ip,
+                        stp.get("scope_id"), total,
+                        getattr(db, "db_path", "?"))
         return jsonify(result)
     except Exception as e:
         return _err_500(e)

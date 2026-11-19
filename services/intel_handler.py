@@ -151,6 +151,8 @@ def _screenshot(db, row):
         r["file_path"] = r.pop("path")
     if "screenshot_path" in r and "file_path" not in r:
         r["file_path"] = r.pop("screenshot_path")
+    if "tool" not in r:
+        r["tool"] = "fracture"
     _safe_db_call(db.add_screenshot, r)
 
 def _target_profile(db, row):
