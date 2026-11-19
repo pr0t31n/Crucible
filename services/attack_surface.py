@@ -95,7 +95,7 @@ _ENGAGEMENT_LEVEL_TOOLS = {
 
 
 def build_surface(findings_engine, project_id, project, sort="severity",
-                  filter_risk=None):
+                  filter_risk=None, filter_scope=None):
     host_data = findings_engine.get_host_correlation(project_id, project)
 
     correlated_tools, engagement_tools = _load_correlated_tools(project)
@@ -119,9 +119,15 @@ def build_surface(findings_engine, project_id, project, sort="severity",
                 host_tools.update(existing)
                 h["tools"] = sorted(host_tools)
 
+    all_scopes = sorted({h.get("scope", "") for h in host_data} - {""})
+
     risk_filter = None
     if filter_risk:
         risk_filter = set(r.strip().upper() for r in filter_risk.split(",") if r.strip())
+
+    scope_filter = None
+    if filter_scope:
+        scope_filter = set(s.strip() for s in filter_scope.split(",") if s.strip())
 
     hosts = []
     summary = {
@@ -138,6 +144,10 @@ def build_surface(findings_engine, project_id, project, sort="severity",
             scope_tools.update(td)
 
     for h in host_data:
+        host_scope = h.get("scope", "")
+        if scope_filter and host_scope not in scope_filter:
+            continue
+
         severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
         port_details = []
         tools_set = set(h.get("tools", []))
@@ -210,6 +220,7 @@ def build_surface(findings_engine, project_id, project, sort="severity",
         host_entry = {
             "ip": h.get("ip", ""),
             "hostname": h.get("hostname", ""),
+            "scope": host_scope,
             "ports": port_details,
             "port_count": len(port_details),
             "tools": sorted(tools_set),
@@ -240,7 +251,7 @@ def build_surface(findings_engine, project_id, project, sort="severity",
         total_cov = sum(h["coverage_pct"] for h in hosts)
         summary["coverage_pct"] = round(total_cov / len(hosts))
 
-    return {"hosts": hosts, "summary": summary}
+    return {"hosts": hosts, "summary": summary, "scopes": all_scopes}
 
 
 def _ip_sort_key(ip):

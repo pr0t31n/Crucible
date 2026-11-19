@@ -460,6 +460,9 @@
           <option value="ports">Sort: Ports</option>
           <option value="findings">Sort: Findings</option>
         </select>
+        <select id="asFilterScope" class="form-select form-select-sm">
+          <option value="">All Scopes</option>
+        </select>
         <select id="asFilterRisk" class="form-select form-select-sm">
           <option value="">All Risks</option>
           <option value="CRITICAL">Critical</option>
@@ -468,6 +471,7 @@
           <option value="LOW">Low</option>
           <option value="INFO">Info</option>
         </select>
+        <button type="button" id="asClearFilters" class="btn btn-xs btn-ghost" hidden onclick="window._asClearFilters()">Clear Filters</button>
         <button type="button" class="btn btn-xs btn-ghost" onclick="window._refreshAttackSurface()">Reload</button>
       </div>
     </div>

@@ -22,8 +22,10 @@ def api_attack_surface(project_id):
 
     sort = request.args.get("sort", "severity")
     filter_risk = request.args.get("filter_risk")
+    filter_scope = request.args.get("filter_scope")
 
     from services.attack_surface import build_surface
     result = build_surface(fe, project_id, project,
-                           sort=sort, filter_risk=filter_risk)
+                           sort=sort, filter_risk=filter_risk,
+                           filter_scope=filter_scope)
     return jsonify(result)

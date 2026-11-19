@@ -14255,29 +14255,61 @@ window._refreshAttackSurface = function() {
     _asLoad();
 };
 
+window._asClearFilters = function() {
+    var scopeSel = document.getElementById('asFilterScope');
+    var riskSel = document.getElementById('asFilterRisk');
+    if (scopeSel) scopeSel.value = '';
+    if (riskSel) riskSel.value = '';
+    _asUpdateClearBtn();
+    _asLoad();
+};
+
+function _asUpdateClearBtn() {
+    var scopeVal = (document.getElementById('asFilterScope') || {}).value || '';
+    var riskVal = (document.getElementById('asFilterRisk') || {}).value || '';
+    var btn = document.getElementById('asClearFilters');
+    if (btn) btn.hidden = !scopeVal && !riskVal;
+}
+
 function _asBindEvents() {
     var sortSel = document.getElementById('asSortSelect');
-    var filterSel = document.getElementById('asFilterRisk');
+    var filterRisk = document.getElementById('asFilterRisk');
+    var filterScope = document.getElementById('asFilterScope');
     if (sortSel) sortSel.addEventListener('change', function() { _asLoad(); });
-    if (filterSel) filterSel.addEventListener('change', function() { _asLoad(); });
+    if (filterRisk) filterRisk.addEventListener('change', function() { _asUpdateClearBtn(); _asLoad(); });
+    if (filterScope) filterScope.addEventListener('change', function() { _asUpdateClearBtn(); _asLoad(); });
 }
 
 function _asLoad() {
     var sort = (document.getElementById('asSortSelect') || {}).value || 'severity';
     var risk = (document.getElementById('asFilterRisk') || {}).value || '';
+    var scope = (document.getElementById('asFilterScope') || {}).value || '';
     var url = '/api/attack-surface/' + PID + '?sort=' + sort;
     if (risk) url += '&filter_risk=' + encodeURIComponent(risk);
+    if (scope) url += '&filter_scope=' + encodeURIComponent(scope);
 
     fetch(url, {credentials: 'same-origin'})
         .then(function(r) { return r.json(); })
         .then(function(data) {
             _asData = data;
+            _asPopulateScopeFilter(data.scopes || []);
             _asRenderSummary(data.summary || {});
             _asRenderHosts(data.hosts || []);
         })
         .catch(function(err) {
             console.warn('Attack surface load failed:', err);
         });
+}
+
+function _asPopulateScopeFilter(scopes) {
+    var sel = document.getElementById('asFilterScope');
+    if (!sel) return;
+    var current = sel.value;
+    var opts = '<option value="">All Scopes</option>';
+    scopes.forEach(function(s) {
+        opts += '<option value="' + esc(s) + '"' + (s === current ? ' selected' : '') + '>' + esc(s) + '</option>';
+    });
+    sel.innerHTML = opts;
 }
 
 function _asRenderSummary(s) {
@@ -14303,8 +14335,10 @@ function _asRenderHosts(hosts) {
     if (empty) empty.hidden = true;
 
     var anyHostname = hosts.some(function(h) { return h.hostname && h.hostname !== h.ip; });
+    var anyScope = hosts.some(function(h) { return h.scope; });
 
     var html = '<table class="as-table"><thead><tr>';
+    if (anyScope) html += '<th>Scope</th>';
     html += '<th>Target</th>';
     if (anyHostname) html += '<th>Hostname</th>';
     html += '<th>Ports</th><th>Services</th>';
@@ -14312,7 +14346,7 @@ function _asRenderHosts(hosts) {
     html += '<th>Findings</th><th>Tools</th><th>Coverage</th>';
     html += '</tr></thead><tbody>';
 
-    var colSpan = anyHostname ? 8 : 7;
+    var colSpan = 7 + (anyHostname ? 1 : 0) + (anyScope ? 1 : 0);
 
     hosts.forEach(function(h, idx) {
         var svcs = [];
@@ -14337,6 +14371,7 @@ function _asRenderHosts(hosts) {
         var hostnameDisplay = (h.hostname && h.hostname !== h.ip) ? h.hostname : '';
 
         html += '<tr class="as-host-row" data-as-idx="' + idx + '">';
+        if (anyScope) html += '<td class="as-scope-cell">' + (h.scope ? '<span class="as-scope-pill as-scope-' + esc(h.scope).toLowerCase().replace(/[^a-z0-9]/g, '-') + '">' + esc(h.scope) + '</span>' : '<span class="as-empty-dash">—</span>') + '</td>';
         html += '<td class="as-ip-cell">' + esc(targetDisplay) + '</td>';
         if (anyHostname) html += '<td class="as-hostname-cell">' + (hostnameDisplay ? esc(hostnameDisplay) : '<span class="as-empty-dash">—</span>') + '</td>';
         html += '<td><span class="as-num-badge">' + h.port_count + '</span></td>';

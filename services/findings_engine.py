@@ -1345,12 +1345,16 @@ class FindingsEngine:
                         "hostname": host_key if not is_ip else "",
                         "ports": {}, "tools": set(),
                         "cves": set(), "findings_count": 0,
+                        "scopes": {},
                     }
                 host = hosts[host_key]
                 if hostname and not host["hostname"] and host_key != hostname:
                     host["hostname"] = hostname
                 host["tools"].add(tool)
                 host["findings_count"] += 1
+                f_scope = (f.get("scope") or "").strip()
+                if f_scope:
+                    host["scopes"][f_scope] = host["scopes"].get(f_scope, 0) + 1
 
                 if cves:
                     for cve in cves.split(","):
@@ -1387,9 +1391,12 @@ class FindingsEngine:
                 for r in pi["risk_counts"]:
                     if risk_order.get(r, 5) < risk_order.get(max_risk, 5):
                         max_risk = r
+            scope_counts = host.get("scopes", {})
+            primary_scope = max(scope_counts, key=scope_counts.get) if scope_counts else ""
             result.append({
                 "ip": host["ip"] or hk,
                 "hostname": host["hostname"],
+                "scope": primary_scope,
                 "ports": port_list,
                 "tools": sorted(host["tools"]),
                 "cves": sorted(host["cves"]),
