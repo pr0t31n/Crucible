@@ -170,6 +170,25 @@ def _empty_page(page=1):
     return {"items": [], "total": 0, "page": page, "pages": 0}
 
 
+def _inject_scope_stubs(project, target_map):
+    """Add empty entries for scope targets missing from *target_map*.
+
+    *target_map* is keyed by hostname (structure_map, access_matrix).
+    Targets in the scope_definition whose hostname is absent get a stub
+    so every Intelligence tab shows all configured targets.
+    """
+    sd = (project.get("scope_definition") or {})
+    scope_urls = sd.get("target_urls") or sd.get("api_urls") or []
+    if not scope_urls:
+        return
+    from urllib.parse import urlparse
+    for u in scope_urls:
+        try:
+            host = urlparse(u).hostname or ""
+            if host and host not in target_map:
+                target_map[host] = {"_stub": True}
+        except Exception:
+            pass
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -494,6 +513,36 @@ def api_intel_v2_webapp_intel(project_id):
     tool = request.args.get("tool")
     try:
         result = db.query_webapp_intel(search=search, tool=tool, scope_id=stp["scope_id"], **p)
+        # Supplement with scope targets that have no DB row yet so the
+        # tab always shows every configured target, not just those whose
+        # recon succeeded.
+        if not search and not tool and p["page"] == 1:
+            sd = (project.get("scope_definition") or {})
+            scope_urls = sd.get("target_urls") or sd.get("api_urls") or []
+            if scope_urls:
+                existing = {(it.get("url") or "").rstrip("/") for it in result.get("items", [])}
+                stubs = []
+                for u in scope_urls:
+                    normed = u.rstrip("/")
+                    if normed not in existing:
+                        try:
+                            from urllib.parse import urlparse
+                            _up = urlparse(u)
+                            stubs.append({
+                                "id": None, "tool": "fracture",
+                                "url": u, "hostname": _up.hostname or "",
+                                "ip": _up.hostname or "",
+                                "port": _up.port or (443 if _up.scheme == "https" else 80),
+                                "server": "", "powered_by": "", "cms": "",
+                                "technologies": [], "cdn": "", "edge_security": "",
+                                "web_structure": {}, "details_json": "{}",
+                                "_stub": True,
+                            })
+                        except Exception:
+                            pass
+                if stubs:
+                    result["items"].extend(stubs)
+                    result["total"] = result.get("total", 0) + len(stubs)
         return jsonify(result)
     except AttributeError as e:
         log.warning("intel_v2 webapp_intel AttributeError for %s: %s", project_id, e, exc_info=True)
@@ -2055,6 +2104,13 @@ def api_wifi_firmware(pid):
 #  Intelligence View Endpoints — structured aggregated data for JS renderers
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _scope_target_urls(project):
+    sd = (project.get("scope_definition") or {})
+    urls = sd.get("target_urls") or sd.get("api_urls") or []
+    if isinstance(urls, str):
+        urls = [u.strip() for u in urls.split("\n") if u.strip()]
+    return urls
+
 @intel_v2.route("/api/intel/v2/structure-view/<project_id>")
 def api_intel_v2_structure_view(project_id):
     project = _get_project(project_id)
@@ -2069,6 +2125,8 @@ def api_intel_v2_structure_view(project_id):
         result = idb.query_structure_tree(scope_id=stp.get("scope_id"))
         sm = result.get("structure_map", {})
         n = sum(len(v.get("paths", {})) for v in sm.values()) if sm else 0
+        # Inject stub entries for scope targets missing from the tree
+        _inject_scope_stubs(project, sm)
         log.info("structure-view: scope_id=%s targets=%d paths=%d",
                  stp.get("scope_id"), len(sm), n)
         return jsonify(result)
@@ -2086,7 +2144,10 @@ def api_intel_v2_access_view(project_id):
         return jsonify({"access_matrix": {}})
     try:
         stp = _scope_tool_params(_get_db(project) or idb)
-        return jsonify(idb.query_access_matrix_view(scope_id=stp.get("scope_id")))
+        result = idb.query_access_matrix_view(scope_id=stp.get("scope_id"))
+        am = result.get("access_matrix", {})
+        _inject_scope_stubs(project, am)
+        return jsonify(result)
     except Exception as e:
         return _err_500(e)
 
@@ -2101,7 +2162,29 @@ def api_intel_v2_auth_view(project_id):
         return jsonify({"auth_status": []})
     try:
         stp = _scope_tool_params(_get_db(project) or idb)
-        return jsonify(idb.query_auth_view(scope_id=stp.get("scope_id")))
+        result = idb.query_auth_view(scope_id=stp.get("scope_id"))
+        # Supplement: ensure every scope target appears in auth_status
+        auth_list = result.get("auth_status") or []
+        sd = (project.get("scope_definition") or {})
+        scope_urls = sd.get("target_urls") or sd.get("api_urls") or []
+        if scope_urls:
+            existing = {(e.get("target_url") or "").rstrip("/") for e in auth_list}
+            from urllib.parse import urlparse
+            for u in scope_urls:
+                normed = u.rstrip("/")
+                if normed not in existing:
+                    try:
+                        _up = urlparse(u)
+                        auth_list.append({
+                            "target_url": u,
+                            "hostname": _up.hostname or "",
+                            "sessions": [],
+                            "_stub": True,
+                        })
+                    except Exception:
+                        pass
+            result["auth_status"] = auth_list
+        return jsonify(result)
     except Exception as e:
         return _err_500(e)
 
@@ -2131,7 +2214,36 @@ def api_intel_v2_webapp_view(project_id):
         return jsonify({"dns": None, "infrastructure": {}, "target_profile": {}})
     try:
         stp = _scope_tool_params(_get_db(project) or idb)
-        return jsonify(idb.query_webapp_view(scope_id=stp.get("scope_id")))
+        result = idb.query_webapp_view(scope_id=stp.get("scope_id"))
+        # Supplement: inject stub entries for scope targets with no DB data
+        webapps = result.get("webapps") or []
+        sd = (project.get("scope_definition") or {})
+        scope_urls = sd.get("target_urls") or sd.get("api_urls") or []
+        if scope_urls:
+            existing = {(w.get("url") or "").rstrip("/") for w in webapps}
+            from urllib.parse import urlparse
+            for u in scope_urls:
+                normed = u.rstrip("/")
+                if normed not in existing:
+                    try:
+                        _up = urlparse(u)
+                        webapps.append({
+                            "url": u,
+                            "hostname": _up.hostname or "",
+                            "port": _up.port or (443 if _up.scheme == "https" else 80),
+                            "ip_addresses": [], "server": "", "powered_by": "",
+                            "load_balancer": False, "load_balancer_type": "",
+                            "cdn": "", "cms": "", "waf": "", "edge_security": "",
+                            "technologies": [], "frameworks": [],
+                            "programming_languages": [], "bi_tools": "",
+                            "tls_enabled": None, "tls_protocols": "",
+                            "cert_issuer": "", "cert_subject": "", "cert_expiry": "",
+                            "_stub": True,
+                        })
+                    except Exception:
+                        pass
+            result["webapps"] = webapps
+        return jsonify(result)
     except Exception as e:
         return _err_500(e)
 

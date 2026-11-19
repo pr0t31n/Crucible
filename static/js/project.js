@@ -234,8 +234,42 @@ socket.on('all_status', function(data) {
             };
         }
     }
+    _initMultiTargetFromScope(tools);
     renderToolFeeds();
 });
+
+function _initMultiTargetFromScope(tools) {
+    var sd = (PROJECT || {}).scope_definition || {};
+    var _mtMap = {fracture: 'target_urls', siphon: 'api_urls'};
+    for (var base in _mtMap) {
+        var urls = sd[_mtMap[base]];
+        if (!Array.isArray(urls) || urls.length < 2) continue;
+        if (_multiTargetState[base] && _multiTargetState[base].targets.length >= urls.length) continue;
+        var mt = _multiTargetState[base] || {targets: [], activeTarget: '', perTarget: {}, targetTotal: 0};
+        mt.targetTotal = urls.length;
+        for (var i = 0; i < urls.length; i++) {
+            if (mt.targets.indexOf(urls[i]) === -1) mt.targets.push(urls[i]);
+            if (!mt.perTarget[urls[i]]) mt.perTarget[urls[i]] = {};
+        }
+        var activeTid = null;
+        for (var tid in tools) {
+            if (tid === base || tid.indexOf(base + ':') === 0) {
+                var st = (tools[tid].status || '').toLowerCase();
+                if (st === 'running' || st === 'pausing') {
+                    activeTid = tid;
+                    break;
+                }
+            }
+        }
+        if (activeTid && tools[activeTid].target) {
+            mt.activeTarget = tools[activeTid].target;
+        } else if (!mt.activeTarget && urls.length) {
+            mt.activeTarget = urls[0];
+        }
+        _multiTargetState[base] = mt;
+        if (!_mtActiveTarget[base]) _mtActiveTarget[base] = mt.activeTarget || urls[0];
+    }
+}
 
 var _checkpointFetched = {};
 
@@ -7903,6 +7937,7 @@ function _renderWebappOverview(findings, intel, summary) {
     var webApps = _ovGroupByWebapp(findings);
     h += _ovCard('Web Applications', Object.keys(webApps).length, 'targets tested', 'var(--clr-hosts)');
     h += '</div>';
+    h += _intelTargetCoverageBanner(Object.keys(webApps).length);
 
     /* ── Per-webapp cards ──────────────────────────────────── */
     var appKeys = Object.keys(webApps);
@@ -8390,12 +8425,15 @@ function _renderFrStructureTree(frMap) {
         var td = frMap[target];
         if (!td || typeof td !== 'object') continue;
         var paths = td.paths || {};
-        if (!Object.keys(paths).length) continue;
         count++;
         html += '<div style="margin-bottom:1.5rem">';
         html += '<div style="font-weight:600;margin-bottom:6px;font-size:.85rem;padding:5px 10px;background:var(--bg-card);border-radius:6px;border:1px solid var(--border)">';
-        html += esc(target) + ' <span style="color:var(--text-muted);font-weight:400">(' + Object.keys(paths).length + ' paths)</span></div>';
-        html += _renderFrStructureSingle(paths);
+        if (Object.keys(paths).length) {
+            html += esc(target) + ' <span style="color:var(--text-muted);font-weight:400">(' + Object.keys(paths).length + ' paths)</span></div>';
+            html += _renderFrStructureSingle(paths);
+        } else {
+            html += esc(target) + ' <span style="color:var(--text-muted);font-weight:400;font-style:italic">(no paths discovered yet)</span></div>';
+        }
         html += '</div>';
     }
     if (count) return html;
@@ -8468,13 +8506,37 @@ function _renderApiStructureTree(apiMap) {
     return html;
 }
 
+function _intelTargetCoverageBanner(dataTargetCount, useHostnames) {
+    var scopeDef = PROJECT.scope_definition || {};
+    var scopeTools = PROJECT.scope_tools || {};
+    var targetKey = '';
+    if (scopeTools.webapp && scopeTools.webapp.length) targetKey = 'target_urls';
+    else if (scopeTools.api && scopeTools.api.length) targetKey = 'api_urls';
+    if (!targetKey) return '';
+    var allTargets = scopeDef[targetKey] || [];
+    if (typeof allTargets === 'string') allTargets = allTargets.split('\n').filter(function(t) { return t.trim(); });
+    var totalCount = allTargets.length;
+    if (useHostnames) {
+        var hosts = {};
+        allTargets.forEach(function(u) { try { hosts[new URL(u).hostname] = 1; } catch(e) {} });
+        totalCount = Object.keys(hosts).length;
+    }
+    if (totalCount <= 1 || dataTargetCount >= totalCount) return '';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:12px;' +
+        'background:var(--bg-elevated,#f0f4ff);border-radius:8px;border:1px solid var(--border);font-size:13px">' +
+        '<i class="bi bi-info-circle" style="color:var(--clr-accent,#0066cc)"></i>' +
+        '<span>Showing <strong>' + dataTargetCount + '</strong> of <strong>' + totalCount + '</strong>' + (useHostnames ? ' hosts' : ' targets') + ' — ' +
+        'remaining targets will appear as the scan progresses.</span></div>';
+}
+
 var _INTEL_EMPTY_PLACEHOLDER = '<div class="empty-state"><div class="empty-state-text">Intelligence panels populate as tools run and discover data.</div></div>';
 
 function _renderStructure(data) {
     var frMap = data.structure_map;
     var apiMap = data.api_map;
     if (!frMap && !apiMap) return _INTEL_EMPTY_PLACEHOLDER;
-    var html = '';
+    var _dtc = frMap ? Object.keys(frMap).filter(function(k) { return k[0] !== '_'; }).length : 0;
+    var html = _intelTargetCoverageBanner(_dtc, true);
     if (frMap) html += _renderFrStructureTree(frMap);
     if (apiMap) {
         if (frMap) html += '<div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border-color, var(--border))">';
@@ -8561,21 +8623,25 @@ function _renderAccessMatrix(data) {
         return single || '<div class="empty-state"><div class="empty-state-text">No access matrix data.</div></div>';
     }
     var targetKeys = Object.keys(matrix).filter(function(k) { return k[0] !== '_'; });
-    var html = '';
+    var html = _intelTargetCoverageBanner(targetKeys.length, true);
     var count = 0;
     for (var ti = 0; ti < targetKeys.length; ti++) {
         var target = targetKeys[ti];
         var td = matrix[target];
         if (!td || typeof td !== 'object') continue;
-        if (!td.roles && !td.endpoints && !td.paths) continue;
         count++;
         html += '<div style="margin-bottom:1.5rem">';
         html += '<div style="font-weight:600;margin-bottom:6px;font-size:.85rem;padding:5px 10px;background:var(--bg-card);border-radius:6px;border:1px solid var(--border)">';
         html += esc(target);
         var epCount = (td.endpoints || td.paths || []).length;
+        var roleCount = (td.roles || []).length;
         if (epCount) html += ' <span style="color:var(--text-muted);font-weight:400">(' + epCount + ' endpoints)</span>';
         html += '</div>';
-        html += _renderAccessMatrixSingle(td);
+        if (!roleCount && !epCount) {
+            html += '<div style="padding:12px 10px;color:var(--text-muted);font-size:.85rem;font-style:italic">No access matrix data yet — awaiting Fracture analysis.</div>';
+        } else {
+            html += _renderAccessMatrixSingle(td);
+        }
         html += '</div>';
     }
     if (count) return html;
@@ -9771,7 +9837,9 @@ function _renderCookies(data) {
     if (!siteWide.length && !allCk.length && !Object.keys(perRole).length)
         return '<div class="empty-state"><div class="empty-state-text">No cookie data available. Run a scan with authentication enabled.</div></div>';
 
-    var h = '';
+    var _ckDomains = {};
+    allCk.forEach(function(c) { if (c.domain) _ckDomains[c.domain] = 1; });
+    var h = _intelTargetCoverageBanner(Object.keys(_ckDomains).length, true);
     // Stats bar
     h += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">';
     var statItems = [
@@ -9871,7 +9939,7 @@ function _renderWebappIntel(data) {
     if (!apps.length)
         return '<div class="empty-state"><div class="empty-state-text">No web application intelligence data available yet.<br>Data will appear once Fracture begins testing.</div></div>';
 
-    var h = '';
+    var h = _intelTargetCoverageBanner(apps.length);
 
     /* ── Summary pills ───────────────────── */
     var totalApps = apps.length;
@@ -9906,9 +9974,11 @@ function _renderWebappIntel(data) {
     h += '</tr></thead><tbody>';
 
     apps.forEach(function(a) {
-        h += '<tr>';
+        var isStub = a._stub;
+        h += '<tr' + (isStub ? ' style="opacity:0.55"' : '') + '>';
         var urlLabel = esc(a.url || a.hostname || '');
-        h += '<td style="font-family:var(--font-mono);white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis" title="' + urlLabel + '">' + urlLabel + '</td>';
+        var pendingTag = isStub ? ' <span style="font-size:11px;color:var(--text-muted);font-style:italic">(awaiting scan)</span>' : '';
+        h += '<td style="font-family:var(--font-mono);white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis" title="' + urlLabel + '">' + urlLabel + pendingTag + '</td>';
         var ips = a.ip_addresses || [];
         h += '<td style="font-family:var(--font-mono)">' + (ips.length ? ips.map(function(ip) { return esc(ip); }).join('<br>') : '<span style="color:var(--text-secondary)">—</span>') + '</td>';
         if (a.load_balancer) {
@@ -11691,6 +11761,31 @@ function renderStatusPanel(tool, body, empty) {
     });
     var specs = CRUCIBLE_PHASE_SPECS[tool] || CRUCIBLE_PHASE_SPECS[_baseTool3] || null;
     var mt = _multiTargetState[_baseTool3];
+    // Backfill _multiTargetState from scope_definition when live events
+    // haven't delivered the full target list (page reload, late connect).
+    if (!mt || mt._backfilled !== true) {
+        var _scopeOfTool = '';
+        var _st = PROJECT.scope_tools || {};
+        for (var _stk in _st) {
+            if (_st.hasOwnProperty(_stk) && _st[_stk].indexOf(_baseTool3) !== -1) {
+                _scopeOfTool = _stk; break;
+            }
+        }
+        var _tgtKey = _SCOPE_TARGET_KEY[_scopeOfTool] || '';
+        var _allTargets = _tgtKey ? ((PROJECT.scope_definition || {})[_tgtKey] || []) : [];
+        if (typeof _allTargets === 'string') _allTargets = _allTargets.split('\n').filter(function(t) { return t.trim(); });
+        if (_allTargets.length > 1) {
+            if (!mt) {
+                mt = {targets: [], activeTarget: '', perTarget: {}, targetTotal: 0};
+                _multiTargetState[_baseTool3] = mt;
+            }
+            for (var _bfi = 0; _bfi < _allTargets.length; _bfi++) {
+                if (mt.targets.indexOf(_allTargets[_bfi]) === -1) mt.targets.push(_allTargets[_bfi]);
+            }
+            mt.targetTotal = mt.targets.length;
+            mt._backfilled = true;
+        }
+    }
     var isMulti = mt && mt.targets.length > 1;
 
     body.hidden = false;
