@@ -663,6 +663,9 @@ button {
     border: none;
     background: none;
 }
+button > * {
+    pointer-events: none;
+}
 
 ul, ol {
     list-style: none;
@@ -983,6 +986,9 @@ table {
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    pointer-events: none;
+}
+.btn > * {
     pointer-events: none;
 }
 .btn svg {
