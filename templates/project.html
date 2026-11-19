@@ -454,12 +454,6 @@
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h3 style="margin:0;font-size:1rem">Attack Surface</h3>
       <div class="flex gap-8" style="align-items:center">
-        <select id="asSortSelect" class="form-select form-select-sm">
-          <option value="severity">Sort: Severity</option>
-          <option value="ip">Sort: IP</option>
-          <option value="ports">Sort: Ports</option>
-          <option value="findings">Sort: Findings</option>
-        </select>
         <select id="asFilterScope" class="form-select form-select-sm">
           <option value="">All Scopes</option>
         </select>
@@ -494,6 +488,7 @@
             <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-high" style="font-size:0.68rem;padding:3px 10px">HIGH</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asHigh">0</span></div>
             <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-medium" style="font-size:0.68rem;padding:3px 10px">MEDIUM</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asMedium">0</span></div>
             <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-low" style="font-size:0.68rem;padding:3px 10px">LOW</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asLow">0</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="risk-badge risk-info" style="font-size:0.68rem;padding:3px 10px">INFO</span><span class="font-mono font-bold" style="font-size:0.9rem" id="asInfo">0</span></div>
           </div>
         </div>
       </div>

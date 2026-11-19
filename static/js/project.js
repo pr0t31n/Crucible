@@ -14543,6 +14543,7 @@ function _asRenderSummary(s) {
     se('asHigh', (s.severity || {}).HIGH || 0);
     se('asMedium', (s.severity || {}).MEDIUM || 0);
     se('asLow', (s.severity || {}).LOW || 0);
+    se('asInfo', (s.severity || {}).INFO || 0);
     se('asCoverage', (s.coverage_pct || 0) + '%');
 }
 

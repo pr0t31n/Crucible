@@ -260,20 +260,40 @@ def build_surface(findings_engine, project_id, project, sort="severity",
         for r, c in severity_counts.items():
             summary["severity"][r] = summary["severity"].get(r, 0) + c
 
-    if sort == "ip":
-        hosts.sort(key=lambda h: _ip_sort_key(h.get("ip", "")))
-    elif sort == "ports":
-        hosts.sort(key=lambda h: -h["port_count"])
-    elif sort == "findings":
-        hosts.sort(key=lambda h: -h["total_findings"])
-    else:
-        hosts.sort(key=lambda h: RISK_ORDER.get(h["max_risk"], 5))
+    hosts.sort(key=_host_sort_key)
 
     if hosts:
         total_cov = sum(h["coverage_pct"] for h in hosts)
         summary["coverage_pct"] = round(total_cov / len(hosts))
 
     return {"hosts": hosts, "summary": summary, "scopes": all_scopes}
+
+
+def _host_sort_key(h):
+    sc = h.get("severity_counts") or {}
+    return (
+        -(sc.get("CRITICAL") or 0),
+        -(sc.get("HIGH") or 0),
+        -(sc.get("MEDIUM") or 0),
+        -(sc.get("LOW") or 0),
+        -(sc.get("INFO") or 0),
+        -(h.get("coverage_pct") or 0),
+        _target_sort_key(h.get("ip") or h.get("hostname") or ""),
+        (h.get("scope") or "").lower(),
+    )
+
+
+def _target_sort_key(target):
+    if not target:
+        return (1, (), target.lower())
+    try:
+        parts = target.split(".")
+        octets = tuple(int(p) for p in parts)
+        if len(octets) == 4:
+            return (0, octets, "")
+    except (ValueError, AttributeError):
+        pass
+    return (1, (), target.lower())
 
 
 def _ip_sort_key(ip):
