@@ -37,6 +37,18 @@ class FindingsEngine:
     def set_kev_enricher(self, kev):
         self._kev_enricher = kev
 
+    def set_error_callback(self, cb):
+        """Set callback(project_id, tool_id, msg) for routing errors to the project error log."""
+        self._error_cb = cb
+
+    def _report_error(self, project_id, tool_id, msg):
+        log.warning(msg)
+        if self._error_cb:
+            try:
+                self._error_cb(project_id, tool_id, msg)
+            except Exception:
+                pass
+
     # ── Read ─────────────────────────────────────────────────
 
     def _get_refresh_lock(self, project_id):
@@ -162,6 +174,7 @@ class FindingsEngine:
         self._refresh_timers_lock = threading.Lock()
         self._action_engine = None
         self._kev_enricher = None
+        self._error_cb = None
         self._catalogues = {}
         self._catalogues_loaded = False
         self._catalogues_ready = threading.Event()
@@ -773,7 +786,10 @@ class FindingsEngine:
                 if db:
                     db.insert_finding(finding)
             except Exception as exc:
-                log.warning("DB insert failed for finding '%s': %s", title, exc)
+                tool = finding.get("tool", finding.get("tool_id", "unknown"))
+                self._report_error(
+                    project_id, tool,
+                    f"DB insert failed for finding '{title}': {exc}")
 
         self._append_finding_json(project, finding)
 

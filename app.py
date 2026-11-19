@@ -140,6 +140,7 @@ def create_app():
     pm.set_action_engine(ae)
     pm.set_findings_engine(fe)
     fe.set_action_engine(ae)
+    fe.set_error_callback(pm._emit_error)
     wd = WorkerDelegate(socketio=socketio, process_manager=pm,
                         findings_engine=fe)
 
