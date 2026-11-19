@@ -663,8 +663,12 @@ button {
     border: none;
     background: none;
 }
+button:hover, button:focus {
+    cursor: pointer;
+}
 button > * {
     pointer-events: none;
+    cursor: inherit;
 }
 
 ul, ol {
@@ -990,6 +994,10 @@ table {
 }
 .btn > * {
     pointer-events: none;
+    cursor: inherit;
+}
+.btn:hover, .btn:focus-visible {
+    cursor: pointer;
 }
 .btn svg {
     width: 16px;
@@ -2354,6 +2362,7 @@ select.form-control option {
 }
 .tab-btn:hover {
     color: var(--text-secondary);
+    cursor: pointer;
 }
 .tab-btn.active {
     color: var(--accent-primary);
@@ -4584,3 +4593,10 @@ kbd {
 .mc-resolved-badge.missing { background: rgba(231,76,60,.12); color: var(--status-error); }
 .mc-resolved-badge.exists { background: rgba(46,204,113,.12); color: var(--status-success); }
 .mc-owasp-ref { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px; }
+
+/* Cursor stability — prevent flicker during CSS transitions */
+[style*="cursor:pointer"]:hover,
+[style*="cursor: pointer"]:hover,
+.cursor-pointer:hover {
+    cursor: pointer;
+}
