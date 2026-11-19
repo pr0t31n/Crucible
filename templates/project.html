@@ -339,10 +339,13 @@
   <div class="tab-content" data-tab="action-items">
     <div class="p-20">
 
-      <!-- ── Manual / Automated sub-tabs ─────────────────── -->
+      <!-- ── Manual / Exploit Testing / Automated sub-tabs ── -->
       <div class="tab-nav mb-16" id="actionSubNav">
         <button type="button" class="tab-btn active" data-action-tab="manual">
           Manual Checks <span class="tab-pill" id="manualPill"></span>
+        </button>
+        <button type="button" class="tab-btn" data-action-tab="exploit_test">
+          Exploit Testing <span class="tab-pill" id="exploitTestPill"></span>
         </button>
         <button type="button" class="tab-btn" data-action-tab="automated">
           Automated <span class="tab-pill" id="automatedPill"></span>
@@ -360,6 +363,20 @@
           </div>
           <div class="empty-state-title">No manual checks pending</div>
           <div class="empty-state-text">Manual verification items appear after automated scans complete.</div>
+        </div>
+      </div>
+
+      <!-- ── Exploit testing container ───────────────────── -->
+      <div id="exploitTestContainer" hidden>
+        <div class="manual-checks-grid" id="exploitTestGrid"><!-- JS populates --></div>
+        <div class="empty-state" id="exploitTestEmpty" hidden>
+          <div class="empty-state-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+          </div>
+          <div class="empty-state-title">No exploit tests pending</div>
+          <div class="empty-state-text">KEV and Metasploit exploit verification items appear when findings with known exploits are discovered.</div>
         </div>
       </div>
 

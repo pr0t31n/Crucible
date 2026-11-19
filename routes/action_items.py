@@ -1485,3 +1485,74 @@ def api_resolve_manual_check_target():
     except Exception as exc:
         log.exception("Error resolving manual check target %s/%s", item_id, target)
         return jsonify({"error": "Internal error"}), 500
+
+
+@action_items_bp.route("/api/action-item/resolve-exploit-test", methods=["POST"])
+def api_resolve_exploit_test():
+    """Resolve an exploit test item as exploitable/not_exploitable/partial."""
+    body = request.get_json(silent=True) or {}
+    project_id = body.get("project_id", "")
+    item_id = body.get("item_id", "")
+    resolution = body.get("resolution", "")
+    notes = body.get("notes", "")
+    if not project_id or not item_id or resolution not in (
+            "exploitable", "not_exploitable", "partial"):
+        return jsonify({
+            "error": "project_id, item_id and resolution "
+                     "(exploitable|not_exploitable|partial) required"
+        }), 400
+
+    try:
+        project = require_project(project_id)
+        proj_dir = project.get("project_dir", "")
+
+        from models.action_items import get_action_item, update_action_item_status
+        item = get_action_item(proj_dir, item_id)
+        if not item:
+            return jsonify({"error": "Item not found"}), 404
+        if item.get("type") != "exploit_test":
+            return jsonify({"error": "Item is not an exploit test"}), 400
+
+        finding_id = None
+        if resolution == "exploitable":
+            template = (item.get("metadata") or {}).get(
+                "finding_template", {})
+            if template:
+                fe = get_ext("findings_engine")
+                if fe:
+                    check_id = (item.get("metadata") or {}).get(
+                        "finding_id", "")
+                    f = fe.create_finding_from_manual_check(
+                        project_id, project, template, check_id,
+                        target=item.get("target"))
+                    finding_id = f.get("id", "")
+
+        from datetime import datetime
+        extra = {
+            "resolution": resolution,
+            "resolved_at": datetime.now().isoformat(),
+        }
+        if notes:
+            extra["resolution_notes"] = notes
+        if finding_id:
+            extra["finding_id"] = finding_id
+        update_action_item_status(proj_dir, item_id, resolution,
+                                  extra_fields=extra)
+
+        sio = get_ext("socketio")
+        if sio:
+            sio.emit("exploit_test_resolved", {
+                "item_id": item_id,
+                "resolution": resolution,
+                "finding_id": finding_id,
+                "notes": notes,
+            }, room=_room(project_id))
+
+        return jsonify({
+            "ok": True,
+            "status": resolution,
+            "finding_id": finding_id,
+        })
+    except Exception as exc:
+        log.exception("Error resolving exploit test %s", item_id)
+        return jsonify({"error": "Internal error"}), 500

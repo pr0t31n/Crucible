@@ -4596,29 +4596,49 @@ function renderActionItems() {
     var tbody = document.getElementById('actionTableBody');
     var empty = document.getElementById('actionEmpty');
     var manualContainer = document.getElementById('manualCheckContainer');
+    var exploitTestContainer = document.getElementById('exploitTestContainer');
     var automatedContainer = document.getElementById('automatedContainer');
 
     var manualItems = allActionItems.filter(function(a) { return a.type === 'manual_check'; });
-    var automatedItems = allActionItems.filter(function(a) { return a.type !== 'manual_check'; });
+    var exploitTestItems = allActionItems.filter(function(a) { return a.type === 'exploit_test'; });
+    var automatedItems = allActionItems.filter(function(a) {
+        return a.type !== 'manual_check' && a.type !== 'exploit_test';
+    });
 
     var manualPending = manualItems.filter(function(a) {
         var s = (a.status||'').toLowerCase();
         return s !== 'confirmed_missing' && s !== 'confirmed_exists';
     }).length;
+    var etPending = exploitTestItems.filter(function(a) {
+        var s = (a.status||'').toLowerCase();
+        return s !== 'exploitable' && s !== 'not_exploitable' && s !== 'partial';
+    }).length;
     var manualPill = document.getElementById('manualPill');
+    var exploitTestPill = document.getElementById('exploitTestPill');
     var automatedPill = document.getElementById('automatedPill');
     if (manualPill) manualPill.textContent = manualPending || '';
+    if (exploitTestPill) exploitTestPill.textContent = etPending || '';
     if (automatedPill) automatedPill.textContent = _activeActionCount(automatedItems.filter(_isInScope)) || '';
+
+    var totalPending = manualPending + etPending + _activeActionCount(automatedItems.filter(_isInScope));
+    document.getElementById('actionPill').textContent = totalPending || '';
 
     if (_actionSubTab === 'manual') {
         if (manualContainer) manualContainer.hidden = false;
+        if (exploitTestContainer) exploitTestContainer.hidden = true;
         if (automatedContainer) automatedContainer.hidden = true;
         _renderManualChecks(manualItems);
-        document.getElementById('actionPill').textContent =
-            (manualPending + _activeActionCount(automatedItems.filter(_isInScope))) || '';
+        return;
+    }
+    if (_actionSubTab === 'exploit_test') {
+        if (manualContainer) manualContainer.hidden = true;
+        if (exploitTestContainer) exploitTestContainer.hidden = false;
+        if (automatedContainer) automatedContainer.hidden = true;
+        _renderExploitTests(exploitTestItems);
         return;
     }
     if (manualContainer) manualContainer.hidden = true;
+    if (exploitTestContainer) exploitTestContainer.hidden = true;
     if (automatedContainer) automatedContainer.hidden = false;
 
     var _priOrder = {critical:0, urgent:0, high:1, recommended:2, medium:2, low:3, optional:3};
@@ -4645,8 +4665,6 @@ function renderActionItems() {
     document.getElementById('actUrgent').textContent = counts.urgent;
     document.getElementById('actRecommended').textContent = counts.recommended;
     document.getElementById('actOptional').textContent = counts.optional;
-    document.getElementById('actionPill').textContent =
-        (manualPending + _activeActionCount(inScopeItems)) || '';
     document.getElementById('oosCount').textContent = oosItems.length;
     renderBulkActionBar();
 
@@ -5087,6 +5105,233 @@ socket.on('manual_check_target_resolved', function(data) {
         renderActionItems();
     }
     if (data.resolution === 'missing') loadFindings(true);
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   Exploit Testing tab — KEV and MSF exploit verification
+   ══════════════════════════════════════════════════════════════════ */
+
+(function() {
+    if (!document.getElementById('etTargetStyles')) {
+        var _sty = document.createElement('style');
+        _sty.id = 'etTargetStyles';
+        _sty.textContent =
+            '.et-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius,8px);padding:16px 20px;margin-bottom:12px}' +
+            '.et-card.resolved{opacity:.65}' +
+            '.et-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}' +
+            '.et-title{font-weight:700;font-size:.92rem;color:var(--text-primary);flex:1}' +
+            '.et-target{font-family:var(--font-mono,monospace);font-size:.82rem;color:var(--text-secondary);margin-bottom:6px}' +
+            '.et-desc{font-size:.82rem;color:var(--text-secondary);margin-bottom:8px;line-height:1.5}' +
+            '.et-section-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:10px 0 4px}' +
+            '.et-module-list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}' +
+            '.et-module{font-family:var(--font-mono,monospace);font-size:.78rem;padding:4px 10px;background:rgba(147,51,234,.08);border:1px solid rgba(147,51,234,.25);border-radius:3px;color:var(--text-primary)}' +
+            '.et-kev-badge{display:inline-flex;align-items:center;padding:2px 7px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-radius:3px;background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.35)}' +
+            '.et-msf-badge{display:inline-flex;align-items:center;padding:2px 7px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-radius:3px;background:rgba(147,51,234,.18);color:#a855f7;border:1px solid rgba(147,51,234,.4)}' +
+            '.et-cve-list{font-family:var(--font-mono,monospace);font-size:.78rem;color:var(--text-secondary);margin-bottom:6px}' +
+            '.et-toggle-instructions{font-size:.78rem;color:var(--text-link,var(--accent));cursor:pointer;background:none;border:none;padding:0;text-decoration:underline}' +
+            '.et-instructions{display:none;margin-top:6px;padding:10px 14px;background:var(--bg-tertiary,var(--bg-secondary));border-radius:var(--radius-sm,4px);border:1px solid var(--border-subtle,var(--border));font-size:.78rem;line-height:1.65;color:var(--text-secondary)}' +
+            '.et-instructions.expanded{display:block}' +
+            '.et-instructions .et-step{margin-bottom:4px}' +
+            '.et-instructions .et-step-separator{font-weight:700;color:var(--text-primary);margin:10px 0 6px;border-top:1px solid var(--border-subtle,var(--border));padding-top:8px}' +
+            '.et-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}' +
+            '.et-btn{font-size:.78rem;padding:6px 14px;border-radius:4px;border:1px solid var(--border);cursor:pointer;font-weight:600;background:transparent;color:var(--text-primary);transition:all .15s}' +
+            '.et-btn:hover{opacity:.85}' +
+            '.et-btn:disabled{opacity:.4;cursor:not-allowed}' +
+            '.et-btn-exploitable{border-color:var(--risk-critical,#ef4444);color:var(--risk-critical,#ef4444)}' +
+            '.et-btn-exploitable:hover{background:rgba(239,68,68,.08)}' +
+            '.et-btn-partial{border-color:var(--risk-medium,#f59e0b);color:var(--risk-medium,#f59e0b)}' +
+            '.et-btn-partial:hover{background:rgba(245,158,11,.08)}' +
+            '.et-btn-not-exploitable{border-color:var(--risk-info,#3b82f6);color:var(--risk-info,#3b82f6)}' +
+            '.et-btn-not-exploitable:hover{background:rgba(59,130,246,.08)}' +
+            '.et-notes-input{width:100%;margin-top:8px;padding:8px 10px;font-size:.78rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-primary,var(--bg-secondary));color:var(--text-primary);font-family:inherit;resize:vertical;min-height:60px}' +
+            '.et-resolved-badge{font-size:.78rem;font-weight:700;padding:6px 14px;border-radius:4px;text-align:center;margin-top:10px}' +
+            '.et-resolved-badge.exploitable{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.3)}' +
+            '.et-resolved-badge.not_exploitable{background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}' +
+            '.et-resolved-badge.partial{background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.3)}' +
+            '.et-resolution-notes{font-size:.78rem;color:var(--text-secondary);margin-top:6px;padding:6px 10px;background:var(--bg-tertiary,var(--bg-secondary));border-radius:3px;font-style:italic}';
+        document.head.appendChild(_sty);
+    }
+    var grid = document.getElementById('exploitTestGrid');
+    if (grid && !grid._etDelegated) {
+        grid._etDelegated = true;
+        grid.addEventListener('click', function(e) {
+            var btn = e.target.closest('[data-et-action]');
+            if (btn) {
+                _resolveExploitTest(
+                    btn.getAttribute('data-et-item'),
+                    btn.getAttribute('data-et-action'),
+                    btn
+                );
+                return;
+            }
+            var togBtn = e.target.closest('.et-toggle-instructions');
+            if (togBtn) {
+                var instrEl = togBtn.nextElementSibling;
+                if (instrEl) {
+                    instrEl.classList.toggle('expanded');
+                    togBtn.textContent = instrEl.classList.contains('expanded') ? 'Hide instructions' : 'Show instructions';
+                }
+            }
+        });
+    }
+})();
+
+function _renderExploitTests(items) {
+    var grid = document.getElementById('exploitTestGrid');
+    var emptyEl = document.getElementById('exploitTestEmpty');
+    if (!grid) return;
+    if (!items.length) {
+        grid.innerHTML = '';
+        if (emptyEl) emptyEl.hidden = false;
+        return;
+    }
+    if (emptyEl) emptyEl.hidden = true;
+    var _priOrder = {critical:0, high:1, medium:2, low:3, info:4};
+    var sorted = items.slice().sort(function(a, b) {
+        var pa = _priOrder[(a.priority||'').toLowerCase()] ?? 4;
+        var pb = _priOrder[(b.priority||'').toLowerCase()] ?? 4;
+        if (pa !== pb) return pa - pb;
+        var sa = (a.status||'').toLowerCase(), sb = (b.status||'').toLowerCase();
+        var _resolved = {'exploitable':1, 'not_exploitable':1, 'partial':1};
+        var ra = _resolved[sa] ? 1 : 0;
+        var rb = _resolved[sb] ? 1 : 0;
+        return ra - rb;
+    });
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+        var item = sorted[i];
+        var meta = item.metadata || {};
+        var status = (item.status || 'pending').toLowerCase();
+        var isResolved = (status === 'exploitable' || status === 'not_exploitable' || status === 'partial');
+        var isKev = item.category === 'kev_finding';
+        var pri = (item.priority || 'HIGH').toUpperCase();
+        var priColor = pri === 'CRITICAL' ? 'var(--risk-critical)' :
+                       pri === 'HIGH' ? 'var(--risk-high)' :
+                       pri === 'MEDIUM' ? 'var(--risk-medium)' : 'var(--risk-low)';
+        var instructions = meta.instructions || [];
+        var cves = meta.cves || (meta.kev_data || {}).cves || '';
+        var msfModules = meta.msf_modules || [];
+        var exploitDetails = meta.exploit_details || (meta.kev_data || {}).exploit_details || [];
+
+        html += '<div class="et-card' + (isResolved ? ' resolved' : '') + '">';
+        html += '<div class="et-header">';
+        html += '<span class="badge" style="background:' + priColor + ';color:#fff;font-size:.7rem">' + esc(pri) + '</span>';
+        if (isKev) html += '<span class="et-kev-badge">KEV</span>';
+        if (msfModules.length) html += '<span class="et-msf-badge">MSF</span>';
+        html += '<span class="et-title">' + esc(item.title || '') + '</span>';
+        html += '</div>';
+
+        html += '<div class="et-target">Target: ' + esc(item.target || 'Not specified') + '</div>';
+
+        if (cves) {
+            html += '<div class="et-cve-list">CVE(s): ' + esc(cves) + '</div>';
+        }
+
+        if (msfModules.length) {
+            html += '<div class="et-section-label">Metasploit Modules</div>';
+            html += '<div class="et-module-list">';
+            for (var m = 0; m < msfModules.length; m++) {
+                html += '<div class="et-module">' + esc(msfModules[m]) + '</div>';
+            }
+            html += '</div>';
+        }
+
+        if (exploitDetails.length) {
+            var refs = [];
+            for (var d = 0; d < exploitDetails.length; d++) {
+                var ed = exploitDetails[d];
+                if (ed && (ed.url || ed.reference)) {
+                    refs.push(ed.url || ed.reference);
+                }
+            }
+            if (refs.length) {
+                html += '<div class="et-section-label">Exploit References</div>';
+                for (var r = 0; r < refs.length; r++) {
+                    html += '<div style="font-size:.78rem;margin-bottom:2px"><a href="' + esc(refs[r]) + '" target="_blank" rel="noopener" style="color:var(--text-link,var(--accent))">' + esc(refs[r]) + '</a></div>';
+                }
+            }
+        }
+
+        if (instructions.length) {
+            html += '<button type="button" class="et-toggle-instructions">Show instructions</button>';
+            html += '<div class="et-instructions">';
+            for (var j = 0; j < instructions.length; j++) {
+                var step = instructions[j];
+                if (step.indexOf('---') === 0) {
+                    html += '<div class="et-step et-step-separator">' + esc(step.replace(/^-+\s*/, '').replace(/\s*-+$/, '')) + '</div>';
+                } else {
+                    html += '<div class="et-step">' + esc(step) + '</div>';
+                }
+            }
+            html += '</div>';
+        }
+
+        if (isResolved) {
+            var badgeClass = status;
+            var badgeText = status === 'exploitable' ? 'Exploitable — Finding Created' :
+                            status === 'not_exploitable' ? 'Not Exploitable — Verified Safe' :
+                            'Partial — Limited Exploitation';
+            html += '<div class="et-resolved-badge ' + badgeClass + '">' + esc(badgeText) + '</div>';
+            if (item.resolution_notes) {
+                html += '<div class="et-resolution-notes">' + esc(item.resolution_notes) + '</div>';
+            }
+        } else {
+            html += '<div class="et-section-label">Resolution Notes (optional)</div>';
+            html += '<textarea class="et-notes-input" id="et-notes-' + esc(item.id) + '" placeholder="Document exploitation attempts, commands used, output observed..."></textarea>';
+            html += '<div class="et-actions">';
+            html += '<button type="button" class="et-btn et-btn-exploitable" data-et-action="exploitable" data-et-item="' + esc(item.id) + '">Exploitable</button>';
+            html += '<button type="button" class="et-btn et-btn-partial" data-et-action="partial" data-et-item="' + esc(item.id) + '">Partial</button>';
+            html += '<button type="button" class="et-btn et-btn-not-exploitable" data-et-action="not_exploitable" data-et-item="' + esc(item.id) + '">Not Exploitable</button>';
+            html += '</div>';
+        }
+
+        html += '</div>';
+    }
+    grid.innerHTML = html;
+}
+
+function _resolveExploitTest(itemId, resolution, btn) {
+    var card = btn.closest('.et-card');
+    if (card) card.querySelectorAll('.et-btn').forEach(function(b) { b.disabled = true; });
+    var notesEl = document.getElementById('et-notes-' + itemId);
+    var notes = notesEl ? notesEl.value.trim() : '';
+    fetch('/api/action-item/resolve-exploit-test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: PID, item_id: itemId, resolution: resolution, notes: notes})
+    }).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.ok) {
+            for (var i = 0; i < allActionItems.length; i++) {
+                if (allActionItems[i].id === itemId) {
+                    allActionItems[i].status = resp.status;
+                    if (notes) allActionItems[i].resolution_notes = notes;
+                    break;
+                }
+            }
+            renderActionItems();
+            if (resolution === 'exploitable') loadFindings(true);
+        } else {
+            if (card) card.querySelectorAll('.et-btn').forEach(function(b) { b.disabled = false; });
+        }
+    }).catch(function() {
+        if (card) card.querySelectorAll('.et-btn').forEach(function(b) { b.disabled = false; });
+    });
+}
+
+/* ── exploit_test_resolved socket event ────────────────────────── */
+socket.on('exploit_test_resolved', function(data) {
+    if (!data || !data.item_id) return;
+    for (var i = 0; i < allActionItems.length; i++) {
+        if (allActionItems[i].id === data.item_id) {
+            if (data.resolution) allActionItems[i].status = data.resolution;
+            if (data.notes) allActionItems[i].resolution_notes = data.notes;
+            break;
+        }
+    }
+    if (document.querySelector('.tab-content[data-tab="action-items"].active')) {
+        renderActionItems();
+    }
+    if (data.resolution === 'exploitable') loadFindings(true);
 });
 
 function renderBulkActionBar() {

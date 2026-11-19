@@ -73,6 +73,10 @@ def _dedup_key(item):
     if item.get("type") == "manual_check":
         check_id = (item.get("metadata") or {}).get("check_id", "")
         return ("_mc_", check_id)
+    if item.get("type") == "exploit_test":
+        finding_id = (item.get("metadata") or {}).get("finding_id", "")
+        cat = item.get("category", "")
+        return ("_et_", cat, finding_id)
     return (
         (item.get("recommended_tool") or "").lower(),
         _normalize_target(item.get("target") or ""),
@@ -207,6 +211,7 @@ class ActionItemStore:
         by_category = {}
         by_tool = {}
         manual_pending = 0
+        exploit_test_pending = 0
         for item in items:
             s = item.get("status") or "pending"
             by_status[s] = by_status.get(s, 0) + 1
@@ -216,6 +221,8 @@ class ActionItemStore:
             by_tool[t] = by_tool.get(t, 0) + 1
             if item.get("type") == "manual_check" and s == "pending":
                 manual_pending += 1
+            if item.get("type") == "exploit_test" and s == "pending":
+                exploit_test_pending += 1
         return {
             "by_status": by_status,
             "by_category": by_category,
@@ -227,6 +234,7 @@ class ActionItemStore:
             "complete": by_status.get("complete", 0),
             "dismissed": by_status.get("dismissed", 0),
             "manual_pending": manual_pending,
+            "exploit_test_pending": exploit_test_pending,
         }
 
     # ── Write operations (cache + persist) ──────────────────
@@ -316,7 +324,9 @@ class ActionItemStore:
                         item["completed_at"] = datetime.now().isoformat()
                     elif new_status == "dismissed":
                         item["dismissed_at"] = datetime.now().isoformat()
-                    elif new_status in ("confirmed_missing", "confirmed_exists"):
+                    elif new_status in ("confirmed_missing", "confirmed_exists",
+                                        "exploitable", "not_exploitable",
+                                        "partial"):
                         item["resolved_at"] = datetime.now().isoformat()
                     if extra_fields:
                         item.update(extra_fields)

