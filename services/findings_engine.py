@@ -1068,16 +1068,33 @@ class FindingsEngine:
 
     # ── Mutations ────────────────────────────────────────────
 
+    def _ensure_cache(self, project_id, project):
+        """Populate cache from DB if empty."""
+        with self._lock:
+            if self._cache.get(project_id):
+                return
+        self._load_all_from_db(project_id, project)
+
+    def _find_in_cache_or_db(self, project_id, project, finding_id):
+        """Look up a finding by id in cache; hydrate from DB on miss."""
+        with self._lock:
+            cached = self._cache.get(project_id, [])
+            for f in cached:
+                if f.get("id") == finding_id:
+                    return f, cached
+        if not cached:
+            self._load_all_from_db(project_id, project)
+            with self._lock:
+                cached = self._cache.get(project_id, [])
+            for f in cached:
+                if f.get("id") == finding_id:
+                    return f, cached
+        return None, cached
+
     def mark_fp(self, project_id, project, finding_id):
         """Mark a finding as false positive. Returns (updated_findings, fp_finding)."""
         project_dir = project.get("project_dir", "")
-        with self._lock:
-            cached = self._cache.get(project_id, [])
-            target = None
-            for f in cached:
-                if f.get("id") == finding_id:
-                    target = f
-                    break
+        target, cached = self._find_in_cache_or_db(project_id, project, finding_id)
         if not target or not project_dir:
             return None, None
         updated = mark_false_positive(project_dir, target, cached)
@@ -1097,13 +1114,7 @@ class FindingsEngine:
     def mark_partial_fp(self, project_id, project, finding_id, affected_locations):
         """Mark specific affected locations as FP. Returns (updated_findings, fp_entries)."""
         project_dir = project.get("project_dir", "")
-        with self._lock:
-            cached = self._cache.get(project_id, [])
-            target = None
-            for f in cached:
-                if f.get("id") == finding_id:
-                    target = f
-                    break
+        target, cached = self._find_in_cache_or_db(project_id, project, finding_id)
         if not target or not project_dir:
             return None, None
         updated, fp_entries = _mark_partial_fp(project_dir, target, cached,
@@ -1138,6 +1149,8 @@ class FindingsEngine:
     def set_risk_override(self, project_id, finding_id, new_risk, reason="",
                           project_dir="", project=None):
         """Override risk level for a finding."""
+        if project:
+            self._ensure_cache(project_id, project)
         with self._lock:
             cached = self._cache.get(project_id, [])
             self._cache[project_id] = override_risk(cached, finding_id,
