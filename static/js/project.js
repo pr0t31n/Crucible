@@ -7900,13 +7900,114 @@ function _renderWebappOverview(findings, intel, summary) {
     h += _ovCard('OWASP Categories', owaspFindings.length, 'distinct categories', 'var(--clr-sources)');
     var injections = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('inject') !== -1 || t.indexOf('sqli') !== -1 || t.indexOf('xss') !== -1 || t.indexOf('command') !== -1; });
     h += _ovCard('Injection Flaws', injections.length, 'SQLi / XSS / Cmd', (injections.length > 0 ? 'var(--clr-critical)' : 'var(--clr-accent)'));
-    var authIssues = findings.filter(function(f) { var t = (f.title||'').toLowerCase(); return t.indexOf('auth') !== -1 || t.indexOf('session') !== -1 || t.indexOf('cookie') !== -1 || t.indexOf('csrf') !== -1; });
-    h += _ovCard('Auth/Session Issues', authIssues.length, '', 'var(--clr-high)');
+    var webApps = _ovGroupByWebapp(findings);
+    h += _ovCard('Web Applications', Object.keys(webApps).length, 'targets tested', 'var(--clr-hosts)');
     h += '</div>';
+
+    /* ── Per-webapp cards ──────────────────────────────────── */
+    var appKeys = Object.keys(webApps);
+    if (appKeys.length) {
+        h += '<div style="margin-bottom:24px"><div style="font-weight:600;margin-bottom:10px;font-size:0.9rem;color:var(--text-primary)">Per-Application Breakdown</div>';
+        h += '<div style="display:flex;flex-direction:column;gap:8px">';
+        appKeys.sort(function(a, b) {
+            var sa = _ovWebappMaxRisk(webApps[a]), sb = _ovWebappMaxRisk(webApps[b]);
+            if (sa !== sb) return sa - sb;
+            return webApps[b].length - webApps[a].length;
+        });
+        appKeys.forEach(function(app) {
+            var af = webApps[app];
+            var sc = {critical:0, high:0, medium:0, low:0, info:0};
+            af.forEach(function(f) { var r = (f.risk||'info').toLowerCase(); if (sc[r] !== undefined) sc[r]++; });
+            var total = af.length || 1;
+            var maxClr = sc.critical ? 'var(--clr-critical)' : sc.high ? 'var(--clr-high)' : sc.medium ? 'var(--clr-medium)' : sc.low ? 'var(--clr-low)' : 'var(--clr-info)';
+            h += '<div style="padding:12px 16px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);border-left:3px solid ' + maxClr + '">';
+            h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">';
+            h += '<div style="font-weight:600;font-size:0.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono)" title="' + esc(app) + '">' + esc(app) + '</div>';
+            h += '<div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary)">' + af.length + ' finding' + (af.length !== 1 ? 's' : '') + '</div>';
+            h += '</div>';
+            h += '<div style="display:flex;height:20px;border-radius:4px;overflow:hidden;margin-bottom:4px">';
+            [['critical','var(--clr-critical)'],['high','var(--clr-high)'],['medium','var(--clr-medium)'],['low','var(--clr-low)'],['info','var(--clr-info)']].forEach(function(p) {
+                var pct = sc[p[0]] / total * 100;
+                if (pct > 0) {
+                    h += '<div style="width:' + pct + '%;background:' + p[1] + ';display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.65rem;font-weight:600" title="' + p[0].toUpperCase() + ': ' + sc[p[0]] + '">' + (pct > 10 ? sc[p[0]] : '') + '</div>';
+                }
+            });
+            h += '</div>';
+            h += '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.72rem;color:var(--text-secondary)">';
+            if (sc.critical) h += '<span><span style="color:var(--clr-critical);font-weight:600">C</span> ' + sc.critical + '</span>';
+            if (sc.high) h += '<span><span style="color:var(--clr-high);font-weight:600">H</span> ' + sc.high + '</span>';
+            if (sc.medium) h += '<span><span style="color:var(--clr-medium);font-weight:600">M</span> ' + sc.medium + '</span>';
+            if (sc.low) h += '<span><span style="color:var(--clr-low);font-weight:600">L</span> ' + sc.low + '</span>';
+            if (sc.info) h += '<span><span style="color:var(--clr-info);font-weight:600">I</span> ' + sc.info + '</span>';
+            h += '</div></div>';
+        });
+        h += '</div></div>';
+    }
+
+    /* ── Top lists ─────────────────────────────────────────── */
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px">';
     if (owaspFindings.length) h += '<div>' + _ovTopList('OWASP Top 10 Distribution', owaspFindings, 10) + '</div>';
-    h += '<div>' + _ovTopList('Top Vulnerability Types', _countBy(findings, 'title'), 10) + '</div>';
+    h += '<div>' + _ovTopListByRisk('Top Vulnerability Types', findings, 10) + '</div>';
     h += '</div>';
+    return h;
+}
+
+function _ovGroupByWebapp(findings) {
+    var map = {};
+    findings.forEach(function(f) {
+        var host = f.hostname || f.ip || '';
+        if (!host) return;
+        if (!map[host]) map[host] = [];
+        map[host].push(f);
+    });
+    return map;
+}
+
+function _ovWebappMaxRisk(findings) {
+    var order = {critical:0, high:1, medium:2, low:3, info:4};
+    var best = 5;
+    findings.forEach(function(f) {
+        var r = (f.risk||'info').toLowerCase();
+        var o = order[r];
+        if (o !== undefined && o < best) best = o;
+    });
+    return best;
+}
+
+function _ovTopListByRisk(title, findings, max) {
+    var riskOrder = {critical:0, high:1, medium:2, low:3, info:4};
+    var riskColors = {critical:'var(--clr-critical)', high:'var(--clr-high)', medium:'var(--clr-medium)', low:'var(--clr-low)', info:'var(--clr-info)'};
+    var map = {};
+    findings.forEach(function(f) {
+        var t = f.title;
+        if (!t) return;
+        if (!map[t]) map[t] = {label: t, count: 0, maxRisk: 'info'};
+        map[t].count++;
+        var r = (f.risk||'info').toLowerCase();
+        if ((riskOrder[r]||4) < (riskOrder[map[t].maxRisk]||4)) map[t].maxRisk = r;
+    });
+    var items = Object.keys(map).map(function(k) { return map[k]; });
+    items.sort(function(a, b) {
+        var ra = riskOrder[a.maxRisk] !== undefined ? riskOrder[a.maxRisk] : 4;
+        var rb = riskOrder[b.maxRisk] !== undefined ? riskOrder[b.maxRisk] : 4;
+        if (ra !== rb) return ra - rb;
+        return b.count - a.count;
+    });
+    var top = items.slice(0, max || 10);
+    if (!top.length) return '';
+    var maxCount = top[0].count || 1;
+    for (var i = 0; i < top.length; i++) { if (top[i].count > maxCount) maxCount = top[i].count; }
+    var h = '<div style="margin-top:16px"><div style="font-weight:600;margin-bottom:8px">Top Vulnerability Types</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px">';
+    top.forEach(function(item) {
+        var pct = item.count / maxCount * 100;
+        var clr = riskColors[item.maxRisk] || 'var(--clr-accent)';
+        h += '<div style="display:flex;align-items:center;gap:8px">' +
+            '<div style="flex:0 0 180px;font-size:0.8rem;font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(item.label) + '">' + esc(item.label) + '</div>' +
+            '<div style="flex:1;height:16px;background:var(--bg-alt);border-radius:4px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + clr + ';border-radius:4px"></div></div>' +
+            '<div style="flex:0 0 55px;text-align:right;font-size:0.75rem;font-weight:600;display:flex;align-items:center;justify-content:flex-end;gap:4px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + clr + '"></span>' + item.count + '</div></div>';
+    });
+    h += '</div></div>';
     return h;
 }
 
