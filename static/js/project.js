@@ -13714,7 +13714,9 @@ function loadLogs() {
 }
 
 function _filterLogsBySearch(entries, inputId) {
-    var q = (document.getElementById(inputId).value || '').trim().toLowerCase();
+    var el = document.getElementById(inputId);
+    if (!el) return entries;
+    var q = (el.value || '').trim().toLowerCase();
     if (!q) return entries;
     return entries.filter(function(l) {
         var msg = (l.message || l.text || '').toLowerCase();
@@ -13767,8 +13769,10 @@ function updateLogsPill() {
 document.getElementById('logsFilterTool').addEventListener('change', loadLogs);
 document.getElementById('logsFilterLevel').addEventListener('change', loadLogs);
 (function() {
+    var _logsSearchEl = document.getElementById('logsSearch');
+    if (!_logsSearchEl) return;
     var _logsSearchTimer;
-    document.getElementById('logsSearch').addEventListener('input', function() {
+    _logsSearchEl.addEventListener('input', function() {
         clearTimeout(_logsSearchTimer);
         _logsSearchTimer = setTimeout(function() { logsPage = 1; renderLogs(); }, 200);
     });
@@ -13866,8 +13870,10 @@ function updateErrorsPill() {
 
 document.getElementById('errorsFilterTool').addEventListener('change', loadErrors);
 (function() {
+    var _errorsSearchEl = document.getElementById('errorsSearch');
+    if (!_errorsSearchEl) return;
     var _errorsSearchTimer;
-    document.getElementById('errorsSearch').addEventListener('input', function() {
+    _errorsSearchEl.addEventListener('input', function() {
         clearTimeout(_errorsSearchTimer);
         _errorsSearchTimer = setTimeout(function() { errorsPage = 1; renderErrors(); }, 200);
     });
