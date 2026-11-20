@@ -3175,6 +3175,14 @@ class ProcessManager:
 
         # Determine final status.
         with self._lock:
+            cur_proc = (self._procs.get(project_id) or {}).get(tool_id)
+            if cur_proc is not None and cur_proc is not proc:
+                log.info("_wait_proc: stale wait thread for %s — "
+                         "new process already registered (PID %s), "
+                         "skipping cleanup for old PID %s",
+                         tool_id, cur_proc.pid, proc.pid)
+                return
+
             cur_status = (self._tool_status.get(project_id) or {}).get(tool_id)
             user_killed = (cur_status == "killed")
             if cur_status == "killed":
@@ -3184,7 +3192,6 @@ class ProcessManager:
             elif rc == 0:
                 final_status = "complete"
             elif rc is not None and rc < 0:
-                # Negative rc = killed by signal (OOM, external kill -9, etc.)
                 final_status = "killed"
             else:
                 final_status = "failed"
@@ -3192,7 +3199,6 @@ class ProcessManager:
             self._tool_status.setdefault(project_id, {})[tool_id] = final_status
             self._procs.setdefault(project_id, {})[tool_id] = None
 
-            # Clean up answer queue and pending prompt.
             aq = self._answer_queues.get(project_id)
             if aq:
                 aq.pop(tool_id, None)

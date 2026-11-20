@@ -109,7 +109,7 @@ class Scattershot3Adapter(ToolAdapter):
             "port_scan_workers": 8,
             "web_timeout": 4,
             "banner_timeout": 3.0,
-            "sslscan_timeout": 60,
+            "sslscan_timeout": 120,
             "testssl_timeout": 300,
             "nuclei_timeout": 600,
             "hydra_timeout": 300,
