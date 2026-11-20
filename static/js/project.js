@@ -1512,8 +1512,12 @@ function updateConsoleHeader() {
     var _canReset = false;
     if (selectedTool && (status === 'failed' || status === 'error' || status === 'killed')) {
         var _rScope = _selSci !== -1 ? selectedTool.substring(_selSci + 1) : '';
-        var _rScopeTools = _rScope && PROJECT.scope_tools ? PROJECT.scope_tools[_rScope] : null;
-        if (_rScopeTools && _rScopeTools.indexOf(_baseSel) !== -1) _canReset = true;
+        if (_rScope) {
+            var _rScopeTools = PROJECT.scope_tools ? PROJECT.scope_tools[_rScope] : null;
+            if (_rScopeTools && _rScopeTools.indexOf(_baseSel) !== -1) _canReset = true;
+        } else {
+            _canReset = true;
+        }
     }
     _resetBtn.style.display = _canReset ? '' : 'none';
     _resetBtn.disabled = !_canReset;
