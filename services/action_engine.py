@@ -103,9 +103,31 @@ def _is_private_ip(ip_str):
 
 
 def _project_has_internal_scope(project):
-    """Return True if the project's active_scopes include internal testing."""
-    scopes = (project or {}).get("active_scopes", [])
-    return "internal" in scopes
+    """Return True if the project includes internal targets in scope.
+
+    Checks active_scopes for "internal" AND scope_definition for any
+    RFC-1918 CIDRs/IPs — covers multi-scope projects where SS3 is the
+    only network tool and internal IPs were provided in scope_definition
+    without "internal" explicitly appearing in active_scopes.
+    """
+    if not project:
+        return False
+    scopes = project.get("active_scopes", [])
+    if "internal" in scopes:
+        return True
+    scope_def = project.get("scope_definition") or {}
+    if scope_def.get("network_cidrs_int"):
+        return True
+    for cidr in scope_def.get("network_cidrs", []):
+        if not cidr:
+            continue
+        try:
+            net = ipaddress.ip_network(cidr.strip(), strict=False)
+            if any(net.overlaps(rfc) for rfc in _RFC1918):
+                return True
+        except (ValueError, AttributeError):
+            continue
+    return False
 
 
 def _split_target(target):
