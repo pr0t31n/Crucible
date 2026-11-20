@@ -1447,11 +1447,11 @@ function selectTool(tid) {
         .then(function(r) { return r.json(); })
         .then(function(d) {
             toolCheckpoints[tid] = !!d.exists;
-            document.getElementById('btnToolResume').disabled = !d.exists;
+            updateConsoleHeader();
         })
         .catch(function() {
             toolCheckpoints[tid] = false;
-            document.getElementById('btnToolResume').disabled = true;
+            updateConsoleHeader();
         });
 }
 
