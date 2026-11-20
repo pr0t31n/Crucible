@@ -292,9 +292,9 @@
       <div class="form-section tool-scope-group" id="scopeSs3Section" hidden>
         <h3 class="form-section-title"><span class="tool-badge tool-ss">SS</span> Scattershot3</h3>
         <div class="form-group">
-          <label class="form-label" for="cidrs">Network CIDRs / IPs</label>
+          <label class="form-label" for="cidrs">Network Targets (IPs / CIDRs / FQDNs / URLs)</label>
           <textarea id="cidrs" class="form-control" rows="4"
-                    placeholder="One CIDR or IP per line&#10;e.g. 10.0.0.0/24&#10;     192.168.1.0/24">{% if project and project.scope_definition %}{{ project.scope_definition.network_cidrs|default([])|join('\n') }}{% endif %}</textarea>
+                    placeholder="One target per line&#10;e.g. 10.0.0.0/24&#10;     198.51.100.50&#10;     host.example.com&#10;     https://app.example.com">{% if project and project.scope_definition %}{{ project.scope_definition.network_cidrs|default([])|join('\n') }}{% endif %}</textarea>
         </div>
         <div class="form-grid" style="margin-top:16px">
           <div class="form-group">
