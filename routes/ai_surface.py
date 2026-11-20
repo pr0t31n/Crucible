@@ -11,8 +11,8 @@ log = logging.getLogger("crucible.routes.ai_surface")
 _AI_SVC_RE = re.compile(
     r"ollama|gradio|streamlit|mlflow|vllm|triton|bentoml|litellm|"
     r"torchserve|huggingface|langflow|comfyui|stable.diffusion|"
-    r"jupyter|sglang|llamacpp|nextchat|dify|chromadb|milvus|"
-    r"qdrant|weaviate|pgvector|whisper|text.generation",
+    r"jupyter|sglang|llamacpp|nextchat|dify|chromadb|chroma|milvus|"
+    r"qdrant|weaviate|pgvector|whisper|text.generation|localai|ray|mcp",
     re.IGNORECASE,
 )
 
@@ -30,7 +30,8 @@ AI_PORTS = {
     8080: "Weaviate/BentoML", 8001: "Triton HTTP",
     8002: "Triton gRPC", 6333: "Qdrant HTTP", 6334: "Qdrant gRPC",
     19530: "Milvus", 8888: "Jupyter", 8188: "ComfyUI",
-    7869: "Gradio Alt",
+    7869: "Gradio Alt", 7000: "Chroma", 5001: "LocalAI",
+    8265: "Ray", 4000: "LiteLLM", 7681: "LangFlow",
 }
 
 
@@ -42,7 +43,7 @@ def _is_ai_finding(f):
         return True
     if port in AI_PORTS and _AI_SVC_RE.search(f.get("description") or ""):
         return True
-    if "prompt injection" in title or "ai model" in title or "ai service" in title:
+    if "prompt injection" in title or "ai model" in title or "ai service" in title or "ai/ml" in title:
         return True
     if f.get("tool") == "pain":
         return True
@@ -67,8 +68,8 @@ def _classify_service(f):
     for name in ["ollama", "gradio", "streamlit", "mlflow", "vllm",
                   "triton", "bentoml", "litellm", "torchserve",
                   "huggingface", "langflow", "comfyui", "jupyter",
-                  "dify", "chromadb", "milvus", "qdrant", "weaviate",
-                  "whisper"]:
+                  "dify", "chromadb", "chroma", "milvus", "qdrant",
+                  "weaviate", "whisper", "localai", "ray", "mcp"]:
         if name in title or name in service:
             return name.title()
     if port in AI_PORTS:
