@@ -137,6 +137,12 @@ def _backfill_from_project(settings, project, tool_id):
         _psd = scope_def.get("ss3_passive_seed_duration", 0)
         if _psd and settings.get("passive_seed_duration") == _ss3_defaults.get("passive_seed_duration"):
             settings["passive_seed_duration"] = _psd
+        _nb = scope_def.get("ss3_no_brute")
+        if _nb is not None and not settings.get("no_brute"):
+            settings["no_brute"] = bool(_nb)
+        _ht = scope_def.get("ss3_hydra_timeout", 0)
+        if _ht and settings.get("hydra_timeout") == _ss3_defaults.get("hydra_timeout"):
+            settings["hydra_timeout"] = _ht
         if settings.get("scope_type") == "internal" and scope in ("external", "multi"):
             settings["scope_type"] = scope if scope != "multi" else "external_and_internal"
     elif tool_id == "osift":

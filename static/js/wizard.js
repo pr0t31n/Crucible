@@ -955,6 +955,8 @@
       var _ss3mp = valOf('ss3DiscMinParallelism'); if (_ss3mp) addR(sg,'Discovery Min Parallelism',_ss3mp);
       var _ss3tt = document.getElementById('ss3TimingTemplate').value; if (_ss3tt) addR(sg,'Timing Template','T'+_ss3tt+' — '+document.getElementById('ss3TimingTemplate').selectedOptions[0].text.split(' — ')[1]);
       var _ss3ps = valOf('ss3PassiveSeedDuration'); if (_ss3ps) addR(sg,'Passive Seed',_ss3ps+'s tcpdump → Trawler');
+      var _ss3nb = (document.getElementById('ss3NoBrute') || {}).checked; if (_ss3nb) addR(sg,'Brute Force','Disabled');
+      var _ss3ht = valOf('ss3HydraTimeout'); if (_ss3ht && !_ss3nb) addR(sg,'Hydra Timeout',_ss3ht+'s');
     }
     if (_sec('scopeFractureSection')) {
       addR(sg,'Web URLs',valOf('targetUrls'));
@@ -1489,6 +1491,8 @@
         ss3_discovery_min_parallelism: parseInt(valOf('ss3DiscMinParallelism')) || 0,
         ss3_timing_template: document.getElementById('ss3TimingTemplate').value,
         ss3_passive_seed_duration: parseInt(valOf('ss3PassiveSeedDuration')) || 0,
+        ss3_no_brute: !!(document.getElementById('ss3NoBrute') || {}).checked,
+        ss3_hydra_timeout: parseInt(valOf('ss3HydraTimeout')) || 0,
         target_urls: textToArray('targetUrls'),
         fracture_roles: getRoles('fr'),
         fracture_auth: _savedAuth.fracture || null,

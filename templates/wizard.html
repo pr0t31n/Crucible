@@ -343,6 +343,24 @@
             <span class="form-hint">Seconds of tcpdump capture run concurrently with Phase 1 discovery. Trawler analyses the pcap in hunt mode (testing server excluded) to surface broadcast/multicast protocols and seed action items. 0 = disabled.</span>
           </div>
         </div>
+        <div style="margin-top:16px">
+          <label class="form-label" style="font-weight:600;margin-bottom:8px;">Brute Force</label>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input type="checkbox" id="ss3NoBrute"{% if project and project.scope_definition and project.scope_definition.ss3_no_brute %} checked{% endif %}>
+                Disable Brute Force
+              </label>
+              <span class="form-hint">Skip Hydra and BruteSpray credential testing. Can be toggled mid-scan — takes effect after the current attempt completes.</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ss3HydraTimeout">Hydra Timeout (s)</label>
+              <input type="number" id="ss3HydraTimeout" class="form-control" min="30" max="3600" placeholder="default: 300"
+                     value="{% if project and project.scope_definition and project.scope_definition.ss3_hydra_timeout %}{{ project.scope_definition.ss3_hydra_timeout }}{% endif %}">
+              <span class="form-hint">Per-service timeout for Hydra brute force. Updates take effect mid-scan.</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ── Fracture ──────────────────────────────────────── -->

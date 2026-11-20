@@ -47,6 +47,14 @@ def _backfill_launch_settings(settings, project, tool_id):
     if _psd and settings.get("passive_seed_duration") == defaults.get("passive_seed_duration"):
         settings["passive_seed_duration"] = _psd
         changed = True
+    _nb = scope_def.get("ss3_no_brute")
+    if _nb is not None and not settings.get("no_brute"):
+        settings["no_brute"] = bool(_nb)
+        changed = True
+    _ht = scope_def.get("ss3_hydra_timeout", 0)
+    if _ht and settings.get("hydra_timeout") == defaults.get("hydra_timeout"):
+        settings["hydra_timeout"] = _ht
+        changed = True
     if changed:
         from models.settings import save_settings
         proj_dir = project.get("project_dir", "")
