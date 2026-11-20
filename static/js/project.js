@@ -7675,8 +7675,20 @@ function _loadScopeOverview(body, empty) {
     var _overviewTool = _scopeTools.length ? _scopeTools[0] : '';
     var _scopeQ = scopeKey ? '&scope=' + encodeURIComponent(scopeKey) : '';
     var _toolQ = _overviewTool ? '&tool=' + encodeURIComponent(_overviewTool) : '';
+    function _fetchAllFindings(scopeQ, page, acc) {
+        page = page || 1; acc = acc || [];
+        return fetch('/api/findings/v2/' + PID + '?per_page=500' + scopeQ + '&page=' + page, {credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var items = data.findings || data.items || [];
+                acc = acc.concat(items);
+                if (data.pages && page < data.pages) return _fetchAllFindings(scopeQ, page + 1, acc);
+                data._all = acc;
+                return data;
+            });
+    }
     Promise.all([
-        fetch('/api/findings/v2/' + PID + '?per_page=100000' + _toolQ + _scopeQ, {credentials: 'same-origin'}).then(function(r) { return r.json(); }),
+        _fetchAllFindings(_scopeQ),
         fetch('/api/intel/v2/hosts/' + PID + '?per_page=100000' + _toolQ + _scopeQ, {credentials: 'same-origin'}).then(function(r) { return r.json(); })
     ]).then(function(results) {
         if (reqId !== _intelReqId) return;
@@ -7684,7 +7696,7 @@ function _loadScopeOverview(body, empty) {
         var hostsData = results[1] || {};
         var iData = {};
         var tData = {targets: {network: hostsData.items || []}};
-        var allFindings = fData.findings || fData.items || [];
+        var allFindings = fData._all || fData.findings || fData.items || [];
         var _scopeTools = _scopeToolsMap[_activeScope] || [];
         var scopeFindings = allFindings.filter(function(f) {
             var fs = (f.scope || '').toLowerCase();
