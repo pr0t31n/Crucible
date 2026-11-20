@@ -10,6 +10,18 @@ log = logging.getLogger("crucible.models.logs")
 # Error levels that count for pill badges (per CLAUDE.md §14g)
 ERROR_LEVELS = {"ERROR", "EXCEPTION", "TOOL_ERROR", "FATAL", "CRITICAL"}
 
+# Level synonyms — Python logging uses WARNING, tools emit WARN; both must match
+_LEVEL_SYNONYMS = {"WARN": "WARNING", "WARNING": "WARN"}
+
+
+def _level_matches(entry_level, filter_level):
+    """Return True if entry_level matches the filter, handling WARN/WARNING."""
+    el = (entry_level or "").upper()
+    fl = filter_level.upper()
+    if el == fl:
+        return True
+    return _LEVEL_SYNONYMS.get(fl) == el
+
 
 def load_logs(project_dir, from_dt=None, to_dt=None, tool_filter=None,
               level_filter=None):
@@ -20,9 +32,8 @@ def load_logs(project_dir, from_dt=None, to_dt=None, tool_filter=None,
     if tool_filter:
         entries = [e for e in entries if e.get("tool") == tool_filter]
     if level_filter:
-        lf = level_filter.upper()
         entries = [e for e in entries
-                   if (e.get("level") or "INFO").upper() == lf]
+                   if _level_matches(e.get("level") or "INFO", level_filter)]
     entries = _apply_time_filter(entries, from_dt, to_dt)
     entries.reverse()  # newest first
     return entries
@@ -36,9 +47,8 @@ def load_errors(project_dir, from_dt=None, to_dt=None, tool_filter=None,
     if tool_filter:
         entries = [e for e in entries if e.get("tool") == tool_filter]
     if level_filter:
-        lf = level_filter.upper()
         entries = [e for e in entries
-                   if (e.get("level") or "ERROR").upper() == lf]
+                   if _level_matches(e.get("level") or "ERROR", level_filter)]
     entries = _apply_time_filter(entries, from_dt, to_dt)
     entries.reverse()
     return entries

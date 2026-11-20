@@ -140,10 +140,8 @@ def _certificate(db, row):
     r.pop("port", None)
     r.pop("hostname", None)
     r.pop("_scope_id", None)
-    sig = inspect.signature(db.add_certificate)
-    pnames = [n for n in sig.parameters if n != "self"]
-    accepted = {k: v for k, v in r.items() if k in pnames}
-    db.add_certificate(port_id, **accepted)
+    r.pop("port_id", None)
+    db.add_certificate(port_id, **r)
 
 def _screenshot(db, row):
     r = _clean(row)

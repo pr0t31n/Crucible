@@ -967,11 +967,15 @@
             <option value="">All Levels</option>
             <option value="EVENT">Event</option>
             <option value="INFO">Info</option>
+            <option value="SUCCESS">Success</option>
             <option value="WARN">Warn</option>
             <option value="ERROR">Error</option>
             <option value="EXCEPTION">Exception</option>
             <option value="TOOL_ERROR">Tool Error</option>
           </select>
+        </div>
+        <div class="findings-filter-group" style="flex:1;min-width:140px;max-width:320px;">
+          <input type="text" class="form-control" id="logsSearch" placeholder="Search logs…" style="width:100%;font-size:0.82rem;padding:4px 8px;">
         </div>
         <button type="button" class="btn btn-xs btn-ghost ml-auto" id="btnCopyLogs" title="Copy all logs to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy</button>
         <button type="button" class="btn btn-xs btn-ghost" id="btnClearLogs">Clear</button>
@@ -1024,6 +1028,9 @@
           <select class="form-control" id="errorsFilterTool" style="min-width:120px">
             <option value="">All Tools</option>
           </select>
+        </div>
+        <div class="findings-filter-group" style="flex:1;min-width:140px;max-width:320px;">
+          <input type="text" class="form-control" id="errorsSearch" placeholder="Search errors…" style="width:100%;font-size:0.82rem;padding:4px 8px;">
         </div>
         <button type="button" class="btn btn-xs btn-ghost ml-auto" id="btnCopyErrors" title="Copy all errors to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy</button>
         <button type="button" class="btn btn-xs btn-ghost" id="btnClearErrors">Clear</button>

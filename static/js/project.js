@@ -659,8 +659,27 @@ socket.on('tool_intel', function(d) {
 });
 
 /* ── tool_log / tool_error: log entries ────────────────────────── */
+var _LEVEL_SYNONYMS = {'WARN':'WARNING','WARNING':'WARN'};
+function _matchesActiveLogFilters(entry) {
+    var tf = document.getElementById('logsFilterTool').value;
+    if (tf && (entry.tool || '') !== tf) return false;
+    var lf = document.getElementById('logsFilterLevel').value;
+    if (lf) {
+        var el = (entry.level || 'INFO').toUpperCase();
+        var fl = lf.toUpperCase();
+        if (el !== fl && _LEVEL_SYNONYMS[fl] !== el) return false;
+    }
+    return true;
+}
+function _matchesActiveErrorFilters(entry) {
+    var tf = document.getElementById('errorsFilterTool').value;
+    if (tf && (entry.tool || '') !== tf) return false;
+    return true;
+}
+
 socket.on('tool_log', function(data) {
     if (data.project_id !== PID) return;
+    if (!_matchesActiveLogFilters(data)) return;
     allLogs.push(data);
     if (_isErrEntry(data)) updateLogsPill();
     if (document.querySelector('.tab-content[data-tab="logs"].active')) renderLogs();
@@ -668,6 +687,7 @@ socket.on('tool_log', function(data) {
 
 socket.on('tool_error', function(data) {
     if (data.project_id !== PID) return;
+    if (!_matchesActiveErrorFilters(data)) return;
     allErrors.push(data);
     updateErrorsPill();
     if (document.querySelector('.tab-content[data-tab="errors"].active')) renderErrors();
@@ -13679,12 +13699,27 @@ function loadLogs() {
         });
 }
 
+function _filterLogsBySearch(entries, inputId) {
+    var q = (document.getElementById(inputId).value || '').trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter(function(l) {
+        var msg = (l.message || l.text || '').toLowerCase();
+        var tool = (l.tool || '').toLowerCase();
+        var level = (l.level || l.severity || '').toLowerCase();
+        var ts = (l.timestamp || l.ts || l.datetime || '').toLowerCase();
+        return msg.indexOf(q) !== -1 || tool.indexOf(q) !== -1
+            || level.indexOf(q) !== -1 || ts.indexOf(q) !== -1;
+    });
+}
+
 function renderLogs() {
     var tbody = document.getElementById('logsTableBody');
     var empty = document.getElementById('logsEmpty');
     var pag = document.getElementById('logsPagination');
 
-    if (!allLogs.length) {
+    var filtered = _filterLogsBySearch(allLogs, 'logsSearch');
+
+    if (!filtered.length) {
         tbody.innerHTML = '';
         empty.style.display = '';
         pag.hidden = true;
@@ -13693,7 +13728,7 @@ function renderLogs() {
     empty.style.display = 'none';
 
     var start = (logsPage - 1) * LOGS_PER_PAGE;
-    var page = allLogs.slice(start, start + LOGS_PER_PAGE);
+    var page = filtered.slice(start, start + LOGS_PER_PAGE);
 
     tbody.innerHTML = '';
     page.forEach(function(l) {
@@ -13708,7 +13743,7 @@ function renderLogs() {
         tbody.appendChild(tr);
     });
 
-    renderPagination(pag, allLogs.length, LOGS_PER_PAGE, logsPage, function(p) { logsPage = p; renderLogs(); });
+    renderPagination(pag, filtered.length, LOGS_PER_PAGE, logsPage, function(p) { logsPage = p; renderLogs(); });
 }
 
 function updateLogsPill() {
@@ -13717,6 +13752,13 @@ function updateLogsPill() {
 
 document.getElementById('logsFilterTool').addEventListener('change', loadLogs);
 document.getElementById('logsFilterLevel').addEventListener('change', loadLogs);
+(function() {
+    var _logsSearchTimer;
+    document.getElementById('logsSearch').addEventListener('input', function() {
+        clearTimeout(_logsSearchTimer);
+        _logsSearchTimer = setTimeout(function() { logsPage = 1; renderLogs(); }, 200);
+    });
+})();
 document.getElementById('logsFrom').addEventListener('change', loadLogs);
 document.getElementById('logsTo').addEventListener('change', loadLogs);
 document.getElementById('btnLogsClearRange').addEventListener('click', function() {
@@ -13771,7 +13813,9 @@ function renderErrors() {
     var empty = document.getElementById('errorsEmpty');
     var pag = document.getElementById('errorsPagination');
 
-    if (!allErrors.length) {
+    var filtered = _filterLogsBySearch(allErrors, 'errorsSearch');
+
+    if (!filtered.length) {
         tbody.innerHTML = '';
         empty.style.display = '';
         pag.hidden = true;
@@ -13780,7 +13824,7 @@ function renderErrors() {
     empty.style.display = 'none';
 
     var start = (errorsPage - 1) * ERRORS_PER_PAGE;
-    var page = allErrors.slice(start, start + ERRORS_PER_PAGE);
+    var page = filtered.slice(start, start + ERRORS_PER_PAGE);
 
     tbody.innerHTML = '';
     page.forEach(function(l) {
@@ -13795,14 +13839,25 @@ function renderErrors() {
         tbody.appendChild(tr);
     });
 
-    renderPagination(pag, allErrors.length, ERRORS_PER_PAGE, errorsPage, function(p) { errorsPage = p; renderErrors(); });
+    renderPagination(pag, filtered.length, ERRORS_PER_PAGE, errorsPage, function(p) { errorsPage = p; renderErrors(); });
 }
 
+var _ERR_LEVELS = new Set(['ERROR','EXCEPTION','TOOL_ERROR','FATAL','CRITICAL']);
 function updateErrorsPill() {
-    document.getElementById('errorsPill').textContent = allErrors.length || '';
+    var count = allErrors.filter(function(e) {
+        return _ERR_LEVELS.has((e.level || e.severity || '').toUpperCase());
+    }).length;
+    document.getElementById('errorsPill').textContent = count || '';
 }
 
 document.getElementById('errorsFilterTool').addEventListener('change', loadErrors);
+(function() {
+    var _errorsSearchTimer;
+    document.getElementById('errorsSearch').addEventListener('input', function() {
+        clearTimeout(_errorsSearchTimer);
+        _errorsSearchTimer = setTimeout(function() { errorsPage = 1; renderErrors(); }, 200);
+    });
+})();
 document.getElementById('errorsFrom').addEventListener('change', loadErrors);
 document.getElementById('errorsTo').addEventListener('change', loadErrors);
 document.getElementById('btnErrorsClearRange').addEventListener('click', function() {
