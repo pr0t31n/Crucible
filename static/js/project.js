@@ -8051,7 +8051,9 @@ function _ovTopListByRisk(title, findings, max) {
         if (!map[t]) map[t] = {label: t, count: 0, maxRisk: 'info'};
         map[t].count++;
         var r = (f.risk||'info').toLowerCase();
-        if ((riskOrder[r]||4) < (riskOrder[map[t].maxRisk]||4)) map[t].maxRisk = r;
+        var rVal = riskOrder[r] !== undefined ? riskOrder[r] : 4;
+        var curVal = riskOrder[map[t].maxRisk] !== undefined ? riskOrder[map[t].maxRisk] : 4;
+        if (rVal < curVal) map[t].maxRisk = r;
     });
     var items = Object.keys(map).map(function(k) { return map[k]; });
     items.sort(function(a, b) {
