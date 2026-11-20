@@ -385,6 +385,8 @@ class ProcessManager:
                 pid_hist = self._pid_history.setdefault(project_id, {})
                 meta_store = self._tool_metadata.setdefault(project_id, {})
                 for tid, entry in history.items():
+                    if entry.get("_archived"):
+                        continue
                     loaded_tids.add(tid)
                     if tid not in statuses:
                         statuses[tid] = entry.get("status", "halted")
@@ -562,6 +564,8 @@ class ProcessManager:
                 continue
 
             for tid, entry in history.items():
+                if entry.get("_archived"):
+                    continue
                 status = entry.get("status", "")
                 rec_pid = entry.get("pid")
 
@@ -1819,6 +1823,7 @@ class ProcessManager:
                 history = json.loads(hp.read_text())
                 if tool_id in history:
                     prev = history.pop(tool_id)
+                    prev["_archived"] = True
                     history[f"{tool_id}:{prev.get('ended_at', 'prev')}"] = prev
                     hp.write_text(json.dumps(history, indent=2))
             except (json.JSONDecodeError, OSError) as exc:

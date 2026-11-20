@@ -1470,8 +1470,13 @@ function updateConsoleHeader() {
     var _consTitle = cfg.name || _baseSel || 'Select a tool';
     if (selectedTool && _selSci !== -1) {
         var _ss = selectedTool.substring(_selSci + 1);
-        var _sd = _ss.replace(/_?oos$/i, '').replace(/_/g, ' ').trim();
-        _consTitle += _sd ? ' — OOS ' + _sd : ' — OOS';
+        var _isOos = /_?oos$/i.test(_ss) || /_?oos_/i.test(_ss);
+        var _sd = _ss.replace(/_?oos$/i, '').replace(/_?oos_/i, '').replace(/_/g, ' ').trim();
+        if (_isOos) {
+            _consTitle += _sd ? ' — OOS ' + _sd : ' — OOS';
+        } else if (_sd) {
+            _consTitle += ' — ' + _sd;
+        }
     }
     document.getElementById('consoleTitle').textContent = _consTitle;
     document.getElementById('consoleStatusBadge').innerHTML = selectedTool
@@ -1511,13 +1516,7 @@ function updateConsoleHeader() {
     var _resetBtn = document.getElementById('btnToolReset');
     var _canReset = false;
     if (selectedTool && (status === 'failed' || status === 'error' || status === 'killed')) {
-        var _rScope = _selSci !== -1 ? selectedTool.substring(_selSci + 1) : '';
-        if (_rScope) {
-            var _rScopeTools = PROJECT.scope_tools ? PROJECT.scope_tools[_rScope] : null;
-            if (_rScopeTools && _rScopeTools.indexOf(_baseSel) !== -1) _canReset = true;
-        } else {
-            _canReset = true;
-        }
+        _canReset = true;
     }
     _resetBtn.style.display = _canReset ? '' : 'none';
     _resetBtn.disabled = !_canReset;
@@ -12382,6 +12381,18 @@ function renderSettingsFields(container, settings, schema) {
             continue;
         }
 
+        if (fieldSchema.show_when) {
+            var _swMatch = false;
+            for (var _swk in fieldSchema.show_when) {
+                var _swv = settings['_' + _swk] || settings[_swk] || '';
+                if (Array.isArray(fieldSchema.show_when[_swk])) {
+                    if (fieldSchema.show_when[_swk].indexOf(_swv) !== -1) _swMatch = true;
+                } else if (fieldSchema.show_when[_swk] === _swv) {
+                    _swMatch = true;
+                }
+            }
+            if (!_swMatch) continue;
+        }
         if (!settings.hasOwnProperty(key) && fieldSchema.type !== 'ssid_scan') continue;
         var val = settings[key];
         if (val !== null && typeof val === 'object' && !Array.isArray(val) && fieldSchema.type !== 'phase_toggles') continue;

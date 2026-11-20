@@ -94,6 +94,34 @@ def _backfill_osift_api_keys(settings):
                 settings[crucible_key] = val
 
 
+def _sync_ss3_targets_to_scope(project_id, project, data):
+    """Push SS3 target changes back to scope_definition so the scan uses them."""
+    scope_def = dict(project.get("scope_definition", {}))
+    scope = project.get("scope", "external")
+    changed = False
+    if "targets" in data:
+        raw = data["targets"].strip() if isinstance(data["targets"], str) else ""
+        cidrs = [t.strip() for t in raw.splitlines() if t.strip()] if raw else []
+        if cidrs != (scope_def.get("network_cidrs") or []):
+            scope_def["network_cidrs"] = cidrs
+            changed = True
+    if "targets_int" in data:
+        raw = data["targets_int"].strip() if isinstance(data["targets_int"], str) else ""
+        cidrs_int = [t.strip() for t in raw.splitlines() if t.strip()] if raw else []
+        if cidrs_int != (scope_def.get("network_cidrs_int") or []):
+            scope_def["network_cidrs_int"] = cidrs_int
+            changed = True
+    if "targets_ext" in data:
+        raw = data["targets_ext"].strip() if isinstance(data["targets_ext"], str) else ""
+        cidrs_ext = [t.strip() for t in raw.splitlines() if t.strip()] if raw else []
+        if cidrs_ext != (scope_def.get("network_cidrs_ext") or []):
+            scope_def["network_cidrs_ext"] = cidrs_ext
+            changed = True
+    if changed:
+        from services.projects import update_project
+        update_project(project_id, {"scope_definition": scope_def})
+
+
 def _backfill_from_project(settings, project, tool_id):
     """Populate empty flat UI keys from the project's scope_definition."""
     scope_def = project.get("scope_definition", {})
@@ -105,6 +133,18 @@ def _backfill_from_project(settings, project, tool_id):
             cidrs = scope_def.get("network_cidrs", [])
             if cidrs:
                 settings["targets"] = "\n".join(cidrs)
+        if not settings.get("targets_int"):
+            cidrs_int = scope_def.get("network_cidrs_int", [])
+            if cidrs_int:
+                settings["targets_int"] = "\n".join(cidrs_int)
+        if not settings.get("targets_ext"):
+            cidrs_ext = scope_def.get("network_cidrs_ext", [])
+            if cidrs_ext:
+                settings["targets_ext"] = "\n".join(cidrs_ext)
+        settings["_scope_type"] = (
+            "external_and_internal" if scope == "multi"
+            else scope or "external"
+        )
         if not settings.get("engagement_name") and meta_name:
             settings["engagement_name"] = meta_name
         if not settings.get("client") and meta_client:
@@ -349,6 +389,9 @@ def api_settings(project_id, tool_id):
         _archive_tool_output(project, tool_id)
 
     save_settings(proj_dir, tool_id, data)
+
+    if tool_id == "ss3":
+        _sync_ss3_targets_to_scope(project_id, project, data)
 
     if archive:
         _queue_rescan(project_id, project, tool_id)
