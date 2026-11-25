@@ -39,6 +39,7 @@ def create_app():
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
         minutes=config.SESSION_TIMEOUT_MINUTES)
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+    app.config["OOB_MANAGERS"] = {}
 
     _auth.init_auth()
 
@@ -105,13 +106,15 @@ def create_app():
     from routes.attack_surface import attack_surface_bp
     from routes.burp_import import burp_import_bp
     from routes.ai_surface import ai_surface_bp
+    from routes.oob import oob_bp
 
     for bp in (auth_bp, home_bp, project_bp, console_bp, findings_bp,
                action_items_bp, settings_bp, logs_bp, targets_bp,
                intelligence_bp, nessus_bp, traffic_bp, export_bp,
                worker_bp, integration_bp, shell_bp, standalone_bp,
                report_bp, importer_bp, sessions_bp,
-               attack_surface_bp, burp_import_bp, ai_surface_bp):
+               attack_surface_bp, burp_import_bp, ai_surface_bp,
+               oob_bp):
         app.register_blueprint(bp)
 
     try:
@@ -123,6 +126,16 @@ def create_app():
     socketio.init_app(app, cors_allowed_origins=[],
                       async_mode="threading", manage_session=False,
                       ping_timeout=120, ping_interval=30)
+
+    import atexit
+
+    def _cleanup_oob():
+        try:
+            for mgr in list(app.config.get("OOB_MANAGERS", {}).values()):
+                mgr.teardown()
+        except Exception:
+            pass
+    atexit.register(_cleanup_oob)
 
     from services.process_manager import ProcessManager
     from services.queue_manager import QueueManager

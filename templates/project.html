@@ -887,6 +887,42 @@
             </div>
           </div>
 
+          <!-- OOB Testing — Fracture only -->
+          <div id="settingsOobPanel" class="panel mt-16" hidden>
+            <div class="panel-header">
+              <span class="panel-title">Out-of-Band (OOB) Testing</span>
+            </div>
+            <div class="panel-body">
+              <p class="text-muted text-sm mb-8">Detects blind vulnerabilities (SSRF, XXE, command injection) by running a callback server that the target application contacts.</p>
+              <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+                <label class="form-check" style="display:flex;align-items:center;gap:6px">
+                  <input type="checkbox" id="se-oob-local">
+                  <span>Local Network</span>
+                </label>
+                <label class="form-check" style="display:flex;align-items:center;gap:6px">
+                  <input type="checkbox" id="se-oob-public">
+                  <span>Public (Internet)</span>
+                </label>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <label class="form-label" style="margin:0;white-space:nowrap;font-size:0.85rem">Port:</label>
+                  <input type="number" class="form-control" id="se-oob-port" value="9999" min="1024" max="65535" style="width:90px;font-size:0.85rem;padding:4px 8px">
+                </div>
+              </div>
+              <div id="se-oob-status" style="display:none;margin-bottom:8px">
+                <div style="padding:4px 8px;font-size:0.82rem;border-radius:4px;background:var(--bg-2);border:1px solid var(--border)">
+                  <span id="se-oob-status-text">Not configured</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button type="button" class="btn btn-xs btn-primary" id="btnSeOobConfigure">Configure &amp; Verify</button>
+                <button type="button" class="btn btn-xs btn-danger" id="btnSeOobTeardown" style="display:none">Teardown</button>
+              </div>
+              <div id="se-oob-ip-display" style="display:none;margin-top:8px">
+                <span class="form-hint">Detected IP: <code id="se-oob-detected-ip">&mdash;</code></span>
+              </div>
+            </div>
+          </div>
+
           <!-- Test Connection — Fracture / Siphon only -->
           <div id="settingsTestConn" class="panel mt-16" hidden>
             <div class="panel-header">

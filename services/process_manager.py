@@ -1010,6 +1010,89 @@ class ProcessManager:
         except Exception as exc:
             log.warning("[quill-har] Failed to inject: %s", exc)
 
+
+    def _inject_oob_settings(self, project_id, project, tool_id, scope=None):
+        """If OOB testing is enabled, set up the callback server and inject
+        oob_callback + oob_scan_id into Fracture's settings file."""
+        if tool_id != "fracture":
+            return
+        from flask import current_app
+        try:
+            fr_settings = self._load_tool_settings(project, tool_id, scope)
+        except Exception:
+            fr_settings = {}
+        oob_local = fr_settings.get("oob_local", False)
+        oob_public = fr_settings.get("oob_public", False)
+        if not oob_local and not oob_public:
+            return
+        mode = "public" if oob_public else "local"
+        port = int(fr_settings.get("oob_port", 9999) or 9999)
+        try:
+            managers = current_app.config.get("OOB_MANAGERS", {})
+            mgr = managers.get(project_id)
+            if not mgr or not mgr.server.is_running:
+                from services.oob_server import OOBManager
+                mgr = OOBManager()
+                managers[project_id] = mgr
+                mgr.setup(mode, port)
+            callback_url = mgr.callback_url or f"http://0.0.0.0:{port}"
+        except Exception as exc:
+            log.warning("OOB setup failed during launch: %s", exc)
+            self._emit_console(project_id, tool_id,
+                               f"[Crucible] OOB setup failed: {exc}", "system")
+            return
+        import uuid as _uuid
+        scan_id = f"fr_{project_id}_{_uuid.uuid4().hex[:8]}"
+        self._write_oob_to_settings(project, tool_id, scope,
+                                     callback_url, scan_id)
+        self._emit_console(
+            project_id, tool_id,
+            f"[Crucible] OOB callback: {callback_url} (scan {scan_id})",
+            "system")
+        log.info("Injected OOB settings for %s: callback=%s scan=%s",
+                 tool_id, callback_url, scan_id)
+
+    def _write_oob_to_settings(self, project, tool_id, scope,
+                                callback_url, scan_id):
+        """Write oob_callback + oob_scan_id into the tool's settings JSON."""
+        from config import TOOL_SETTINGS_PREFIX
+        prefix = TOOL_SETTINGS_PREFIX.get(tool_id, tool_id)
+        td = (project.get("tool_dirs") or {}).get(tool_id, "")
+        proj_dir = project.get("project_dir", "")
+        base = Path(td) if td else Path(proj_dir)
+        sfx = f"_{scope}" if scope else ""
+        fp = base / f"{prefix}_settings{sfx}.json"
+        if not fp.exists():
+            fp = base / f"{prefix}_settings.json"
+        settings = {}
+        if fp.exists():
+            try:
+                settings = json.loads(fp.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        scan = settings.setdefault("scan", {})
+        scan["oob_callback"] = callback_url
+        scan["oob_scan_id"] = scan_id
+        try:
+            fp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+        except Exception as exc:
+            log.warning("Failed to write OOB settings: %s", exc)
+
+    def _load_tool_settings(self, project, tool_id, scope=None):
+        """Load a tool's settings from its JSON file."""
+        from config import TOOL_SETTINGS_PREFIX
+        prefix = TOOL_SETTINGS_PREFIX.get(tool_id, tool_id)
+        td = (project.get("tool_dirs") or {}).get(tool_id, "")
+        proj_dir = project.get("project_dir", "")
+        base = Path(td) if td else Path(proj_dir)
+        sfx = f"_{scope}" if scope else ""
+        fp = base / f"{prefix}_settings{sfx}.json"
+        if not fp.exists():
+            fp = base / f"{prefix}_settings.json"
+        if fp.exists():
+            return json.loads(fp.read_text(encoding="utf-8")).get("scan", {})
+        return {}
+
     # ── public API ───────────────────────────────────────────────────────
 
     def launch(self, project_id: str, tool_id: str, *, project: dict,
@@ -1036,6 +1119,7 @@ class ProcessManager:
             with self._lock:
                 self._tool_output_dirs.setdefault(project_id, {})[tk] = _tool_dir
         self._inject_output_dir(project, tool_id, scope=scope)
+        self._inject_oob_settings(project_id, project, tool_id, scope=scope)
         self._update_system_info(project)
 
         tool_cfg = TOOLS.get(tool_id)

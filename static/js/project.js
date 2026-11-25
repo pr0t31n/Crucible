@@ -13427,6 +13427,10 @@ function updateSettingsTestConn() {
         var PROXY_TOOLS = new Set(['fracture', 'siphon']);
         proxyPanel.hidden = !settingsActiveTool || !PROXY_TOOLS.has(settingsActiveTool);
     }
+    var oobPanel = document.getElementById('settingsOobPanel');
+    if (oobPanel) {
+        oobPanel.hidden = settingsActiveTool !== 'fracture';
+    }
     _updateSettingsDisableState();
     document.getElementById('settingsTestConnResult').hidden = true;
     document.getElementById('stcFingerprintArea').hidden = true;
@@ -13533,6 +13537,75 @@ function _updateSettingsDisableState() {
             }).catch(function(e){
                 ruBtn.disabled = false; ruBtn.textContent = 'Resolve URL';
             });
+        });
+    }
+})();
+
+/* ── Settings OOB Testing handlers (Fracture only) ─────────────────── */
+(function() {
+    var cfgBtn = document.getElementById('btnSeOobConfigure');
+    var tdBtn = document.getElementById('btnSeOobTeardown');
+    if (!cfgBtn) return;
+
+    cfgBtn.addEventListener('click', function() {
+        var isLocal = (document.getElementById('se-oob-local') || {}).checked;
+        var isPublic = (document.getElementById('se-oob-public') || {}).checked;
+        if (!isLocal && !isPublic) { toast('error', 'Select Local or Public OOB mode first.'); return; }
+        var mode = isPublic ? 'public' : 'local';
+        var port = parseInt((document.getElementById('se-oob-port') || {}).value) || 9999;
+        var statusEl = document.getElementById('se-oob-status');
+        var statusText = document.getElementById('se-oob-status-text');
+        var ipDisplay = document.getElementById('se-oob-ip-display');
+        var ipEl = document.getElementById('se-oob-detected-ip');
+        if (statusEl) statusEl.style.display = 'block';
+        if (statusText) { statusText.textContent = 'Setting up OOB server...'; statusText.parentElement.className = 'alert alert-info py-1 px-2 small mb-1'; }
+        cfgBtn.disabled = true; cfgBtn.textContent = 'Setting up...';
+        fetch('/api/oob/setup', {
+            method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({project_id: PID, mode: mode, port: port})
+        }).then(function(r){ return r.json(); }).then(function(data){
+            cfgBtn.disabled = false; cfgBtn.textContent = 'Configure & Verify';
+            if (data.error) {
+                if (statusText) { statusText.textContent = 'Setup failed: ' + data.error; statusText.parentElement.className = 'alert alert-danger py-1 px-2 small mb-1'; }
+                return;
+            }
+            if (data.public_ip && ipDisplay && ipEl) { ipDisplay.style.display = 'block'; ipEl.textContent = data.public_ip; }
+            if (statusText) statusText.textContent = 'Verifying reachability...';
+            return fetch('/api/oob/verify', {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({project_id: PID})
+            });
+        }).then(function(r){ return r ? r.json() : null; }).then(function(data){
+            if (!data) return;
+            if (data.reachable) {
+                if (statusText) { statusText.textContent = 'OOB server configured and verified'; statusText.parentElement.className = 'alert alert-success py-1 px-2 small mb-1'; }
+                if (tdBtn) tdBtn.style.display = 'inline-block';
+            } else {
+                var msg = 'Server started but NOT reachable: ' + (data.detail || 'Check firewall/port forwarding');
+                if (mode === 'public') msg += '. Ensure port ' + port + ' is forwarded to this server.';
+                if (statusText) { statusText.textContent = msg; statusText.parentElement.className = 'alert alert-warning py-1 px-2 small mb-1'; }
+                if (tdBtn) tdBtn.style.display = 'inline-block';
+            }
+        }).catch(function(err){
+            cfgBtn.disabled = false; cfgBtn.textContent = 'Configure & Verify';
+            if (statusText) { statusText.textContent = 'Error: ' + err.message; statusText.parentElement.className = 'alert alert-danger py-1 px-2 small mb-1'; }
+        });
+    });
+
+    if (tdBtn) {
+        tdBtn.addEventListener('click', function() {
+            fetch('/api/oob/teardown', {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({project_id: PID})
+            }).then(function(r){ return r.json(); }).then(function(){
+                var statusText = document.getElementById('se-oob-status-text');
+                if (statusText) { statusText.textContent = 'OOB server stopped'; statusText.parentElement.className = 'alert alert-secondary py-1 px-2 small mb-1'; }
+                tdBtn.style.display = 'none';
+                var ip = document.getElementById('se-oob-ip-display'); if (ip) ip.style.display = 'none';
+            }).catch(function(err){ toast('error', 'Teardown error: ' + err.message); });
         });
     }
 })();

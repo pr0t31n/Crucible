@@ -8,6 +8,7 @@ import re
 import hashlib
 import logging
 import uuid
+import base64
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -57,7 +58,7 @@ BURP_TITLE_MAP = {
     "LDAP injection":                                           "LDAP Injection",
     "XPath injection":                                          "XPath Injection",
     "XML external entity injection":                            "XML External Entity (XXE) Injection",
-    "XML injection":                                            "XML External Entity (XXE) Injection",
+    "XML injection":                                            "Injection: XML Injection (Structural)",
     "Server-side template injection":                           "Server-Side Template Injection (SSTI)",
     "Client-side template injection":                           "Cross-Site Scripting (XSS) — DOM-Based",
     "NoSQL injection":                                          "NoSQL Injection",
@@ -343,14 +344,33 @@ def _parse_issue(issue):
     if confidence:
         output_parts.append(f"Confidence: {confidence}")
 
+    # ── Extract full request/response (base64-decoded if encoded) ──
+    raw_request = ""
+    raw_response = ""
     rr = issue.find("requestresponse")
     if rr is not None:
         req_el = rr.find("request")
         if req_el is not None and req_el.text:
-            output_parts.append(f"Request (truncated):\n{req_el.text[:500]}")
+            if req_el.get("base64") == "true":
+                try:
+                    raw_request = base64.b64decode(req_el.text).decode(
+                        "utf-8", errors="replace")
+                except Exception:
+                    raw_request = req_el.text
+            else:
+                raw_request = req_el.text
+            output_parts.append(f"Request (truncated):\n{raw_request[:500]}")
         resp_el = rr.find("response")
         if resp_el is not None and resp_el.text:
-            output_parts.append(f"Response (truncated):\n{resp_el.text[:500]}")
+            if resp_el.get("base64") == "true":
+                try:
+                    raw_response = base64.b64decode(resp_el.text).decode(
+                        "utf-8", errors="replace")
+                except Exception:
+                    raw_response = resp_el.text
+            else:
+                raw_response = resp_el.text
+            output_parts.append(f"Response (truncated):\n{raw_response[:500]}")
 
     dedup_key = f"{normalized}|{host_url}|{port}|{path}"
 
@@ -374,6 +394,8 @@ def _parse_issue(issue):
         "serial": serial or "",
         "dedup_key": dedup_key,
         "service": "https" if port == 443 else "http",
+        "raw_request": raw_request,
+        "raw_response": raw_response,
     }
 
 
@@ -542,6 +564,7 @@ def build_findings(parsed_issues, selected_scope, selected_hosts, selected_dedup
             "catalogue_id": p["catalogue_id"],
             "confidence": p["confidence"],
             "imported": True,
+            "_dedup_key": dk,
         })
 
     return findings

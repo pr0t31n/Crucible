@@ -1504,6 +1504,9 @@
         })(),
         fracture_unauthenticated: !!(document.getElementById('frUnauthenticated') || {}).checked,
         fracture_no_browser_assist: !!(document.getElementById('frNoBrowserAssist') || {}).checked,
+        fracture_oob_local: !!(document.getElementById('fr-oob-local') || {}).checked,
+        fracture_oob_public: !!(document.getElementById('fr-oob-public') || {}).checked,
+        fracture_oob_port: parseInt((document.getElementById('fr-oob-port') || {}).value) || 9999,
         api_urls: textToArray('apiUrls'),
         api_specs: apiFiles.map(function(f){return f.name;}),
         siphon_roles: getRoles('si'),
@@ -1935,6 +1938,111 @@
 
   setupProxyButtons('fr', 'fracture');
   setupProxyButtons('si', 'siphon');
+
+  /* ── OOB Testing (FR) ────────────────────────────────── */
+  function oobConfigure() {
+    var isLocal = (document.getElementById('fr-oob-local') || {}).checked;
+    var isPublic = (document.getElementById('fr-oob-public') || {}).checked;
+    if (!isLocal && !isPublic) {
+      alert('Select Local or Public OOB mode first.');
+      return;
+    }
+    var mode = isPublic ? 'public' : 'local';
+    var port = parseInt((document.getElementById('fr-oob-port') || {}).value) || 9999;
+    var projectId = EDIT_MODE ? PROJECT_ID : 'wizard';
+    var statusEl = document.getElementById('fr-oob-status');
+    var statusText = document.getElementById('fr-oob-status-text');
+    var ipDisplay = document.getElementById('fr-oob-ip-display');
+    var ipEl = document.getElementById('fr-oob-detected-ip');
+    var teardownBtn = document.getElementById('fr-oob-teardown-btn');
+    if (statusEl) statusEl.style.display = 'block';
+    if (statusText) {
+      statusText.textContent = 'Setting up OOB server...';
+      statusText.parentElement.className = 'alert alert-info py-1 px-2 small mb-1';
+    }
+    fetch('/api/oob/setup', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_id: projectId, mode: mode, port: port})
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (data.error) {
+        if (statusText) {
+          statusText.textContent = 'Setup failed: ' + data.error;
+          statusText.parentElement.className = 'alert alert-danger py-1 px-2 small mb-1';
+        }
+        return;
+      }
+      if (data.public_ip && ipDisplay && ipEl) {
+        ipDisplay.style.display = 'block';
+        ipEl.textContent = data.public_ip;
+      }
+      if (statusText) statusText.textContent = 'Verifying reachability...';
+      return fetch('/api/oob/verify', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: projectId})
+      });
+    }).then(function(r){ return r ? r.json() : null; }).then(function(data){
+      if (!data) return;
+      if (data.reachable) {
+        if (statusText) {
+          statusText.textContent = 'OOB server configured and verified';
+          statusText.parentElement.className = 'alert alert-success py-1 px-2 small mb-1';
+        }
+        if (teardownBtn) teardownBtn.style.display = 'inline-block';
+      } else {
+        var msg = 'Server started but NOT reachable: ' + (data.detail || 'Check firewall/port forwarding');
+        if (mode === 'public') msg += '. Ensure port ' + port + ' is forwarded to this server.';
+        if (statusText) {
+          statusText.textContent = msg;
+          statusText.parentElement.className = 'alert alert-warning py-1 px-2 small mb-1';
+        }
+        if (teardownBtn) teardownBtn.style.display = 'inline-block';
+      }
+    }).catch(function(err){
+      if (statusText) {
+        statusText.textContent = 'Error: ' + err.message;
+        statusText.parentElement.className = 'alert alert-danger py-1 px-2 small mb-1';
+      }
+    });
+  }
+  window.oobConfigure = oobConfigure;
+
+  function oobTeardown() {
+    var projectId = EDIT_MODE ? PROJECT_ID : 'wizard';
+    fetch('/api/oob/teardown', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_id: projectId})
+    }).then(function(r){ return r.json(); }).then(function(){
+      var statusText = document.getElementById('fr-oob-status-text');
+      if (statusText) {
+        statusText.textContent = 'OOB server stopped';
+        statusText.parentElement.className = 'alert alert-secondary py-1 px-2 small mb-1';
+      }
+      var tb = document.getElementById('fr-oob-teardown-btn');
+      if (tb) tb.style.display = 'none';
+      var ip = document.getElementById('fr-oob-ip-display');
+      if (ip) ip.style.display = 'none';
+    }).catch(function(err){ alert('Teardown error: ' + err.message); });
+  }
+  window.oobTeardown = oobTeardown;
+
+  function oobCheckProxyState() {
+    var proxyAddr = (document.getElementById('frProxyAddr') || {}).value || '';
+    var localCb = document.getElementById('fr-oob-local');
+    if (localCb) {
+      if (proxyAddr.trim()) {
+        localCb.disabled = true; localCb.checked = false;
+        localCb.parentElement.title = 'Not available when proxy is active';
+      } else {
+        localCb.disabled = false;
+        localCb.parentElement.title = '';
+      }
+    }
+  }
+  var _frProxyAddrEl = document.getElementById('frProxyAddr');
+  if (_frProxyAddrEl) _frProxyAddrEl.addEventListener('input', oobCheckProxyState);
 
   /* ── Fingerprint Auth (FR only) ───────────────────────── */
   (function() {
