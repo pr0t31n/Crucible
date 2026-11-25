@@ -166,7 +166,7 @@ BURP_TITLE_MAP = {
     "Stack trace disclosed":                                    "Verbose Error Messages — Stack Trace Disclosed",
 
     # JavaScript / Client-Side
-    "Vulnerable JavaScript dependency":                         "Vulnerable Component: {pname} {version}",
+    "Vulnerable JavaScript dependency":                         "Vulnerable JavaScript Library: {pname} {version}",
     "JavaScript/CSS dependency served from untrusted domain":   "Cross-Domain Script Include",
     "Path-relative style sheet import":                         "Missing Subresource Integrity",
     "React Server Components RCE (React2Shell)":                "Command Injection (OS Command Injection)",
