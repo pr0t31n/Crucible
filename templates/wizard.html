@@ -408,6 +408,68 @@
           <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRoleRow('fr')">+ Add Role</button>
         </div>
 
+
+        <div style="margin-top:16px">
+          <span class="form-label">Proxy Settings</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Route all traffic through a SOCKS5 or HTTP proxy. Enable DNS-over-proxy to resolve internal hostnames on the proxy side.</span>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="frProxyType">Proxy Type</label>
+              <select id="frProxyType" class="form-control">
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+                <option value="socks4">SOCKS4</option>
+                <option value="socks5">SOCKS5</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="frProxyAddr">Proxy Address</label>
+              <input type="text" id="frProxyAddr" class="form-control" placeholder="host:port  (e.g. 192.168.1.100:1080)">
+            </div>
+            <div class="form-group form-grid-full">
+              <label class="form-check">
+                <input type="checkbox" id="frDnsOverProxy">
+                <span>DNS over Proxy <span class="form-hint">(resolve hostnames on the proxy side — required for internal names)</span></span>
+              </label>
+            </div>
+            <div class="form-group form-grid-full">
+              <div style="display:flex;gap:8px;align-items:center">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnFRConfirmProxy">Confirm Proxy</button>
+                <span class="form-hint" id="frProxyStatus"></span>
+              </div>
+            </div>
+            <div class="form-group form-grid-full" id="frProxyResultArea" hidden>
+              <div class="panel mt-8">
+                <div class="panel-header">
+                  <span class="panel-title" id="frProxyResultTitle">Proxy Test</span>
+                  <span id="frProxyResultBadge"></span>
+                </div>
+                <div class="panel-body">
+                  <pre id="frProxyResultBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                </div>
+              </div>
+            </div>
+            <div class="form-group form-grid-full" style="margin-top:8px">
+              <span class="form-label">Resolve URL through Proxy</span>
+              <div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+                <input type="text" id="frResolveUrl" class="form-control" placeholder="https://internal-app.corp.local" style="flex:1">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnFRResolveUrl" style="white-space:nowrap">Resolve URL</button>
+              </div>
+            </div>
+            <div class="form-group form-grid-full" id="frResolveResultArea" hidden>
+              <div class="panel mt-8">
+                <div class="panel-header">
+                  <span class="panel-title" id="frResolveResultTitle">URL Resolution</span>
+                  <span id="frResolveResultBadge"></span>
+                </div>
+                <div class="panel-body">
+                  <pre id="frResolveResultBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div style="margin-top:16px">
           <span class="form-label">Test Connection</span>
           <span class="form-hint" style="display:block;margin-bottom:8px;">Tests using the first role's credentials. On success, you can save the auth method for Fracture.</span>
@@ -520,6 +582,68 @@
           <span class="form-hint" style="display:block;margin-bottom:8px;">Add one entry per role. Siphon tests every API endpoint with each set of credentials and unauthenticated, comparing access across roles.</span>
           <div id="siRoleRows" style="display:flex;flex-direction:column;gap:6px"></div>
           <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addRoleRow('si')">+ Add Role</button>
+        </div>
+
+
+        <div style="margin-top:16px">
+          <span class="form-label">Proxy Settings</span>
+          <span class="form-hint" style="display:block;margin-bottom:8px;">Route all traffic through a SOCKS5 or HTTP proxy. Enable DNS-over-proxy to resolve internal hostnames on the proxy side.</span>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="siProxyType">Proxy Type</label>
+              <select id="siProxyType" class="form-control">
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+                <option value="socks4">SOCKS4</option>
+                <option value="socks5">SOCKS5</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="siProxyAddr">Proxy Address</label>
+              <input type="text" id="siProxyAddr" class="form-control" placeholder="host:port  (e.g. 192.168.1.100:1080)">
+            </div>
+            <div class="form-group form-grid-full">
+              <label class="form-check">
+                <input type="checkbox" id="siDnsOverProxy">
+                <span>DNS over Proxy <span class="form-hint">(resolve hostnames on the proxy side — required for internal names)</span></span>
+              </label>
+            </div>
+            <div class="form-group form-grid-full">
+              <div style="display:flex;gap:8px;align-items:center">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnSIConfirmProxy">Confirm Proxy</button>
+                <span class="form-hint" id="siProxyStatus"></span>
+              </div>
+            </div>
+            <div class="form-group form-grid-full" id="siProxyResultArea" hidden>
+              <div class="panel mt-8">
+                <div class="panel-header">
+                  <span class="panel-title" id="siProxyResultTitle">Proxy Test</span>
+                  <span id="siProxyResultBadge"></span>
+                </div>
+                <div class="panel-body">
+                  <pre id="siProxyResultBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                </div>
+              </div>
+            </div>
+            <div class="form-group form-grid-full" style="margin-top:8px">
+              <span class="form-label">Resolve URL through Proxy</span>
+              <div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+                <input type="text" id="siResolveUrl" class="form-control" placeholder="https://internal-app.corp.local" style="flex:1">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnSIResolveUrl" style="white-space:nowrap">Resolve URL</button>
+              </div>
+            </div>
+            <div class="form-group form-grid-full" id="siResolveResultArea" hidden>
+              <div class="panel mt-8">
+                <div class="panel-header">
+                  <span class="panel-title" id="siResolveResultTitle">URL Resolution</span>
+                  <span id="siResolveResultBadge"></span>
+                </div>
+                <div class="panel-body">
+                  <pre id="siResolveResultBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div style="margin-top:16px">

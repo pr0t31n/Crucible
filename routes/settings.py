@@ -522,7 +522,18 @@ def api_test_connection(tool_id):
 
     tc_config = {"url": target, "auth": auth_obj}
     if data.get("proxy"):
-        tc_config["proxy"] = data["proxy"]
+        # Build full proxy URL from components when available
+        try:
+            import sys as _sys
+            if "/opt/pr0t31n/shared" not in _sys.path:
+                _sys.path.insert(0, "/opt/pr0t31n/shared")
+            import pr0t31n_proxy as _pp
+            tc_config["proxy"] = _pp.build_proxy_url(
+                data["proxy"],
+                data.get("proxy_type", "http"),
+                data.get("dns_over_proxy", False))
+        except ImportError:
+            tc_config["proxy"] = data["proxy"]
     if data.get("timeout"):
         tc_config["timeout"] = data["timeout"]
     if data.get("no_verify") or not data.get("verify_ssl", True):
@@ -554,6 +565,212 @@ def api_test_connection(tool_id):
         return jsonify({"ok": False, "error": "Connection test timed out"})
     except Exception as e:
         return jsonify({"ok": False, "error": "Internal error"})
+
+
+
+@settings_bp.route("/api/test-proxy/<tool_id>", methods=["POST"])
+def api_test_proxy(tool_id):
+    """Test reachability of a configured proxy (SOCKS5 handshake or TCP connect)."""
+    data = request.get_json(silent=True) or {}
+    proxy_addr = (data.get("proxy") or "").strip()
+    proxy_type = data.get("proxy_type", "http")
+    dns_over = data.get("dns_over_proxy", False)
+
+    if not proxy_addr:
+        return jsonify({"ok": False, "error": "No proxy address provided"})
+
+    # Strip any scheme prefix and split host:port
+    addr = proxy_addr
+    for pfx in ("socks5h://", "socks5://", "socks4a://", "socks4://",
+                "https://", "http://"):
+        if addr.lower().startswith(pfx):
+            addr = addr[len(pfx):]
+            break
+    addr = addr.rstrip("/")
+    if ":" in addr:
+        host, port_str = addr.rsplit(":", 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            return jsonify({"ok": False, "error": f"Invalid port: {port_str}"})
+    else:
+        host = addr
+        port = 1080 if proxy_type.startswith("socks") else 8080
+
+    import socket
+    try:
+        sock = socket.create_connection((host, port), timeout=10)
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "message": f"Cannot connect to {host}:{port} — {e}",
+        })
+
+    # Protocol check
+    if proxy_type.startswith("socks5") or proxy_type == "socks5":
+        try:
+            sock.sendall(b"\x05\x01\x00")
+            resp = sock.recv(2)
+            sock.close()
+            if resp and resp[0:1] == b"\x05":
+                return jsonify({
+                    "ok": True,
+                    "message": (
+                        f"SOCKS5 proxy at {host}:{port} is reachable and "
+                        f"responds correctly.\n"
+                        f"Protocol: SOCKS5 (version byte 0x05)\n"
+                        f"DNS over proxy: {'enabled' if dns_over else 'disabled'}"
+                    ),
+                })
+            else:
+                return jsonify({
+                    "ok": False,
+                    "message": (
+                        f"Connected to {host}:{port} but got unexpected "
+                        f"SOCKS5 response: {resp.hex() if resp else '(empty)'}. "
+                        f"The server may not be a SOCKS5 proxy."
+                    ),
+                })
+        except Exception as e:
+            sock.close()
+            return jsonify({
+                "ok": False,
+                "message": f"Connected to {host}:{port} but SOCKS5 handshake failed: {e}",
+            })
+
+    elif proxy_type.startswith("socks4") or proxy_type == "socks4":
+        try:
+            sock.sendall(b"\x04\x01\x00\x50\x00\x00\x00\x01\x00")
+            resp = sock.recv(8)
+            sock.close()
+            if resp and len(resp) >= 2 and resp[1:2] == b"\x5a":
+                return jsonify({
+                    "ok": True,
+                    "message": (
+                        f"SOCKS4 proxy at {host}:{port} is reachable and "
+                        f"responds correctly (request granted)."
+                    ),
+                })
+            elif resp and len(resp) >= 2 and resp[1:2] == b"\x5b":
+                return jsonify({
+                    "ok": True,
+                    "message": (
+                        f"SOCKS4 proxy at {host}:{port} is reachable and "
+                        f"speaks SOCKS4 (test request rejected, which is "
+                        f"expected for a probe to a dummy target)."
+                    ),
+                })
+            else:
+                return jsonify({
+                    "ok": False,
+                    "message": (
+                        f"Connected to {host}:{port} but SOCKS4 response "
+                        f"not recognised: {resp.hex() if resp else '(empty)'}."
+                    ),
+                })
+        except Exception as e:
+            sock.close()
+            return jsonify({
+                "ok": False,
+                "message": f"Connected to {host}:{port} but SOCKS4 handshake failed: {e}",
+            })
+
+    else:
+        # HTTP/HTTPS proxy — just check TCP reachability
+        sock.close()
+        return jsonify({
+            "ok": True,
+            "message": (
+                f"HTTP proxy at {host}:{port} is reachable (TCP connect OK).\n"
+                f"Full HTTP CONNECT verification occurs during Test Connection."
+            ),
+        })
+
+
+@settings_bp.route("/api/resolve-url/<tool_id>", methods=["POST"])
+def api_resolve_url(tool_id):
+    """Resolve a URL through the configured proxy and report the IP/status."""
+    data = request.get_json(silent=True) or {}
+    proxy_addr = (data.get("proxy") or "").strip()
+    proxy_type = data.get("proxy_type", "http")
+    dns_over = data.get("dns_over_proxy", False)
+    target_url = (data.get("target_url") or "").strip()
+
+    if not proxy_addr:
+        return jsonify({"ok": False, "error": "No proxy address provided"})
+    if not target_url:
+        return jsonify({"ok": False, "error": "No target URL provided"})
+    if "://" not in target_url:
+        target_url = "https://" + target_url
+
+    # Build proxy URL
+    try:
+        import sys as _sys
+        if "/opt/pr0t31n/shared" not in _sys.path:
+            _sys.path.insert(0, "/opt/pr0t31n/shared")
+        import pr0t31n_proxy as _pp
+        proxy_url = _pp.build_proxy_url(proxy_addr, proxy_type, dns_over)
+    except ImportError:
+        proxy_url = proxy_addr if "://" in proxy_addr else f"http://{proxy_addr}"
+
+    import requests as _req
+    sess = _req.Session()
+    sess.verify = False
+    sess.proxies = {"http": proxy_url, "https": proxy_url}
+    sess.headers.update({"User-Agent": "Crucible/ProxyResolve"})
+
+    lines = []
+    lines.append(f"Proxy:      {proxy_url}")
+    lines.append(f"Target:     {target_url}")
+
+    try:
+        r = sess.head(target_url, timeout=15, allow_redirects=True)
+        # Try to get the resolved IP from the socket
+        resolved_ip = ""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(target_url)
+            hostname = parsed.hostname or ""
+            if hostname:
+                import socket
+                resolved_ip = socket.gethostbyname(hostname)
+        except Exception:
+            pass
+
+        # If using SOCKS with dns_over_proxy, the local resolve above
+        # would give us the local DNS answer, not the proxy's.
+        # We note this for the user.
+        if dns_over and proxy_type.startswith("socks"):
+            lines.append(f"Local DNS:  {resolved_ip or '(could not resolve locally)'}")
+            lines.append(f"NOTE: DNS resolved on proxy side (socks5h://)")
+            lines.append(f"The proxy reached the target successfully.")
+        else:
+            lines.append(f"Resolved:   {resolved_ip or '(unknown)'}")
+
+        lines.append(f"Status:     HTTP {r.status_code}")
+        lines.append(f"Server:     {r.headers.get('Server', '(not disclosed)')}")
+        if r.history:
+            lines.append(f"Redirected: {' → '.join(str(h.status_code) for h in r.history)} → {r.status_code}")
+            lines.append(f"Final URL:  {r.url}")
+
+        return jsonify({
+            "ok": True,
+            "output": "\n".join(lines),
+        })
+    except _req.exceptions.ProxyError as e:
+        lines.append(f"ERROR: Proxy error — {e}")
+        return jsonify({"ok": False, "output": "\n".join(lines)})
+    except _req.exceptions.ConnectionError as e:
+        lines.append(f"ERROR: Connection failed — {e}")
+        return jsonify({"ok": False, "output": "\n".join(lines)})
+    except _req.exceptions.Timeout:
+        lines.append("ERROR: Request timed out (15s)")
+        return jsonify({"ok": False, "output": "\n".join(lines)})
+    except Exception as e:
+        lines.append(f"ERROR: {e}")
+        return jsonify({"ok": False, "output": "\n".join(lines)})
+    finally:
+        sess.close()
 
 
 @settings_bp.route("/api/fingerprint-auth", methods=["POST"])

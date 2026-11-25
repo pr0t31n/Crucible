@@ -851,6 +851,42 @@
             </div>
           </form>
 
+
+          <!-- Proxy Verification — Fracture / Siphon only -->
+          <div id="settingsProxyVerify" class="panel mt-16" hidden>
+            <div class="panel-header">
+              <span class="panel-title">Proxy Verification</span>
+            </div>
+            <div class="panel-body">
+              <p class="text-muted text-sm mb-8">Test proxy reachability and DNS resolution through the proxy.</p>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+                <button type="button" class="btn btn-xs btn-primary" id="btnSettingsConfirmProxy">Confirm Proxy</button>
+                <span class="form-hint" id="settingsProxyStatus"></span>
+              </div>
+              <div id="settingsProxyResult" hidden style="margin-bottom:12px">
+                <div class="flex gap-8 mb-4" style="align-items:center">
+                  <span class="font-medium">Proxy Test</span>
+                  <span id="settingsProxyBadge"></span>
+                </div>
+                <pre id="settingsProxyBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+              </div>
+              <div style="margin-top:8px">
+                <span class="form-label text-sm">Resolve URL through Proxy</span>
+                <div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+                  <input type="text" id="settingsResolveUrl" class="form-control" placeholder="https://internal-app.corp.local" style="flex:1;font-size:0.85rem">
+                  <button type="button" class="btn btn-xs btn-secondary" id="btnSettingsResolveUrl" style="white-space:nowrap">Resolve URL</button>
+                </div>
+              </div>
+              <div id="settingsResolveResult" hidden style="margin-top:8px">
+                <div class="flex gap-8 mb-4" style="align-items:center">
+                  <span class="font-medium">URL Resolution</span>
+                  <span id="settingsResolveBadge"></span>
+                </div>
+                <pre id="settingsResolveBody" style="max-height:160px;overflow:auto;font-size:0.78rem;margin:0"></pre>
+              </div>
+            </div>
+          </div>
+
           <!-- Test Connection — Fracture / Siphon only -->
           <div id="settingsTestConn" class="panel mt-16" hidden>
             <div class="panel-header">

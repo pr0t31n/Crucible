@@ -13422,6 +13422,12 @@ var STC_TOOLS = new Set(['fracture', 'siphon', 'nessus']);
 function updateSettingsTestConn() {
     var panel = document.getElementById('settingsTestConn');
     panel.hidden = !settingsActiveTool || !STC_TOOLS.has(settingsActiveTool);
+    var proxyPanel = document.getElementById('settingsProxyVerify');
+    if (proxyPanel) {
+        var PROXY_TOOLS = new Set(['fracture', 'siphon']);
+        proxyPanel.hidden = !settingsActiveTool || !PROXY_TOOLS.has(settingsActiveTool);
+    }
+    _updateSettingsDisableState();
     document.getElementById('settingsTestConnResult').hidden = true;
     document.getElementById('stcFingerprintArea').hidden = true;
     document.getElementById('btnStcFingerprint').disabled = true;
@@ -13432,6 +13438,104 @@ function updateSettingsTestConn() {
     var stcSt = document.getElementById('stcSaveStatus');
     if (stcSt) stcSt.textContent = '';
 }
+
+
+/* ── Settings proxy disable-on-running ─────────────────────────────── */
+function _updateSettingsDisableState() {
+    var PROXY_TOOLS = new Set(['fracture', 'siphon']);
+    if (!settingsActiveTool || !PROXY_TOOLS.has(settingsActiveTool)) return;
+    var st = toolStatuses[settingsActiveTool] || {};
+    var running = st.status === 'running' || st.status === 'queued';
+    var proxyFields = ['proxy', 'proxy_type', 'dns_over_proxy'];
+    proxyFields.forEach(function(name) {
+        var el = document.querySelector('#settingsFields [name="' + name + '"], #settingsAdvancedFields [name="' + name + '"]');
+        if (el) el.disabled = running;
+    });
+    var cpBtn = document.getElementById('btnSettingsConfirmProxy');
+    var ruBtn = document.getElementById('btnSettingsResolveUrl');
+    if (cpBtn) cpBtn.disabled = running;
+    if (ruBtn) ruBtn.disabled = running;
+}
+
+/* ── Settings proxy verification handlers ──────────────────────────── */
+(function() {
+    function _getProxyFormData() {
+        var proxy = '', proxy_type = 'http', dns_over = false;
+        var proxyEl = document.querySelector('#settingsFields [name="proxy"], #settingsAdvancedFields [name="proxy"]');
+        var typeEl  = document.querySelector('#settingsFields [name="proxy_type"], #settingsAdvancedFields [name="proxy_type"]');
+        var dnsEl   = document.querySelector('#settingsFields [name="dns_over_proxy"], #settingsAdvancedFields [name="dns_over_proxy"]');
+        if (proxyEl) proxy = proxyEl.value.trim();
+        if (typeEl)  proxy_type = typeEl.value;
+        if (dnsEl)   dns_over = dnsEl.checked;
+        return {proxy: proxy, proxy_type: proxy_type, dns_over_proxy: dns_over};
+    }
+
+    var cpBtn = document.getElementById('btnSettingsConfirmProxy');
+    if (cpBtn) {
+        cpBtn.addEventListener('click', function() {
+            var p = _getProxyFormData();
+            if (!p.proxy) { toast('error', 'Enter a proxy address in the settings above.'); return; }
+            cpBtn.disabled = true; cpBtn.textContent = 'Testing...';
+            var statusEl = document.getElementById('settingsProxyStatus');
+            if (statusEl) statusEl.textContent = '';
+            fetch('/api/test-proxy/' + settingsActiveTool, {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(p)
+            }).then(function(r){ return r.json(); }).then(function(d){
+                cpBtn.disabled = false; cpBtn.textContent = 'Confirm Proxy';
+                var area = document.getElementById('settingsProxyResult');
+                var badge = document.getElementById('settingsProxyBadge');
+                var body = document.getElementById('settingsProxyBody');
+                if (area) area.hidden = false;
+                if (badge) {
+                    badge.className = '';
+                    badge.innerHTML = d.ok
+                        ? '<span class="status-badge" style="background:var(--status-success);color:#fff">OK</span>'
+                        : '<span class="status-badge" style="background:var(--status-error);color:#fff">FAIL</span>';
+                }
+                if (body) body.textContent = d.message || d.error || '';
+                if (statusEl) statusEl.textContent = d.ok ? 'Proxy OK' : 'Proxy test failed';
+            }).catch(function(e){
+                cpBtn.disabled = false; cpBtn.textContent = 'Confirm Proxy';
+                if (statusEl) statusEl.textContent = 'Request failed';
+            });
+        });
+    }
+
+    var ruBtn = document.getElementById('btnSettingsResolveUrl');
+    if (ruBtn) {
+        ruBtn.addEventListener('click', function() {
+            var p = _getProxyFormData();
+            var urlEl = document.getElementById('settingsResolveUrl');
+            var targetUrl = urlEl ? urlEl.value.trim() : '';
+            if (!p.proxy) { toast('error', 'Enter a proxy address in the settings above.'); return; }
+            if (!targetUrl) { toast('error', 'Enter a URL to resolve.'); return; }
+            p.target_url = targetUrl;
+            ruBtn.disabled = true; ruBtn.textContent = 'Resolving...';
+            fetch('/api/resolve-url/' + settingsActiveTool, {
+                method: 'POST', credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(p)
+            }).then(function(r){ return r.json(); }).then(function(d){
+                ruBtn.disabled = false; ruBtn.textContent = 'Resolve URL';
+                var area = document.getElementById('settingsResolveResult');
+                var badge = document.getElementById('settingsResolveBadge');
+                var body = document.getElementById('settingsResolveBody');
+                if (area) area.hidden = false;
+                if (badge) {
+                    badge.className = '';
+                    badge.innerHTML = d.ok
+                        ? '<span class="status-badge" style="background:var(--status-success);color:#fff">OK</span>'
+                        : '<span class="status-badge" style="background:var(--status-error);color:#fff">FAIL</span>';
+                }
+                if (body) body.textContent = d.output || d.error || '';
+            }).catch(function(e){
+                ruBtn.disabled = false; ruBtn.textContent = 'Resolve URL';
+            });
+        });
+    }
+})();
 
 var _origLoadToolSettings = loadToolSettings;
 loadToolSettings = function(tid) {
@@ -13562,11 +13666,16 @@ document.getElementById('btnSettingsTestConn').addEventListener('click', functio
         return;
     }
 
+    var proxy_addr = formData.proxy || '';
+    var proxy_type = formData.proxy_type || 'http';
+    var dns_over = !!formData.dns_over_proxy;
     var payload = {
         target: target,
         auth: formData.auth || {},
         verify_ssl: formData.verify_ssl,
-        proxy: formData.proxy || '',
+        proxy: proxy_addr,
+        proxy_type: proxy_type,
+        dns_over_proxy: dns_over,
         timeout: formData.timeout || 30,
         probe: true
     };

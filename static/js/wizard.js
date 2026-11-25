@@ -1794,7 +1794,7 @@
         fetch('/api/test-connection/' + toolId, {
           method:'POST',credentials:'same-origin',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({target:target,auth:authPayload})
+          body:JSON.stringify({target:target,auth:authPayload,proxy:(document.getElementById(prefix+'ProxyAddr')||{}).value||'',proxy_type:(document.getElementById(prefix+'ProxyType')||{}).value||'http',dns_over_proxy:!!(document.getElementById(prefix+'DnsOverProxy')||{}).checked})
         })
         .then(function(r){return r.json();})
         .then(function(d) {
@@ -1854,6 +1854,87 @@
 
   setupTestConn('fr', 'fracture');
   setupTestConn('si', 'siphon');
+
+  /* ── Proxy Test & Resolve (FR + SI) ──────────────────── */
+  function setupProxyButtons(prefix, toolId) {
+    var confirmBtn  = document.getElementById('btn' + prefix.toUpperCase() + 'ConfirmProxy');
+    var resolveBtn  = document.getElementById('btn' + prefix.toUpperCase() + 'ResolveUrl');
+    if (!confirmBtn && !resolveBtn) return;
+
+    function proxyPayload() {
+      return {
+        proxy:          (document.getElementById(prefix + 'ProxyAddr') || {}).value || '',
+        proxy_type:     (document.getElementById(prefix + 'ProxyType') || {}).value || 'http',
+        dns_over_proxy: !!(document.getElementById(prefix + 'DnsOverProxy') || {}).checked,
+      };
+    }
+
+    function showResult(areaId, titleId, badgeId, bodyId, ok, text) {
+      var area  = document.getElementById(areaId);
+      var badge = document.getElementById(badgeId);
+      var body  = document.getElementById(bodyId);
+      if (area) area.hidden = false;
+      if (badge) {
+        badge.className = ok ? 'badge badge-success' : 'badge badge-danger';
+        badge.textContent = ok ? 'OK' : 'FAIL';
+      }
+      if (body) body.textContent = text;
+    }
+
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function() {
+        var p = proxyPayload();
+        if (!p.proxy) { alert('Enter a proxy address (host:port).'); return; }
+        confirmBtn.disabled = true; confirmBtn.textContent = 'Testing...';
+        var statusEl = document.getElementById(prefix + 'ProxyStatus');
+        if (statusEl) statusEl.textContent = '';
+        fetch('/api/test-proxy/' + toolId, {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(p)
+        }).then(function(r){ return r.json(); }).then(function(d){
+          confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Proxy';
+          var msg = d.message || d.error || 'Unknown result';
+          showResult(prefix+'ProxyResultArea', prefix+'ProxyResultTitle',
+                     prefix+'ProxyResultBadge', prefix+'ProxyResultBody', d.ok, msg);
+          if (statusEl) statusEl.textContent = d.ok ? 'Proxy OK' : 'Proxy test failed';
+        }).catch(function(e){
+          confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Proxy';
+          showResult(prefix+'ProxyResultArea', prefix+'ProxyResultTitle',
+                     prefix+'ProxyResultBadge', prefix+'ProxyResultBody', false, 'Request failed: ' + e);
+        });
+      });
+    }
+
+    if (resolveBtn) {
+      resolveBtn.addEventListener('click', function() {
+        var p = proxyPayload();
+        var urlEl = document.getElementById(prefix + 'ResolveUrl');
+        var targetUrl = urlEl ? urlEl.value.trim() : '';
+        if (!p.proxy) { alert('Enter a proxy address first.'); return; }
+        if (!targetUrl) { alert('Enter a URL to resolve.'); return; }
+        p.target_url = targetUrl;
+        resolveBtn.disabled = true; resolveBtn.textContent = 'Resolving...';
+        fetch('/api/resolve-url/' + toolId, {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(p)
+        }).then(function(r){ return r.json(); }).then(function(d){
+          resolveBtn.disabled = false; resolveBtn.textContent = 'Resolve URL';
+          var msg = d.output || d.error || 'No output';
+          showResult(prefix+'ResolveResultArea', prefix+'ResolveResultTitle',
+                     prefix+'ResolveResultBadge', prefix+'ResolveResultBody', d.ok, msg);
+        }).catch(function(e){
+          resolveBtn.disabled = false; resolveBtn.textContent = 'Resolve URL';
+          showResult(prefix+'ResolveResultArea', prefix+'ResolveResultTitle',
+                     prefix+'ResolveResultBadge', prefix+'ResolveResultBody', false, 'Request failed: ' + e);
+        });
+      });
+    }
+  }
+
+  setupProxyButtons('fr', 'fracture');
+  setupProxyButtons('si', 'siphon');
 
   /* ── Fingerprint Auth (FR only) ───────────────────────── */
   (function() {
