@@ -489,11 +489,15 @@ def _write_default_settings(project_dir, tools, form_data=None,
     from adapters import get_adapter
     scope_def = (form_data or {}).get("scope_definition", {})
     meta = form_data or {}
+    _tool_dirs = tool_dirs or {}
     for tool_id in tools:
         prefix = TOOL_SETTINGS_PREFIX.get(tool_id)
         if not prefix:
             continue
-        settings_file = project_dir / f"{prefix}_settings.json"
+        _td = _tool_dirs.get(tool_id)
+        _base = Path(_td) if _td else project_dir
+        _base.mkdir(parents=True, exist_ok=True)
+        settings_file = _base / f"{prefix}_settings.json"
         existing = {}
         if settings_file.exists():
             try:
@@ -505,7 +509,7 @@ def _write_default_settings(project_dir, tools, form_data=None,
         settings = dict(defaults)
         _populate_tool_settings(tool_id, settings, meta, scope_def,
                                 str(project_dir),
-                                tool_dirs=tool_dirs or {},
+                                tool_dirs=_tool_dirs,
                                 scope_tool_dirs=scope_tool_dirs or {})
         tool_data = adapter.to_tool_format(settings) if adapter else settings
         _deep_merge_settings(existing, tool_data)
