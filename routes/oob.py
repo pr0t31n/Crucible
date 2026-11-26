@@ -39,7 +39,8 @@ def api_oob_setup():
     if not project_id:
         return jsonify({"error": "project_id required"}), 400
 
-    require_project(project_id)
+    if project_id != "wizard":
+        require_project(project_id)
 
     mode = data.get("mode", "local")
     if mode not in ("local", "public"):
@@ -76,8 +77,10 @@ def api_oob_verify():
         return jsonify({"error": "No OOB server running for project"}), 404
 
     proxy_settings = None
-    project = require_project(project_id)
-    proj_dir = project.get("project_dir", "")
+    project = None
+    if project_id != "wizard":
+        project = require_project(project_id)
+    proj_dir = (project or {}).get("project_dir", "")
     if proj_dir:
         try:
             from models.settings import load_settings
