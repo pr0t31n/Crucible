@@ -173,19 +173,29 @@ def _empty_page(page=1):
 def _inject_scope_stubs(project, target_map):
     """Add empty entries for scope targets missing from *target_map*.
 
-    *target_map* is keyed by hostname (structure_map, access_matrix).
-    Targets in the scope_definition whose hostname is absent get a stub
-    so every Intelligence tab shows all configured targets.
+    *target_map* is keyed by hostname OR full URL (structure_map,
+    access_matrix).  Targets in the scope_definition whose hostname is
+    absent (checking both bare hostname keys and hostnames extracted
+    from URL keys) get a stub so every Intelligence tab shows all
+    configured targets.
     """
     sd = (project.get("scope_definition") or {})
     scope_urls = sd.get("target_urls") or sd.get("api_urls") or []
     if not scope_urls:
         return
     from urllib.parse import urlparse
+    existing_hosts = set()
+    for k in target_map:
+        try:
+            h = urlparse(k).hostname if "://" in k else k
+            if h:
+                existing_hosts.add(h.lower())
+        except Exception:
+            pass
     for u in scope_urls:
         try:
             host = urlparse(u).hostname or ""
-            if host and host not in target_map:
+            if host and host.lower() not in existing_hosts:
                 target_map[host] = {"_stub": True}
         except Exception:
             pass

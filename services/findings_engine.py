@@ -339,6 +339,7 @@ class FindingsEngine:
                 else:
                     entries = raw
                 exact = {}
+                aliases = {}
                 prefixes = []
                 for entry in entries:
                     title = entry.get("title", "")
@@ -348,7 +349,11 @@ class FindingsEngine:
                             prefixes.append((prefix, entry))
                     else:
                         exact[title] = entry
-                self._catalogues[tid] = {"exact": exact, "prefixes": prefixes}
+                    for alias in entry.get("aliases", []):
+                        if alias and alias not in exact:
+                            aliases[alias] = entry
+                self._catalogues[tid] = {"exact": exact, "prefixes": prefixes,
+                                         "aliases": aliases}
             except Exception:
                 log.exception("Failed to load catalogue for %s", tid)
         master_path = Path("/opt/pr0t31n/shared/master_findings_catalogue.json")
@@ -1128,13 +1133,12 @@ class FindingsEngine:
             for f in cached:
                 if f.get("id") == finding_id:
                     return f, cached
-        if not cached:
-            self._load_all_from_db(project_id, project)
-            with self._lock:
-                cached = self._cache.get(project_id, [])
-            for f in cached:
-                if f.get("id") == finding_id:
-                    return f, cached
+        self._load_all_from_db(project_id, project)
+        with self._lock:
+            cached = self._cache.get(project_id, [])
+        for f in cached:
+            if f.get("id") == finding_id:
+                return f, cached
         return None, cached
 
     def mark_fp(self, project_id, project, finding_id):
