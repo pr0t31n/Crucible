@@ -2164,26 +2164,18 @@ def api_intel_v2_auth_view(project_id):
         stp = _scope_tool_params(_get_db(project) or idb)
         result = idb.query_auth_view(scope_id=stp.get("scope_id"))
         # Supplement: ensure every scope target appears in auth_status
-        auth_list = result.get("auth_status") or []
+        # query_auth_view returns {url: [entries]} dict, not a list
+        auth_map = result.get("auth_status") or {}
         sd = (project.get("scope_definition") or {})
         scope_urls = sd.get("target_urls") or sd.get("api_urls") or []
-        if scope_urls:
-            existing = {(e.get("target_url") or "").rstrip("/") for e in auth_list}
+        if scope_urls and isinstance(auth_map, dict):
+            existing = {k.rstrip("/") for k in auth_map}
             from urllib.parse import urlparse
             for u in scope_urls:
                 normed = u.rstrip("/")
                 if normed not in existing:
-                    try:
-                        _up = urlparse(u)
-                        auth_list.append({
-                            "target_url": u,
-                            "hostname": _up.hostname or "",
-                            "sessions": [],
-                            "_stub": True,
-                        })
-                    except Exception:
-                        pass
-            result["auth_status"] = auth_list
+                    auth_map[u] = []
+            result["auth_status"] = auth_map
         return jsonify(result)
     except Exception as e:
         return _err_500(e)

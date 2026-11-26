@@ -149,6 +149,8 @@ tabNav.addEventListener('click', function(e) {
     if (tab === 'attack-surface' && typeof window._initAttackSurface === 'function') window._initAttackSurface();
     if (tab === 'ai-surface' && typeof window._initAiSurface === 'function') window._initAiSurface();
     if (tab === 'sessions' && !_sessState._loaded) loadSessions();
+    if (tab === 'credentials' && typeof window._initCredentials === 'function') window._initCredentials();
+    if (tab === 'pwned' && typeof window._initPwned === 'function') window._initPwned();
 });
 
 
@@ -651,10 +653,26 @@ socket.on('tool_port', function(data) {
 });
 
 /* ── tool_intel: intelligence data (survey APs, etc.) ──────────── */
+var _intelRefreshPending = null;
 socket.on('tool_intel', function(d) {
     if (d.project_id !== PID) return;
     if (d.type === 'survey_ap' && _activeIntelPanel === 'survey') {
         _updateSurveyApRow(d);
+    }
+    var _intelAutoRefresh = {
+        'auth_session': 'auth', 'auth_cookie': 'auth',
+        'cookie': 'cookies',
+        'software': 'webapp-intel', 'dns_record': 'domain-intel',
+        'certificate': 'osint-certs', 'webapp': 'webapp-intel',
+        'access_matrix': 'access', 'structure_map': 'structure',
+    };
+    var matchPanel = _intelAutoRefresh[d.type];
+    if (matchPanel && _activeIntelPanel === matchPanel) {
+        if (_intelRefreshPending) clearTimeout(_intelRefreshPending);
+        _intelRefreshPending = setTimeout(function() {
+            _intelRefreshPending = null;
+            _refreshActiveIntel();
+        }, 1500);
     }
 });
 
@@ -2487,7 +2505,8 @@ function renderFindingsTable() {
                         ? '<button class="btn btn-xs btn-ghost" data-action="recover" data-idx="' + globalIdx + '" title="Recover from False Positive" style="color:var(--success)">Recover</button>'
                         : '<button class="btn btn-xs btn-ghost" data-action="fp" data-idx="' + globalIdx + '" title="Mark as False Positive">FP</button>' +
                           '<button class="btn btn-xs btn-ghost" data-action="risk" data-idx="' + globalIdx + '" title="Override Risk">R</button>' +
-                          '<button class="btn btn-xs btn-ghost" data-action="notes" data-idx="' + globalIdx + '" title="Notes">N</button>'
+                          '<button class="btn btn-xs btn-ghost" data-action="notes" data-idx="' + globalIdx + '" title="Notes">N</button>' +
+                          ((f.repro_tool || f.repro_cli || f.repro_python || f.reproduction || f.command) ? '<button class="btn btn-xs btn-ghost" data-action="reproduce" data-idx="' + globalIdx + '" title="Reproduction Commands" style="color:var(--accent)">&#x21BB;</button>' : '')
                     ) +
                 '</div>' +
             '</td>';
@@ -2923,6 +2942,7 @@ document.getElementById('findingsTableBody').addEventListener('click', function(
         else if (action === 'risk') openRiskOverride(finding);
         else if (action === 'notes') openNotesModal(finding);
         else if (action === 'evidence') openEvidenceViewer(finding);
+        else if (action === 'reproduce') openReproduceModal(finding);
         return;
     }
 
@@ -3071,7 +3091,46 @@ function openFindingDetail(f) {
     }
 
     if (f.output) html += _detailPre('Output', f.output);
-    if (f.command) html += '<div class="mb-8"><span class="form-label">Command</span><pre style="margin-top:4px">' + esc(f.command) + '</pre></div>';
+    if (f.command) {
+        var _ctLabel = {'tool':'Tool Command','system':'System Command','python':'Python Script'}[f.command_type] || 'Command';
+        html += '<div class="mb-8"><span class="form-label">' + esc(_ctLabel) + '</span>';
+        if (f.command_type) html += ' <span class="badge badge-sm" style="vertical-align:middle;font-size:0.68rem">' + esc(f.command_type) + '</span>';
+        html += '<div style="position:relative;margin-top:4px"><pre style="margin:0;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding-right:40px">' + esc(f.command) + '</pre>';
+        html += '<button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:4px;right:4px" data-repro-copy="' + esc(f.command).replace(/"/g,'&quot;') + '" title="Copy">Copy</button></div>';
+        html += '</div>';
+    }
+
+    if (f.repro_tool || f.repro_cli || f.repro_python || f.reproduction || (f.command && !f.command_type)) {
+        html += '<details class="mb-8"><summary style="cursor:pointer;font-weight:600;margin-bottom:8px">Reproduction Commands</summary>';
+        var _repro = f.reproduction || {};
+        var _rToolCmd = f.repro_tool || _repro.tool_cmd || (!f.command_type ? f.command : '') || '';
+        var _rSysCmd = f.repro_cli || _repro.system_cmd || '';
+        var _rPython = f.repro_python || _repro.python_script || '';
+        html += '<div class="repro-tabs" style="display:flex;gap:4px;margin-bottom:8px">';
+        html += '<button class="btn btn-xs repro-tab-btn active" data-repro-tab="tool">Tool Command</button>';
+        html += '<button class="btn btn-xs repro-tab-btn" data-repro-tab="system">System Command</button>';
+        html += '<button class="btn btn-xs repro-tab-btn" data-repro-tab="python">Python Script</button>';
+        html += '</div>';
+        html += '<div class="repro-tab-content" data-repro-tab="tool">';
+        if (_rToolCmd) {
+            html += '<div style="position:relative"><pre style="margin:0;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding-right:40px">' + esc(_rToolCmd) + '</pre>';
+            html += '<button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:4px;right:4px" data-repro-copy="' + esc(_rToolCmd).replace(/"/g,'&quot;') + '" title="Copy">Copy</button></div>';
+        } else { html += '<span class="text-sm text-secondary">Not available for this finding type</span>'; }
+        html += '</div>';
+        html += '<div class="repro-tab-content" data-repro-tab="system" hidden>';
+        if (_rSysCmd) {
+            html += '<div style="position:relative"><pre style="margin:0;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding-right:40px">' + esc(_rSysCmd) + '</pre>';
+            html += '<button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:4px;right:4px" data-repro-copy="' + esc(_rSysCmd).replace(/"/g,'&quot;') + '" title="Copy">Copy</button></div>';
+        } else { html += '<span class="text-sm text-secondary">Not available for this finding type</span>'; }
+        html += '</div>';
+        html += '<div class="repro-tab-content" data-repro-tab="python" hidden>';
+        if (_rPython) {
+            html += '<div style="position:relative"><pre style="margin:0;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding-right:40px">' + esc(_rPython) + '</pre>';
+            html += '<button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:4px;right:4px" data-repro-copy="' + esc(_rPython).replace(/"/g,'&quot;') + '" title="Copy">Copy</button></div>';
+        } else { html += '<span class="text-sm text-secondary">Not available for this finding type</span>'; }
+        html += '</div>';
+        html += '</details>';
+    }
 
     if (f.exploit_details && f.exploit_details.length) {
         html += '<details class="mb-8"><summary style="cursor:pointer;font-weight:600;margin-bottom:8px">Exploit Details (' + f.exploit_details.length + ')</summary>';
@@ -3217,6 +3276,58 @@ function _doEvidenceUpload(findingId, files) {
 window.closeFindingDetail = function() {
     document.getElementById('findingDetailModal').classList.remove('open');
 };
+
+/* ── Reproduction Commands modal ─────────────────────────────── */
+function openReproduceModal(f) {
+    if (!f) return;
+    var repro = f.reproduction || {};
+    var ct = f.command_type || '';
+    var toolCmd = '', sysCmd = '', pyScript = '';
+    if (ct === 'tool') toolCmd = f.command || '';
+    else if (ct === 'system') sysCmd = f.command || '';
+    else if (ct === 'python') pyScript = f.command || '';
+    else toolCmd = f.command || '';
+    toolCmd = toolCmd || f.repro_tool || repro.tool_cmd || '';
+    sysCmd = sysCmd || f.repro_cli || repro.system_cmd || '';
+    pyScript = pyScript || f.repro_python || repro.python_script || '';
+    var activeTab = ct === 'system' ? 'system' : ct === 'python' ? 'python' : 'tool';
+    document.getElementById('reproTitle').textContent = 'Reproduce: ' + (f.title || 'Finding');
+    document.getElementById('reproToolCmd').textContent = toolCmd || 'Not available for this finding type';
+    document.getElementById('reproSysCmd').textContent = sysCmd || 'Not available for this finding type';
+    document.getElementById('reproPython').textContent = pyScript || 'Not available for this finding type';
+    document.getElementById('reproToolCmd').parentElement.querySelector('.repro-copy-btn').hidden = !toolCmd;
+    document.getElementById('reproSysCmd').parentElement.querySelector('.repro-copy-btn').hidden = !sysCmd;
+    document.getElementById('reproPython').parentElement.querySelector('.repro-copy-btn').hidden = !pyScript;
+    document.querySelectorAll('#reproModal .repro-tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-repro-tab') === activeTab); });
+    document.querySelectorAll('#reproModal .repro-tab-pane').forEach(function(p) { p.hidden = p.getAttribute('data-repro-tab') !== activeTab; });
+    document.getElementById('reproModal').classList.add('open');
+}
+window.closeReproModal = function() {
+    document.getElementById('reproModal').classList.remove('open');
+};
+document.addEventListener('click', function(e) {
+    var tabBtn = e.target.closest('.repro-tab-btn');
+    if (tabBtn) {
+        var modal = tabBtn.closest('.modal-box') || tabBtn.closest('details');
+        if (!modal) return;
+        var tabId = tabBtn.getAttribute('data-repro-tab');
+        modal.querySelectorAll('.repro-tab-btn').forEach(function(b) { b.classList.toggle('active', b === tabBtn); });
+        modal.querySelectorAll('.repro-tab-pane, .repro-tab-content').forEach(function(p) { p.hidden = p.getAttribute('data-repro-tab') !== tabId; });
+        return;
+    }
+    var copyBtn = e.target.closest('.repro-copy-btn');
+    if (copyBtn) {
+        var txt = copyBtn.getAttribute('data-repro-copy') || '';
+        if (!txt) {
+            var pre = copyBtn.parentElement.querySelector('pre');
+            if (pre) txt = pre.textContent;
+        }
+        if (txt) {
+            try { navigator.clipboard.writeText(txt).then(function() { copyBtn.textContent = 'Copied!'; setTimeout(function(){ copyBtn.textContent = 'Copy'; }, 1500); }); }
+            catch(_e) { copyBtn.textContent = 'Failed'; setTimeout(function(){ copyBtn.textContent = 'Copy'; }, 1500); }
+        }
+    }
+});
 
 /* ── Evidence viewer ─────────────────────────────────────────── */
 var _evFiles = [];
@@ -12395,8 +12506,7 @@ function renderSettingsFields(container, settings, schema) {
         }
         if (!settings.hasOwnProperty(key) && fieldSchema.type !== 'ssid_scan') continue;
         var val = settings[key];
-        var _objectPassTypes = {'phase_toggles':1, 'auth_config':1, 'auth_matrix':1, 'per_target_auth_table':1};
-        if (val !== null && typeof val === 'object' && !Array.isArray(val) && !_objectPassTypes[fieldSchema.type]) continue;
+        if (val !== null && typeof val === 'object' && !Array.isArray(val) && fieldSchema.type !== 'phase_toggles' && fieldSchema.type !== 'auth_config' && fieldSchema.type !== 'auth_matrix' && fieldSchema.type !== 'per_target_auth_table') continue;
         var label = fieldSchema.label || key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
         var type = fieldSchema.type || (typeof val === 'boolean' ? 'checkbox' : typeof val === 'number' ? 'number' : 'text');
 
