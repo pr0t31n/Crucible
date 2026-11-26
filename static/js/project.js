@@ -12395,7 +12395,8 @@ function renderSettingsFields(container, settings, schema) {
         }
         if (!settings.hasOwnProperty(key) && fieldSchema.type !== 'ssid_scan') continue;
         var val = settings[key];
-        if (val !== null && typeof val === 'object' && !Array.isArray(val) && fieldSchema.type !== 'phase_toggles') continue;
+        var _objectPassTypes = {'phase_toggles':1, 'auth_config':1, 'auth_matrix':1, 'per_target_auth_table':1};
+        if (val !== null && typeof val === 'object' && !Array.isArray(val) && !_objectPassTypes[fieldSchema.type]) continue;
         var label = fieldSchema.label || key.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
         var type = fieldSchema.type || (typeof val === 'boolean' ? 'checkbox' : typeof val === 'number' ? 'number' : 'text');
 
@@ -12737,6 +12738,72 @@ function renderSettingsFields(container, settings, schema) {
                     });
                 }
             })(key);
+        } else if (type === 'auth_config') {
+            var authObj = (typeof val === 'object' && val && !Array.isArray(val)) ? val : {};
+            group.className += ' form-grid-full';
+            var aEnabled = authObj.enabled || false;
+            var aMethod = authObj.method || 'auto';
+            var aUser = authObj.username || '';
+            var aLoginUrl = authObj.login_url || '';
+            var ahHtml = '<label class="form-label">' + esc(label) + '</label>';
+            ahHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font-size:0.85rem">';
+            ahHtml += '<label style="font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="stg_auth_enabled"' + (aEnabled ? ' checked' : '') + '> Enabled</label>';
+            ahHtml += '<span>Method: <strong>' + esc(aMethod) + '</strong></span>';
+            if (aUser) ahHtml += '<span>User: <strong>' + esc(aUser) + '</strong></span>';
+            if (aLoginUrl) ahHtml += '<span>Login: <strong>' + esc(aLoginUrl.length > 40 ? aLoginUrl.substring(0,37) + '…' : aLoginUrl) + '</strong></span>';
+            ahHtml += '</div>';
+            ahHtml += '<span class="form-hint">Full auth config is managed in the Edit Wizard. Toggle enabled/disabled here.</span>';
+            ahHtml += '<input type="hidden" name="' + esc(key) + '" value="">';
+            group.innerHTML = ahHtml;
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(authObj);
+            (function(k, obj) {
+                var cb = group.querySelector('#stg_auth_enabled');
+                if (cb) cb.addEventListener('change', function() {
+                    obj.enabled = cb.checked;
+                    group.querySelector('input[name="' + k + '"]').value = JSON.stringify(obj);
+                });
+            })(key, authObj);
+        } else if (type === 'auth_matrix') {
+            var amArr = Array.isArray(val) ? val : [];
+            group.className += ' form-grid-full';
+            var amHtml = '<label class="form-label">' + esc(label) + '</label>';
+            if (amArr.length) {
+                amHtml += '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin-bottom:6px"><thead><tr style="text-align:left;border-bottom:1px solid var(--border)">';
+                amHtml += '<th style="padding:4px 8px">Role</th><th style="padding:4px 8px">Username</th></tr></thead><tbody>';
+                amArr.forEach(function(r) {
+                    amHtml += '<tr style="border-bottom:1px solid var(--border-subtle, var(--border))">' +
+                        '<td style="padding:4px 8px">' + esc(r.role || '') + '</td>' +
+                        '<td style="padding:4px 8px">' + esc(r.username || '') + '</td></tr>';
+                });
+                amHtml += '</tbody></table>';
+            } else {
+                amHtml += '<span class="form-hint" style="display:block;margin-bottom:4px">No roles configured. Add roles in the Edit Wizard.</span>';
+            }
+            amHtml += '<input type="hidden" name="' + esc(key) + '" value="">';
+            group.innerHTML = amHtml;
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(amArr);
+        } else if (type === 'per_target_auth_table') {
+            var ptaObj = (typeof val === 'object' && val && !Array.isArray(val)) ? val : {};
+            group.className += ' form-grid-full';
+            var ptaHtml = '<label class="form-label">' + esc(label) + '</label>';
+            var ptaKeys = Object.keys(ptaObj);
+            if (ptaKeys.length) {
+                ptaHtml += '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin-bottom:6px"><thead><tr style="text-align:left;border-bottom:1px solid var(--border)">';
+                ptaHtml += '<th style="padding:4px 8px;width:50%">URL</th><th style="padding:4px 8px;width:20%">Method</th><th style="padding:4px 8px;width:30%">User</th></tr></thead><tbody>';
+                ptaKeys.forEach(function(u) {
+                    var a = ptaObj[u] || {};
+                    ptaHtml += '<tr style="border-bottom:1px solid var(--border-subtle, var(--border))">' +
+                        '<td style="padding:4px 8px;word-break:break-all">' + esc(u.length > 50 ? u.substring(0,47) + '…' : u) + '</td>' +
+                        '<td style="padding:4px 8px">' + esc(a.method || 'auto') + '</td>' +
+                        '<td style="padding:4px 8px">' + esc(a.username || '') + '</td></tr>';
+                });
+                ptaHtml += '</tbody></table>';
+            } else {
+                ptaHtml += '<span class="form-hint" style="display:block;margin-bottom:4px">No per-target auth configured. Use Test Connection below to configure.</span>';
+            }
+            ptaHtml += '<input type="hidden" name="' + esc(key) + '" value="">';
+            group.innerHTML = ptaHtml;
+            group.querySelector('input[name="' + key + '"]').value = JSON.stringify(ptaObj);
         } else if (type === 'phase_toggles') {
             var phases = (typeof val === 'object' && val && !Array.isArray(val)) ? val : {};
             group.className += ' form-grid-full';

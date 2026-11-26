@@ -203,7 +203,29 @@ def _backfill_from_project(settings, project, tool_id):
             settings["unauthenticated"] = True
         if scope_def.get("fracture_no_browser_assist"):
             settings["no_browser_assist"] = True
+        if scope_def.get("fracture_oob_local"):
+            settings["oob_local"] = True
+        if scope_def.get("fracture_oob_public"):
+            settings["oob_public"] = True
+        _oob_port = scope_def.get("fracture_oob_port")
+        if _oob_port:
+            settings["oob_port"] = _oob_port
+        fr_auth = scope_def.get("fracture_auth")
+        if fr_auth and not settings.get("auth", {}).get("enabled"):
+            settings["auth"] = fr_auth
+        fr_roles = scope_def.get("fracture_roles", [])
+        if fr_roles and not settings.get("auth_matrix"):
+            settings["auth_matrix"] = fr_roles
+        fr_pta = scope_def.get("fracture_per_target_auth")
+        if fr_pta and isinstance(fr_pta, dict) and not settings.get("per_target_auth"):
+            settings["per_target_auth"] = fr_pta
     elif tool_id == "siphon":
+        si_auth = scope_def.get("siphon_auth")
+        if si_auth and not settings.get("auth", {}).get("enabled"):
+            settings["auth"] = si_auth
+        si_roles = scope_def.get("siphon_roles", [])
+        if si_roles and not settings.get("auth_matrix"):
+            settings["auth_matrix"] = si_roles
         api_urls = scope_def.get("api_urls", [])
         if api_urls:
             settings["api_base_url"] = api_urls[0]

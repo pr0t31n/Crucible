@@ -571,6 +571,16 @@ def api_update_project(project_id):
             sm.invalidate(project_id)
     project = get_project(project_id)
     if project:
+        if "scope_definition" in data:
+            from models.project import _write_default_settings
+            _proj_dir = Path(project.get("project_dir", ""))
+            if _proj_dir.is_dir():
+                _write_default_settings(
+                    _proj_dir, project.get("tools", []),
+                    form_data=project,
+                    tool_dirs=project.get("tool_dirs"),
+                    scope_tool_dirs=project.get("scope_tool_dirs"),
+                )
         _apply_wizard_scheduling(project_id, project, data)
     if any(k in data for k in ("beacon_url", "beacon_enabled")):
         _sync_beacon(project_id)
