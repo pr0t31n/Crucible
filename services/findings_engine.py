@@ -433,6 +433,9 @@ class FindingsEngine:
                     entry = self._match_catalogue(master, orig_title)
             if not entry:
                 continue
+            cat_id = entry.get("id")
+            if cat_id and not f.get("catalogue_id"):
+                f["catalogue_id"] = cat_id
             did_enrich = False
             for cat_field, finding_field in self._ENRICH_FIELDS:
                 val = entry.get(cat_field)
@@ -445,6 +448,15 @@ class FindingsEngine:
                     and existing != [] \
                     and not (isinstance(existing, str) and existing.strip() == "")
                 if has_existing and finding_field in self._NESSUS_AUTHORITATIVE:
+                    continue
+                if has_existing and finding_field in ("description", "remediation") \
+                        and isinstance(val, str) \
+                        and ("detected: <value>" in val
+                             or "This finding indicates a security concern that requires review" in val):
+                    continue
+                if has_existing and finding_field in ("description", "remediation") \
+                        and isinstance(existing, str) and len(existing) > 50 \
+                        and isinstance(val, str) and len(val) < len(existing):
                     continue
                 f[finding_field] = val
                 did_enrich = True
@@ -478,6 +490,45 @@ class FindingsEngine:
                 n += 1
         if n:
             log.debug("Backfilled %d finding categories from title prefixes", n)
+
+    @staticmethod
+    def _normalize_output_paths(findings, project):
+        """Make output_file paths run-dir-relative.
+
+        Fracture may emit absolute server paths (/clients/chs/...) that are
+        meaningless once the project is downloaded.  Walk each finding and
+        strip the common run-dir prefix so paths are portable.
+        """
+        run_dirs = set()
+        for scope_dirs in (project.get("scope_tool_dirs") or {}).values():
+            for d in scope_dirs.values():
+                if d:
+                    run_dirs.add(d.rstrip("/") + "/")
+        for d in (project.get("tool_dirs") or {}).values():
+            if d:
+                run_dirs.add(d.rstrip("/") + "/")
+        if not run_dirs:
+            return
+        n = 0
+        for f in findings:
+            of = f.get("output_file")
+            if not of or not isinstance(of, str):
+                continue
+            changed = False
+            parts = []
+            for seg in of.split(","):
+                seg = seg.strip()
+                for rd in run_dirs:
+                    if seg.startswith(rd):
+                        seg = seg[len(rd):]
+                        changed = True
+                        break
+                parts.append(seg)
+            if changed:
+                f["output_file"] = ", ".join(parts)
+                n += 1
+        if n:
+            log.debug("Normalized %d output_file paths to relative", n)
 
     @staticmethod
     def _build_tool_scope_map(project):
@@ -635,6 +686,7 @@ class FindingsEngine:
                     f["scope"] = tsm[tid]
         self._enrich_from_catalogue(active)
         self._backfill_categories_from_titles(active)
+        self._normalize_output_paths(active, project)
         self._apply_oos_flags(active, project)
         apply_risk_overrides(active, project)
         active = deduplicate(active)

@@ -242,18 +242,29 @@ def _access_matrix(db, row):
             access = pe.get("access", {})
             body_class_map = pe.get("body_class", {})
             for role, status in access.items():
+                bc = body_class_map.get(role)
+                if isinstance(status, int) and status < 400:
+                    result = "allowed"
+                    if isinstance(bc, str) and bc in (
+                            "login_form", "access_denied", "soft_404"):
+                        result = "denied"
+                    elif (status in (301, 302, 303, 307, 308)
+                          and role == "unauthenticated"):
+                        result = "denied"
+                else:
+                    result = "denied"
                 entry = {
                     "tool": tool,
                     "endpoint_path": path,
                     "role": role,
                     "actual_status": status if isinstance(status, int) else None,
-                    "result": "allowed" if (isinstance(status, int) and status < 400) else "denied",
+                    "result": result,
                     "target_url": target_url,
                 }
-                bc = body_class_map.get(role)
                 if bc:
                     entry["body_class"] = str(bc)
-                    if isinstance(bc, str) and "denied" in bc.lower():
+                    if isinstance(bc, str) and bc in (
+                            "access_denied", "login_form"):
                         entry["body_denied"] = 1
                 if scope_id:
                     entry["scope_id"] = scope_id
