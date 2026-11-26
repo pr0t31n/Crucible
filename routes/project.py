@@ -382,6 +382,9 @@ _SCOPE_TO_SETTINGS = {
     "fracture": {
         "fracture_unauthenticated": ("unauthenticated", False),
         "fracture_no_browser_assist": ("no_browser_assist", False),
+        "fracture_oob_local": ("oob_local", False),
+        "fracture_oob_public": ("oob_public", False),
+        "fracture_oob_port": ("oob_port", 9999),
     },
     "quill": {
         "mobile_platform": ("mobile_platform", "auto"),
@@ -399,6 +402,33 @@ _SCOPE_TO_SETTINGS = {
     "forge": {
         "cloud_provider": ("cloud_provider", "all"),
         "aws_auth_method": ("aws_auth_method", ""),
+        "aws_profile": ("aws_profile", ""),
+        "aws_region": ("aws_region", ""),
+        "aws_access_key_id": ("aws_access_key_id", ""),
+        "aws_secret_key": ("aws_secret_key", ""),
+        "aws_console_url": ("aws_console_url", ""),
+        "aws_console_user": ("aws_console_user", ""),
+        "aws_console_pass": ("aws_console_pass", ""),
+        "azure_subscription": ("azure_subscription", ""),
+        "gcp_project": ("gcp_project", ""),
+    },
+    "bastion": {
+        "firewall_vendor": ("firewall_vendor", "palo_alto"),
+    },
+    "dredge": {
+        "dredge_winrm_host": ("winrm_host", ""),
+        "dredge_winrm_user": ("winrm_user", ""),
+        "dredge_winrm_pass": ("winrm_pass", ""),
+        "dredge_winrm_port": ("winrm_port", 5985),
+        "dredge_winrm_ssl": ("winrm_ssl", False),
+        "dredge_collection_path": ("collection_path", ""),
+        "dredge_vt_key": ("vt_api_key", ""),
+        "dredge_abuseipdb_key": ("abuseipdb_key", ""),
+        "dredge_skip_sections": ("skip_sections", ""),
+    },
+    "isotope": {
+        "isotope_modules": ("modules", None),
+        "isotope_archive_depth": ("archive_depth", 5),
     },
 }
 
@@ -465,46 +495,88 @@ def _sync_scope_to_tool_settings(data, project):
                         else:
                             disk_settings[settings_key] = val
                     save_settings(_wt, tid, disk_settings)
-    # Fracture target_urls: scope_definition stores a list, settings stores
-    # a newline-joined string — the generic loop can't handle the conversion.
+    # Fracture: target_urls (list→string), auth, auth_matrix, per_target_auth
     if "fracture" in tools:
+        fr_ts = dict(ts.get("fracture", {}))
+        _fr_disk_changed = False
         fr_urls = scope_def.get("target_urls", [])
         if fr_urls:
             fr_joined = "\n".join(fr_urls)
-            fr_ts = dict(ts.get("fracture", {}))
             if fr_ts.get("target_url") != fr_joined:
                 fr_ts["target_url"] = fr_joined
-                ts["fracture"] = fr_ts
-                changed = True
-                if proj_dir:
-                    _write_targets = [proj_dir]
-                    _td = (project.get("tool_dirs") or {}).get("fracture")
-                    if _td and str(_td) != str(proj_dir):
-                        _write_targets.append(_td)
-                    for _wt in _write_targets:
-                        disk_settings = load_settings(_wt, "fracture")
-                        disk_settings["target_url"] = fr_joined
-                        save_settings(_wt, "fracture", disk_settings)
-    # Siphon api_urls: same list→string conversion needed.
+                _fr_disk_changed = True
+        fr_auth = scope_def.get("fracture_auth")
+        if fr_auth:
+            fr_ts["auth"] = fr_auth
+            _fr_disk_changed = True
+        fr_roles = scope_def.get("fracture_roles", [])
+        if fr_roles:
+            fr_ts["auth_matrix"] = fr_roles
+            _fr_disk_changed = True
+        fr_pta = scope_def.get("fracture_per_target_auth")
+        if fr_pta and isinstance(fr_pta, dict):
+            fr_ts["per_target_auth"] = fr_pta
+            _fr_disk_changed = True
+        if _fr_disk_changed:
+            ts["fracture"] = fr_ts
+            changed = True
+            if proj_dir:
+                _write_targets = [proj_dir]
+                _td = (project.get("tool_dirs") or {}).get("fracture")
+                if _td and str(_td) != str(proj_dir):
+                    _write_targets.append(_td)
+                for _wt in _write_targets:
+                    disk_settings = load_settings(_wt, "fracture")
+                    if fr_urls:
+                        disk_settings["target_url"] = "\n".join(fr_urls)
+                    if fr_auth:
+                        disk_settings.setdefault("scan", {})["auth"] = fr_auth
+                        disk_settings["auth"] = fr_auth
+                    if fr_roles:
+                        disk_settings.setdefault("scan", {})["auth_matrix"] = fr_roles
+                        disk_settings["auth_matrix"] = fr_roles
+                    if fr_pta and isinstance(fr_pta, dict):
+                        disk_settings.setdefault("scan", {})["per_target_auth"] = fr_pta
+                        disk_settings["per_target_auth"] = fr_pta
+                    save_settings(_wt, "fracture", disk_settings)
+    # Siphon: api_urls (list→multi-field), auth, auth_matrix
     if "siphon" in tools:
+        si_ts = dict(ts.get("siphon", {}))
+        _si_disk_changed = False
         si_urls = scope_def.get("api_urls", [])
         if si_urls:
-            si_ts = dict(ts.get("siphon", {}))
             if si_ts.get("api_base_url") != si_urls[0] or si_ts.get("api_base_urls") != si_urls[1:]:
                 si_ts["api_base_url"] = si_urls[0]
                 si_ts["api_base_urls"] = si_urls[1:]
-                ts["siphon"] = si_ts
-                changed = True
-                if proj_dir:
-                    _write_targets = [proj_dir]
-                    _td = (project.get("tool_dirs") or {}).get("siphon")
-                    if _td and str(_td) != str(proj_dir):
-                        _write_targets.append(_td)
-                    for _wt in _write_targets:
-                        disk_settings = load_settings(_wt, "siphon")
+                _si_disk_changed = True
+        si_auth = scope_def.get("siphon_auth")
+        if si_auth:
+            si_ts["auth"] = si_auth
+            _si_disk_changed = True
+        si_roles = scope_def.get("siphon_roles", [])
+        if si_roles:
+            si_ts["auth_matrix"] = si_roles
+            _si_disk_changed = True
+        if _si_disk_changed:
+            ts["siphon"] = si_ts
+            changed = True
+            if proj_dir:
+                _write_targets = [proj_dir]
+                _td = (project.get("tool_dirs") or {}).get("siphon")
+                if _td and str(_td) != str(proj_dir):
+                    _write_targets.append(_td)
+                for _wt in _write_targets:
+                    disk_settings = load_settings(_wt, "siphon")
+                    if si_urls:
                         disk_settings["api_base_url"] = si_urls[0]
                         disk_settings["api_base_urls"] = si_urls[1:]
-                        save_settings(_wt, "siphon", disk_settings)
+                    if si_auth:
+                        disk_settings.setdefault("scan", {})["auth"] = si_auth
+                        disk_settings["auth"] = si_auth
+                    if si_roles:
+                        disk_settings.setdefault("scan", {})["auth_matrix"] = si_roles
+                        disk_settings["auth_matrix"] = si_roles
+                    save_settings(_wt, "siphon", disk_settings)
     ae_tools = {"aether", "aether_b", "aether_z", "aether_u"}
     for ae_tid in ae_tools:
         if ae_tid not in tools:
@@ -540,9 +612,14 @@ def _sync_scope_to_tool_settings(data, project):
         ts[ae_tid] = ae_ts
         changed = True
         if proj_dir:
-            disk_settings = load_settings(proj_dir, ae_tid)
-            _apply_ae_scope(disk_settings)
-            save_settings(proj_dir, ae_tid, disk_settings)
+            _ae_write = [proj_dir]
+            _ae_td = (project.get("tool_dirs") or {}).get(ae_tid)
+            if _ae_td and str(_ae_td) != str(proj_dir):
+                _ae_write.append(_ae_td)
+            for _aewt in _ae_write:
+                disk_settings = load_settings(_aewt, ae_tid)
+                _apply_ae_scope(disk_settings)
+                save_settings(_aewt, ae_tid, disk_settings)
     if changed:
         data["tool_settings"] = ts
 

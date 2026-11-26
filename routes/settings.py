@@ -235,6 +235,18 @@ def _backfill_from_project(settings, project, tool_id):
             db_targets = scope_def.get("db_targets", [])
             if db_targets:
                 settings["host"] = db_targets[0]
+        if not settings.get("db_type"):
+            settings["db_type"] = scope_def.get("auger_db_type", "postgresql")
+        if not settings.get("database"):
+            settings["database"] = scope_def.get("auger_database", "")
+        if not settings.get("username"):
+            settings["username"] = scope_def.get("auger_username", "")
+        if not settings.get("password"):
+            settings["password"] = scope_def.get("auger_password", "")
+        if not settings.get("jdbc_url"):
+            settings["jdbc_url"] = scope_def.get("auger_jdbc", "")
+        if scope_def.get("auger_ssl") and not settings.get("ssl"):
+            settings["ssl"] = True
     elif tool_id == "dredge":
         mode = scope_def.get("dredge_mode", "import")
         if mode == "winrm":

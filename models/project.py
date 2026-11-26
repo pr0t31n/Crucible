@@ -589,6 +589,19 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         per_target_auth = scope_def.get("fracture_per_target_auth")
         if per_target_auth and isinstance(per_target_auth, dict):
             settings["scan"]["per_target_auth"] = per_target_auth
+        if scope_def.get("fracture_oob_local"):
+            settings["oob_local"] = True
+        if scope_def.get("fracture_oob_public"):
+            settings["oob_public"] = True
+        _oob_port = scope_def.get("fracture_oob_port")
+        if _oob_port:
+            settings["oob_port"] = _oob_port
+        if scope_def.get("fracture_unauthenticated"):
+            settings["scan"]["unauthenticated"] = True
+            settings["unauthenticated"] = True
+        if scope_def.get("fracture_no_browser_assist"):
+            settings["scan"]["no_browser_assist"] = True
+            settings["no_browser_assist"] = True
     elif tool_id == "siphon":
         if "scan" not in settings:
             settings["scan"] = {}
@@ -618,9 +631,68 @@ def _populate_tool_settings(tool_id, settings, meta, scope_def, project_dir,
         settings["username"] = scope_def.get("auger_username", "")
         settings["password"] = scope_def.get("auger_password", "")
         settings["jdbc_url"] = scope_def.get("auger_jdbc", "")
+        if scope_def.get("auger_ssl"):
+            settings["ssl"] = True
+        _au_mode = scope_def.get("auger_mode", "")
+        if _au_mode:
+            settings["mode"] = _au_mode
         settings["output_dir"] = tool_dirs.get("auger", project_dir)
+    elif tool_id == "bastion":
+        _fw_vendor = scope_def.get("firewall_vendor", "")
+        if _fw_vendor:
+            settings["firewall_vendor"] = _fw_vendor
+    elif tool_id == "forge":
+        _cp = scope_def.get("cloud_provider", "")
+        if _cp:
+            settings["cloud_provider"] = _cp
+        _awsm = scope_def.get("aws_auth_method", "")
+        if _awsm:
+            settings["aws_auth_method"] = _awsm
+        for _fk in ("aws_profile", "aws_region", "aws_access_key_id",
+                     "aws_secret_key", "aws_console_url", "aws_console_user",
+                     "aws_console_pass", "azure_subscription", "gcp_project"):
+            _fv = scope_def.get(_fk, "")
+            if _fv:
+                settings[_fk] = _fv
+    elif tool_id == "dredge":
+        _dm = scope_def.get("dredge_mode", "import")
+        if _dm == "winrm":
+            for _dk, _sk in (("dredge_winrm_host", "winrm_host"),
+                              ("dredge_winrm_user", "winrm_user"),
+                              ("dredge_winrm_pass", "winrm_pass")):
+                _dv = scope_def.get(_dk, "")
+                if _dv:
+                    settings[_sk] = _dv
+            _dp = scope_def.get("dredge_winrm_port", 0)
+            if _dp:
+                settings["winrm_port"] = _dp
+            if scope_def.get("dredge_winrm_ssl"):
+                settings["winrm_ssl"] = True
+        else:
+            _dcp = scope_def.get("dredge_collection_path", "")
+            if _dcp:
+                settings["collection_path"] = _dcp
+        _dvt = scope_def.get("dredge_vt_key", "")
+        if _dvt:
+            settings["vt_api_key"] = _dvt
+        _dab = scope_def.get("dredge_abuseipdb_key", "")
+        if _dab:
+            settings["abuseipdb_key"] = _dab
+        _dss = scope_def.get("dredge_skip_sections", "")
+        if _dss:
+            settings["skip_sections"] = _dss
+    elif tool_id == "isotope":
+        _im = scope_def.get("isotope_modules", [])
+        if _im:
+            settings["modules"] = _im
+        _iad = scope_def.get("isotope_archive_depth", 0)
+        if _iad:
+            settings["archive_depth"] = _iad
     elif tool_id == "trawler":
         settings["output_dir"] = tool_dirs.get("trawler", project_dir)
+        _tt = scope_def.get("trawler_targets", [])
+        if _tt:
+            settings["targets"] = _tt
     elif tool_id in ("aether", "aether_b", "aether_z", "aether_u"):
         iface = scope_def.get("wireless_interface", "")
         ap_iface = scope_def.get("wireless_ap_interface", "")
