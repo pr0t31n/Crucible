@@ -2152,6 +2152,8 @@
 
   /* ── Edit mode: restore saved roles ────────────────────── */
   if (EDIT_MODE) {
+    if (_cfg.fractureAuth) _savedAuth.fracture = _cfg.fractureAuth;
+    if (_cfg.siphonAuth) _savedAuth.siphon = _cfg.siphonAuth;
     (_cfg.fractureRoles || []).forEach(function(r) { addRoleRow('fr', r.role, r.username, r.password); });
     (_cfg.siphonRoles || []).forEach(function(r) { addRoleRow('si', r.role, r.username, r.password); });
     if (_cfg.fractureUnauthenticated) {
@@ -2161,6 +2163,18 @@
     if (_cfg.fractureNoBrowserAssist) {
       var _frNoBa = document.getElementById('frNoBrowserAssist');
       if (_frNoBa) _frNoBa.checked = true;
+    }
+    if (_cfg.fractureOobLocal) {
+      var _frOobL = document.getElementById('fr-oob-local');
+      if (_frOobL) _frOobL.checked = true;
+    }
+    if (_cfg.fractureOobPublic) {
+      var _frOobP = document.getElementById('fr-oob-public');
+      if (_frOobP) _frOobP.checked = true;
+    }
+    if (_cfg.fractureOobPort && _cfg.fractureOobPort !== 9999) {
+      var _frOobPt = document.getElementById('fr-oob-port');
+      if (_frOobPt) _frOobPt.value = _cfg.fractureOobPort;
     }
     if (_cfg.osiftApiKeyFile) {
       var _oAkf = document.getElementById('osiftApiKeyFile');
