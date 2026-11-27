@@ -1,0 +1,286 @@
+[
+  {
+    "id": "tmpl-01",
+    "name": "External Recon to Web Vuln to Shell",
+    "description": "External reconnaissance identifies a web application vulnerability that is exploited to gain remote shell access.",
+    "risk": "HIGH",
+    "category": "web",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "External Reconnaissance", "placeholder": true},
+      {"node_type": "FINDING", "label": "Web Application Vulnerability", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Remote Shell Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "Recon revealed web vulnerability"},
+      {"source_idx": 1, "target_idx": 2, "relation": "leads_to", "description": "Exploitation achieved shell access"}
+    ]
+  },
+  {
+    "id": "tmpl-02",
+    "name": "Default Credentials to Admin Access",
+    "description": "Default or factory credentials on a service grant administrative access.",
+    "risk": "HIGH",
+    "category": "credential",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "Service Discovery", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Default Credentials Identified", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Administrative Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "Service found with default credentials"},
+      {"source_idx": 1, "target_idx": 2, "relation": "grants", "description": "Default credentials granted admin access"}
+    ]
+  },
+  {
+    "id": "tmpl-03",
+    "name": "Network Recon to Unpatched Service to Exploit",
+    "description": "Network scanning discovers an unpatched service with a known vulnerability that is exploited for access.",
+    "risk": "HIGH",
+    "category": "network",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "Network Port Scan", "placeholder": true},
+      {"node_type": "FINDING", "label": "Unpatched Service Identified", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Service Exploited", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "Port scan revealed unpatched service"},
+      {"source_idx": 1, "target_idx": 2, "relation": "leads_to", "description": "Known exploit used to gain access"}
+    ]
+  },
+  {
+    "id": "tmpl-04",
+    "name": "Phishing to Foothold to Lateral Movement",
+    "description": "Social engineering campaign establishes initial foothold which enables lateral movement across the network.",
+    "risk": "CRITICAL",
+    "category": "network",
+    "nodes": [
+      {"node_type": "FINDING", "label": "Phishing Campaign Success", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Initial Foothold Established", "placeholder": true},
+      {"node_type": "DISCOVERY", "label": "Internal Network Reconnaissance", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Lateral Movement to Target", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "leads_to", "description": "Phishing payload executed, foothold gained"},
+      {"source_idx": 1, "target_idx": 2, "relation": "enables", "description": "Foothold enabled internal recon"},
+      {"source_idx": 2, "target_idx": 3, "relation": "pivots_to", "description": "Internal recon identified pivot target"}
+    ]
+  },
+  {
+    "id": "tmpl-05",
+    "name": "Anonymous FTP to Credential Harvest to Domain Admin",
+    "description": "Anonymous FTP access yields credentials that escalate to domain administrator privileges.",
+    "risk": "CRITICAL",
+    "category": "credential",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "Anonymous FTP Access", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Credentials Harvested from FTP", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Domain User Access", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Domain Admin Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "Anonymous FTP contained credential files"},
+      {"source_idx": 1, "target_idx": 2, "relation": "grants", "description": "Harvested creds granted domain user access"},
+      {"source_idx": 2, "target_idx": 3, "relation": "escalates", "description": "Domain user escalated to domain admin"}
+    ]
+  },
+  {
+    "id": "tmpl-06",
+    "name": "SNMP Community to Config Dump to Network Device Access",
+    "description": "SNMP community string exploitation reveals device configuration containing credentials for network device access.",
+    "risk": "HIGH",
+    "category": "network",
+    "nodes": [
+      {"node_type": "FINDING", "label": "SNMP Community String Exposed", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Configuration Dump with Credentials", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Network Device Administrative Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "SNMP access yielded device configuration"},
+      {"source_idx": 1, "target_idx": 2, "relation": "grants", "description": "Extracted credentials granted device access"}
+    ]
+  },
+  {
+    "id": "tmpl-07",
+    "name": "SMB Null Session to User Enum to Password Spray to Domain User",
+    "description": "SMB null session allows user enumeration, followed by password spray attack to obtain domain user credentials.",
+    "risk": "HIGH",
+    "category": "credential",
+    "nodes": [
+      {"node_type": "FINDING", "label": "SMB Null Session Allowed", "placeholder": true},
+      {"node_type": "DISCOVERY", "label": "Domain Users Enumerated", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Password Spray Success", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Domain User Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "enables", "description": "Null session enabled user enumeration"},
+      {"source_idx": 1, "target_idx": 2, "relation": "leads_to", "description": "Enumerated users targeted in password spray"},
+      {"source_idx": 2, "target_idx": 3, "relation": "grants", "description": "Sprayed credentials granted domain access"}
+    ]
+  },
+  {
+    "id": "tmpl-08",
+    "name": "SQL Injection to Data Extraction to Credential Harvest",
+    "description": "SQL injection vulnerability exploited to extract database contents including stored credentials.",
+    "risk": "CRITICAL",
+    "category": "web",
+    "nodes": [
+      {"node_type": "FINDING", "label": "SQL Injection Vulnerability", "placeholder": true},
+      {"node_type": "IMPACT", "label": "Database Data Extracted", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Credentials Harvested from Database", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "leads_to", "description": "SQLi exploited for data extraction"},
+      {"source_idx": 1, "target_idx": 2, "relation": "exposes", "description": "Extracted data contained stored credentials"}
+    ]
+  },
+  {
+    "id": "tmpl-09",
+    "name": "Wireless to Internal Network to Pivot",
+    "description": "Wireless network compromise provides access to the internal network, enabling pivoting to sensitive systems.",
+    "risk": "HIGH",
+    "category": "wireless",
+    "nodes": [
+      {"node_type": "FINDING", "label": "Wireless Network Vulnerability", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Wireless Network Access", "placeholder": true},
+      {"node_type": "DISCOVERY", "label": "Internal Network Discovery", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Internal System Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "leads_to", "description": "Wireless vulnerability exploited for access"},
+      {"source_idx": 1, "target_idx": 2, "relation": "enables", "description": "Wireless access revealed internal network"},
+      {"source_idx": 2, "target_idx": 3, "relation": "pivots_to", "description": "Internal discovery enabled system access"}
+    ]
+  },
+  {
+    "id": "tmpl-10",
+    "name": "Physical Access to USB to Shell",
+    "description": "Physical access to a device allows USB-based payload delivery for shell access.",
+    "risk": "HIGH",
+    "category": "physical",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "Physical Access to Device", "placeholder": true},
+      {"node_type": "FINDING", "label": "USB Port Accessible / Unprotected", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Shell via USB Payload", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "Physical access revealed unprotected USB port"},
+      {"source_idx": 1, "target_idx": 2, "relation": "leads_to", "description": "USB payload delivered for shell access"}
+    ]
+  },
+  {
+    "id": "tmpl-11",
+    "name": "VPN Misconfiguration to Internal Access",
+    "description": "VPN misconfiguration or weak authentication grants unauthorized access to the internal network.",
+    "risk": "MEDIUM",
+    "category": "network",
+    "nodes": [
+      {"node_type": "FINDING", "label": "VPN Misconfiguration Identified", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Internal Network Access via VPN", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "leads_to", "description": "VPN weakness exploited for internal access"}
+    ]
+  },
+  {
+    "id": "tmpl-12",
+    "name": "Certificate Weakness to MITM to Credential Capture",
+    "description": "Weak or improperly validated TLS certificates enable man-in-the-middle attacks to capture credentials.",
+    "risk": "HIGH",
+    "category": "network",
+    "nodes": [
+      {"node_type": "FINDING", "label": "Certificate / TLS Weakness", "placeholder": true},
+      {"node_type": "FINDING", "label": "Man-in-the-Middle Position", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Credentials Captured via MITM", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "enables", "description": "Weak certificate enabled MITM positioning"},
+      {"source_idx": 1, "target_idx": 2, "relation": "leads_to", "description": "MITM position captured authentication credentials"}
+    ]
+  },
+  {
+    "id": "tmpl-13",
+    "name": "API Auth Bypass to Data Access",
+    "description": "API authentication bypass vulnerability grants unauthorized access to protected data.",
+    "risk": "HIGH",
+    "category": "api",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "API Endpoint Discovery", "placeholder": true},
+      {"node_type": "FINDING", "label": "API Authentication Bypass", "placeholder": true},
+      {"node_type": "IMPACT", "label": "Unauthorized Data Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "API enumeration found auth bypass"},
+      {"source_idx": 1, "target_idx": 2, "relation": "impacts", "description": "Auth bypass allowed unauthorized data access"}
+    ]
+  },
+  {
+    "id": "tmpl-14",
+    "name": "Medical Device Default Cred to Patient Data",
+    "description": "Default credentials on a medical device grant access to patient health information.",
+    "risk": "CRITICAL",
+    "category": "medical",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "Medical Device Identified", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Default Credentials on Medical Device", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Device Administrative Access", "placeholder": true},
+      {"node_type": "IMPACT", "label": "Patient Data Exposure (PHI)", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "exposes", "description": "Medical device found with default credentials"},
+      {"source_idx": 1, "target_idx": 2, "relation": "grants", "description": "Default credentials granted admin access"},
+      {"source_idx": 2, "target_idx": 3, "relation": "impacts", "description": "Admin access exposed patient health information"}
+    ]
+  },
+  {
+    "id": "tmpl-15",
+    "name": "Embedded Debug Port to Firmware Dump to Credential Extract",
+    "description": "Exposed debug port on embedded device allows firmware extraction yielding hardcoded credentials.",
+    "risk": "HIGH",
+    "category": "embedded",
+    "nodes": [
+      {"node_type": "DISCOVERY", "label": "Debug Port Identified (JTAG/UART/SWD)", "placeholder": true},
+      {"node_type": "FINDING", "label": "Firmware Extracted via Debug Interface", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Hardcoded Credentials in Firmware", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "enables", "description": "Debug port enabled firmware extraction"},
+      {"source_idx": 1, "target_idx": 2, "relation": "exposes", "description": "Firmware analysis revealed hardcoded credentials"}
+    ]
+  },
+  {
+    "id": "tmpl-16",
+    "name": "LDAP Anonymous to User Enum to Kerberoast to Domain Admin",
+    "description": "Anonymous LDAP access enables user enumeration, Kerberoasting attack extracts service account hashes, escalating to domain admin.",
+    "risk": "CRITICAL",
+    "category": "credential",
+    "nodes": [
+      {"node_type": "FINDING", "label": "LDAP Anonymous Bind Allowed", "placeholder": true},
+      {"node_type": "DISCOVERY", "label": "Domain Users and SPNs Enumerated", "placeholder": true},
+      {"node_type": "CREDENTIAL", "label": "Kerberoast: Service Account Hash Cracked", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Domain Admin Access", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "enables", "description": "Anonymous LDAP enabled user and SPN enumeration"},
+      {"source_idx": 1, "target_idx": 2, "relation": "leads_to", "description": "SPN list used for Kerberoasting attack"},
+      {"source_idx": 2, "target_idx": 3, "relation": "escalates", "description": "Cracked service account elevated to domain admin"}
+    ]
+  },
+  {
+    "id": "tmpl-17",
+    "name": "Container Escape to Host Access to Lateral Movement",
+    "description": "Container escape vulnerability grants host-level access, enabling lateral movement to other systems.",
+    "risk": "CRITICAL",
+    "category": "cloud",
+    "nodes": [
+      {"node_type": "FINDING", "label": "Container Escape Vulnerability", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Host-Level Access", "placeholder": true},
+      {"node_type": "DISCOVERY", "label": "Adjacent Container / Host Discovery", "placeholder": true},
+      {"node_type": "ACCESS", "label": "Lateral Movement to Other Systems", "placeholder": true}
+    ],
+    "edges": [
+      {"source_idx": 0, "target_idx": 1, "relation": "leads_to", "description": "Container escape achieved host access"},
+      {"source_idx": 1, "target_idx": 2, "relation": "enables", "description": "Host access enabled discovery of adjacent targets"},
+      {"source_idx": 2, "target_idx": 3, "relation": "pivots_to", "description": "Discovery led to lateral movement"}
+    ]
+  }
+]

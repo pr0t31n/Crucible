@@ -22,6 +22,10 @@ _PREFIXES: list[tuple[str, str, str]] = sorted(
         ("__CRUCIBLE_LOG__:",         "log",         "crucible"),
         ("__CRUCIBLE_ERR__:",         "error",       "crucible"),
         ("__CRUCIBLE_INTEL__:",       "intel",       "crucible"),
+        ("__CRUCIBLE_CHAIN_NODE__:",  "chain_node",  "crucible"),
+        ("__CRUCIBLE_CREDENTIAL__:",  "credential",  "crucible"),
+        ("__CRUCIBLE_PWNED__:",       "pwned",       "crucible"),
+        ("__CRUCIBLE_CRED_VERIFIED__:", "cred_verified", "crucible"),
     ],
     key=lambda t: -len(t[0]),
 )
@@ -50,7 +54,8 @@ class TokenParser:
 
         *token_type*:     "log" | "error" | "prompt" | "status" |
                           "action_item" | "target" | "port" | "finding" |
-                          "intel"
+                          "intel" | "chain_node" | "credential" | "pwned" |
+                          "cred_verified"
         *prefix_family*:  "crucible"
         *payload*:        raw string after the prefix (stripped of leading
                           whitespace).

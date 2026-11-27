@@ -901,6 +901,14 @@
           ok = false;
         }
       }
+      /* Credentialed scanning passphrase validation */
+      var wizPP = document.getElementById('wizCredPassphrase');
+      var wizPPC = document.getElementById('wizCredPassphraseConfirm');
+      if (wizPP && wizPP.value) {
+        if (wizPP.value.length < 8) { markError(wizPP, 'Passphrase must be at least 8 characters'); ok = false; }
+        else if (wizPPC && wizPP.value !== wizPPC.value) { markError(wizPPC, 'Passphrases do not match'); ok = false; }
+      }
+
       return ok;
     }
     return true;
@@ -957,6 +965,17 @@
       var _ss3ps = valOf('ss3PassiveSeedDuration'); if (_ss3ps) addR(sg,'Passive Seed',_ss3ps+'s tcpdump → Trawler');
       var _ss3nb = (document.getElementById('ss3NoBrute') || {}).checked; if (_ss3nb) addR(sg,'Brute Force','Disabled');
       var _ss3ht = valOf('ss3HydraTimeout'); if (_ss3ht && !_ss3nb) addR(sg,'Hydra Timeout',_ss3ht+'s');
+      /* Credentialed scanning review */
+      var _wizPP = (document.getElementById('wizCredPassphrase') || {}).value || '';
+      if (_wizPP) {
+        addR(sg, 'Credential Vault', 'Configured (passphrase set)');
+        var _wizCredCount = (typeof _wizCredRows !== 'undefined') ? _wizCredRows.length : 0;
+        addR(sg, 'Credentials', _wizCredCount + ' pre-loaded');
+        var _wizSpray = !!(document.getElementById('wizSprayEnabled') || {}).checked;
+        addR(sg, 'Auto-Spray', _wizSpray ? 'Enabled' : 'Disabled');
+        var _wizCross = !!(document.getElementById('wizSprayCrossProtocol') || {}).checked;
+        if (_wizSpray) addR(sg, 'Cross-Protocol Spray', _wizCross ? 'Enabled' : 'Disabled');
+      }
     }
     if (_sec('scopeFractureSection')) {
       addR(sg,'Web URLs',valOf('targetUrls'));
@@ -1476,6 +1495,7 @@
       end_date: valOf('endDate'),
       tools: getSelectedTools(),
       auto_queue: document.getElementById('autoQueue').checked,
+      fda_medical: document.getElementById('fdaMedical') ? document.getElementById('fdaMedical').checked : false,
       beacon_url: valOf('wizBeaconUrl'),
       beacon_enabled: document.getElementById('wizBeaconEnabled') ? document.getElementById('wizBeaconEnabled').checked : false,
       oos_handling: (document.querySelector('input[name="oosHandling"]:checked') || {}).value || 'explicit',
@@ -1603,14 +1623,90 @@
       payload.scheduled_start = new Date(wizSchedAt.value).toISOString();
     }
 
+    /* Credentialed scanning config in scope_definition */
+    var wizCredData = window._collectWizCredentials ? window._collectWizCredentials() : null;
+    if (wizCredData) {
+      payload.scope_definition.credentialed_scanning = true;
+      payload.scope_definition.spray_enabled = wizCredData.spray_enabled;
+      payload.scope_definition.spray_cross_protocol = wizCredData.spray_cross_protocol;
+    }
+
     var url = EDIT_MODE ? '/api/update_project/' + PROJECT_ID : '/api/create_project';
     fetch(url, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(function(r) { if (!r.ok) return r.json().then(function(d){throw new Error(d.error||'Server error');}); return r.json(); })
-    .then(function(data) { window.location.href = '/project/' + (data.project_id || data.id || PROJECT_ID); })
+    .then(function(data) {
+      var projectId = data.project_id || data.id || PROJECT_ID;
+
+      /* ── Credential vault setup after project creation ── */
+      if (wizCredData && wizCredData.passphrase) {
+        _setupCredentialVault(projectId, wizCredData);
+      } else {
+        window.location.href = '/project/' + projectId;
+      }
+    })
     .catch(function(err) {
       btnSubmit.disabled = false;
       btnSubmit.textContent = EDIT_MODE ? 'Save Changes' : 'Create Engagement';
       alert('Error: ' + err.message);
+    });
+  }
+
+  /* ── Credential vault setup after project creation ──── */
+  function _setupCredentialVault(projectId, credData) {
+    btnSubmit.textContent = 'Setting up credential vault…';
+    var base = '/api/credentials/' + projectId;
+
+    /* Step 1: Create the vault */
+    fetch(base + '/vault/create', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({passphrase: credData.passphrase})
+    })
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Vault creation failed'); });
+      return r.json();
+    })
+    .then(function() {
+      /* Step 2: Add each credential sequentially */
+      var chain = Promise.resolve();
+      credData.credentials.forEach(function(cred) {
+        chain = chain.then(function() {
+          return fetch(base, {
+            method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              cred_type: cred.cred_type || 'password',
+              username: cred.username,
+              secret: cred.secret,
+              domain: cred.domain || undefined,
+              protocol: cred.protocol || undefined,
+              target_ip: cred.target_ip || undefined,
+              source: 'user_provided',
+              spray_eligible: true
+            })
+          }).then(function(r) {
+            if (!r.ok) console.warn('Credential add failed for', cred.username);
+            return r.json().catch(function() { return {}; });
+          });
+        });
+      });
+      return chain;
+    })
+    .then(function() {
+      /* Step 3: Lock the vault (passphrase no longer needed in browser) */
+      return fetch(base + '/vault/lock', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'}
+      }).catch(function() { /* non-fatal */ });
+    })
+    .then(function() {
+      window.location.href = '/project/' + projectId;
+    })
+    .catch(function(err) {
+      /* Vault setup failed but project was created — redirect anyway */
+      console.error('Credential vault setup error:', err);
+      alert('Project created but credential vault setup failed: ' + err.message + '\nYou can set it up from the Credentials tab.');
+      window.location.href = '/project/' + projectId;
     });
   }
 
@@ -2357,4 +2453,137 @@
       })
       .catch(function(){ result.textContent = 'Request failed'; result.style.color = 'var(--status-error)'; });
   };
+
+  /* ══════════════════════════════════════════════════════════════════════════
+   *  Credentialed Scanning — wizard credential row management
+   * ══════════════════════════════════════════════════════════════════════════ */
+
+  var _wizCredRows = [];
+  var _wizCredIdx = 0;
+  var _wizCredList = document.getElementById('wizCredList');
+  var _wizAddBtn = document.getElementById('wizAddCred');
+  var _wizImportBtn = document.getElementById('wizImportCreds');
+
+  function _addWizCredRow(preset) {
+    preset = preset || {};
+    var idx = _wizCredIdx++;
+    var row = document.createElement('div');
+    row.className = 'wiz-cred-row';
+    row.dataset.idx = idx;
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap';
+    row.innerHTML =
+      '<select class="form-control form-control-sm wc-type" style="width:110px">' +
+        '<option value="password"' + (preset.cred_type === 'password' || !preset.cred_type ? ' selected' : '') + '>Password</option>' +
+        '<option value="ntlm_hash"' + (preset.cred_type === 'ntlm_hash' ? ' selected' : '') + '>NTLM Hash</option>' +
+        '<option value="ssh_key"' + (preset.cred_type === 'ssh_key' ? ' selected' : '') + '>SSH Key</option>' +
+        '<option value="kerberos_ticket"' + (preset.cred_type === 'kerberos_ticket' ? ' selected' : '') + '>Kerberos</option>' +
+      '</select>' +
+      '<input class="form-control form-control-sm wc-domain" placeholder="DOMAIN" style="width:90px" value="' + escHtml(preset.domain || '') + '">' +
+      '<input class="form-control form-control-sm wc-user" placeholder="username" style="width:120px" value="' + escHtml(preset.username || '') + '">' +
+      '<input type="password" class="form-control form-control-sm wc-secret" placeholder="secret" style="width:140px" value="' + escHtml(preset.secret || '') + '">' +
+      '<select class="form-control form-control-sm wc-proto" style="width:90px">' +
+        '<option value="">Any</option>' +
+        '<option value="smb"' + (preset.protocol === 'smb' ? ' selected' : '') + '>SMB</option>' +
+        '<option value="ssh"' + (preset.protocol === 'ssh' ? ' selected' : '') + '>SSH</option>' +
+        '<option value="rdp"' + (preset.protocol === 'rdp' ? ' selected' : '') + '>RDP</option>' +
+        '<option value="winrm"' + (preset.protocol === 'winrm' ? ' selected' : '') + '>WinRM</option>' +
+        '<option value="http"' + (preset.protocol === 'http' ? ' selected' : '') + '>HTTP</option>' +
+        '<option value="ldap"' + (preset.protocol === 'ldap' ? ' selected' : '') + '>LDAP</option>' +
+        '<option value="snmp"' + (preset.protocol === 'snmp' ? ' selected' : '') + '>SNMP</option>' +
+        '<option value="sql"' + (preset.protocol === 'sql' ? ' selected' : '') + '>SQL</option>' +
+      '</select>' +
+      '<input class="form-control form-control-sm wc-target" placeholder="target IP (opt)" style="width:120px" value="' + escHtml(preset.target_ip || '') + '">' +
+      '<button type="button" class="btn btn-xs btn-danger wc-rm" title="Remove">&times;</button>';
+    row.querySelector('.wc-rm').addEventListener('click', function() {
+      _wizCredRows = _wizCredRows.filter(function(r){return r.idx !== idx;});
+      row.remove();
+    });
+    _wizCredRows.push({idx: idx, el: row});
+    if (_wizCredList) _wizCredList.appendChild(row);
+  }
+
+  if (_wizAddBtn) {
+    _wizAddBtn.addEventListener('click', function() { _addWizCredRow(); });
+  }
+
+  /* CSV/JSON file import in wizard */
+  if (_wizImportBtn) {
+    _wizImportBtn.addEventListener('click', function() {
+      var inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.csv,.json';
+      inp.style.display = 'none';
+      inp.addEventListener('change', function() {
+        if (!inp.files || !inp.files[0]) return;
+        var f = inp.files[0];
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var text = e.target.result;
+          var rows = [];
+          if (f.name.endsWith('.json')) {
+            try {
+              var parsed = JSON.parse(text);
+              rows = Array.isArray(parsed) ? parsed : (parsed.credentials || []);
+            } catch(ex) { alert('Invalid JSON'); return; }
+          } else {
+            /* Simple CSV parse: header row + data rows */
+            var lines = text.split('\n').filter(function(l){return l.trim();});
+            if (lines.length < 2) { alert('CSV needs header + data rows'); return; }
+            var hdr = lines[0].split(',').map(function(h){return h.trim().toLowerCase();});
+            for (var i = 1; i < lines.length; i++) {
+              var cols = lines[i].split(',');
+              var obj = {};
+              for (var j = 0; j < hdr.length; j++) obj[hdr[j]] = (cols[j] || '').trim();
+              rows.push(obj);
+            }
+          }
+          rows.forEach(function(r) { _addWizCredRow(r); });
+        };
+        reader.readAsText(f);
+      });
+      document.body.appendChild(inp);
+      inp.click();
+      inp.remove();
+    });
+  }
+
+  /**
+   * Collect wizard credential data for post-creation submission.
+   * Returns {passphrase, credentials[], spray_enabled, spray_cross_protocol}
+   * or null if no credentialed scanning configured.
+   */
+  function _collectWizCredentials() {
+    var pp = (document.getElementById('wizCredPassphrase') || {}).value || '';
+    if (!pp) return null;
+    var ppConfirm = (document.getElementById('wizCredPassphraseConfirm') || {}).value || '';
+    if (pp !== ppConfirm) return null;
+    if (pp.length < 8) return null;
+
+    var creds = [];
+    _wizCredRows.forEach(function(r) {
+      var el = r.el;
+      var user = (el.querySelector('.wc-user') || {}).value || '';
+      var secret = (el.querySelector('.wc-secret') || {}).value || '';
+      if (!user || !secret) return;
+      creds.push({
+        cred_type: (el.querySelector('.wc-type') || {}).value || 'password',
+        username: user,
+        secret: secret,
+        domain: (el.querySelector('.wc-domain') || {}).value || '',
+        protocol: (el.querySelector('.wc-proto') || {}).value || '',
+        target_ip: (el.querySelector('.wc-target') || {}).value || ''
+      });
+    });
+
+    return {
+      passphrase: pp,
+      credentials: creds,
+      spray_enabled: !!(document.getElementById('wizSprayEnabled') || {}).checked,
+      spray_cross_protocol: !!(document.getElementById('wizSprayCrossProtocol') || {}).checked
+    };
+  }
+
+  /* Expose for use in _doSubmit after project creation */
+  window._collectWizCredentials = _collectWizCredentials;
+
 })();

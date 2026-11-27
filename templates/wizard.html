@@ -361,6 +361,46 @@
             </div>
           </div>
         </div>
+
+        <!-- ── Credentialed Scanning (collapsible) ────────── -->
+        <details class="form-section" style="margin-top:16px;border:1px solid var(--border);border-radius:8px;padding:12px">
+          <summary style="cursor:pointer;font-weight:600;font-size:0.88rem;color:var(--text-2)">
+            Credentialed Scanning (optional)
+          </summary>
+          <div style="margin-top:12px">
+            <p class="form-hint" style="margin-bottom:12px">
+              Provide credentials for authenticated scanning. A master passphrase will be set to encrypt these credentials.
+            </p>
+
+            <!-- Master passphrase -->
+            <div class="form-grid" style="margin-bottom:16px">
+              <div class="form-group">
+                <label class="form-label" for="wizCredPassphrase">Master Passphrase</label>
+                <input type="password" id="wizCredPassphrase" class="form-control" placeholder="Min 8 characters" autocomplete="off">
+                <span class="form-hint">Encrypts all credentials. Required to unlock the vault later.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="wizCredPassphraseConfirm">Confirm Passphrase</label>
+                <input type="password" id="wizCredPassphraseConfirm" class="form-control" placeholder="Repeat passphrase" autocomplete="off">
+              </div>
+            </div>
+
+            <!-- Credential entries -->
+            <div id="wizCredList"></div>
+            <button type="button" class="btn btn-xs btn-secondary" id="wizAddCred" style="margin-top:8px">+ Add Credential</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="wizImportCreds" style="margin-top:8px;margin-left:4px">Import CSV/JSON</button>
+
+            <!-- Spray settings -->
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+              <label class="flex gap-4" style="align-items:center;font-size:0.82rem">
+                <input type="checkbox" id="wizSprayEnabled" checked> Enable auto-spray of captured credentials
+              </label>
+              <label class="flex gap-4" style="align-items:center;font-size:0.82rem;margin-top:4px">
+                <input type="checkbox" id="wizSprayCrossProtocol" checked> Cross-protocol spray
+              </label>
+            </div>
+          </div>
+        </details>
       </div>
 
       <!-- ── Fracture ──────────────────────────────────────── -->

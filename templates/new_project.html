@@ -169,6 +169,17 @@
       </div>
 
       <div class="form-section" style="margin-top:24px">
+        <h3 class="form-section-title">Device Type</h3>
+        <label class="form-check" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="fdaMedical" {% if project and project.fda_medical %}checked{% endif %}>
+          <span>
+            <strong>FDA Medical Device Testing</strong>
+            <span class="form-hint" style="display:block;margin-top:2px;">Enable FDA-specific compliance frameworks, test case mapping, Patient Harm assessment, and STRIDE categorization for medical device or software medical device engagements.</span>
+          </span>
+        </label>
+      </div>
+
+      <div class="form-section" style="margin-top:24px">
         <h3 class="form-section-title">Automation</h3>
         <label class="form-check" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
           <input type="checkbox" id="autoQueue" {% if project and project.auto_queue %}checked{% endif %}>

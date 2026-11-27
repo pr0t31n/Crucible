@@ -422,8 +422,14 @@
 .auth-cookie-table td { padding:.2rem .4rem; border-bottom:1px solid var(--border-color, var(--border)); color:var(--text-primary); vertical-align:top; }
 .auth-cookie-table tr:last-child td { border-bottom:none; }
 .auth-cookie-val { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* ── Reproduction Commands ── */
+.repro-tab-btn { padding:4px 10px; font-size:.75rem; border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); border-radius:4px; cursor:pointer; }
+.repro-tab-btn.active { background:var(--accent); color:var(--text-on-accent, #fff); border-color:var(--accent); }
+.repro-pre { background:var(--bg-code, var(--bg-secondary)); color:var(--text-code, var(--text-primary)); padding:12px; border-radius:6px; overflow-x:auto; white-space:pre-wrap; word-break:break-all; font-size:.8rem; margin:0; }
+.repro-copy-btn { position:absolute; top:6px; right:6px; opacity:0.7; }
+.repro-copy-btn:hover { opacity:1; }
 </style>
-<div class="project-layout">
+<div class="project-layout" data-fda-medical="{{ 'true' if project.fda_medical else 'false' }}">
 
   <!-- ══════════════════════════════════════════════════════════
        TAB BAR
@@ -435,12 +441,15 @@
     <button type="button" class="tab-btn" data-tab="action-items">Action Items <span class="tab-pill" id="actionPill"></span></button>
     <button type="button" class="tab-btn" data-tab="intelligence">Intelligence</button>
     <button type="button" class="tab-btn" data-tab="attack-surface">Attack Surface</button>
+    <button type="button" class="tab-btn" data-tab="attack-chains">Attack Chains <span class="tab-pill" id="chainsPill"></span></button>
     <button type="button" class="tab-btn" data-tab="ai-surface">AI Surface <span class="tab-pill" id="aiSurfacePill"></span></button>
     <button type="button" class="tab-btn" data-tab="import">Import</button>
     <button type="button" class="tab-btn" data-tab="settings">Settings</button>
     <button type="button" class="tab-btn" data-tab="logs">Logs</button>
     <button type="button" class="tab-btn" data-tab="errors">Errors <span class="tab-pill error" id="errorsPill"></span></button>
     <button type="button" class="tab-btn" data-tab="sessions">Sessions <span class="tab-pill" id="sessionsPill"></span></button>
+    <button type="button" class="tab-btn" data-tab="credentials">Credentials <span class="tab-pill" id="credentialsPill"></span></button>
+    <button type="button" class="tab-btn" data-tab="pwned">PWNED <span class="tab-pill" id="pwnedPill"></span></button>
   </div>
 
 
@@ -926,6 +935,59 @@
       <div id="asEmpty" hidden style="text-align:center;padding:40px;opacity:0.5">No host data available. Run a scan to populate the attack surface.</div>
     </div>
   </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ATTACK CHAINS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="attack-chains">
+    <div style="display:flex;gap:0;height:calc(100vh - 160px);min-height:500px">
+
+      <!-- ── Chain list panel (left) ─────────────────────────── -->
+      <div id="chainListPanel" style="width:280px;min-width:240px;border-right:1px solid var(--border-mid);display:flex;flex-direction:column;background:var(--bg-surface)">
+        <div style="padding:12px;border-bottom:1px solid var(--border-mid);display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn btn-xs btn-primary" id="achDetectBtn" title="Auto-detect attack chains from findings">Detect Chains</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="achNewBtn" title="Create a new chain manually">New Chain</button>
+            <button type="button" class="btn btn-xs btn-ghost" id="achTemplateBtn" title="Create from template">Template</button>
+          </div>
+        </div>
+        <div id="chainListItems" style="flex:1;overflow-y:auto;padding:4px 0"></div>
+        <div id="chainListEmpty" style="text-align:center;padding:32px 16px;opacity:0.5;font-size:0.85rem">
+          No attack chains yet.<br>Click <strong>Detect Chains</strong> to auto-detect from findings.
+        </div>
+      </div>
+
+      <!-- ── Graph panel (center) ────────────────────────────── -->
+      <div id="chainGraphPanel" style="flex:1;display:flex;flex-direction:column;position:relative;background:var(--bg-primary)">
+        <div id="achGraphToolbar" style="position:absolute;top:8px;right:8px;z-index:10;display:flex;gap:4px">
+          <button type="button" class="btn btn-xs btn-ghost" id="achZoomIn" title="Zoom in" onclick="window._achZoomIn&&window._achZoomIn()">+</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="achZoomOut" title="Zoom out" onclick="window._achZoomOut&&window._achZoomOut()">&minus;</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="achFit" title="Fit to screen" onclick="window._achFit&&window._achFit()">Fit</button>
+          <button type="button" class="btn btn-xs btn-ghost" id="achResetLayout" title="Reset layout" onclick="window._achRelayout&&window._achRelayout()">Layout</button>
+        </div>
+        <div id="achCyContainer" class="ach-graph-container" style="flex:1;width:100%;min-height:400px"></div>
+        <div id="achGraphEmpty" class="ach-graph-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <div style="text-align:center;opacity:0.4;font-size:0.9rem">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="8.5" y1="6" x2="15" y2="6"/></svg>
+            <div>Select a chain to visualize</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Detail panel (right) ────────────────────────────── -->
+      <div id="chainDetailPanel" style="width:300px;min-width:260px;border-left:1px solid var(--border-mid);display:flex;flex-direction:column;background:var(--bg-surface);overflow-y:auto">
+        <div style="padding:12px;border-bottom:1px solid var(--border-mid)">
+          <h4 style="margin:0;font-size:0.9rem;color:var(--text-primary)" id="achDetailTitle">Details</h4>
+        </div>
+        <div id="achDetailBody" style="padding:12px;flex:1">
+          <div style="text-align:center;opacity:0.4;padding:32px 0;font-size:0.85rem">Click a node or chain for details</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modals for Attack Chains are created dynamically by attack_chains.js -->
 
   <!-- ══════════════════════════════════════════════════════════
        AI SURFACE TAB
@@ -1721,6 +1783,48 @@
 
 
   <!-- ══════════════════════════════════════════════════════════
+       REPRODUCTION COMMANDS MODAL
+       ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="reproModal">
+    <div class="modal-box" style="max-width:800px">
+      <div class="modal-header">
+        <span class="modal-title" id="reproTitle">Reproduction Commands</span>
+        <button type="button" class="modal-close" onclick="closeReproModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;gap:4px;margin-bottom:12px">
+          <button class="btn btn-xs repro-tab-btn active" data-repro-tab="tool">Tool Command</button>
+          <button class="btn btn-xs repro-tab-btn" data-repro-tab="system">System Command</button>
+          <button class="btn btn-xs repro-tab-btn" data-repro-tab="python">Python Script</button>
+        </div>
+        <div class="repro-tab-pane" data-repro-tab="tool">
+          <div style="position:relative">
+            <pre id="reproToolCmd" style="margin:0;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);padding-right:60px;font-size:13px"></pre>
+            <button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:8px;right:8px" title="Copy">Copy</button>
+          </div>
+        </div>
+        <div class="repro-tab-pane" data-repro-tab="system" hidden>
+          <div style="position:relative">
+            <pre id="reproSysCmd" style="margin:0;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);padding-right:60px;font-size:13px"></pre>
+            <button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:8px;right:8px" title="Copy">Copy</button>
+          </div>
+        </div>
+        <div class="repro-tab-pane" data-repro-tab="python" hidden>
+          <div style="position:relative">
+            <pre id="reproPython" style="margin:0;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;padding:12px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);padding-right:60px;font-size:13px"></pre>
+            <button class="btn btn-xs btn-ghost repro-copy-btn" style="position:absolute;top:8px;right:8px" title="Copy">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeReproModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
        BULK ACTION MODAL
        ══════════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="bulkActionModal">
@@ -2020,6 +2124,211 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════
+       CREDENTIALS TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="credentials">
+    <div class="p-20">
+
+      <!-- ── Vault Status Bar ───────────────────────────────── -->
+      <div class="panel mb-16" id="vaultStatusPanel">
+        <div class="panel-header">
+          <span class="panel-title">Credential Vault</span>
+          <div class="flex gap-4" id="vaultActions">
+            <span class="badge badge-muted" id="vaultStatusBadge">Checking...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Vault Unlock Dialog (shown when locked) ─────────── -->
+      <div id="vaultUnlockPanel" style="display:none">
+        <div class="panel mb-16">
+          <div class="panel-body" style="text-align:center;padding:32px">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" style="margin-bottom:12px">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+            <p style="color:var(--text-2);margin-bottom:16px">Enter the master passphrase to unlock the credential vault.</p>
+            <div style="max-width:360px;margin:0 auto">
+              <input type="password" class="form-control mb-8" id="vaultPassphraseInput" placeholder="Master passphrase" autocomplete="off">
+              <button type="button" class="btn btn-primary" id="btnVaultUnlock" style="width:100%">Unlock Vault</button>
+              <p class="text-xs text-muted mt-8" id="vaultUnlockError" style="color:var(--danger);display:none"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Vault Create Dialog (shown when no vault exists) ── -->
+      <div id="vaultCreatePanel" style="display:none">
+        <div class="panel mb-16">
+          <div class="panel-body" style="text-align:center;padding:32px">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" style="margin-bottom:12px">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><line x1="12" y1="16" x2="12" y2="19"/>
+            </svg>
+            <p style="color:var(--text-2);margin-bottom:16px">No credential vault exists for this project. Create one with a master passphrase.</p>
+            <div style="max-width:360px;margin:0 auto">
+              <input type="password" class="form-control mb-8" id="vaultNewPassphrase" placeholder="Master passphrase (min 8 chars)" autocomplete="off">
+              <input type="password" class="form-control mb-8" id="vaultConfirmPassphrase" placeholder="Confirm passphrase" autocomplete="off">
+              <button type="button" class="btn btn-primary" id="btnVaultCreate" style="width:100%">Create Vault</button>
+              <p class="text-xs text-muted mt-8" id="vaultCreateError" style="color:var(--danger);display:none"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Credentials Table (shown when vault is unlocked) ── -->
+      <div id="credentialsMainPanel" style="display:none">
+
+        <!-- Toolbar -->
+        <div class="logs-toolbar" style="margin-bottom:16px">
+          <div class="flex gap-4">
+            <button type="button" class="btn btn-xs btn-primary" id="btnAddCred">+ Add Credential</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="btnImportCreds">Import</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="btnGenerateCredFile">Generate Cred File</button>
+          </div>
+          <div class="flex gap-4 ml-auto">
+            <select class="form-control form-sm" id="credSourceFilter" style="width:auto;font-size:0.78rem">
+              <option value="">All Sources</option>
+              <option value="user_provided">User-Provided</option>
+              <option value="captured">Captured</option>
+            </select>
+            <select class="form-control form-sm" id="credTypeFilter" style="width:auto;font-size:0.78rem">
+              <option value="">All Types</option>
+              <option value="password">Password</option>
+              <option value="ntlm_hash">NTLM Hash</option>
+              <option value="ssh_key">SSH Key</option>
+              <option value="kerberos_ticket">Kerberos Ticket</option>
+            </select>
+            <button type="button" class="btn btn-xs btn-ghost" id="btnLockVault">Lock Vault</button>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+          <table class="logs-table" id="credentialsTable">
+            <thead>
+              <tr>
+                <th style="width:36px"></th>
+                <th>Username</th>
+                <th>Domain</th>
+                <th>Type</th>
+                <th>OS Tag</th>
+                <th>Protocol</th>
+                <th>Source</th>
+                <th>Target IP</th>
+                <th>Spray</th>
+                <th>Verified</th>
+                <th style="width:120px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="credentialsBody"></tbody>
+          </table>
+          <p class="text-center text-muted mt-16" id="credsEmpty" style="display:none">No credentials stored. Add credentials or import from a file.</p>
+        </div>
+
+        <!-- Spray Config Panel -->
+        <div class="panel mt-20" id="sprayConfigPanel">
+          <div class="panel-header">
+            <span class="panel-title">Auto-Spray Configuration</span>
+            <label class="flex gap-4" style="align-items:center;font-size:0.78rem">
+              <input type="checkbox" id="sprayEnabled"> Enabled
+              <input type="checkbox" id="sprayCrossProtocol" style="margin-left:12px"> Cross-Protocol
+            </label>
+          </div>
+          <div class="panel-body" id="sprayConfigBody">
+            <p class="text-xs text-muted">Loading spray configuration...</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       PWNED TAB
+       ══════════════════════════════════════════════════════════ -->
+  <div class="tab-content" data-tab="pwned">
+    <div class="p-20">
+
+      <!-- ── Tier Stats ─────────────────────────────────────── -->
+      <div class="form-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+        <div class="panel" style="text-align:center;padding:16px">
+          <div style="font-size:2rem;font-weight:700;color:var(--danger)" id="pwnedCountPWNED">0</div>
+          <div style="font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em">PWNED</div>
+        </div>
+        <div class="panel" style="text-align:center;padding:16px">
+          <div style="font-size:2rem;font-weight:700;color:var(--warning)" id="pwnedCountAUTH">0</div>
+          <div style="font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em">AUTH</div>
+        </div>
+        <div class="panel" style="text-align:center;padding:16px">
+          <div style="font-size:2rem;font-weight:700;color:var(--success)" id="pwnedCountPARTIAL">0</div>
+          <div style="font-size:0.78rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em">PARTIAL</div>
+        </div>
+      </div>
+
+      <!-- ── Filter Bar ─────────────────────────────────────── -->
+      <div class="logs-toolbar" style="margin-bottom:16px">
+        <div class="flex gap-4">
+          <button type="button" class="btn btn-xs btn-ghost pwned-filter active" data-tier="">All</button>
+          <button type="button" class="btn btn-xs btn-ghost pwned-filter" data-tier="PWNED">PWNED</button>
+          <button type="button" class="btn btn-xs btn-ghost pwned-filter" data-tier="AUTH">AUTH</button>
+          <button type="button" class="btn btn-xs btn-ghost pwned-filter" data-tier="PARTIAL">PARTIAL</button>
+        </div>
+        <div class="flex gap-4 ml-auto">
+          <label class="flex gap-4" style="align-items:center;font-size:0.78rem">
+            <input type="checkbox" id="pwnedExcludeUser" checked> Exclude user-provided creds
+          </label>
+        </div>
+      </div>
+
+      <!-- ── PWNED Systems Table ────────────────────────────── -->
+      <div class="overflow-x-auto">
+        <table class="logs-table" id="pwnedTable">
+          <thead>
+            <tr>
+              <th style="width:24px"></th>
+              <th>IP</th>
+              <th>Hostname</th>
+              <th>OS</th>
+              <th>Tier</th>
+              <th>Protocol</th>
+              <th>Access Level</th>
+              <th>Credential</th>
+              <th>Timestamp</th>
+              <th style="width:180px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="pwnedBody"></tbody>
+        </table>
+        <p class="text-center text-muted mt-16" id="pwnedEmpty" style="display:none">No PWNED systems recorded yet.</p>
+      </div>
+
+      <!-- ── Impacket History ───────────────────────────────── -->
+      <div class="panel mt-20">
+        <div class="panel-header">
+          <span class="panel-title">Impacket Execution History</span>
+        </div>
+        <div class="panel-body">
+          <table class="logs-table" id="impacketHistoryTable">
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="impacketHistoryBody"></tbody>
+          </table>
+          <p class="text-center text-muted mt-8" id="impacketEmpty" style="display:none">No Impacket executions recorded.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 </div><!-- .project-layout -->
 
 <!-- ── Incomplete report warning modal ─────────────────────────── -->
@@ -2267,6 +2576,12 @@
 <script src="/static/js/project.js?v={{ app_version }}"></script>
 <script src="/static/js/burp_import.js?v={{ app_version }}"></script>
 <script src="/static/js/ai_surface.js?v={{ app_version }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js" defer></script>
+<script src="/static/js/attack_chains.js?v={{ app_version }}"></script>
+<script src="/static/js/credentials.js?v={{ app_version }}"></script>
+<script src="/static/js/pwned.js?v={{ app_version }}"></script>
 <script>
 var _selectedReportType = 'full';
 

@@ -412,6 +412,8 @@ def auth_gate():
         return None
     if path in _PUBLIC:
         return None
+    if path.startswith("/api/v2/"):
+        return None
     if not session.get("authenticated") or not _validate_session_token(session.get("session_token")):
         revoke_session_token(session.get("session_token"))
         session.clear()

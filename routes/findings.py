@@ -718,6 +718,7 @@ _CSV_COLUMNS = [
     "api_endpoint_path", "api_method", "api_from_spec", "is_rogue_endpoint",
     "subdevice", "interface", "instance", "classification",
     "catalogue_id", "phase", "datetime",
+    "repro_tool", "repro_cli", "repro_python",
 ]
 
 

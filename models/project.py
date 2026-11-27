@@ -430,6 +430,7 @@ def create_project(form_data):
         "beacon_url": form_data.get("beacon_url", ""),
         "beacon_token": form_data.get("beacon_token", ""),
         "beacon_enabled": bool(form_data.get("beacon_enabled", False)),
+        "fda_medical": bool(form_data.get("fda_medical", False)),
     }
 
     _save_project_meta(pid, meta)

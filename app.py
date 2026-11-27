@@ -106,6 +106,10 @@ def create_app():
     from routes.attack_surface import attack_surface_bp
     from routes.burp_import import burp_import_bp
     from routes.ai_surface import ai_surface_bp
+    from routes.api_v2 import api_v2
+    from routes.chains import chains_bp
+    from routes.credentials import credentials_bp
+    from routes.pwned import pwned_bp
     from routes.oob import oob_bp
 
     for bp in (auth_bp, home_bp, project_bp, console_bp, findings_bp,
@@ -114,6 +118,7 @@ def create_app():
                worker_bp, integration_bp, shell_bp, standalone_bp,
                report_bp, importer_bp, sessions_bp,
                attack_surface_bp, burp_import_bp, ai_surface_bp,
+               api_v2, chains_bp, credentials_bp, pwned_bp,
                oob_bp):
         app.register_blueprint(bp)
 
@@ -126,16 +131,6 @@ def create_app():
     socketio.init_app(app, cors_allowed_origins=[],
                       async_mode="threading", manage_session=False,
                       ping_timeout=120, ping_interval=30)
-
-    import atexit
-
-    def _cleanup_oob():
-        try:
-            for mgr in list(app.config.get("OOB_MANAGERS", {}).values()):
-                mgr.teardown()
-        except Exception:
-            pass
-    atexit.register(_cleanup_oob)
 
     from services.process_manager import ProcessManager
     from services.queue_manager import QueueManager
@@ -329,6 +324,24 @@ def main():
     def _sigterm(signum, frame):
         raise KeyboardInterrupt()
     signal.signal(signal.SIGTERM, _sigterm)
+
+    # Clear credential vault keys from memory on shutdown
+    import atexit
+    def _clear_vaults():
+        try:
+            from routes.credentials import clear_all_vaults
+            clear_all_vaults()
+        except Exception:
+            pass
+    atexit.register(_clear_vaults)
+
+    def _cleanup_oob():
+        try:
+            for mgr in list(app.config.get("OOB_MANAGERS", {}).values()):
+                mgr.teardown()
+        except Exception:
+            pass
+    atexit.register(_cleanup_oob)
 
     print(f"\n  Crucible v{VERSION}")
     print(f"  https://0.0.0.0:{config.PORT}\n")

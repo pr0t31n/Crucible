@@ -2277,6 +2277,14 @@ class ProcessManager:
             self._handle_finding(project_id, tool_id, data)
         elif token_type == "intel":
             self._handle_intel(project_id, tool_id, data)
+        elif token_type == "chain_node":
+            self._handle_chain_node(project_id, tool_id, data)
+        elif token_type == "credential":
+            self._handle_credential(project_id, tool_id, data)
+        elif token_type == "pwned":
+            self._handle_pwned(project_id, tool_id, data)
+        elif token_type == "cred_verified":
+            self._handle_cred_verified(project_id, tool_id, data)
         else:
             # Unknown token type — pass through as console line.
             self._emit_console(project_id, tool_id, line, "stdout")
@@ -3027,6 +3035,119 @@ class ProcessManager:
                             project_id, tool_id, data)
         except Exception as exc:
             log.warning("_handle_intel: %s", exc)
+
+    def _handle_chain_node(self, project_id: str, tool_id: str,
+                           data: dict) -> None:
+        """Route a __CRUCIBLE_CHAIN_NODE__ token to the chain engine."""
+        try:
+            proj = self._resolve_project(project_id)
+            proj_dir = (proj or {}).get(
+                "engagement_dir", (proj or {}).get("project_dir", ""))
+            if not proj_dir:
+                return
+            from chain_engine import load_chains, save_chains, ChainNode, ChainEdge, AttackChain
+            chain_id = data.get("chain_id")
+            node_data = data.get("node") or data
+            node = ChainNode.from_dict(node_data)
+            if chain_id:
+                chains = load_chains(proj_dir)
+                matched = False
+                for c in chains:
+                    if c.id == chain_id:
+                        c.nodes.append(node)
+                        prev = c.nodes[-2] if len(c.nodes) >= 2 else None
+                        if prev:
+                            c.edges.append(ChainEdge(
+                                source_id=prev.id, target_id=node.id,
+                                relation=data.get("relation", "leads_to"),
+                                confidence=data.get("confidence", "Firm"),
+                            ))
+                        c.compute_risk()
+                        matched = True
+                        break
+                if matched:
+                    save_chains(proj_dir, chains)
+            self.socketio.emit("chain_node_added",
+                               {"project_id": project_id, "tool_id": tool_id,
+                                "chain_id": chain_id, "node": node.to_dict()},
+                               room=_room(project_id))
+        except Exception as exc:
+            log.warning("_handle_chain_node: %s", exc)
+
+    def _handle_credential(self, project_id: str, tool_id: str,
+                           data: dict) -> None:
+        """Route a __CRUCIBLE_CREDENTIAL__ token — store harvested credential."""
+        try:
+            proj = self._resolve_project(project_id)
+            proj_dir = (proj or {}).get(
+                "engagement_dir", (proj or {}).get("project_dir", ""))
+            if not proj_dir:
+                return
+            try:
+                from services.credential_manager import store_credential
+                store_credential(proj_dir, data)
+            except ImportError:
+                pass
+            self.socketio.emit("credential_found",
+                               {"project_id": project_id, "tool_id": tool_id,
+                                "credential": data},
+                               room=_room(project_id))
+            self._persist_log_entry(project_id, tool_id,
+                                    "Credential captured: %s@%s" % (
+                                        data.get("username", "?"),
+                                        data.get("host", "?")),
+                                    "stdout", level="EVENT")
+        except Exception as exc:
+            log.warning("_handle_credential: %s", exc)
+
+    def _handle_pwned(self, project_id: str, tool_id: str,
+                      data: dict) -> None:
+        """Route a __CRUCIBLE_PWNED__ token — record verified host compromise."""
+        try:
+            proj = self._resolve_project(project_id)
+            proj_dir = (proj or {}).get(
+                "engagement_dir", (proj or {}).get("project_dir", ""))
+            if not proj_dir:
+                return
+            try:
+                from services.pwned_manager import record_pwned
+                record_pwned(proj_dir, data)
+            except ImportError:
+                pass
+            self.socketio.emit("host_pwned",
+                               {"project_id": project_id, "tool_id": tool_id,
+                                "pwned": data},
+                               room=_room(project_id))
+            self._persist_log_entry(project_id, tool_id,
+                                    "HOST PWNED: %s via %s" % (
+                                        data.get("host", "?"),
+                                        data.get("method", "?")),
+                                    "stdout", level="EVENT")
+        except Exception as exc:
+            log.warning("_handle_pwned: %s", exc)
+
+    def _handle_cred_verified(self, project_id: str, tool_id: str,
+                              data: dict) -> None:
+        """Route a __CRUCIBLE_CRED_VERIFIED__ token — mark credential as verified."""
+        try:
+            proj = self._resolve_project(project_id)
+            proj_dir = (proj or {}).get(
+                "engagement_dir", (proj or {}).get("project_dir", ""))
+            if not proj_dir:
+                return
+            try:
+                from services.credential_manager import verify_credential
+                verify_credential(proj_dir, data.get("credential_id"),
+                                  data.get("protocol"), data.get("host"),
+                                  data.get("port"))
+            except ImportError:
+                pass
+            self.socketio.emit("credential_verified",
+                               {"project_id": project_id, "tool_id": tool_id,
+                                "data": data},
+                               room=_room(project_id))
+        except Exception as exc:
+            log.warning("_handle_cred_verified: %s", exc)
 
     def _stderr_reader(self, project_id: str, tool_id: str,
                        pipe, proc: subprocess.Popen) -> None:
