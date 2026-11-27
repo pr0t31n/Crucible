@@ -53,6 +53,7 @@ def _pip_installed(pkg_spec):
         "python-docx": "docx", "pyOpenSSL": "OpenSSL",
         "charset-normalizer": "charset_normalizer",
         "webdriver-manager": "webdriver_manager",
+        "argon2-cffi": "argon2",
     }
     mod = _IMPORT_MAP.get(name, name.replace("-", "_"))
     return importlib.util.find_spec(mod) is not None
